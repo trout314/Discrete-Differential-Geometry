@@ -1,4 +1,3 @@
-
 // NOTE: Code taken from David Simcha. See https://github.com/dsimcha/Rational
 
 /**
