@@ -101,10 +101,10 @@ struct Manifold(size_t dim = dimManifold)
         foreach (const facet; facets)
         {
             assert(facet.length == dimension + 1,
-                    "encountered facet with wrong " "number of vertices in construction of manifold");
+                    "encountered facet with wrong number of vertices in construction of manifold");
 
             assert(!facet.isDegenerate,
-                    "encountered degenerate facet (with " "repeated vertex labels) in construction of manifold");
+                    "encountered degenerate facet (with repeated vertex labels) in construction of manifold");
 
             FacetRecord!dimension newFacetRecord;
             newFacetRecord.facet = facet;
@@ -119,11 +119,11 @@ struct Manifold(size_t dim = dimManifold)
 
         facetRecords.setAllNeighbors;
         assert(facetRecords.checkNeighbors2,
-                "failed to correctly set neighbor " "data in construction of manifold");
+                "failed to correctly set neighbor data in construction of manifold");
 
         facetRecords.setAllDegrees;
         assert(facetRecords.checkDegrees,
-                "failed to correctly set degree data " "in construction of manifold");
+                "failed to correctly set degree data in construction of manifold");
     }
 }
 ///
@@ -1344,7 +1344,7 @@ size_t[][] getPotentialPachnerMoves(size_t dim)(const ref FacetRecord!dim facetR
 unittest
 {
 
-    auto testRecord = FacetRecord!3([1, 2, 3, 4], [0, 0, 0, 0], [3, 3, 3, 3, 3, 3]);
+    //auto testRecord = FacetRecord!3([1, 2, 3, 4], [0, 0, 0, 0], [3, 3, 3, 3, 3, 3]);
     //testRecord.getPotentialPachnerMoves!3.writeln;
 }
 
