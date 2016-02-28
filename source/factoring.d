@@ -82,7 +82,7 @@ unittest
     assert(primeFactors(3 * 3 * 3 * 3 * 7 * 7 * 7) == [3, 3, 3, 3, 7, 7, 7]);
 }
 
-int[] squareFreePrimeFactors(in int num)
+int[] squareFreePrimeFactors(int num)
 {
     assert(num > 0);
     int[] factors = primeFactors(num);
@@ -145,7 +145,7 @@ unittest
     assert(squareFreePrimeFactors(3 * 3 * 3 * 3 * 7 * 7 * 7) == [7]);
 }
 
-int[] squarePrimeFactors(in int num)
+int[] squarePrimeFactors(int num)
 {
     assert(num > 0);
     int[] factors = primeFactors(num);
@@ -207,7 +207,7 @@ unittest
     static assert(squarePrimeFactors(3 * 3 * 3 * 3 * 7 * 7 * 7) == [3, 3, 3, 3, 7, 7]);
 }
 
-int[] sqrtSquarePrimeFactors(in int num)
+int[] sqrtSquarePrimeFactors(int num)
 {
     assert(num > 0);
     int[] factors = primeFactors(num);
@@ -269,7 +269,7 @@ unittest
     static assert(sqrtSquarePrimeFactors(3 * 3 * 3 * 3 * 7 * 7 * 7) == [3, 3, 7]);
 }
 
-int squareFreePart(in int num)
+int squareFreePart(int num)
 {
     assert(num > 0);
     int answer = 1;
@@ -328,7 +328,7 @@ unittest
 
 }
 
-int squarePart(in int num)
+int squarePart(int num)
 {
     assert(num > 0);
     int answer = 1;
@@ -386,7 +386,7 @@ unittest
     static assert(squarePart(3 * 3 * 3 * 3 * 7 * 7 * 7) == 3 * 3 * 3 * 3 * 7 * 7);
 }
 
-int sqrtSquarePart(in int num)
+int sqrtSquarePart(int num)
 {
     assert(num > 0);
     int answer = 1;
