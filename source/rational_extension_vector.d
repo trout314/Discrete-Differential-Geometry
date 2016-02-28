@@ -1,4 +1,4 @@
-import rational;
+import std.rational; // Note: not actually a standard package yet
 import factoring;
 
 int[] visibilityRoots(in int dim)
