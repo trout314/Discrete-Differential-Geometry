@@ -63,8 +63,10 @@ RationalExtensionVector!dim[] simplexVecs(int dim)()
 
 struct RationalExtensionVector(int dim)
 {
-    string toString() const
+    string toString()
     {
+        import std.conv : to;
+        
         string result = "(";
         foreach (i, coef; rationalCoefs)
         {
@@ -81,7 +83,7 @@ struct RationalExtensionVector(int dim)
             {
                 result ~= to!string(coef.num);
                 result ~= "/";
-                result ~= to!string(coef.den);
+                result ~= to!string(coef.denom);
             }
             else
             {
