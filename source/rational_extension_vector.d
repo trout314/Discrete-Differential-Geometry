@@ -1,7 +1,7 @@
 import std.rational; // Note: not actually a standard package yet
 import factoring;
 
-int[] visibilityRoots(in int dim)
+int[] visibilityRoots(int dim)
 in
 {
     assert(dim > 0);
@@ -24,7 +24,7 @@ body
     return result;
 }
 
-Rational!int[] visibilityCoefs(in int dim, in int simplexPointIndx)
+Rational!int[] visibilityCoefs(int dim, int simplexPointIndx)
 in
 {
     assert(dim > 0);
