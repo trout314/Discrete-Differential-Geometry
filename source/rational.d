@@ -155,7 +155,7 @@ as the type returned by I1.init * I2.init.
  */
 template CommonInteger(I1, I2) if (isIntegerLike!I1 && isIntegerLike!I2)
 {
-    alias typeof(I1.init * I2.init) CommonInteger;
+    alias CommonInteger = typeof(I1.init * I2.init);
 }
 
 unittest
@@ -997,7 +997,7 @@ unittest
 {
     // Values from the Maxima computer algebra system.
     assert(gcf(BigInt(314_156_535UL), BigInt(27_182_818_284UL)) == BigInt(3));
-    assert(gcf(8675309, 362436) == 1);
+    assert(gcf(8_675_309, 362_436) == 1);
     assert(gcf(BigInt("8589934596"), BigInt("295147905179352825852")) == 12);
 }
 
