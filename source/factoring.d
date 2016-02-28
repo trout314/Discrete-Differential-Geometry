@@ -1,12 +1,16 @@
 import std.algorithm;
 
-public int[] primeFactors(in int num) pure
+public int[] primeFactors(int num) pure nothrow
 {
     assert(num > 0);
     int n = num;
     int[] answer = [];
+
     if (n < 2)
+    {
         return answer;
+    }
+
     int divisor = 2;
     while (divisor < n)
     {
@@ -85,8 +89,12 @@ int[] squareFreePrimeFactors(in int num)
     auto uniqueFactors = uniq(factors);
     int[] answer;
     foreach (prime; uniqueFactors)
+    {
         if (count(factors, prime) % 2 == 1)
+        {
             answer ~= prime;
+        }
+    }
     return answer;
 }
 
@@ -143,8 +151,12 @@ int[] squarePrimeFactors(in int num)
     int[] factors = primeFactors(num);
     int[] answer;
     foreach (prime; uniq(factors))
+    {
         foreach (i; 0 .. 2 * (count(factors, prime) / 2))
+        {
             answer ~= prime;
+        }
+    }
     return answer;
 }
 
@@ -201,8 +213,12 @@ int[] sqrtSquarePrimeFactors(in int num)
     int[] factors = primeFactors(num);
     int[] answer;
     foreach (prime; uniq(factors))
+    {
         foreach (i; 0 .. count(factors, prime) / 2)
+        {
             answer ~= prime;
+        }
+    }
     return answer;
 }
 
@@ -258,7 +274,9 @@ int squareFreePart(in int num)
     assert(num > 0);
     int answer = 1;
     foreach (prime; squareFreePrimeFactors(num))
+    {
         answer *= prime;
+    }
     return answer;
 }
 
@@ -315,7 +333,9 @@ int squarePart(in int num)
     assert(num > 0);
     int answer = 1;
     foreach (prime; squarePrimeFactors(num))
+    {
         answer *= prime;
+    }
     return answer;
 }
 
@@ -371,7 +391,9 @@ int sqrtSquarePart(in int num)
     assert(num > 0);
     int answer = 1;
     foreach (prime; sqrtSquarePrimeFactors(num))
+    {
         answer *= prime;
+    }
     return answer;
 }
 
@@ -425,7 +447,7 @@ unittest
 // Test all functions together on range of inputs (runtime checks only)
 unittest
 {
-    int max_test = 10000;
+    immutable max_test = 10_000;
     foreach (n; 1 .. max_test + 1)
     {
         auto all = squareFreePrimeFactors(n) ~ squarePrimeFactors(n);
@@ -434,17 +456,23 @@ unittest
 
         int productSqF = 1;
         foreach (prime; squareFreePrimeFactors(n))
+        {
             productSqF *= prime;
+        }
         assert(productSqF == squareFreePart(n));
 
         int productSq = 1;
         foreach (prime; squarePrimeFactors(n))
+        {
             productSq *= prime;
+        }
         assert(productSq == squarePart(n));
 
         int productSqrtSq = 1;
         foreach (prime; sqrtSquarePrimeFactors(n))
+        {
             productSqrtSq *= prime;
+        }
         assert(productSqrtSq == sqrtSquarePart(n));
 
         assert(n == squarePart(n) * squareFreePart(n));
