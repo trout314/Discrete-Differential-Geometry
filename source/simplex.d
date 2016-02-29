@@ -13,6 +13,7 @@
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 * GNU General Public License for more details.
 */
+
 import std.conv : to;
 import std.container : make;
 import std.traits : CommonType, isArray, isInstanceOf, isImplicitlyConvertible;
@@ -43,9 +44,10 @@ private enum bool isEqualityComparable(A, B = A) = __traits(compiles, A.init == 
 */
 struct Simplex(size_t dim, Vertex = int)
 {
-    static assert(isLessThanComparable!Vertex, "tried to create a Simplex type " "using a vertex type " ~ Vertex.stringof ~ " that does not support " "comparison with the less than operator <. " "See http://dlang.org/operatoroverloading.html#eqcmp");
-
-    static assert(isEqualityComparable!Vertex, "tried to create a Simplex type " "using a vertex type " ~ Vertex.stringof ~ " that does not support " "comparison with the equality operator ==. " "See http://dlang.org/operatoroverloading.html#eqcmp");
+    static assert(isLessThanComparable!Vertex,
+            "Vertex type must support opCmp. See http://dlang.org/operatoroverloading.html#eqcmp");
+    static assert(isEqualityComparable!Vertex,
+            "Vertex type must support opEquals. See http://dlang.org/operatoroverloading.html#eqcmp");
 
     /***************************************************************************
    * a simplex can be constructed from a range with element type Vertex. There
@@ -55,7 +57,7 @@ struct Simplex(size_t dim, Vertex = int)
     this(R)(R vertices_) if (isArray!R || isInputRange!R)
     {
         assert(vertices_.length == dim + 1,
-                "tried to create a simplex of " "dimension " ~ dim
+                "tried to create a simplex of dimension " ~ dim
                 ~ " with too few vertices " ~ vertices_.to!string);
 
         copy(vertices_[].map!(to!Vertex), verts_[]);
@@ -66,7 +68,7 @@ struct Simplex(size_t dim, Vertex = int)
                 "tried to create a simplex " ~this.toString ~ " containing a repeated vertex");
         assert(!vertices.canFind(VertexType.init),
                 "tried to create a simplex " ~this.toString ~ " using a vertex with value " ~ to!string(
-                    Vertex.init) ~ " which is reserved for un-initialized " "vertices");
+                    Vertex.init) ~ " which is reserved for un-initialized vertices");
     }
 
     //~ this(Vertex[] vertices_)
@@ -122,7 +124,7 @@ struct Simplex(size_t dim, Vertex = int)
     }
 
     /// nice looking string representation
-    string toString()
+    string toString() const
     {
         return "[" ~ vertices.map!(to!string).joiner(",").to!string ~ "]";
     }
@@ -270,9 +272,9 @@ unittest
     auto s2 = simplex(1L, 2L, 3L);
     static assert(is(s2.VertexType == long));
 
-//    immutable i = 3, j = 5;
-//    auto s3 = simplex(i, j);
-//    static assert(is(typeof(s3) == Simplex!(1, immutable int)));
+    //    immutable i = 3, j = 5;
+    //    auto s3 = simplex(i, j);
+    //    static assert(is(typeof(s3) == Simplex!(1, immutable int)));
 
     auto s4 = simplex("alice", "bob", "carol");
     static assert(is(s4.VertexType == string));
@@ -290,8 +292,8 @@ bool hasFace(S, F)(const ref S simplex, const ref F possibleFace)
         if (isInstanceOf!(Simplex, S) && isInstanceOf!(Simplex, F))
 {
     static assert(!is(CommonType!(F.VertexType, S.VertexType) == void),
-            "hasFace called on simplices with vertices of incompatible types: " "simplex.VertexType = "
-            ~ S.VertexType.stringof ~ " and " "possibleFace.VertexType = " ~ F.VertexType.stringof);
+            "hasFace called on simplices with vertices of incompatible types: simplex.VertexType = "
+            ~ S.VertexType.stringof ~ " and possibleFace.VertexType = " ~ F.VertexType.stringof);
 
     alias CommonVertex = CommonType!(F.VertexType, S.VertexType);
 

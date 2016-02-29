@@ -692,7 +692,7 @@ public:
     Returns a string representation of $(D this) in the form this.num /
     this.denom.
     */
-    string toString()
+    string toString() const
     {
         static if (is(Int == std.bigint.BigInt))
         {

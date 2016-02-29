@@ -10,8 +10,14 @@ void main()
     iota(5).writeln;
     
     import rational_extension_vector : simplexVecs;
-    foreach(sVec; simplexVecs!10())
+    static immutable sVecs = simplexVecs!10(); 
+    foreach(sVec; sVecs)
     {
         writeln(sVec);
     }
+    
+    import std.rational;
+    auto a = rational(2,4);
+    writeln(a);
+    writeln(typeof(sVecs).stringof);
 }

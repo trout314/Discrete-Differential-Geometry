@@ -63,7 +63,7 @@ RationalExtensionVector!dim[] simplexVecs(int dim)()
 
 struct RationalExtensionVector(int dim)
 {
-    string toString()
+    string toString() pure
     {
         import std.conv : to;
         
