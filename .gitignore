@@ -20,3 +20,6 @@ discrete-differential-geometry
 docs.json
 *.html
 dub.selections.json
+
+# data files created by unittests
+/data/manifold_sampler_unittest_save.dat
