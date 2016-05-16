@@ -2,3 +2,11 @@ name "discrete-differential-geometry"
 description "A minimal D application."
 copyright "Copyright © 2016, aaron"
 authors "aaron"
+
+buildType "unittest" {
+    dependency "unit-threaded" version="~>0.6.3"
+    preBuildCommands "dub run unit-threaded -c gen_ut_main -- -f bin/ut.d"
+    mainSourceFile "bin/ut.d"
+    excludedSourceFiles "app.d"
+	targetType "executable"
+}
