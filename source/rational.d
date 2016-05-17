@@ -697,11 +697,11 @@ public:
         static if (is(Int == std.bigint.BigInt))
         {
             // Special case it for now.  This should be fixed later.
-            return toDecimalString(numerator) ~ " / " ~ toDecimalString(denominator);
+            return toDecimalString(numerator) ~ "/" ~ toDecimalString(denominator);
         }
         else
         {
-            return to!string(numerator) ~ " / " ~ to!string(denominator);
+            return to!string(numerator) ~ "/" ~ to!string(denominator);
         }
     }
 

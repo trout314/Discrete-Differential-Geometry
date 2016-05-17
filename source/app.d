@@ -10,7 +10,7 @@ void main()
     iota(5).writeln;
     
     import rational_extension_vector : simplexVecs;
-    static immutable sVecs = simplexVecs!10(); 
+    auto sVecs = simplexVecs!4(); 
     foreach(sVec; sVecs)
     {
         writeln(sVec);
