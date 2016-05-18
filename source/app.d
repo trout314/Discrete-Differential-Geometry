@@ -9,7 +9,7 @@ void main()
     import std.range : iota;
     iota(5).writeln;
     
-    import rational_extension_vector : simplexVecs;
+    import rational_extension_vector : simplexVecs, simplexRoots;
     auto sVecs = simplexVecs!4(); 
     foreach(sVec; sVecs)
     {
@@ -20,4 +20,6 @@ void main()
     auto a = rational(2,4);
     writeln(a);
     writeln(typeof(sVecs).stringof);
+    
+    simplexRoots(4).writeln;
 }

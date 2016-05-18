@@ -1,27 +1,25 @@
 import std.rational; // Note: not actually a standard package yet
 import factoring;
 
-int[] visibilityRoots(int dim)
-in
+import std.algorithm : map;
+import std.range : iota, array;
+
+auto simplexRoots(int dimension)
 {
-    assert(dim > 0);
+    assert(dimension > 0, "dimension of simplex must be positive");
+    return iota(1, dimension + 1).map!(k => squareFreePart((k * (k + 1)) / 2));
 }
-out (result)
+
+unittest
 {
-    assert(result.length == dim);
-    foreach (d; result)
+    foreach (radicand; simplexRoots(50))
     {
-        assert(d > 0);
-        assert(squarePart(d) == 1);
-        assert(squareFreePart(d) == d);
+        assert(radicand > 0);
+        assert(squarePart(radicand) == 1);
+        assert(squareFreePart(radicand) == radicand);
     }
-}
-body
-{
-    int[] result;
-    foreach (k; 1 .. dim + 1)
-        result ~= squareFreePart((k * (k + 1)) / 2);
-    return result;
+
+    assert(simplexRoots(4).array == [1, 3, 6, 10]);
 }
 
 Rational!int[] visibilityCoefs(int dim, int simplexPointIndx)
@@ -98,7 +96,7 @@ struct RationalExtensionVector(int dim)
             }
 
             // Append comma and space if needed
-            if (i < rationalCoefs.length - 1)
+            if (i + 1 < rationalCoefs.length)
                 result ~= ", ";
         }
         result ~= "]";
@@ -115,7 +113,7 @@ struct RationalExtensionVector(int dim)
         rationalCoefs = coefs.dup;
     }
 
-    static immutable int[dim] roots = visibilityRoots(dim);
+    static immutable int[dim] roots = simplexRoots(dim).array;
 private:
     Rational!int[dim] rationalCoefs;
 }
