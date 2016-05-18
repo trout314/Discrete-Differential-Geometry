@@ -2,4 +2,4 @@
 
 Work in progress. Symbolic math package for discrete differential geometry computations.
 
-## Abstract Simplicial Complexes
+- Abstract Simplicial Complexes
