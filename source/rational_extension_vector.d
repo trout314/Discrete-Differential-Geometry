@@ -67,11 +67,11 @@ struct RationalExtensionVector(int dim)
     {
         import std.conv : to;
         import std.format : format;
-        
+
         string result = "[";
         foreach (i, coef; rationalCoefs)
         {
-            
+
             // Take care of initial rational part
             if (coef == 0)
             {
@@ -89,7 +89,7 @@ struct RationalExtensionVector(int dim)
             {
                 result ~= "(" ~ to!string(coef) ~ ")";
             }
-            
+
             // Append root portion if needed
             if ((roots[i] > 1) && (coef != 1) && (coef != 0))
             {

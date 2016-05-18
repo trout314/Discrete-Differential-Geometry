@@ -1,7 +1,5 @@
 # Discrete-Differential-Geometry
 
-Some preliminary concepts:
+Work in progress. Symbolic math package for discrete differential geometry computations.
 
-A simplex is either a slice of an array of vertices or a range of vertices. 
-
-A manifold is a list of simplices which satisfy...
+## Abstract Simplicial Complexes
