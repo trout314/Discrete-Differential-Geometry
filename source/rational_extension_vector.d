@@ -1,12 +1,12 @@
 import std.rational; // Note: not actually a standard package yet
-import factoring;
-
-import std.algorithm : map;
-import std.range : iota, array;
 
 auto simplexRoots(int dimension)
 {
-    assert(dimension > 0, "dimension of simplex must be positive");
+    assert(dimension >= 0, "simplex dimension must be non-negative");   
+    
+    import std.algorithm : map;
+    import std.range : iota;
+    import factoring : squareFreePart;
     return iota(1, dimension + 1).map!(k => squareFreePart((k * (k + 1)) / 2));
 }
 
@@ -19,6 +19,7 @@ unittest
         assert(squareFreePart(radicand) == radicand);
     }
 
+    import std.range : array;
     assert(simplexRoots(4).array == [1, 3, 6, 10]);
 }
 
@@ -35,6 +36,8 @@ out (result)
 }
 body
 {
+    import factoring : sqrtSquarePart;
+    
     Rational!int[] result;
     foreach (basisIndx; 1 .. dim + 1)
     {
@@ -113,6 +116,7 @@ struct RationalExtensionVector(int dim)
         rationalCoefs = coefs.dup;
     }
 
+    import std.range : array;
     static immutable int[dim] roots = simplexRoots(dim).array;
 private:
     Rational!int[dim] rationalCoefs;

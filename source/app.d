@@ -10,10 +10,10 @@ void main()
     iota(5).writeln;
     
     import rational_extension_vector : simplexVecs, simplexRoots;
-    auto sVecs = simplexVecs!4(); 
+    auto sVecs = simplexVecs!10(); 
     foreach(sVec; sVecs)
     {
-        writeln(sVec);
+        sVec.writeln;
     }
     
     import std.rational : rational;
@@ -21,5 +21,5 @@ void main()
     writeln(a);
     writeln(typeof(sVecs).stringof);
     
-    simplexRoots(4).writeln;
+    simplexRoots(19).writeln;
 }
