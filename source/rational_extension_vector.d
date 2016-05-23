@@ -27,7 +27,7 @@ unittest
 
 // TO DO: get rid of need for gc-allocated closure here by "rangifying" the pointIndex part...
 
-auto simplexCoefs(int dim)() @nogc
+auto simplexCoefs(int dim)()
 {
     import std.range : iota;
     import std.algorithm : map;
@@ -61,7 +61,7 @@ unittest
     // TO DO...
 }
 
-auto simplexVecs(int dim)()
+auto simplexPoints(int dim)()
 {
     import std.range : iota, array;
     import std.algorithm : map;
