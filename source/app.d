@@ -11,6 +11,7 @@ void main()
     import rational_extension_vector : simplexVecs, simplexRoots;
     import std.algorithm : each;
 
-    simplexVecs!3().each!(v => v.writeln);
+    simplexVecs!3().each!(v => v.writeln);    
     simplexRoots(10).writeln;
+   
 }

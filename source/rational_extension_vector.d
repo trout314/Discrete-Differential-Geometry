@@ -57,17 +57,14 @@ unittest
     // TO DO...
 }
 
-RationalExtensionVector!dim[] simplexVecs(int dim)()
+auto simplexVecs(int dim)()
 {
-    import std.range : array;
+    import std.range : iota, array;
+    import std.algorithm : map;
 
-    RationalExtensionVector!dim[] result;
-    foreach (j; 0 .. dim + 1)
-    {
-        result ~= RationalExtensionVector!dim(simplexCoefs(dim, j).array);
-    }
-    return result;
+    return iota(0, dim + 1).map!(k => RationalExtensionVector!dim(simplexCoefs(dim, k).array));
 }
+
 
 struct RationalExtensionVector(int dim)
 {
