@@ -1,3 +1,6 @@
+
+
+
 auto simplexRoots(int dimension)
 {
     assert(dimension >= 0, "simplex dimension must be non-negative");
@@ -24,6 +27,17 @@ unittest
 
     assert(simplexRoots(4).array == [1, 3, 6, 10]);
 }
+
+// TO DO: get rid of need for gc-allocated closure here by "rangifying" the simplexPointIndex part...
+
+auto simplexCoefsRange(int dim)
+{
+    import std.range : iota;
+    import std.algorithm : map;
+    
+    return iota(0, dim + 1).map!(k => simplexCoefs(dim, k));
+}
+
 
 auto simplexCoefs(int dim, int simplexPointIndex)
 {
@@ -124,10 +138,17 @@ struct RationalExtensionVector(int dim)
         copy(coefs, rationalCoefs[]);
     }
 
-    import std.rational : Rational;
-    import std.range : array;
-
-    static immutable int[dim] roots = simplexRoots(dim).array;
+    static this()
+    {
+        import std.range : enumerate;
+        foreach(index, root; enumerate(simplexRoots(dim)))
+        {
+            roots[index] = root;
+        }
+    }
 private:
+    static immutable int[dim] roots;
+    
+    import std.rational : Rational;
     Rational!int[dim] rationalCoefs;
 }
