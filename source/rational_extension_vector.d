@@ -27,7 +27,7 @@ unittest
     assert(simplexRoots(4).array == [1, 3, 6, 10]);
 }
 
-auto visibilityCoefs(int dim, int simplexPointIndex)
+auto simplexCoefs(int dim, int simplexPointIndex)
 {
 
     import std.range : iota;
@@ -64,7 +64,7 @@ RationalExtensionVector!dim[] simplexVecs(int dim)()
     RationalExtensionVector!dim[] result;
     foreach (j; 0 .. dim + 1)
     {
-        result ~= RationalExtensionVector!dim(visibilityCoefs(dim, j).array);
+        result ~= RationalExtensionVector!dim(simplexCoefs(dim, j).array);
     }
     return result;
 }
