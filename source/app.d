@@ -8,11 +8,11 @@ void main()
 
     simplex(1, 2, 4).writeln;
 
-    import rational_extension_vector : simplexVecs, simplexRoots, simplexCoefsRange;
+    import rational_extension_vector : simplexVecs, simplexRoots, simplexCoefs;
     import std.algorithm : each;
 
-    simplexVecs!3().each!(v => v.writeln);    
-    simplexRoots(3).writeln;
-    simplexCoefsRange(3).writeln;
+    simplexVecs!10.each!(v => v.writeln);    
+    simplexRoots!10.each!(r => r.writeln);
+    simplexCoefs!10.each!(c => c.writeln);
    
 }

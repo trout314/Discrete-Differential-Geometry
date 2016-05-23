@@ -1,7 +1,4 @@
-
-
-
-auto simplexRoots(int dimension)
+auto simplexRoots(int dimension)()
 {
     assert(dimension >= 0, "simplex dimension must be non-negative");
 
@@ -16,7 +13,7 @@ unittest
 {
     import factoring : squarePart, squareFreePart;
 
-    foreach (radicand; simplexRoots(50))
+    foreach (radicand; simplexRoots!50)
     {
         assert(radicand > 0);
         assert(squarePart(radicand) == 1);
@@ -25,36 +22,26 @@ unittest
 
     import std.range : array;
 
-    assert(simplexRoots(4).array == [1, 3, 6, 10]);
+    assert(simplexRoots!4.array == [1, 3, 6, 10]);
 }
 
-// TO DO: get rid of need for gc-allocated closure here by "rangifying" the simplexPointIndex part...
+// TO DO: get rid of need for gc-allocated closure here by "rangifying" the pointIndex part...
 
-auto simplexCoefsRange(int dim)
+auto simplexCoefs(int dim)() @nogc
 {
     import std.range : iota;
     import std.algorithm : map;
-    
-    return iota(0, dim + 1).map!(k => simplexCoefs(dim, k));
-}
-
-
-auto simplexCoefs(int dim, int simplexPointIndex)
-{
-
-    import std.range : iota;
-    import std.algorithm : map;
-    import factoring : sqrtSquarePart;
     import std.rational : rational;
+    import factoring : sqrtSquarePart;
 
-    return iota(1, dim + 1).map!((basisIndex) {
+    alias computeCoef = (pointIndex, basisIndex) {
         auto n = basisIndex * (basisIndex + 1) / 2;
         auto m = sqrtSquarePart(n);
-        if (basisIndex < simplexPointIndex)
+        if (basisIndex < pointIndex)
         {
             return m * rational(1, 2 * n);
         }
-        else if (basisIndex == simplexPointIndex)
+        else if (basisIndex == pointIndex)
         {
             return m * rational(1, basisIndex);
         }
@@ -62,7 +49,11 @@ auto simplexCoefs(int dim, int simplexPointIndex)
         {
             return rational(0, 1);
         }
-    });
+    };
+
+    return iota(0, dim + 1).map!(pointIndex => iota(1, dim + 1)
+            .map!(basisIndex => computeCoef(pointIndex, basisIndex)));
+
 }
 
 unittest
@@ -75,7 +66,7 @@ auto simplexVecs(int dim)()
     import std.range : iota, array;
     import std.algorithm : map;
 
-    return iota(0, dim + 1).map!(k => RationalExtensionVector!dim(simplexCoefs(dim, k)));
+    return iota(0, dim + 1).map!(k => RationalExtensionVector!dim(simplexCoefs!dim[k]));
 }
 
 unittest
@@ -141,14 +132,17 @@ struct RationalExtensionVector(int dim)
     static this()
     {
         import std.range : enumerate;
-        foreach(index, root; enumerate(simplexRoots(dim)))
+
+        foreach (index, root; enumerate(simplexRoots!dim))
         {
             roots[index] = root;
         }
     }
+
 private:
     static immutable int[dim] roots;
-    
+
     import std.rational : Rational;
+
     Rational!int[dim] rationalCoefs;
 }
