@@ -64,6 +64,11 @@ auto simplexVecs(int dim)()
     return iota(0, dim + 1).map!(k => RationalExtensionVector!dim(simplexCoefs(dim, k)));
 }
 
+unittest
+{
+    // TO DO...
+}
+
 struct RationalExtensionVector(int dim)
 {
     string toString()
@@ -74,7 +79,6 @@ struct RationalExtensionVector(int dim)
         string result = "[";
         foreach (i, coef; rationalCoefs)
         {
-
             // Take care of initial rational part
             if (coef == 0)
             {
@@ -102,7 +106,9 @@ struct RationalExtensionVector(int dim)
 
             // Append comma and space if needed
             if (i + 1 < rationalCoefs.length)
+            {
                 result ~= ", ";
+            }
         }
         result ~= "]";
         return result;
