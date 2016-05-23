@@ -25,50 +25,43 @@ unittest
     assert(simplexRoots(4).array == [1, 3, 6, 10]);
 }
 
-auto visibilityCoefsRange(int dim, int simplexPointIndx)
+auto visibilityCoefsRange(int dim, int simplexPointIndex)
 {
 
-    import std.range : chain, iota, only;
+    import std.range : iota;
     import std.algorithm : map;
     import factoring : sqrtSquarePart;
 
-}
-
-Rational!int[] visibilityCoefs(int dim, int simplexPointIndx)
-in
-{
-    assert(dim > 0);
-    assert(simplexPointIndx >= 0);
-    assert(simplexPointIndx <= dim);
-}
-out (result)
-{
-    // TO DO: Put in some checks...
-}
-body
-{
-    import factoring : sqrtSquarePart;
-
-    Rational!int[] result;
-    foreach (basisIndx; 1 .. dim + 1)
-    {
-        auto n = (basisIndx * (basisIndx + 1)) / 2;
-        if (basisIndx < simplexPointIndx)
-            result ~= sqrtSquarePart(n) * Rational!int(1, 2 * n);
-        else if (basisIndx == simplexPointIndx)
-            result ~= sqrtSquarePart(n) * Rational!int(1, basisIndx);
+    return iota(1, dim + 1).map!((basisIndex) {
+        auto n = basisIndex * (basisIndex + 1) / 2;
+        if (basisIndex < simplexPointIndex)
+        {
+            return sqrtSquarePart(n) * Rational!int(1, 2 * n);
+        }
+        else if (basisIndex == simplexPointIndex)
+        {
+            return sqrtSquarePart(n) * Rational!int(1, basisIndex);
+        }
         else
-            result ~= Rational!int(0, 1);
-    }
-    return result;
+        {
+            return Rational!int(0, 1);
+        }
+    });
+}
+
+unittest
+{
+    // TO DO...
 }
 
 RationalExtensionVector!dim[] simplexVecs(int dim)()
 {
+    import std.range : array;
+
     RationalExtensionVector!dim[] result;
     foreach (j; 0 .. dim + 1)
     {
-        result ~= RationalExtensionVector!dim(visibilityCoefs(dim, j));
+        result ~= RationalExtensionVector!dim(visibilityCoefsRange(dim, j).array);
     }
     return result;
 }
