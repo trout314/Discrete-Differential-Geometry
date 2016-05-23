@@ -1,5 +1,3 @@
-import std.rational; // Note: not actually a standard package yet
-
 auto simplexRoots(int dimension)
 {
     assert(dimension >= 0, "simplex dimension must be non-negative");
@@ -33,6 +31,7 @@ auto simplexCoefs(int dim, int simplexPointIndex)
     import std.range : iota;
     import std.algorithm : map;
     import factoring : sqrtSquarePart;
+    import std.rational : rational;
 
     return iota(1, dim + 1).map!((basisIndex) {
         auto n = basisIndex * (basisIndex + 1) / 2;
@@ -62,9 +61,8 @@ auto simplexVecs(int dim)()
     import std.range : iota, array;
     import std.algorithm : map;
 
-    return iota(0, dim + 1).map!(k => RationalExtensionVector!dim(simplexCoefs(dim, k).array));
+    return iota(0, dim + 1).map!(k => RationalExtensionVector!dim(simplexCoefs(dim, k)));
 }
-
 
 struct RationalExtensionVector(int dim)
 {
@@ -110,16 +108,17 @@ struct RationalExtensionVector(int dim)
         return result;
     }
 
-    this(Rational!int[] coefs)
-    in
+    // TO DO: Add some constraints to this template...
+    this(T)(T coefs)
     {
-        assert(coefs.length == dim);
-    }
-    body
-    {
-        rationalCoefs = coefs.dup;
+        import std.range : walkLength;
+        import std.algorithm : copy;
+
+        assert(coefs.walkLength == dim);
+        copy(coefs, rationalCoefs[]);
     }
 
+    import std.rational : Rational;
     import std.range : array;
 
     static immutable int[dim] roots = simplexRoots(dim).array;
