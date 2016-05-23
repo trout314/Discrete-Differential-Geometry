@@ -13,6 +13,8 @@ auto simplexRoots(int dimension)
 
 unittest
 {
+    import factoring : squarePart, squareFreePart;
+
     foreach (radicand; simplexRoots(50))
     {
         assert(radicand > 0);
@@ -25,7 +27,7 @@ unittest
     assert(simplexRoots(4).array == [1, 3, 6, 10]);
 }
 
-auto visibilityCoefsRange(int dim, int simplexPointIndex)
+auto visibilityCoefs(int dim, int simplexPointIndex)
 {
 
     import std.range : iota;
@@ -34,17 +36,18 @@ auto visibilityCoefsRange(int dim, int simplexPointIndex)
 
     return iota(1, dim + 1).map!((basisIndex) {
         auto n = basisIndex * (basisIndex + 1) / 2;
+        auto m = sqrtSquarePart(n);
         if (basisIndex < simplexPointIndex)
         {
-            return sqrtSquarePart(n) * Rational!int(1, 2 * n);
+            return m * rational(1, 2 * n);
         }
         else if (basisIndex == simplexPointIndex)
         {
-            return sqrtSquarePart(n) * Rational!int(1, basisIndex);
+            return m * rational(1, basisIndex);
         }
         else
         {
-            return Rational!int(0, 1);
+            return rational(0, 1);
         }
     });
 }
@@ -61,7 +64,7 @@ RationalExtensionVector!dim[] simplexVecs(int dim)()
     RationalExtensionVector!dim[] result;
     foreach (j; 0 .. dim + 1)
     {
-        result ~= RationalExtensionVector!dim(visibilityCoefsRange(dim, j).array);
+        result ~= RationalExtensionVector!dim(visibilityCoefs(dim, j).array);
     }
     return result;
 }
