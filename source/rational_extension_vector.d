@@ -12,20 +12,19 @@ auto simplexRoots(int dimension)()
 unittest
 {
     import factoring : squarePart, squareFreePart;
-
     foreach (radicand; simplexRoots!50)
     {
         assert(radicand > 0);
         assert(squarePart(radicand) == 1);
         assert(squareFreePart(radicand) == radicand);
     }
-
-    import std.range : array;
-
-    assert(simplexRoots!4.array == [1, 3, 6, 10]);
 }
 
-// TO DO: get rid of need for gc-allocated closure here by "rangifying" the pointIndex part...
+unittest
+{
+    import std.range : array;
+    assert(simplexRoots!10.array == [1, 3, 6, 10, 15, 21, 7, 1, 5, 55]);
+}
 
 auto simplexCoefs(int dim)()
 {

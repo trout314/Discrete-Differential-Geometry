@@ -6,13 +6,15 @@ void main()
 
     import simplex : simplex;
 
-    simplex(1, 2, 4).writeln;
+    // simplex(1, 2, 4).writeln;
 
     import rational_extension_vector : simplexPoints, simplexRoots, simplexCoefs;
+    import factoring : primeFactorsRange;
     import std.algorithm : each;
 
-    simplexPoints!10.each!(v => v.writeln);    
-    simplexRoots!10.each!(r => r.writeln);
-    simplexCoefs!10.each!(c => c.writeln);
-   
+    // simplexPoints!10.each!writeln;    
+    // simplexRoots!10.each!writeln;
+    // simplexCoefs!10.each!writeln;
+    
+    primeFactorsRange(1).writeln;
 }
