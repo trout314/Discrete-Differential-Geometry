@@ -33,7 +33,8 @@ auto simplexCoefs(int dim)()
     import std.rational : rational;
     import factoring : sqrtSquarePart;
 
-    alias computeCoef = (pointIndex, basisIndex) {
+    auto computeCoef(int pointIndex, int basisIndex)
+    {
         auto n = basisIndex * (basisIndex + 1) / 2;
         auto m = sqrtSquarePart(n);
         if (basisIndex < pointIndex)
@@ -48,7 +49,7 @@ auto simplexCoefs(int dim)()
         {
             return rational(0, 1);
         }
-    };
+    }
 
     return iota(0, dim + 1).map!(pointIndex => iota(1, dim + 1)
             .map!(basisIndex => computeCoef(pointIndex, basisIndex)));
