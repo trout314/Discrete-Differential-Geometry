@@ -983,7 +983,7 @@ Manifold!dim loadManifold(size_t dim = dimManifold)(string fileName)
     }
     catch (Exception ex)
     {
-        ex.msg ~= "\n\n\t ERROR: encountered malformed facet list in initial " "manifold triangulation file: "
+        ex.msg ~= "\n\n\t ERROR: encountered malformed facet list in initial manifold triangulation file: "
             ~ fileName ~ "\n";
         throw ex;
     }
