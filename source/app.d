@@ -16,5 +16,5 @@ void main()
     // simplexRoots!10.each!writeln;
     // simplexCoefs!10.each!writeln;
     
-    primeFactorsRange(1).writeln;
+    primeFactorsRange(360).writeln;
 }

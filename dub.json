@@ -1,0 +1,10 @@
+{
+	"authors": [
+		"Aaron D. Trout"
+	],
+	"name": "discrete-differential-geometry",
+	"license": "GPL-2.0",
+	"description": "Discrete Differential Geometry Code",
+	"homepage": "https://github.com/trout314/Discrete-Differential-Geometry",
+	"dependencies": {}
+}
