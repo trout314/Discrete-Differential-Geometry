@@ -1,60 +1,27 @@
-int nextFactorFrom(int number, int factor) pure nothrow @nogc
-{
-    int nextFactor = factor;
+/++
+Returns an inputRange that enumerates the prime factors of num.
 
-    if (factor == 1)
-    {
-        nextFactor = 2;
-    }
-    while (number % nextFactor != 0)
-    {
-        if (nextFactor == 2)
-        {
-            nextFactor = 3;
-        }
-        else
-        {
-            nextFactor += 2;
-        }
-    }
-    return nextFactor;
-}
+Returns:
+    an inputRange that enumerates the prime factors of num.
 
-alias product = (a, b) => a * b;
-
-struct PrimeFactorsRange
-{
-    int remainingPart;
-    int currentPart;
-
-    this(int n) pure nothrow @nogc
-    {
-        remainingPart = n;
-        currentPart = 1;
-        popFront();
-    }
-
-    @property int front() const pure nothrow @nogc
-    {
-        assert(!empty); // Must have prime factor remaining
-        return currentPart;
-    }
-
-    @property bool empty() const pure nothrow @nogc
-    {
-        return remainingPart == 1;
-    }
-
-    void popFront() pure nothrow @nogc
-    {
-        remainingPart /= currentPart;
-        currentPart = remainingPart.nextFactorFrom(currentPart);
-    }
-}
-
+See_Also:
+    primeFactors
++/
 auto primeFactorsRange(int num) pure nothrow @nogc
 {
     return PrimeFactorsRange(num);
+}
+
+///
+unittest
+{
+    import std.range : array;
+
+    assert(primeFactorsRange(30).array == [2, 3, 5]);
+    assert(primeFactorsRange(1).empty);
+
+    // This should work, but eats all memory then crashes. 
+    // static assert(primeFactorsRange(1).empty);
 }
 
 public int[] primeFactors(int num) pure nothrow
@@ -190,5 +157,61 @@ unittest
         assert(sort(chain(n.squareFreePrimeFactors, n.squarePrimeFactors)).equal(n.primeFactors));
         assert(n == n.squarePart * n.squareFreePart);
         assert(n == n.sqrtSquarePart * n.sqrtSquarePart * n.squareFreePart);
+    }
+}
+
+private:
+
+alias product = (a, b) => a * b;
+
+int nextFactorFrom(int number, int factor) pure nothrow @nogc
+{
+    int nextFactor = factor;
+
+    if (factor == 1)
+    {
+        nextFactor = 2;
+    }
+    while (number % nextFactor != 0)
+    {
+        if (nextFactor == 2)
+        {
+            nextFactor = 3;
+        }
+        else
+        {
+            nextFactor += 2;
+        }
+    }
+    return nextFactor;
+}
+
+struct PrimeFactorsRange
+{
+    int remainingPart;
+    int currentPart;
+
+    this(int n) pure nothrow @nogc
+    {
+        remainingPart = n;
+        currentPart = 1;
+        popFront();
+    }
+
+    @property int front() const pure nothrow @nogc
+    {
+        assert(!empty); // Must have prime factor remaining
+        return currentPart;
+    }
+
+    @property bool empty() const pure nothrow @nogc
+    {
+        return remainingPart == 1;
+    }
+
+    void popFront() pure nothrow @nogc
+    {
+        remainingPart /= currentPart;
+        currentPart = remainingPart.nextFactorFrom(currentPart);
     }
 }
