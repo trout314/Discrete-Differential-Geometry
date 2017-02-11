@@ -1,12 +1,10 @@
 void main()
 {
     import std.stdio : writeln;
-
     writeln("Entering main...");
 
     import simplex : simplex;
-
-    // simplex(1, 2, 4).writeln;
+    simplex(1, 2, 4).writeln;
 
     import rational_extension_vector : simplexPoints, simplexRoots, simplexCoefs;
     import factoring : primeFactorsRange, primeFactors, squareFreePrimeFactors;
@@ -17,5 +15,4 @@ void main()
     // simplexCoefs!10.each!writeln;
     
     primeFactors(360).writeln;
-
 }

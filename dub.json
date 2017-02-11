@@ -7,6 +7,9 @@
 	"description": "Discrete Differential Geometry Code",
 	"homepage": "https://github.com/trout314/Discrete-Differential-Geometry",
 	"dependencies": {},
+	"preBuildCommands": [
+		"clear"
+	],
 	"dflags-dmd": [
 		"-fPIC"
 	],
