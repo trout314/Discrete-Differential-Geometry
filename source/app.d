@@ -17,4 +17,5 @@ void main()
     // simplexCoefs!10.each!writeln;
     
     primeFactors(360).writeln;
+
 }
