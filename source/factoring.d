@@ -1,46 +1,53 @@
-import std.algorithm;
-
-private struct PrimeFactorsRange
+int nextFactorFrom(int number, int factor) pure nothrow @nogc
 {
-    int remaining_factors;
-    int current_factor;
+    int nextFactor = factor;
+
+    if (factor == 1)
+    {
+        nextFactor = 2;
+    }
+    while (number % nextFactor != 0)
+    {
+        if (nextFactor == 2)
+        {
+            nextFactor = 3;
+        }
+        else
+        {
+            nextFactor += 2;
+        }
+    }
+    return nextFactor;
+}
+
+
+struct PrimeFactorsRange
+{
+    int remainingPart;
+    int currentPart;
 
     this(int n) pure nothrow @nogc
     {
-        remaining_factors = n;
-        current_factor = 1;
+        remainingPart = n;
+        currentPart = 1;
         popFront();
     }
 
     @property int front() const pure nothrow @nogc
     {
         assert(!empty); // Must have prime factor remaining
-        return current_factor;
+        return currentPart;
     }
 
     @property bool empty() const pure nothrow @nogc
     {
-        return remaining_factors == 1;
+        return remainingPart == 1;
     }
 
     void popFront() pure nothrow @nogc
     {
-        remaining_factors /= current_factor;
-        if (current_factor == 1)
-        {
-            ++current_factor;
-        }
-        while (remaining_factors % current_factor != 0)
-        {
-            if (current_factor == 2)
-            {
-                ++current_factor;
-            }
-            else
-            {
-                current_factor += 2;
-            }
-        }
+        remainingPart /= currentPart;
+        currentPart = remainingPart.nextFactorFrom(currentPart);
     }
 }
 
@@ -60,27 +67,17 @@ public int[] primeFactors(int num) pure nothrow
         return answer;
     }
 
-    int divisor = 2;
-    while (divisor < n)
+    int factor = 2;
+    while (factor < n)
     {
-        if (n % divisor == 0)
+        if (n % factor == 0)
         {
-            answer ~= divisor;
-            n /= divisor;
+            answer ~= factor;
+            n /= factor;
         }
-        else
-        {
-            if (divisor == 2)
-            {
-                divisor = 3;
-            }
-            else
-            {
-                divisor += 2;
-            }
-        }
+        factor = n.nextFactorFrom(factor);
     }
-    answer ~= divisor;
+    answer ~= factor;
     return answer;
 }
 
@@ -103,46 +100,70 @@ unittest
     assert(squareFreePrimeFactors(1) == []);
     static assert(squareFreePrimeFactors(1) == []);
 
-    foreach(factorList; factorLists)
+    assert(squarePrimeFactors(1) == []);
+    static assert(squarePrimeFactors(1) == []);
+
+    assert(sqrtSquarePrimeFactors(1) == []);
+    static assert(sqrtSquarePrimeFactors(1) == []);
+
+    foreach(factors; factorLists)
     {
-        import std.algorithm : reduce, equal, uniq, count, filter, sort;
+        import std.algorithm : reduce, equal, uniq, count, filter, sort, setDifference;
+        import std.range : stride;
 
-        immutable number = factorList.reduce!((a, b) => a*b);
-        alias oddPower = (factor) => (factorList.count(factor) % 2 == 1);
+        alias oddPower = (factor) => (factors.count(factor) % 2 == 1);
+        alias product = (a,b) => a*b;
+        immutable number = reduce!product(1, factors);
 
-        assert(number.primeFactors.equal(factorList));
-        static assert(number.primeFactors.equal(factorList));
+        assert(number.primeFactors.equal(factors));
+        static assert(number.primeFactors.equal(factors));
 
         assert(number.squareFreePrimeFactors.equal(
-            sort(factorList).uniq.filter!oddPower));
+            sort(factors).uniq.filter!oddPower));
         static assert(number.squareFreePrimeFactors.equal(
-            sort(factorList).uniq.filter!oddPower));
+            sort(factors).uniq.filter!oddPower));
 
         assert(number.squarePrimeFactors.equal(
-            sort(factorList).setDifference(number.squareFreePrimeFactors)));
+            sort(factors).setDifference(number.squareFreePrimeFactors)));
         static assert(number.squarePrimeFactors.equal(
-            sort(factorList).setDifference(number.squareFreePrimeFactors)));
+            sort(factors).setDifference(number.squareFreePrimeFactors)));
 
-        assert(number.squarePrimeFactors.equal(
-            sort(factorList).setDifference(number.squareFreePrimeFactors)));
-        static assert(number.squarePrimeFactors.equal(
-            sort(factorList).setDifference(number.squareFreePrimeFactors)));
+        assert(number.sqrtSquarePrimeFactors.equal(
+            number.squarePrimeFactors.stride(2)));
+        static assert(number.sqrtSquarePrimeFactors.equal(
+            number.squarePrimeFactors.stride(2)));
+
+        assert(number.squareFreePart 
+            == reduce!product(1, number.squareFreePrimeFactors));
+        static assert(number.squareFreePart 
+            == reduce!product(1, number.squareFreePrimeFactors));
+
+        assert(number.squarePart 
+            == reduce!product(1, number.squarePrimeFactors));
+        static assert(number.squarePart 
+            == reduce!product(1, number.squarePrimeFactors));
+
+        assert(number.sqrtSquarePart 
+            == reduce!product(1, number.sqrtSquarePrimeFactors));
+        static assert(number.sqrtSquarePart 
+            == reduce!product(1, number.sqrtSquarePrimeFactors));
 
         // TO DO: Why is this so slow?        
-        // assert(number.primeFactorsRange.equal(factorList));
+        // assert(number.primeFactorsRange.equal(factors));
 
         // TO DO: Why is this slow and use so much memory?        
-        // static assert(number.primeFactorsRange.equal(factorList));
+        // static assert(number.primeFactorsRange.equal(factors));
     }
 }
 
 int[] squareFreePrimeFactors(int num)
 {
+    import std.algorithm : uniq, count;
+
     assert(num > 0);
-    int[] factors = primeFactors(num);
-    auto uniqueFactors = uniq(factors);
+    int[] factors = num.primeFactors;
     int[] answer;
-    foreach (prime; uniqueFactors)
+    foreach (prime; factors.uniq)
     {
         if (count(factors, prime) % 2 == 1)
         {
@@ -154,12 +175,14 @@ int[] squareFreePrimeFactors(int num)
 
 int[] squarePrimeFactors(int num)
 {
+    import std.algorithm : uniq, count;
+
     assert(num > 0);
-    int[] factors = primeFactors(num);
+    int[] factors = num.primeFactors;
     int[] answer;
-    foreach (prime; uniq(factors))
+    foreach (prime; factors.uniq)
     {
-        foreach (i; 0 .. 2 * (count(factors, prime) / 2))
+        foreach (i; 0 .. 2 * (factors.count(prime) / 2))
         {
             answer ~= prime;
         }
@@ -169,12 +192,14 @@ int[] squarePrimeFactors(int num)
 
 int[] sqrtSquarePrimeFactors(int num)
 {
+    import std.algorithm : uniq, count;
+
     assert(num > 0);
-    int[] factors = primeFactors(num);
+    int[] factors = num.primeFactors;
     int[] answer;
-    foreach (prime; uniq(factors))
+    foreach (prime; factors.uniq)
     {
-        foreach (i; 0 .. count(factors, prime) / 2)
+        foreach (i; 0 .. factors.count(prime) / 2)
         {
             answer ~= prime;
         }
@@ -182,260 +207,57 @@ int[] sqrtSquarePrimeFactors(int num)
     return answer;
 }
 
-unittest
-{
-    assert(sqrtSquarePrimeFactors(1) == []);
-    assert(sqrtSquarePrimeFactors(2) == []);
-    assert(sqrtSquarePrimeFactors(3) == []);
-    assert(sqrtSquarePrimeFactors(7919) == []);
-
-    assert(sqrtSquarePrimeFactors(2 * 7) == []);
-    assert(sqrtSquarePrimeFactors(3 * 11) == []);
-    assert(sqrtSquarePrimeFactors(5 * 7529) == []);
-    assert(sqrtSquarePrimeFactors(2 * 2) == [2]);
-    assert(sqrtSquarePrimeFactors(13 * 13) == [13]);
-    assert(sqrtSquarePrimeFactors(7529 * 7529) == [7529]);
-
-    assert(sqrtSquarePrimeFactors(2 * 3 * 5 * 7 * 11 * 13 * 17) == []);
-    assert(sqrtSquarePrimeFactors(41 * 41 * 53 * 67) == [41]);
-    assert(sqrtSquarePrimeFactors(2 * 3 * 5 * 11 * 101 * 101) == [101]);
-    assert(sqrtSquarePrimeFactors(2 * 2 * 2 * 11 * 17) == [2]);
-    assert(sqrtSquarePrimeFactors(2 * 2 * 2 * 11 * 11 * 17) == [2, 11]);
-    assert(sqrtSquarePrimeFactors(2 * 11 * 4259 * 4259) == [4259]);
-    assert(sqrtSquarePrimeFactors(2 * 2 * 2 * 2 * 2 * 2 * 2 * 2) == [2, 2, 2, 2]);
-    assert(sqrtSquarePrimeFactors(5 * 5 * 5 * 5 * 5 * 5 * 5) == [5, 5, 5]);
-    assert(sqrtSquarePrimeFactors(3 * 3 * 3 * 3 * 7 * 7 * 7) == [3, 3, 7]);
-
-    static assert(sqrtSquarePrimeFactors(1) == []);
-    static assert(sqrtSquarePrimeFactors(2) == []);
-    static assert(sqrtSquarePrimeFactors(3) == []);
-    static assert(sqrtSquarePrimeFactors(7919) == []);
-
-    static assert(sqrtSquarePrimeFactors(2 * 7) == []);
-    static assert(sqrtSquarePrimeFactors(3 * 11) == []);
-    static assert(sqrtSquarePrimeFactors(5 * 7529) == []);
-    static assert(sqrtSquarePrimeFactors(2 * 2) == [2]);
-    static assert(sqrtSquarePrimeFactors(13 * 13) == [13]);
-    static assert(sqrtSquarePrimeFactors(7529 * 7529) == [7529]);
-
-    static assert(sqrtSquarePrimeFactors(2 * 3 * 5 * 7 * 11 * 13 * 17) == []);
-    static assert(sqrtSquarePrimeFactors(41 * 41 * 53 * 67) == [41]);
-    static assert(sqrtSquarePrimeFactors(2 * 3 * 5 * 11 * 101 * 101) == [101]);
-    static assert(sqrtSquarePrimeFactors(2 * 2 * 2 * 11 * 17) == [2]);
-    static assert(sqrtSquarePrimeFactors(2 * 2 * 2 * 11 * 11 * 17) == [2, 11]);
-    static assert(sqrtSquarePrimeFactors(2 * 11 * 4259 * 4259) == [4259]);
-    static assert(sqrtSquarePrimeFactors(2 * 2 * 2 * 2 * 2 * 2 * 2 * 2) == [2, 2, 2, 2]);
-    static assert(sqrtSquarePrimeFactors(5 * 5 * 5 * 5 * 5 * 5 * 5) == [5, 5, 5]);
-    static assert(sqrtSquarePrimeFactors(3 * 3 * 3 * 3 * 7 * 7 * 7) == [3, 3, 7]);
-}
-
 int squareFreePart(int num)
 {
     assert(num > 0);
     int answer = 1;
-    foreach (prime; squareFreePrimeFactors(num))
+    foreach (prime; num.squareFreePrimeFactors)
     {
         answer *= prime;
     }
     return answer;
-}
-
-unittest
-{
-    assert(squareFreePart(1) == 1);
-    assert(squareFreePart(2) == 2);
-    assert(squareFreePart(3) == 3);
-    assert(squareFreePart(7919) == 7919);
-
-    assert(squareFreePart(2 * 7) == 2 * 7);
-    assert(squareFreePart(3 * 11) == 3 * 11);
-    assert(squareFreePart(5 * 7529) == 5 * 7529);
-    assert(squareFreePart(2 * 2) == 1);
-    assert(squareFreePart(13 * 13) == 1);
-    assert(squareFreePart(7529 * 7529) == 1);
-
-    assert(squareFreePart(2 * 3 * 5 * 7 * 11 * 13 * 17) == 2 * 3 * 5 * 7 * 11 * 13 * 17);
-    assert(squareFreePart(41 * 41 * 53 * 67) == 53 * 67);
-    assert(squareFreePart(2 * 3 * 5 * 11 * 101 * 101) == 2 * 3 * 5 * 11);
-    assert(squareFreePart(2 * 2 * 2 * 11 * 17) == 2 * 11 * 17);
-    assert(squareFreePart(2 * 2 * 2 * 11 * 11 * 17) == 2 * 17);
-    assert(squareFreePart(2 * 11 * 4259 * 4259) == 2 * 11);
-    assert(squareFreePart(2 * 2 * 2 * 2 * 2 * 2 * 2 * 2) == 1);
-    assert(squareFreePart(5 * 5 * 5 * 5 * 5 * 5 * 5) == 5);
-    assert(squareFreePart(3 * 3 * 3 * 3 * 7 * 7 * 7) == 7);
-
-    static assert(squareFreePart(1) == 1);
-    static assert(squareFreePart(2) == 2);
-    static assert(squareFreePart(3) == 3);
-    static assert(squareFreePart(7919) == 7919);
-
-    static assert(squareFreePart(2 * 7) == 2 * 7);
-    static assert(squareFreePart(3 * 11) == 3 * 11);
-    static assert(squareFreePart(5 * 7529) == 5 * 7529);
-    static assert(squareFreePart(2 * 2) == 1);
-    static assert(squareFreePart(13 * 13) == 1);
-    static assert(squareFreePart(7529 * 7529) == 1);
-
-    static assert(squareFreePart(2 * 3 * 5 * 7 * 11 * 13 * 17) == 2 * 3 * 5 * 7 * 11 * 13 * 17);
-    static assert(squareFreePart(41 * 41 * 53 * 67) == 53 * 67);
-    static assert(squareFreePart(2 * 3 * 5 * 11 * 101 * 101) == 2 * 3 * 5 * 11);
-    static assert(squareFreePart(2 * 2 * 2 * 11 * 17) == 2 * 11 * 17);
-    static assert(squareFreePart(2 * 2 * 2 * 11 * 11 * 17) == 2 * 17);
-    static assert(squareFreePart(2 * 11 * 4259 * 4259) == 2 * 11);
-    static assert(squareFreePart(2 * 2 * 2 * 2 * 2 * 2 * 2 * 2) == 1);
-    static assert(squareFreePart(5 * 5 * 5 * 5 * 5 * 5 * 5) == 5);
-    static assert(squareFreePart(3 * 3 * 3 * 3 * 7 * 7 * 7) == 7);
-
 }
 
 int squarePart(int num)
 {
     assert(num > 0);
     int answer = 1;
-    foreach (prime; squarePrimeFactors(num))
+    foreach (prime; num.squarePrimeFactors)
     {
         answer *= prime;
     }
     return answer;
-}
-
-unittest
-{
-    assert(squarePart(1) == 1);
-    assert(squarePart(2) == 1);
-    assert(squarePart(3) == 1);
-    assert(squarePart(7919) == 1);
-
-    assert(squarePart(2 * 7) == 1);
-    assert(squarePart(3 * 11) == 1);
-    assert(squarePart(5 * 7529) == 1);
-    assert(squarePart(2 * 2) == 2 * 2);
-    assert(squarePart(13 * 13) == 13 * 13);
-    assert(squarePart(7529 * 7529) == 7529 * 7529);
-
-    assert(squarePart(2 * 3 * 5 * 7 * 11 * 13 * 17) == 1);
-    assert(squarePart(41 * 41 * 53 * 67) == 41 * 41);
-    assert(squarePart(2 * 3 * 5 * 11 * 101 * 101) == 101 * 101);
-    assert(squarePart(2 * 2 * 2 * 11 * 17) == 2 * 2);
-    assert(squarePart(2 * 2 * 2 * 11 * 11 * 17) == 2 * 2 * 11 * 11);
-    assert(squarePart(2 * 11 * 4259 * 4259) == 4259 * 4259);
-    assert(squarePart(2 * 2 * 2 * 2 * 2 * 2 * 2 * 2) == 2 * 2 * 2 * 2 * 2 * 2 * 2 * 2);
-    assert(squarePart(5 * 5 * 5 * 5 * 5 * 5 * 5) == 5 * 5 * 5 * 5 * 5 * 5);
-    assert(squarePart(3 * 3 * 3 * 3 * 7 * 7 * 7) == 3 * 3 * 3 * 3 * 7 * 7);
-
-    static assert(squarePart(1) == 1);
-    static assert(squarePart(2) == 1);
-    static assert(squarePart(3) == 1);
-    static assert(squarePart(7919) == 1);
-
-    static assert(squarePart(2 * 7) == 1);
-    static assert(squarePart(3 * 11) == 1);
-    static assert(squarePart(5 * 7529) == 1);
-    static assert(squarePart(2 * 2) == 2 * 2);
-    static assert(squarePart(13 * 13) == 13 * 13);
-    static assert(squarePart(7529 * 7529) == 7529 * 7529);
-
-    static assert(squarePart(2 * 3 * 5 * 7 * 11 * 13 * 17) == 1);
-    static assert(squarePart(41 * 41 * 53 * 67) == 41 * 41);
-    static assert(squarePart(2 * 3 * 5 * 11 * 101 * 101) == 101 * 101);
-    static assert(squarePart(2 * 2 * 2 * 11 * 17) == 2 * 2);
-    static assert(squarePart(2 * 2 * 2 * 11 * 11 * 17) == 2 * 2 * 11 * 11);
-    static assert(squarePart(2 * 11 * 4259 * 4259) == 4259 * 4259);
-    static assert(squarePart(2 * 2 * 2 * 2 * 2 * 2 * 2 * 2) == 2 * 2 * 2 * 2 * 2 * 2 * 2 * 2);
-    static assert(squarePart(5 * 5 * 5 * 5 * 5 * 5 * 5) == 5 * 5 * 5 * 5 * 5 * 5);
-    static assert(squarePart(3 * 3 * 3 * 3 * 7 * 7 * 7) == 3 * 3 * 3 * 3 * 7 * 7);
 }
 
 int sqrtSquarePart(int num)
 {
     assert(num > 0);
     int answer = 1;
-    foreach (prime; sqrtSquarePrimeFactors(num))
+    foreach (prime; num.sqrtSquarePrimeFactors)
     {
         answer *= prime;
     }
     return answer;
 }
 
-unittest
-{
-    assert(sqrtSquarePart(1) == 1);
-    assert(sqrtSquarePart(2) == 1);
-    assert(sqrtSquarePart(3) == 1);
-    assert(sqrtSquarePart(7919) == 1);
-
-    assert(sqrtSquarePart(2 * 7) == 1);
-    assert(sqrtSquarePart(3 * 11) == 1);
-    assert(sqrtSquarePart(5 * 7529) == 1);
-    assert(sqrtSquarePart(2 * 2) == 2);
-    assert(sqrtSquarePart(13 * 13) == 13);
-    assert(sqrtSquarePart(7529 * 7529) == 7529);
-
-    assert(sqrtSquarePart(2 * 3 * 5 * 7 * 11 * 13 * 17) == 1);
-    assert(sqrtSquarePart(41 * 41 * 53 * 67) == 41);
-    assert(sqrtSquarePart(2 * 3 * 5 * 11 * 101 * 101) == 101);
-    assert(sqrtSquarePart(2 * 2 * 2 * 11 * 17) == 2);
-    assert(sqrtSquarePart(2 * 2 * 2 * 11 * 11 * 17) == 2 * 11);
-    assert(sqrtSquarePart(2 * 11 * 4259 * 4259) == 4259);
-    assert(sqrtSquarePart(2 * 2 * 2 * 2 * 2 * 2 * 2 * 2) == 2 * 2 * 2 * 2);
-    assert(sqrtSquarePart(5 * 5 * 5 * 5 * 5 * 5 * 5) == 5 * 5 * 5);
-    assert(sqrtSquarePart(3 * 3 * 3 * 3 * 7 * 7 * 7) == 3 * 3 * 7);
-
-    static assert(sqrtSquarePart(1) == 1);
-    static assert(sqrtSquarePart(2) == 1);
-    static assert(sqrtSquarePart(3) == 1);
-    static assert(sqrtSquarePart(7919) == 1);
-
-    static assert(sqrtSquarePart(2 * 7) == 1);
-    static assert(sqrtSquarePart(3 * 11) == 1);
-    static assert(sqrtSquarePart(5 * 7529) == 1);
-    static assert(sqrtSquarePart(2 * 2) == 2);
-    static assert(sqrtSquarePart(13 * 13) == 13);
-    static assert(sqrtSquarePart(7529 * 7529) == 7529);
-
-    static assert(sqrtSquarePart(2 * 3 * 5 * 7 * 11 * 13 * 17) == 1);
-    static assert(sqrtSquarePart(41 * 41 * 53 * 67) == 41);
-    static assert(sqrtSquarePart(2 * 3 * 5 * 11 * 101 * 101) == 101);
-    static assert(sqrtSquarePart(2 * 2 * 2 * 11 * 17) == 2);
-    static assert(sqrtSquarePart(2 * 2 * 2 * 11 * 11 * 17) == 2 * 11);
-    static assert(sqrtSquarePart(2 * 11 * 4259 * 4259) == 4259);
-    static assert(sqrtSquarePart(2 * 2 * 2 * 2 * 2 * 2 * 2 * 2) == 2 * 2 * 2 * 2);
-    static assert(sqrtSquarePart(5 * 5 * 5 * 5 * 5 * 5 * 5) == 5 * 5 * 5);
-    static assert(sqrtSquarePart(3 * 3 * 3 * 3 * 7 * 7 * 7) == 3 * 3 * 7);
-}
-
 // Test all functions together on range of inputs (runtime checks only)
 unittest
 {
+    import std.algorithm : sort, reduce, equal;
+    import std.range : chain;
+
+    alias product = (a,b) => a*b;
+
     immutable max_test = 10_000;
     foreach (n; 1 .. max_test + 1)
     {
-        auto all = squareFreePrimeFactors(n) ~ squarePrimeFactors(n);
-        sort(all);
-        assert(all == primeFactors(n));
+        assert(sort(chain(n.squareFreePrimeFactors, n.squarePrimeFactors))
+            .equal(n.primeFactors));
 
-        int productSqF = 1;
-        foreach (prime; squareFreePrimeFactors(n))
-        {
-            productSqF *= prime;
-        }
-        assert(productSqF == squareFreePart(n));
-
-        int productSq = 1;
-        foreach (prime; squarePrimeFactors(n))
-        {
-            productSq *= prime;
-        }
-        assert(productSq == squarePart(n));
-
-        int productSqrtSq = 1;
-        foreach (prime; sqrtSquarePrimeFactors(n))
-        {
-            productSqrtSq *= prime;
-        }
-        assert(productSqrtSq == sqrtSquarePart(n));
-
-        assert(n == squarePart(n) * squareFreePart(n));
-        assert(n == sqrtSquarePart(n) * sqrtSquarePart(n) * squareFreePart(n));
+        assert(reduce!product(1, n.squareFreePrimeFactors) == n.squareFreePart);
+        assert(reduce!product(1, n.squarePrimeFactors) == n.squarePart);
+        assert(reduce!product(1, n.sqrtSquarePrimeFactors) == n.sqrtSquarePart);
+        assert(n == n.squarePart * n.squareFreePart);
+        assert(n == n.sqrtSquarePart * n.sqrtSquarePart * n.squareFreePart);
     }
 }
