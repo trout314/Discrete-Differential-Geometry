@@ -7,7 +7,10 @@
 	"description": "Discrete Differential Geometry Code",
 	"homepage": "https://github.com/trout314/Discrete-Differential-Geometry",
 	"dependencies": {},
-	"dflags": [
+	"dflags-dmd": [
+		"-fPIC"
+	],
+	"dflags-ldc": [
 		"-relocation-model=pic"
 	]
 }
