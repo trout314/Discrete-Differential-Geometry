@@ -106,12 +106,9 @@ unittest
 
     foreach(factors; testFactorLists)
     {
-        import std.algorithm : reduce, equal, count;
-        import std.range : stride;
+        import std.algorithm : reduce, equal;
 
-        alias oddPower = (factor) => (factors.count(factor) % 2 == 1);
         immutable number = 1.reduce!product(factors);
-
         assert(number.primeFactors.equal(factors));
         static assert(number.primeFactors.equal(factors));
 
