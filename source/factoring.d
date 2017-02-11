@@ -106,7 +106,7 @@ unittest
 
     foreach(factors; testFactorLists)
     {
-        import std.algorithm : reduce, equal, uniq, count, filter, sort, setDifference;
+        import std.algorithm : reduce, equal, count;
         import std.range : stride;
 
         alias oddPower = (factor) => (factors.count(factor) % 2 == 1);
@@ -115,7 +115,7 @@ unittest
         assert(number.primeFactors.equal(factors));
         static assert(number.primeFactors.equal(factors));
 
-        // TO DO: Why is this so slow?        
+        // TO DO: Why is this so slow?    
         // assert(number.primeFactorsRange.equal(factors));
 
         // TO DO: Why is this slow and use so much memory?        
