@@ -20,7 +20,7 @@ int nextFactorFrom(int number, int factor) pure nothrow @nogc
     return nextFactor;
 }
 
-alias product = (a,b) => a*b;
+alias product = (a, b) => a * b;
 
 struct PrimeFactorsRange
 {
@@ -86,7 +86,7 @@ unittest
 {
     assert(primeFactors(1) == []);
     static assert(primeFactors(1) == []);
-    
+
     assert(squareFreePrimeFactors(1) == []);
     static assert(squareFreePrimeFactors(1) == []);
 
@@ -96,15 +96,15 @@ unittest
     assert(sqrtSquarePrimeFactors(1) == []);
     static assert(sqrtSquarePrimeFactors(1) == []);
 
-
     import std.typecons : tuple;
-    enum testFactorLists = tuple(
-        [2], [3], [7919],[2, 7], [3, 11], [5, 7529], [2, 2], [13, 13], [7529, 7529],
-        [2, 3, 5, 7, 11, 13, 17], [41, 41, 53, 67], [2, 3, 5, 11, 101, 101],[2, 2, 2, 11, 17],
-        [2, 2, 2, 11, 11, 17],[2, 11, 4259, 4259], [2, 2, 2, 2, 2, 2, 2, 2],
-        [5, 5, 5, 5, 5, 5, 5], [3, 3, 3, 3, 7, 7, 7]);
 
-    foreach(factors; testFactorLists)
+    enum testFactorLists = tuple([2], [3], [7919], [2, 7], [3, 11], [5,
+            7529], [2, 2], [13, 13], [7529, 7529], [2, 3, 5, 7, 11, 13, 17],
+            [41, 41, 53, 67], [2, 3, 5, 11, 101, 101], [2, 2, 2, 11, 17], [2,
+            2, 2, 11, 11, 17], [2, 11, 4259, 4259], [2, 2, 2, 2, 2, 2, 2, 2],
+            [5, 5, 5, 5, 5, 5, 5], [3, 3, 3, 3, 7, 7, 7]);
+
+    foreach (factors; testFactorLists)
     {
         import std.algorithm : reduce, equal;
 
@@ -138,6 +138,7 @@ int[] squarePrimeFactors(int num)
 
     import std.algorithm : setDifference;
     import std.range : array;
+
     return num.primeFactors.setDifference(num.squareFreePrimeFactors).array;
 }
 
@@ -146,6 +147,7 @@ int[] sqrtSquarePrimeFactors(int num)
     assert(num > 0);
 
     import std.range : array, stride;
+
     return num.squarePrimeFactors.stride(2).array;
 }
 
@@ -154,6 +156,7 @@ int squareFreePart(int num)
     assert(num > 0);
 
     import std.algorithm : reduce;
+
     return 1.reduce!product(num.squareFreePrimeFactors);
 }
 
@@ -162,6 +165,7 @@ int squarePart(int num)
     assert(num > 0);
 
     import std.algorithm : reduce;
+
     return 1.reduce!product(num.squarePrimeFactors);
 }
 
@@ -170,6 +174,7 @@ int sqrtSquarePart(int num)
     assert(num > 0);
 
     import std.algorithm : reduce;
+
     return 1.reduce!product(num.sqrtSquarePrimeFactors);
 }
 
@@ -182,8 +187,7 @@ unittest
     immutable max_test = 10_000;
     foreach (n; 1 .. max_test + 1)
     {
-        assert(sort(chain(n.squareFreePrimeFactors, n.squarePrimeFactors))
-            .equal(n.primeFactors));
+        assert(sort(chain(n.squareFreePrimeFactors, n.squarePrimeFactors)).equal(n.primeFactors));
         assert(n == n.squarePart * n.squareFreePart);
         assert(n == n.sqrtSquarePart * n.sqrtSquarePart * n.squareFreePart);
     }
