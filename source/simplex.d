@@ -528,20 +528,3 @@ auto ridges(S)(ref S simplex) if (isInstanceOf!(Simplex, S))
 
     return RidgeRange(simplex);
 }
-
-unittest
-{
-
-    auto s = simplex(1, 2, 3);
-    foreach (ridge; s.ridges)
-    {
-        writeln(ridge);
-    }
-    auto r = s.ridges;
-    writeln(r.length);
-    r.popFront;
-    writeln(r.length);
-    r.popFront;
-    writeln(r.length);
-    r.popFront;
-}

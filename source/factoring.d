@@ -86,57 +86,40 @@ public int[] primeFactors(int num) pure nothrow
 
 unittest
 {
+    assert(primeFactors(1) == []);
     static assert(primeFactors(1) == []);
-    static assert(primeFactors(2) == [2]);
-    static assert(primeFactors(3) == [3]);
     
-    // TO DO: Figure out why this makes dmd run out of memory!
-    // static assert(primeFactorsRange(3).array == [3]);
+    assert(squareFreePrimeFactors(1) == []);
+    static assert(squareFreePrimeFactors(1) == []);
 
-    static assert(primeFactors(7919) == [7919]);
+    import std.typecons : tuple;
+    enum factorLists = tuple(
+        [2], [3], [7919],[2, 7], [3, 11], [5, 7529], [2, 2], [13, 13], [7529, 7529],
+        [2, 3, 5, 7, 11, 13, 17], [41, 41, 53, 67], [2, 3, 5, 11, 101, 101],[2, 2, 2, 11, 17],
+        [2, 2, 2, 11, 11, 17],[2, 11, 4259, 4259], [2, 2, 2, 2, 2, 2, 2, 2],
+        [5, 5, 5, 5, 5, 5, 5], [3, 3, 3, 3, 7, 7, 7]);
 
-    static assert(primeFactors(2 * 7) == [2, 7]);
-    static assert(primeFactors(3 * 11) == [3, 11]);
-    static assert(primeFactors(5 * 7529) == [5, 7529]);
-    static assert(primeFactors(2 * 2) == [2, 2]);
-    static assert(primeFactors(13 * 13) == [13, 13]);
-    static assert(primeFactors(7529 * 7529) == [7529, 7529]);
+    foreach(factorList; factorLists)
+    {
+        import std.algorithm : fold, equal, uniq, count, filter, sort;
 
-    static assert(primeFactors(2 * 3 * 5 * 7 * 11 * 13 * 17) == [2, 3, 5, 7, 11, 13, 17]);
-    static assert(primeFactors(41 * 41 * 53 * 67) == [41, 41, 53, 67]);
-    static assert(primeFactors(2 * 3 * 5 * 11 * 101 * 101) == [2, 3, 5, 11, 101, 101]);
-    static assert(primeFactors(2 * 2 * 2 * 11 * 17) == [2, 2, 2, 11, 17]);
-    static assert(primeFactors(2 * 2 * 2 * 11 * 11 * 17) == [2, 2, 2, 11, 11, 17]);
-    static assert(primeFactors(2 * 11 * 4259 * 4259) == [2, 11, 4259, 4259]);
-    static assert(primeFactors(2 * 2 * 2 * 2 * 2 * 2 * 2 * 2) == [2, 2, 2, 2, 2, 2, 2, 2]);
-    static assert(primeFactors(5 * 5 * 5 * 5 * 5 * 5 * 5) == [5, 5, 5, 5, 5, 5, 5]);
-    static assert(primeFactors(3 * 3 * 3 * 3 * 7 * 7 * 7) == [3, 3, 3, 3, 7, 7, 7]);
+        immutable number = factorList.fold!((a, b) => a*b);
 
-    import std.range : array;
+        assert(number.primeFactors.equal(factorList));
+        static assert(number.primeFactors.equal(factorList));
 
+        assert(number.squareFreePrimeFactors.equal(
+            sort(factorList).uniq.filter!(factor => factorList.count(factor) % 2 == 1)));
 
-    // TO DO: Figure out why these are so slow!
-    assert(primeFactorsRange(1).array == []);
-    assert(primeFactorsRange(2).array == [2]);
-    assert(primeFactorsRange(3).array == [3]);
-    assert(primeFactorsRange(7919).array == [7919]);
+        static assert(number.squareFreePrimeFactors.equal(
+            sort(factorList).uniq.filter!(factor => factorList.count(factor) % 2 == 1)));
 
-    assert(primeFactorsRange(2 * 7).array == [2, 7]);
-    assert(primeFactorsRange(3 * 11).array == [3, 11]);
-    assert(primeFactorsRange(5 * 7529).array == [5, 7529]);
-    assert(primeFactorsRange(2 * 2).array == [2, 2]);
-    assert(primeFactorsRange(13 * 13).array == [13, 13]);
-    assert(primeFactorsRange(7529 * 7529).array == [7529, 7529]);
+        // TO DO: Why is this so slow?        
+        // assert(factorList.fold!((a, b) => a*b).primeFactorsRange.equal(factorList));
 
-    assert(primeFactorsRange(2 * 3 * 5 * 7 * 11 * 13 * 17).array == [2, 3, 5, 7, 11, 13, 17]);
-    assert(primeFactorsRange(41 * 41 * 53 * 67).array == [41, 41, 53, 67]);
-    assert(primeFactorsRange(2 * 3 * 5 * 11 * 101 * 101).array == [2, 3, 5, 11, 101, 101]);
-    assert(primeFactorsRange(2 * 2 * 2 * 11 * 17).array == [2, 2, 2, 11, 17]);
-    assert(primeFactorsRange(2 * 2 * 2 * 11 * 11 * 17).array == [2, 2, 2, 11, 11, 17]);
-    assert(primeFactorsRange(2 * 11 * 4259 * 4259).array == [2, 11, 4259, 4259]);
-    assert(primeFactorsRange(2 * 2 * 2 * 2 * 2 * 2 * 2 * 2).array == [2, 2, 2, 2, 2, 2, 2, 2]);
-    assert(primeFactorsRange(5 * 5 * 5 * 5 * 5 * 5 * 5).array == [5, 5, 5, 5, 5, 5, 5]);
-    assert(primeFactorsRange(3 * 3 * 3 * 3 * 7 * 7 * 7).array == [3, 3, 3, 3, 7, 7, 7]);
+        // TO DO: Why is this slow and use so much memory?        
+        // static assert(factorList.fold!((a, b) => a*b).primeFactorsRange.equal(factorList));
+    }
 }
 
 int[] squareFreePrimeFactors(int num)
@@ -153,53 +136,6 @@ int[] squareFreePrimeFactors(int num)
         }
     }
     return answer;
-}
-
-unittest
-{
-    static assert(squareFreePrimeFactors(1) == []);
-    static assert(squareFreePrimeFactors(2) == [2]);
-    static assert(squareFreePrimeFactors(3) == [3]);
-    static assert(squareFreePrimeFactors(7919) == [7919]);
-
-    static assert(squareFreePrimeFactors(2 * 7) == [2, 7]);
-    static assert(squareFreePrimeFactors(3 * 11) == [3, 11]);
-    static assert(squareFreePrimeFactors(5 * 7529) == [5, 7529]);
-    static assert(squareFreePrimeFactors(2 * 2) == []);
-    static assert(squareFreePrimeFactors(13 * 13) == []);
-    static assert(squareFreePrimeFactors(7529 * 7529) == []);
-
-    static assert(squareFreePrimeFactors(2 * 3 * 5 * 7 * 11 * 13 * 17) == [2, 3, 5, 7, 11, 13, 17]);
-    static assert(squareFreePrimeFactors(41 * 41 * 53 * 67) == [53, 67]);
-    static assert(squareFreePrimeFactors(2 * 3 * 5 * 11 * 101 * 101) == [2, 3, 5, 11]);
-    static assert(squareFreePrimeFactors(2 * 2 * 2 * 11 * 17) == [2, 11, 17]);
-    static assert(squareFreePrimeFactors(2 * 2 * 2 * 11 * 11 * 17) == [2, 17]);
-    static assert(squareFreePrimeFactors(2 * 11 * 4259 * 4259) == [2, 11]);
-    static assert(squareFreePrimeFactors(2 * 2 * 2 * 2 * 2 * 2 * 2 * 2) == []);
-    static assert(squareFreePrimeFactors(5 * 5 * 5 * 5 * 5 * 5 * 5) == [5]);
-    static assert(squareFreePrimeFactors(3 * 3 * 3 * 3 * 7 * 7 * 7) == [7]);
-
-    assert(squareFreePrimeFactors(1) == []);
-    assert(squareFreePrimeFactors(2) == [2]);
-    assert(squareFreePrimeFactors(3) == [3]);
-    assert(squareFreePrimeFactors(7919) == [7919]);
-
-    assert(squareFreePrimeFactors(2 * 7) == [2, 7]);
-    assert(squareFreePrimeFactors(3 * 11) == [3, 11]);
-    assert(squareFreePrimeFactors(5 * 7529) == [5, 7529]);
-    assert(squareFreePrimeFactors(2 * 2) == []);
-    assert(squareFreePrimeFactors(13 * 13) == []);
-    assert(squareFreePrimeFactors(7529 * 7529) == []);
-
-    assert(squareFreePrimeFactors(2 * 3 * 5 * 7 * 11 * 13 * 17) == [2, 3, 5, 7, 11, 13, 17]);
-    assert(squareFreePrimeFactors(41 * 41 * 53 * 67) == [53, 67]);
-    assert(squareFreePrimeFactors(2 * 3 * 5 * 11 * 101 * 101) == [2, 3, 5, 11]);
-    assert(squareFreePrimeFactors(2 * 2 * 2 * 11 * 17) == [2, 11, 17]);
-    assert(squareFreePrimeFactors(2 * 2 * 2 * 11 * 11 * 17) == [2, 17]);
-    assert(squareFreePrimeFactors(2 * 11 * 4259 * 4259) == [2, 11]);
-    assert(squareFreePrimeFactors(2 * 2 * 2 * 2 * 2 * 2 * 2 * 2) == []);
-    assert(squareFreePrimeFactors(5 * 5 * 5 * 5 * 5 * 5 * 5) == [5]);
-    assert(squareFreePrimeFactors(3 * 3 * 3 * 3 * 7 * 7 * 7) == [7]);
 }
 
 int[] squarePrimeFactors(int num)
