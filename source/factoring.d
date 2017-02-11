@@ -101,9 +101,9 @@ unittest
 
     foreach(factorList; factorLists)
     {
-        import std.algorithm : fold, equal, uniq, count, filter, sort;
+        import std.algorithm : reduce, equal, uniq, count, filter, sort;
 
-        immutable number = factorList.fold!((a, b) => a*b);
+        immutable number = factorList.reduce!((a, b) => a*b);
 
         assert(number.primeFactors.equal(factorList));
         static assert(number.primeFactors.equal(factorList));
