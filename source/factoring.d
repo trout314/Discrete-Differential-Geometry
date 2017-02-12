@@ -10,7 +10,7 @@ Returns:
 See_Also:
     `primeFactorsRange`
 +/
-public int[] primeFactors(int num) pure nothrow
+int[] primeFactors(int num) pure nothrow @safe
 {
     assert(num > 0);
 
@@ -60,7 +60,7 @@ Returns:
 See_Also:
     `squareFreePart`
 +/
-int[] squareFreePrimeFactors(int num)
+int[] squareFreePrimeFactors(int num) pure nothrow @safe
 {
     assert(num > 0);
 
@@ -92,7 +92,7 @@ Returns:
 See_Also:
     `squarePart`
 +/
-int[] squarePrimeFactors(int num)
+int[] squarePrimeFactors(int num) pure nothrow @safe
 {
     assert(num > 0);
 
@@ -122,7 +122,7 @@ Returns:
 See_Also:
     `sqrtSquarePart`
 +/
-int[] sqrtSquarePrimeFactors(int num)
+int[] sqrtSquarePrimeFactors(int num) pure nothrow @safe
 {
     assert(num > 0);
     import std.range : array, stride;
@@ -150,7 +150,7 @@ Returns:
 See_Also:
     `squareFreePrimeFactors`
 +/
-int squareFreePart(int num)
+int squareFreePart(int num) pure nothrow @safe
 {
     assert(num > 0);
 
@@ -179,7 +179,7 @@ Returns:
 See_Also:
     `squarePrimeFactors`
 +/
-int squarePart(int num)
+int squarePart(int num) pure nothrow @safe
 {
     assert(num > 0);
 
@@ -208,7 +208,7 @@ Returns:
 See_Also:
     `sqrtSquarePrimeFactors`
 +/
-int sqrtSquarePart(int num)
+int sqrtSquarePart(int num) pure nothrow @safe
 {
     assert(num > 0);
 
@@ -237,7 +237,7 @@ Returns:
 See_Also:
     `primeFactors`
 +/
-auto primeFactorsRange(int num) pure nothrow @nogc
+auto primeFactorsRange(int num) pure nothrow @nogc @safe
 {
     assert(num > 0);
 
@@ -306,7 +306,7 @@ private:
 
 alias product = (a, b) => a * b;
 
-int nextFactorFrom(int number, int factor) pure nothrow @nogc
+int nextFactorFrom(int number, int factor) pure nothrow @nogc @safe
 {
     int nextFactor = factor;
 
@@ -333,7 +333,7 @@ struct PrimeFactorsRange
     int remainingPart;
     int currentPart;
 
-    this(int num) pure nothrow @nogc
+    this(int num) pure nothrow @nogc @safe
     {
         assert(num > 0);
 
@@ -342,18 +342,18 @@ struct PrimeFactorsRange
         popFront(); // Set currentPart to first prime factor
     }
 
-    @property int front() const pure nothrow @nogc
+    @property int front() const pure nothrow @nogc @safe
     {
         assert(!empty); // Must have prime factor remaining
         return currentPart;
     }
 
-    @property bool empty() const pure nothrow @nogc
+    @property bool empty() const pure nothrow @nogc @safe
     {
         return remainingPart == 1;
     }
 
-    void popFront() pure nothrow @nogc
+    void popFront() pure nothrow @nogc @safe
     {
         remainingPart /= currentPart;
         currentPart = remainingPart.nextFactorFrom(currentPart);
