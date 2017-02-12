@@ -155,7 +155,7 @@ int squareFreePart(int num) pure nothrow @safe
 
     import std.algorithm : reduce;
 
-    return 1.reduce!((a, b) => a*b)(num.squareFreePrimeFactors);
+    return 1.reduce!((a, b) => a * b)(num.squareFreePrimeFactors);
 }
 
 ///
@@ -163,7 +163,7 @@ unittest
 {
     assert(squareFreePart(1) == 1);
     assert(squareFreePart(11 * 11) == 1);
-    assert(squareFreePart(2 * 2 * 5 * 5 * 5 * 7 * 11) == 5 * 7 *11);   
+    assert(squareFreePart(2 * 2 * 5 * 5 * 5 * 7 * 11) == 5 * 7 * 11);
 }
 
 /++
@@ -184,7 +184,7 @@ int squarePart(int num) pure nothrow @safe
 
     import std.algorithm : reduce;
 
-    return 1.reduce!((a, b) => a*b)(num.squarePrimeFactors);
+    return 1.reduce!((a, b) => a * b)(num.squarePrimeFactors);
 }
 
 ///
@@ -213,7 +213,7 @@ int sqrtSquarePart(int num) pure nothrow @safe
 
     import std.algorithm : reduce;
 
-    return 1.reduce!((a, b) => a*b)(num.sqrtSquarePrimeFactors);
+    return 1.reduce!((a, b) => a * b)(num.sqrtSquarePrimeFactors);
 }
 
 ///
@@ -265,15 +265,15 @@ unittest
     static assert(squarePrimeFactors(1) == []);
     static assert(sqrtSquarePrimeFactors(1) == []);
 
-    enum testFactorLists = tuple([2], [3], [7919], [2, 7], [3, 11],[5, 7529],
-            [2, 2], [13, 13], [7529, 7529], [2, 3, 5, 7, 11, 13, 17],
+    enum testFactorLists = tuple([2], [3], [7919], [2, 7], [3, 11], [5,
+            7529], [2, 2], [13, 13], [7529, 7529], [2, 3, 5, 7, 11, 13, 17],
             [41, 41, 53, 67], [2, 3, 5, 11, 101, 101], [2, 2, 2, 11, 17], [2,
             2, 2, 11, 11, 17], [2, 11, 4259, 4259], [2, 2, 2, 2, 2, 2, 2, 2],
             [5, 5, 5, 5, 5, 5, 5], [3, 3, 3, 3, 7, 7, 7]);
 
     foreach (factors; testFactorLists)
     {
-        immutable number = 1.reduce!((a, b) => a*b)(factors);
+        immutable number = 1.reduce!((a, b) => a * b)(factors);
         assert(number.primeFactors.equal(factors));
         static assert(number.primeFactors.equal(factors));
 
@@ -357,7 +357,7 @@ struct PrimeFactorsRange
     }
 }
 
-version(unittest)
+version (unittest)
 {
     import std.algorithm : equal, reduce, sort;
     import std.algorithm.setops : merge;
