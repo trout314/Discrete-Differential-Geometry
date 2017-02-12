@@ -68,8 +68,7 @@ int[] squareFreePrimeFactors(int num) pure nothrow @safe
     import std.range : array;
 
     auto factors = num.primeFactors;
-    alias oddPower = f => factors.count(f) % 2 == 1;
-    return factors.uniq.filter!oddPower.array;
+    return factors.uniq.filter!(f => factors.count(f) % 2 == 1).array;
 }
 
 ///
@@ -156,7 +155,7 @@ int squareFreePart(int num) pure nothrow @safe
 
     import std.algorithm : reduce;
 
-    return 1.reduce!product(num.squareFreePrimeFactors);
+    return 1.reduce!((a, b) => a*b)(num.squareFreePrimeFactors);
 }
 
 ///
@@ -185,7 +184,7 @@ int squarePart(int num) pure nothrow @safe
 
     import std.algorithm : reduce;
 
-    return 1.reduce!product(num.squarePrimeFactors);
+    return 1.reduce!((a, b) => a*b)(num.squarePrimeFactors);
 }
 
 ///
@@ -214,7 +213,7 @@ int sqrtSquarePart(int num) pure nothrow @safe
 
     import std.algorithm : reduce;
 
-    return 1.reduce!product(num.sqrtSquarePrimeFactors);
+    return 1.reduce!((a, b) => a*b)(num.sqrtSquarePrimeFactors);
 }
 
 ///
@@ -274,7 +273,7 @@ unittest
 
     foreach (factors; testFactorLists)
     {
-        immutable number = 1.reduce!product(factors);
+        immutable number = 1.reduce!((a, b) => a*b)(factors);
         assert(number.primeFactors.equal(factors));
         static assert(number.primeFactors.equal(factors));
 
@@ -303,8 +302,6 @@ unittest
 }
 
 private:
-
-alias product = (a, b) => a * b;
 
 int nextFactorFrom(int number, int factor) pure nothrow @nogc @safe
 {
