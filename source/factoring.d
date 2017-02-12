@@ -138,6 +138,18 @@ unittest
     assert(sqrtSquarePrimeFactors(2 * 2 * 5 * 5 * 5 * 7 * 11) == [2, 5]);
 }
 
+/++
+Returns the largest square-free divisor of `num`.
+
+Params:
+    num =   a positive integer
+
+Returns:
+    largest square-free divisor of `num`
+
+See_Also:
+    `squareFreePrimeFactors`
++/
 int squareFreePart(int num)
 {
     assert(num > 0);
@@ -147,6 +159,26 @@ int squareFreePart(int num)
     return 1.reduce!product(num.squareFreePrimeFactors);
 }
 
+///
+unittest
+{
+    assert(squareFreePart(1) == 1);
+    assert(squareFreePart(11 * 11) == 1);
+    assert(squareFreePart(2 * 2 * 5 * 5 * 5 * 7 * 11) == 5 * 7 *11);   
+}
+
+/++
+Returns the largest square divisor of `num`.
+
+Params:
+    num =   a positive integer
+
+Returns:
+    largest square divisor of `num`
+
+See_Also:
+    `squarePrimeFactors`
++/
 int squarePart(int num)
 {
     assert(num > 0);
@@ -156,6 +188,26 @@ int squarePart(int num)
     return 1.reduce!product(num.squarePrimeFactors);
 }
 
+///
+unittest
+{
+    assert(squarePart(1) == 1);
+    assert(squarePart(11 * 11) == 11 * 11);
+    assert(squarePart(2 * 2 * 5 * 5 * 5 * 7 * 11) == 2 * 2 * 5 * 5);
+}
+
+/++
+Returns the square root of the largest square divisor of `num`.
+
+Params:
+    num =   a positive integer
+
+Returns:
+    square root of the largest square divisor of `num`
+
+See_Also:
+    `sqrtSquarePrimeFactors`
++/
 int sqrtSquarePart(int num)
 {
     assert(num > 0);
@@ -165,7 +217,48 @@ int sqrtSquarePart(int num)
     return 1.reduce!product(num.sqrtSquarePrimeFactors);
 }
 
-/// Some additional tests
+///
+unittest
+{
+    assert(sqrtSquarePart(1) == 1);
+    assert(sqrtSquarePart(11 * 11) == 11);
+    assert(sqrtSquarePart(2 * 2 * 5 * 5 * 5 * 7 * 11) == 2 * 5);
+}
+
+/++
+Returns an input range that enumerates the prime factors of num. This range has the same content as the array returned by `primeFactors(num)`.
+
+Params:
+    num =   a positive integer
+
+Returns:
+    an input range containing the prime factors of num.
+
+See_Also:
+    `primeFactors`
++/
+auto primeFactorsRange(int num) pure nothrow @nogc
+{
+    assert(num > 0);
+
+    return PrimeFactorsRange(num);
+}
+
+///
+unittest
+{
+    static assert(isInputRange!(ReturnType!primeFactorsRange));
+
+    assert(primeFactorsRange(20).array == [2, 2, 5]);
+    assert(primeFactors(20) == [2, 2, 5]);
+
+    assert(primeFactorsRange(1).empty);
+
+    // This should work, but eats all memory then crashes. 
+    // static assert(primeFactorsRange(1).empty);
+}
+
+// Some additional tests
 unittest
 {
     static assert(primeFactors(1) == []);
@@ -208,41 +301,6 @@ unittest
         static assert(n == n.sqrtSquarePart * n.sqrtSquarePart * n.squareFreePart);
     }
 }
-
-
-/++
-Returns an input range that enumerates the prime factors of num. This range has the same content as the array returned by `primeFactors(num)`.
-
-Params:
-    num =   a positive integer
-
-Returns:
-    an input range containing the prime factors of num.
-
-See_Also:
-    `primeFactors`
-+/
-auto primeFactorsRange(int num) pure nothrow @nogc
-{
-    assert(num > 0);
-
-    return PrimeFactorsRange(num);
-}
-
-///
-unittest
-{
-    static assert(isInputRange!(ReturnType!primeFactorsRange));
-
-    assert(primeFactorsRange(20).array == [2, 2, 5]);
-    assert(primeFactors(20) == [2, 2, 5]);
-
-    assert(primeFactorsRange(1).empty);
-
-    // This should work, but eats all memory then crashes. 
-    // static assert(primeFactorsRange(1).empty);
-}
-
 
 private:
 
