@@ -16,6 +16,9 @@
 discrete-differential-geometry
 discrete-differential-geometry-test-application
 
+#unittest coverage files
+*.lst
+
 # DUB
 .dub
 docs.json

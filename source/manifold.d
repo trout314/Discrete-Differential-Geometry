@@ -959,11 +959,6 @@ unittest
 */
 Manifold!dim loadManifold(size_t dim = dimManifold)(string fileName)
 {
-    if (fileName == "")
-    {
-        return Manifold!dim(standardSphere(dim));
-    }
-
     auto manifoldFile = File(fileName, "r"); // Open file in read-only mode
 
     string facets;
