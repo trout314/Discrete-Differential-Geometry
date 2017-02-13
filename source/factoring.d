@@ -1,5 +1,13 @@
+version (unittest)
+{
+    import std.algorithm : equal, reduce, sort, merge;
+    import std.range : array, isForwardRange, chain;
+    import std.traits : ReturnType;
+    import std.typecons : staticIota, tuple;
+}
+
 /++
-Returns a forward range that enumerates the prime factors of num.
+Returns a forward range that enumerates the prime factors of num in increasing order.
 
 Params:
     num =   a positive integer
@@ -22,31 +30,31 @@ unittest
     assert(primeFactors(30).array == [2, 3, 5]);
     assert(primeFactors(360).array == [2, 2, 2, 3, 3, 5]);
     assert(primeFactors(1223).array == [1223]);
-
-    // This works, but it is slow. TO DO: Figure out why.
-    // assert(primeFactorsRange(30).array == [2, 3, 5]);
 }
 
 /++
-Returns a newly allocated dynamic array containing (in increasing order) those primes which appear to an odd power in the prime-factorization of `num`. The product of these primes is `squareFreePart(num)` and is the largest divisor of `num` not divisible by any square. This is also what's left under the the root after "simplifying" the square root of `num` by moving any squares outside the root.
+Returns a range containing (in increasing order) those primes which appear to an odd power in the prime-factorization of `num`. The product of these primes is `squareFreePart(num)` and is the largest divisor of `num` not divisible by any square. This is also what's left under the the root after "simplifying" the square root of `num` by moving any squares outside the root.
 
 Params:
-    num =   a positive integer
+    num = a positive integer
 
 Returns:
-    a dynamic array of ints containing (in increasing order) those prime factors of `num` which appear to an odd power.
+    a range of `int`s containing (in increasing order) those prime factors of `num` which appear to an odd power.
 
 See_Also:
     `squareFreePart`
 +/
-auto squareFreePrimeFactors(int num) pure nothrow @safe
+auto squareFreePrimeFactors(int num) pure nothrow @nogc @safe
 {
     assert(num > 0);
 
-    import std.algorithm : uniq, count, filter;
+    import std.algorithm : filter, group, map;
 
-    auto factors = num.primeFactors;
-    return factors.uniq.filter!(f => factors.count(f) % 2 == 1).array;
+    return num
+        .primeFactors
+        .group  // group into tuples of form (prime, power)
+        .filter!(r => r[1] % 2 == 1)    // only odd powers
+        .map!(r => r[0]);               // want the primes
 }
 
 ///
@@ -58,18 +66,18 @@ unittest
 }
 
 /++
-Returns a newly allocated dynamic array containing (in increasing order) the prime factors of the largest square divisor of `num`. The product of the primes in this array will be `squarePart(num)`.
+Returns a range containing (in increasing order) the prime factors of the largest square divisor of `num`. The product of these primes is `squarePart(num)`.
 
 Params:
-    num =   a positive integer
+    num = a positive integer
 
 Returns:
-    a dynamic array of ints containing (in increasing order) the prime factors of the largest square divisor of `num`
+    a range of `int`s containing (in increasing order) the prime factors of the largest square divisor of `num`
 
 See_Also:
     `squarePart`
 +/
-auto squarePrimeFactors(int num) pure nothrow @safe
+auto squarePrimeFactors(int num) pure nothrow @nogc @safe
 {
     assert(num > 0);
 
@@ -87,18 +95,18 @@ unittest
 }
 
 /++
-Returns a newly allocated dynamic array containing (in increasing order) the prime factors of the square root of the largest square divisor of `num`. The product of the primes in this array will be `sqrtSquarePart(num)`.
+Returns a range containing (in increasing order) the prime factors of the square root of the largest square divisor of `num`. The product of these primes is `sqrtSquarePart(num)`.
 
 Params:
     num =   a positive integer
 
 Returns:
-    a dynamic array of ints containing (in increasing order) the prime factors of the square root of the largest square divisor of `num`
+    a range of `int`s containing (in increasing order) the prime factors of the square root of the largest square divisor of `num`
 
 See_Also:
     `sqrtSquarePart`
 +/
-auto sqrtSquarePrimeFactors(int num) pure nothrow @safe
+auto sqrtSquarePrimeFactors(int num) pure nothrow @nogc @safe
 {
     assert(num > 0);
     import std.range : stride;
@@ -126,7 +134,7 @@ Returns:
 See_Also:
     `squareFreePrimeFactors`
 +/
-int squareFreePart(int num) pure nothrow @safe
+int squareFreePart(int num) pure nothrow @nogc @safe
 {
     assert(num > 0);
 
@@ -155,7 +163,7 @@ Returns:
 See_Also:
     `squarePrimeFactors`
 +/
-int squarePart(int num) pure nothrow @safe
+int squarePart(int num) pure nothrow @nogc @safe
 {
     assert(num > 0);
 
@@ -184,7 +192,7 @@ Returns:
 See_Also:
     `sqrtSquarePrimeFactors`
 +/
-int sqrtSquarePart(int num) pure nothrow @safe
+int sqrtSquarePart(int num) pure nothrow @nogc @safe
 {
     assert(num > 0);
 
@@ -316,15 +324,7 @@ struct PrimeFactorsRange
         factor = number.lowestFactor;
     }
 
-    @property PrimeFactorsRange save() const {
+    @property PrimeFactorsRange save() pure nothrow @nogc @safe const {
         return this;
     }
-}
-
-version (unittest)
-{
-    import std.algorithm : equal, reduce, sort, merge;
-    import std.range : array, isForwardRange, chain;
-    import std.traits : ReturnType;
-    import std.typecons : staticIota, tuple;
 }

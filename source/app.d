@@ -19,4 +19,6 @@ void main()
     x.writeln;
     // simplexRoots!10.each!writeln;
     // simplexCoefs!10.each!writeln;
+
+    typeof(primeFactors).stringof.writeln;
 }
