@@ -285,6 +285,17 @@ int lowestFactor(int num) pure nothrow @nogc @safe
     return possibleFactor;
 }
 
+unittest
+{
+    assert(lowestFactor(1) == 1);
+    assert(lowestFactor(2) == 2);
+    assert(lowestFactor(3) == 3);
+    assert(lowestFactor(4) == 2);
+    assert(lowestFactor(11) == 11);
+    assert(lowestFactor(2 * 2 * 5 * 11) == 2);
+    assert(lowestFactor(13 * 13) == 2);
+}
+
 struct PrimeFactorsRange
 {
     int number;
