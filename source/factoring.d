@@ -293,7 +293,7 @@ unittest
     assert(lowestFactor(4) == 2);
     assert(lowestFactor(11) == 11);
     assert(lowestFactor(2 * 2 * 5 * 11) == 2);
-    assert(lowestFactor(13 * 13) == 2);
+    assert(lowestFactor(13 * 13) == 13);
 }
 
 struct PrimeFactorsRange
