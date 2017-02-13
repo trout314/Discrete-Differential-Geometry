@@ -227,7 +227,6 @@ unittest
     foreach (factors; testFactorLists)
     {
         immutable n = 1.reduce!((a, b) => a * b)(factors);
-     
         assert(n.primeFactors.equal(factors));
         static assert(n.primeFactors.equal(factors));
 
@@ -243,6 +242,7 @@ unittest
     immutable maxRuntimeTest = 10_000;
     foreach (immutable n; 1 .. maxRuntimeTest + 1)
     {
+        assert(1.reduce!((a,b) => a*b)(n.primeFactors) == n);
         assert(sort(chain(n.squareFreePrimeFactors, n.squarePrimeFactors).array).equal(n.primeFactors));
         assert(n == n.squarePart * n.squareFreePart);
         assert(n == n.sqrtSquarePart * n.sqrtSquarePart * n.squareFreePart);
@@ -251,6 +251,7 @@ unittest
     enum maxCompiletimeTest = 100;
     foreach (immutable n; staticIota!(1, maxCompiletimeTest))
     {
+        static assert(1.reduce!((a,b) => a*b)(n.primeFactors) == n);
         static assert(sort(chain(n.squareFreePrimeFactors, n.squarePrimeFactors).array).equal(n.primeFactors));
         static assert(n == n.squarePart * n.squareFreePart);
         static assert(n == n.sqrtSquarePart * n.sqrtSquarePart * n.squareFreePart);
