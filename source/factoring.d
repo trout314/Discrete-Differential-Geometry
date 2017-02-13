@@ -1,43 +1,27 @@
 /++
-Returns a newly allocated dynamic array containing the prime factors of `num`. This array has the same content as `primeFactorsRange(num).array`.
+Returns a forward range that enumerates the prime factors of num.
 
 Params:
     num =   a positive integer
 
 Returns:
-    a dynamic array of ints containing the prime factors of `num`.
-
-See_Also:
-    `primeFactorsRange`
+    a forward range of the prime factors of num in increasing order.
 +/
-int[] primeFactors(int num) pure nothrow @safe
+auto primeFactors(int num) pure nothrow @nogc @safe
 {
     assert(num > 0);
-
-    if (num == 1)
-    {
-        return [];
-    }
-
-    int n = num;
-    int[] answer = [];
-    int factor;
-    while (n > 1)
-    {
-        factor = n.lowestFactor;
-        answer ~= factor;
-        n /= factor;        
-    }
-    return answer;
+    return PrimeFactorsRange(num);
 }
 
 ///
 unittest
 {
-    assert(primeFactors(1) == []);
-    assert(primeFactors(30) == [2, 3, 5]);
-    assert(primeFactors(360) == [2, 2, 2, 3, 3, 5]);
-    assert(primeFactors(1223) == [1223]);
+    static assert(isForwardRange!(ReturnType!primeFactors));
+
+    assert(primeFactors(1).array == []);
+    assert(primeFactors(30).array == [2, 3, 5]);
+    assert(primeFactors(360).array == [2, 2, 2, 3, 3, 5]);
+    assert(primeFactors(1223).array == [1223]);
 
     // This works, but it is slow. TO DO: Figure out why.
     // assert(primeFactorsRange(30).array == [2, 3, 5]);
@@ -55,12 +39,11 @@ Returns:
 See_Also:
     `squareFreePart`
 +/
-int[] squareFreePrimeFactors(int num) pure nothrow @safe
+auto squareFreePrimeFactors(int num) pure nothrow @safe
 {
     assert(num > 0);
 
     import std.algorithm : uniq, count, filter;
-    import std.range : array;
 
     auto factors = num.primeFactors;
     return factors.uniq.filter!(f => factors.count(f) % 2 == 1).array;
@@ -69,9 +52,9 @@ int[] squareFreePrimeFactors(int num) pure nothrow @safe
 ///
 unittest
 {
-    assert(squareFreePrimeFactors(1) == []);
-    assert(squareFreePrimeFactors(11 * 11) == []);
-    assert(squareFreePrimeFactors(2 * 2 * 5 * 5 * 5 * 7 * 11) == [5, 7, 11]);
+    assert(squareFreePrimeFactors(1).array == []);
+    assert(squareFreePrimeFactors(11 * 11).array == []);
+    assert(squareFreePrimeFactors(2 * 2 * 5 * 5 * 5 * 7 * 11).array == [5, 7, 11]);
 }
 
 /++
@@ -86,22 +69,21 @@ Returns:
 See_Also:
     `squarePart`
 +/
-int[] squarePrimeFactors(int num) pure nothrow @safe
+auto squarePrimeFactors(int num) pure nothrow @safe
 {
     assert(num > 0);
 
     import std.algorithm : setDifference;
-    import std.range : array;
-
-    return num.primeFactors.setDifference(num.squareFreePrimeFactors).array;
+    
+    return num.primeFactors.setDifference(num.squareFreePrimeFactors);
 }
 
 ///
 unittest
 {
-    assert(squarePrimeFactors(1) == []);
-    assert(squarePrimeFactors(11 * 11) == [11, 11]);
-    assert(squarePrimeFactors(2 * 2 * 5 * 5 * 5 * 7 * 11) == [2, 2, 5, 5]);
+    assert(squarePrimeFactors(1).array == []);
+    assert(squarePrimeFactors(11 * 11).array == [11, 11]);
+    assert(squarePrimeFactors(2 * 2 * 5 * 5 * 5 * 7 * 11).array == [2, 2, 5, 5]);
 }
 
 /++
@@ -116,20 +98,20 @@ Returns:
 See_Also:
     `sqrtSquarePart`
 +/
-int[] sqrtSquarePrimeFactors(int num) pure nothrow @safe
+auto sqrtSquarePrimeFactors(int num) pure nothrow @safe
 {
     assert(num > 0);
-    import std.range : array, stride;
+    import std.range : stride;
 
-    return num.squarePrimeFactors.stride(2).array;
+    return num.squarePrimeFactors.stride(2);
 }
 
 ///
 unittest
 {
-    assert(sqrtSquarePrimeFactors(1) == []);
-    assert(sqrtSquarePrimeFactors(11 * 11) == [11]);
-    assert(sqrtSquarePrimeFactors(2 * 2 * 5 * 5 * 5 * 7 * 11) == [2, 5]);
+    assert(sqrtSquarePrimeFactors(1).array == []);
+    assert(sqrtSquarePrimeFactors(11 * 11).array == [11]);
+    assert(sqrtSquarePrimeFactors(2 * 2 * 5 * 5 * 5 * 7 * 11).array == [2, 5]);
 }
 
 /++
@@ -219,46 +201,14 @@ unittest
     assert(sqrtSquarePart(2 * 2 * 5 * 5 * 5 * 7 * 11) == 2 * 5);
 }
 
-/++
-Returns an input range that enumerates the prime factors of num. This range has the same content as the array returned by `primeFactors(num)`.
-
-Params:
-    num =   a positive integer
-
-Returns:
-    an input range containing the prime factors of num.
-
-See_Also:
-    `primeFactors`
-+/
-auto primeFactorsRange(int num) pure nothrow @nogc @safe
-{
-    assert(num > 0);
-
-    return PrimeFactorsRange(num);
-}
-
-///
-unittest
-{
-    static assert(isForwardRange!(ReturnType!primeFactorsRange));
-
-    assert(primeFactorsRange(20).array == [2, 2, 5]);
-    assert(primeFactors(20) == [2, 2, 5]);
-
-    assert(primeFactorsRange(1).empty);
-
-    // This should work, but eats all memory then crashes. 
-    static assert(primeFactorsRange(6).array == [2,3]);
-}
 
 // Some additional tests
 unittest
 {
-    static assert(primeFactors(1) == []);
-    static assert(squareFreePrimeFactors(1) == []);
-    static assert(squarePrimeFactors(1) == []);
-    static assert(sqrtSquarePrimeFactors(1) == []);
+    static assert(primeFactors(1).array == []);
+    static assert(squareFreePrimeFactors(1).array == []);
+    static assert(squarePrimeFactors(1).array == []);
+    static assert(sqrtSquarePrimeFactors(1).array == []);
 
     enum testFactorLists = tuple([2], [3], [7919], [2, 7], [3, 11], [5,
             7529], [2, 2], [13, 13], [7529, 7529], [2, 3, 5, 7, 11, 13, 17],
@@ -271,26 +221,20 @@ unittest
         immutable number = 1.reduce!((a, b) => a * b)(factors);
         assert(number.primeFactors.equal(factors));
         static assert(number.primeFactors.equal(factors));
-
-        // TO DO: Why is this so slow?    
-        // assert(number.primeFactorsRange.equal(factors));
-
-        // TO DO: Why is this slow and use so much memory?        
-        // static assert(number.primeFactorsRange.equal(factors));
     }
 
     immutable maxRuntimeTest = 10_000;
-    foreach (n; 1 .. maxRuntimeTest + 1)
+    foreach (immutable n; 1 .. maxRuntimeTest + 1)
     {
-        assert(merge(n.squareFreePrimeFactors, n.squarePrimeFactors).equal(n.primeFactors));
+        assert(sort(chain(n.squareFreePrimeFactors, n.squarePrimeFactors).array).equal(n.primeFactors));
         assert(n == n.squarePart * n.squareFreePart);
         assert(n == n.sqrtSquarePart * n.sqrtSquarePart * n.squareFreePart);
     }
 
     enum maxCompiletimeTest = 100;
-    foreach (n; staticIota!(1, maxCompiletimeTest))
+    foreach (immutable n; staticIota!(1, maxCompiletimeTest))
     {
-        static assert(merge(n.squareFreePrimeFactors, n.squarePrimeFactors).equal(n.primeFactors));
+        static assert(sort(chain(n.squareFreePrimeFactors, n.squarePrimeFactors).array).equal(n.primeFactors));
         static assert(n == n.squarePart * n.squareFreePart);
         static assert(n == n.sqrtSquarePart * n.sqrtSquarePart * n.squareFreePart);
     }
@@ -380,7 +324,7 @@ struct PrimeFactorsRange
 version (unittest)
 {
     import std.algorithm : equal, reduce, sort, merge;
-    import std.range : array, isForwardRange;
+    import std.range : array, isForwardRange, chain;
     import std.traits : ReturnType;
     import std.typecons : staticIota, tuple;
 }
