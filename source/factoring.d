@@ -1,6 +1,6 @@
 version (unittest)
 {
-    import std.algorithm : equal, reduce, sort, merge;
+    import std.algorithm : equal, reduce, sort;
     import std.range : array, isForwardRange, chain;
     import std.traits : ReturnType;
     import std.typecons : staticIota, tuple;
