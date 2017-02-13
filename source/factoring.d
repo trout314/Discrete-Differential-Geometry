@@ -226,9 +226,18 @@ unittest
 
     foreach (factors; testFactorLists)
     {
-        immutable number = 1.reduce!((a, b) => a * b)(factors);
-        assert(number.primeFactors.equal(factors));
-        static assert(number.primeFactors.equal(factors));
+        immutable n = 1.reduce!((a, b) => a * b)(factors);
+     
+        assert(n.primeFactors.equal(factors));
+        static assert(n.primeFactors.equal(factors));
+
+        assert(sort(chain(n.squareFreePrimeFactors, n.squarePrimeFactors).array).equal(n.primeFactors));
+        assert(n == n.squarePart * n.squareFreePart);
+        assert(n == n.sqrtSquarePart * n.sqrtSquarePart * n.squareFreePart);
+
+        static assert(sort(chain(n.squareFreePrimeFactors, n.squarePrimeFactors).array).equal(n.primeFactors));
+        static assert(n == n.squarePart * n.squareFreePart);
+        static assert(n == n.sqrtSquarePart * n.sqrtSquarePart * n.squareFreePart);
     }
 
     immutable maxRuntimeTest = 10_000;
