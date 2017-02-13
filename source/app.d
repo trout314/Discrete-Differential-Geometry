@@ -16,6 +16,4 @@ void main()
     simplexPoints!10.each!writeln;
     // simplexRoots!10.each!writeln;
     // simplexCoefs!10.each!writeln;
-
-    primeFactors(360).writeln;
 }

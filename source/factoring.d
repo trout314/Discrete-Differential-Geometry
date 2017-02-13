@@ -14,25 +14,20 @@ int[] primeFactors(int num) pure nothrow @safe
 {
     assert(num > 0);
 
+    if (num == 1)
+    {
+        return [];
+    }
+
     int n = num;
     int[] answer = [];
-
-    if (n < 2)
+    int factor;
+    while (n > 1)
     {
-        return answer;
+        factor = n.lowestFactor;
+        answer ~= factor;
+        n /= factor;        
     }
-
-    int factor = 2;
-    while (factor < n)
-    {
-        if (n % factor == 0)
-        {
-            answer ~= factor;
-            n /= factor;
-        }
-        factor = n.nextFactorFrom(factor);
-    }
-    answer ~= factor;
     return answer;
 }
 
@@ -248,13 +243,13 @@ unittest
 {
     static assert(isForwardRange!(ReturnType!primeFactorsRange));
 
-    // assert(primeFactorsRange(20).array == [2, 2, 5]);
+    assert(primeFactorsRange(20).array == [2, 2, 5]);
     assert(primeFactors(20) == [2, 2, 5]);
 
-    // assert(primeFactorsRange(1).empty);
+    assert(primeFactorsRange(1).empty);
 
     // This should work, but eats all memory then crashes. 
-    // static assert(primeFactorsRange(6).array == [2,3]);
+    static assert(primeFactorsRange(6).array == [2,3]);
 }
 
 // Some additional tests
@@ -304,74 +299,77 @@ unittest
 private:
 
 /++
-Returns an input range that enumerates the prime factors of num. This range has the same content as the array returned by `primeFactors(num)`.
+Returns the lowest (non-trivial if possible) factor of `num`. If `num == 1` then the function returns `1` otherwise it returns the smallest factor of `num` greater than one.
 
 Params:
     num =   a positive integer
 
 Returns:
-    an input range containing the prime factors of num.
-
-See_Also:
-    `primeFactors`
+    `int` which is lowest non-trivial factor of `num` if such exists, otherwise 1 if `num` is 1.
 +/
-int nextFactorFrom(int number, int factor) pure nothrow @nogc @safe
+int lowestFactor(int num) pure nothrow @nogc @safe
 {
-    assert(number > 0);
-    assert(factor > 0);
+    assert(num > 0);
 
-    int nextFactor = factor;
-
-    if (factor == 1)
+    if (num <= 3)
     {
-        nextFactor = 2;
+        return num;
     }
 
-    while (number % nextFactor != 0)
+    int possibleFactor = 2;
+    while (num % possibleFactor != 0)
     {
-        if (nextFactor == 2)
+        if (possibleFactor == 2)
         {
-            nextFactor = 3;
+            possibleFactor = 3;
         }
         else
         {
-            nextFactor += 2;
+            possibleFactor += 2;
         }
     }
 
-    assert(number % nextFactor == 0);
-    return nextFactor;
+    assert(num % possibleFactor == 0);   
+    return possibleFactor;
 }
 
 struct PrimeFactorsRange
 {
-    int remainingPart;
-    int currentPart;
+    int number;
+    int factor;
 
     this(int num) pure nothrow @nogc @safe
     {
         assert(num > 0);
 
-        remainingPart = num;
-        currentPart = 1;
-        popFront(); // Set currentPart to first prime factor
+        number = num;
+        factor = 1;
     }
 
-    @property int front() const pure nothrow @nogc @safe
+    @property int front() pure nothrow @nogc @safe
     {
         assert(!empty); // Must have prime factor remaining
-        return currentPart;
+        if (factor == 1)
+        {
+            factor = number.lowestFactor;
+        }
+        return factor;
     }
 
     @property bool empty() const pure nothrow @nogc @safe
     {
-        return remainingPart == 1;
+        return number == 1;
     }
 
     void popFront() pure nothrow @nogc @safe
     {
-        remainingPart /= currentPart;
-        currentPart = remainingPart.nextFactorFrom(currentPart);
+        assert(!empty); // Must have prime factor remaining
+        if (factor == 1)
+        {
+            factor = number.lowestFactor;
+        }
+        number /= factor;
+        factor = number.lowestFactor;
     }
 
     @property PrimeFactorsRange save() const {
