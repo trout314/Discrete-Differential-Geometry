@@ -7,13 +7,13 @@ version (unittest)
 }
 
 /++
-Returns a forward range that enumerates the prime factors of num in increasing order.
+Returns a forward range that computes the prime factors of `num`` in increasing order.
 
 Params:
-    num =   a positive integer
+    num = a positive integer
 
 Returns:
-    a forward range of the prime factors of num in increasing order.
+    Forward range of `int`s giving the prime factors of `num` in increasing order.
 +/
 auto primeFactors(int num)
 {
@@ -24,9 +24,6 @@ auto primeFactors(int num)
 ///
 unittest
 {
-    static assert(isForwardRange!(ReturnType!primeFactors));
-    static assert(hasFunctionAttributes!(primeFactors, "pure", "nothrow", "@nogc", "@safe"));
-
     assert(primeFactors(1).array == []);
     assert(primeFactors(2 * 3 * 5).array == [2, 3, 5]);
     assert(primeFactors(2 * 2 * 2 * 3 * 3 * 5).array == [2, 2, 2, 3, 3, 5]);
@@ -34,16 +31,20 @@ unittest
 
     // Everything works at compile-time too
     static assert(primeFactors(24).array == [2, 2, 2, 3]);
+
+    
+    static assert(isForwardRange!(ReturnType!primeFactors));
+    static assert(hasFunctionAttributes!(primeFactors, "pure", "nothrow", "@nogc", "@safe"));
 }
 
 /++
-Returns a range containing (in increasing order) those primes which appear to an odd power in the prime-factorization of `num`. The product of these primes is `squareFreePart(num)` and is the largest divisor of `num` not divisible by any square. This is also what's left under the the root after "simplifying" the square root of `num` by moving any squares outside the root.
+Returns a forward range containing (in increasing order) those primes which appear to an odd power in the prime-factorization of `num`. The product of these primes is `squareFreePart(num)` and is the largest divisor of `num` not divisible by any square. This is also what's left under the the root after "simplifying" the square root of `num` by moving any squares outside the root.
 
 Params:
     num = a positive integer
 
 Returns:
-    a range of `int`s containing (in increasing order) those prime factors of `num` which appear to an odd power.
+    Forward range of `int`s giving (in increasing order) those prime factors of `num` which appear to an odd power
 
 See_Also:
     `squareFreePart`
@@ -70,16 +71,17 @@ unittest
     static assert(squareFreePrimeFactors(24).array == [2, 3]);
 
     static assert(hasFunctionAttributes!(squareFreePrimeFactors, "pure", "nothrow", "@nogc", "@safe"));
+    static assert(isForwardRange!(ReturnType!squareFreePrimeFactors));
 }
 
 /++
-Returns a range containing (in increasing order) the prime factors of the largest square divisor of `num`. The product of these primes is `squarePart(num)`.
+Returns a forward range containing (in increasing order) the prime factors of the largest square divisor of `num`. The product of these primes is `squarePart(num)`.
 
 Params:
     num = a positive integer
 
 Returns:
-    a range of `int`s containing (in increasing order) the prime factors of the largest square divisor of `num`
+    Forward range of `int`s containing (in increasing order) the prime factors of the largest square divisor of `num`
 
 See_Also:
     `squarePart`
@@ -102,16 +104,17 @@ unittest
     static assert(squarePrimeFactors(24).array == [2, 2]);
 
     static assert(hasFunctionAttributes!(squarePrimeFactors, "pure", "nothrow", "@nogc", "@safe"));
+    static assert(isForwardRange!(ReturnType!squarePrimeFactors));
 }
 
 /++
-Returns a range containing (in increasing order) the prime factors of the square root of the largest square divisor of `num`. The product of these primes is `sqrtSquarePart(num)`.
+Returns a forward range containing (in increasing order) the prime factors of the square root of the largest square divisor of `num`. The product of these primes is `sqrtSquarePart(num)`.
 
 Params:
-    num =   a positive integer
+    num = a positive integer
 
 Returns:
-    a range of `int`s containing (in increasing order) the prime factors of the square root of the largest square divisor of `num`
+    Forward range of `int` s containing (in increasing order) the prime factors of the square root of the largest square divisor of `num`
 
 See_Also:
     `sqrtSquarePart`
@@ -134,16 +137,17 @@ unittest
     static assert(sqrtSquarePrimeFactors(24).array == [2]);
 
     static assert(hasFunctionAttributes!(sqrtSquarePrimeFactors, "pure", "nothrow", "@nogc", "@safe"));
+    static assert(isForwardRange!(ReturnType!sqrtSquarePrimeFactors));
 }
 
 /++
 Returns the largest square-free divisor of `num`.
 
 Params:
-    num =   a positive integer
+    num = a positive integer
 
 Returns:
-    largest square-free divisor of `num`
+    Largest square-free divisor of `num`
 
 See_Also:
     `squareFreePrimeFactors`
@@ -172,10 +176,10 @@ unittest
 Returns the largest square divisor of `num`.
 
 Params:
-    num =   a positive integer
+    num = a positive integer
 
 Returns:
-    largest square divisor of `num`
+    Largest square divisor of `num`
 
 See_Also:
     `squarePrimeFactors`
@@ -204,10 +208,10 @@ unittest
 Returns the square root of the largest square divisor of `num`.
 
 Params:
-    num =   a positive integer
+    num = a positive integer
 
 Returns:
-    square root of the largest square divisor of `num`
+    Square root of the largest square divisor of `num`
 
 See_Also:
     `sqrtSquarePrimeFactors`
@@ -287,13 +291,13 @@ unittest
 }
 
 /++
-Returns the lowest (non-trivial if possible) factor of `num`. If `num == 1` then the function returns `1` otherwise it returns the smallest factor of `num` greater than one.
+Returns the smallest (non-trivial if possible) factor of `num`. If `num == 1` then the function returns `1` otherwise it returns the smallest factor of `num` greater than one. Note that this factor is necessarily prime, since it could not possible have a smaller factor.
 
 Params:
-    num =   a positive integer
+    num = a positive integer
 
 Returns:
-    `int` which is lowest non-trivial factor of `num` if such exists, otherwise 1 if `num` is 1.
+    `int` which is the smallest prime factor of `num` if such exists, otherwise 1.
 +/
 auto lowestFactor(int num)
 {

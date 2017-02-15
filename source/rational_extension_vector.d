@@ -1,6 +1,9 @@
+/++
++/
+
 auto simplexRoots(int dimension)()
 {
-    assert(dimension >= 0, "simplex dimension must be non-negative");
+    assert(dimension >= 0);
 
     import std.algorithm : map;
     import std.range : iota;
