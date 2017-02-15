@@ -148,7 +148,7 @@ Returns:
 See_Also:
     `squareFreePrimeFactors`
 +/
-int squareFreePart(int num) pure nothrow @nogc @safe
+auto squareFreePart(int num)
 {
     assert(num > 0);
 
@@ -180,7 +180,7 @@ Returns:
 See_Also:
     `squarePrimeFactors`
 +/
-int squarePart(int num) pure nothrow @nogc @safe
+auto squarePart(int num)
 {
     assert(num > 0);
 
@@ -212,7 +212,7 @@ Returns:
 See_Also:
     `sqrtSquarePrimeFactors`
 +/
-int sqrtSquarePart(int num) pure nothrow @nogc @safe
+auto sqrtSquarePart(int num)
 {
     assert(num > 0);
 
