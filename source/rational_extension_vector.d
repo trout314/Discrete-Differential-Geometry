@@ -9,15 +9,20 @@ auto simplexPoints(int dim)()
 
 unittest
 {
-    // Here we check that the 
+    // We check that the vertices of the 3-simplex are as they should be:
+    // x0 = (0,         0,       0)
+    // x1 = (1,         0,       0)
+    // x2 = (1/2, (1/2)√3,       0)
+    // x3 = (1/2, (1/6)√3, (1/3)√6)
 
     import std.rational : rational;
     alias Point = RationalExtensionVector!3;
+    alias r = rational;
 
-    auto x0 = Point([rational(0,1), rational(0,1), rational(0,1)]);
-    auto x1 = Point([rational(1,1), rational(0,1), rational(0,1)]);
-    auto x2 = Point([rational(1,2), rational(1,2), rational(0,1)]);
-    auto x3 = Point([rational(1,2), rational(1,6), rational(1,3)]);
+    auto x0 = Point([r(0,1), r(0,1), r(0,1)]);
+    auto x1 = Point([r(1,1), r(0,1), r(0,1)]);
+    auto x2 = Point([r(1,2), r(1,2), r(0,1)]);
+    auto x3 = Point([r(1,2), r(1,6), r(1,3)]);
 
     import std.algorithm : equal;
     assert(simplexPoints!3.equal([x0,x1,x2,x3]));
@@ -126,6 +131,11 @@ unittest
 
     import std.range : array;
     assert(simplexRoots(10).array == [1, 3, 6, 10, 15, 21, 7, 1, 5, 55]);
+
+    import std.traits : hasFunctionAttributes;
+    static assert(hasFunctionAttributes!(simplexRoots,
+        "pure", "nothrow", "@nogc", "@safe"));
+   
 }
 
 auto simplexCoefs(int dim)
