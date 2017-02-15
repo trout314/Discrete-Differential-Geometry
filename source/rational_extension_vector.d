@@ -1,35 +1,32 @@
-/++
-+/
-
-auto simplexRoots(int dimension)()
+auto simplexRoots(int dim)
 {
-    assert(dimension >= 0);
+    assert(dim >= 0);
 
     import std.algorithm : map;
     import std.range : iota;
     import factoring : squareFreePart;
 
-    return iota(1, dimension + 1).map!(k => squareFreePart(k * (k + 1) / 2));
+    return iota(1, dim + 1).map!(k => squareFreePart(k * (k + 1) / 2));
 }
 
 unittest
 {
     import factoring : squarePart, squareFreePart;
-    foreach (radicand; simplexRoots!50)
+    import std.typecons : staticIota;
+
+    foreach (radicand; simplexRoots(50))
     {
         assert(radicand > 0);
         assert(squarePart(radicand) == 1);
         assert(squareFreePart(radicand) == radicand);
     }
-}
 
-unittest
-{
     import std.range : array;
-    assert(simplexRoots!10.array == [1, 3, 6, 10, 15, 21, 7, 1, 5, 55]);
+    assert(simplexRoots(10).array == [1, 3, 6, 10, 15, 21, 7, 1, 5, 55]);
 }
 
-auto simplexCoefs(int dim)()
+
+auto simplexCoefs(int dim)
 {
     import std.range : iota;
     import std.algorithm : map;
@@ -69,7 +66,7 @@ auto simplexPoints(int dim)()
     import std.range : iota, array;
     import std.algorithm : map;
 
-    return iota(0, dim + 1).map!(k => RationalExtensionVector!dim(simplexCoefs!dim[k]));
+    return iota(0, dim + 1).map!(k => RationalExtensionVector!dim(simplexCoefs(dim)[k]));
 }
 
 unittest
@@ -136,7 +133,7 @@ struct RationalExtensionVector(int dim)
     {
         import std.range : enumerate;
 
-        foreach (index, root; enumerate(simplexRoots!dim))
+        foreach (index, root; enumerate(simplexRoots(dim)))
         {
             roots[index] = root;
         }
@@ -149,3 +146,5 @@ private:
 
     Rational!int[dim] rationalCoefs;
 }
+
+private:

@@ -8,8 +8,7 @@ void main()
 
     simplex(1, 2, 4).writeln;
 
-    import rational_extension_vector : simplexPoints, simplexRoots,
-        simplexCoefs;
+    import rational_extension_vector : simplexPoints;
     import factoring : primeFactors, squareFreePrimeFactors;
     import std.algorithm : each;
 

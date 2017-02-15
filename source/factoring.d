@@ -32,7 +32,6 @@ unittest
     // Everything works at compile-time too
     static assert(primeFactors(24).array == [2, 2, 2, 3]);
 
-    
     static assert(isForwardRange!(ReturnType!primeFactors));
     static assert(hasFunctionAttributes!(primeFactors, "pure", "nothrow", "@nogc", "@safe"));
 }
@@ -54,7 +53,6 @@ auto squareFreePrimeFactors(int num)
     assert(num > 0);
 
     import std.algorithm : filter, group, map;
-
     return num
         .primeFactors
         .group  // group into tuples of form (prime, power)
@@ -291,7 +289,7 @@ unittest
 }
 
 /++
-Returns the smallest (non-trivial if possible) factor of `num`. If `num == 1` then the function returns `1` otherwise it returns the smallest factor of `num` greater than one. Note that this factor is necessarily prime, since it could not possible have a smaller factor.
+Returns the smallest (non-trivial if possible) factor of `num`. If `num == 1` then the function returns `1` otherwise it returns the smallest factor of `num` greater than one. Note that if `num > 1` this factor is necessarily prime.
 
 Params:
     num = a positive integer
