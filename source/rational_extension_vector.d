@@ -1,12 +1,30 @@
+version(unittest)
+{
+    import std.algorithm : equal, all;
+    import std.traits : hasFunctionAttributes, ReturnType;
+    import std.range : isForwardRange, array;
+}
+
+
+/++
+Returns a forward range that ... TO DO
+
+Params:
+    dim = 
+
+Returns:
+    Forward range of `VectorRE`s giving the  ... 
++/
 auto simplexPoints(int dim)()
 {
     import std.range : iota, array;
     import std.algorithm : map;
 
     return iota(0, dim + 1).map!(
-        k => RationalExtensionVector!dim(simplexCoefs(dim)[k]));
+        k => VectorRE!dim(simplexCoefs(dim)[k]));
 }
 
+///
 unittest
 {
     // We check that the vertices of the 3-simplex are as they should be:
@@ -16,23 +34,25 @@ unittest
     // x3 = (1/2, (1/6)√3, (1/3)√6)
 
     import std.rational : rational;
-    alias Point = RationalExtensionVector!3;
+    alias vec = vectorRE;
     alias r = rational;
 
-    auto x0 = Point([r(0,1), r(0,1), r(0,1)]);
-    auto x1 = Point([r(1,1), r(0,1), r(0,1)]);
-    auto x2 = Point([r(1,2), r(1,2), r(0,1)]);
-    auto x3 = Point([r(1,2), r(1,6), r(1,3)]);
+    auto v0 = vec(  r(0),   r(0),   r(0));
+    auto v1 = vec(  r(1),   r(0),   r(0));
+    auto v2 = vec(r(1,2), r(1,2),   r(0));
+    auto v3 = vec(r(1,2), r(1,6), r(1,3));
 
-    import std.algorithm : equal;
-    assert(simplexPoints!3.equal([x0,x1,x2,x3]));
 
-    import std.traits : hasFunctionAttributes;
+    assert(simplexPoints!3.equal([v0,v1,v2,v3]));
+    assert(simplexPoints!3.all!(v => v.roots == [1,3,6]));
+
     static assert(hasFunctionAttributes!(simplexPoints!3,
         "pure", "nothrow", "@nogc", "@safe"));
+
+    static assert(isForwardRange!(ReturnType!(simplexPoints!3)));
 }
 
-struct RationalExtensionVector(int dim)
+struct VectorRE(int dim)
 {
     string toString()
     {
@@ -47,11 +67,11 @@ struct RationalExtensionVector(int dim)
             {
                 result ~= "0";
             }
-            else if ((roots[i] == 1) && (coef == 1))
+            else if ((roots_[i] == 1) && (coef == 1))
             {
                 result ~= "1";
             }
-            else if (roots[i] == 1)
+            else if (roots_[i] == 1)
             {
                 result ~= to!string(coef);
             }
@@ -61,10 +81,10 @@ struct RationalExtensionVector(int dim)
             }
 
             // Append root portion if needed
-            if ((roots[i] > 1) && (coef != 1) && (coef != 0))
+            if ((roots_[i] > 1) && (coef != 1) && (coef != 0))
             {
                 result ~= x"E2 88 9A"; // square root symbol UTF-8 (hex)
-                result ~= to!string(roots[i]);
+                result ~= to!string(roots_[i]);
             }
 
             // Append comma and space if needed
@@ -77,7 +97,7 @@ struct RationalExtensionVector(int dim)
         return result;
     }
 
-    // TO DO: Add some constraints to this template...
+    // TO DO: Add some constraints to this template?
     this(T)(T coefs)
     {
         import std.range : walkLength;
@@ -93,16 +113,32 @@ struct RationalExtensionVector(int dim)
 
         foreach (index, root; enumerate(simplexRoots(dim)))
         {
-            roots[index] = root;
+            roots_[index] = root;
         }
     }
 
+    @property auto roots() const
+    {
+        return roots_;
+    }
+
 private:
-    static immutable int[dim] roots;
+    static immutable int[dim] roots_;
 
     import std.rational : Rational;
-
     Rational!int[dim] rationalCoefs;
+}
+
+import std.rational : Rational;
+auto vectorRE(T, size_t dim)(Rational!T[dim] coefficients...)
+{
+    alias r = Rational!T;
+    return VectorRE!dim(coefficients[]);
+}
+
+unittest
+{
+
 }
 
 private:
@@ -120,8 +156,9 @@ auto simplexRoots(int dim)
 
 unittest
 {
-    import factoring : squarePart, squareFreePart;
+    assert(simplexRoots(10).array == [1, 3, 6, 10, 15, 21, 7, 1, 5, 55]);
 
+    import factoring : squarePart, squareFreePart;
     foreach (radicand; simplexRoots(50))
     {
         assert(radicand > 0);
@@ -129,13 +166,8 @@ unittest
         assert(squareFreePart(radicand) == radicand);
     }
 
-    import std.range : array;
-    assert(simplexRoots(10).array == [1, 3, 6, 10, 15, 21, 7, 1, 5, 55]);
-
-    import std.traits : hasFunctionAttributes;
     static assert(hasFunctionAttributes!(simplexRoots,
-        "pure", "nothrow", "@nogc", "@safe"));
-   
+        "pure", "nothrow", "@nogc", "@safe"));   
 }
 
 auto simplexCoefs(int dim)
@@ -166,9 +198,4 @@ auto simplexCoefs(int dim)
     return iota(0, dim + 1).map!(pointIndex => iota(1, dim + 1)
             .map!(basisIndex => computeCoef(pointIndex, basisIndex)));
 
-}
-
-unittest
-{
-    // TO DO...
 }
