@@ -1,10 +1,9 @@
 version(unittest)
 {
-    import std.algorithm : equal, all;
+    import std.algorithm : all, equal;
+    import std.range : array, isForwardRange;
     import std.traits : hasFunctionAttributes, ReturnType;
-    import std.range : isForwardRange, array;
 }
-
 
 /++
 Returns a forward range that ... TO DO
@@ -13,28 +12,29 @@ Params:
     dim = 
 
 Returns:
-    Forward range of `VectorRE`s giving the  ... 
+    Forward range of `REVector`s giving the  ... 
 +/
 auto simplexPoints(int dim)()
 {
-    import std.range : iota, array;
     import std.algorithm : map;
+    import std.range : array, iota;
 
-    return iota(0, dim + 1).map!(
-        k => VectorRE!dim(simplexCoefs(dim)[k]));
+    alias Vec = REVector!dim;
+    return iota(0, dim + 1).map!(k => Vec(simplexCoefs(dim)[k]));
 }
 
 ///
-unittest
+pure nothrow @safe unittest
 {
-    // We check that the vertices of the 3-simplex are as they should be:
-    // x0 = (0,         0,       0)
-    // x1 = (1,         0,       0)
-    // x2 = (1/2, (1/2)√3,       0)
-    // x3 = (1/2, (1/6)√3, (1/3)√6)
+    /* We check that the vertices of the 3-simplex are as they should be:
+    v0 = (0,         0,       0)
+    v1 = (1,         0,       0)
+    v2 = (1/2, (1/2)√3,       0)
+    v3 = (1/2, (1/6)√3, (1/3)√6)
+    */
 
     import std.rational : rational;
-    alias vec = vectorRE;
+    alias vec = reVector;
     alias r = rational;
 
     auto v0 = vec(  r(0),   r(0),   r(0));
@@ -52,8 +52,9 @@ unittest
     static assert(isForwardRange!(ReturnType!(simplexPoints!3)));
 }
 
-struct VectorRE(int dim)
+struct REVector(int dim)
 {
+    ///
     string toString()
     {
         import std.conv : to;
@@ -130,16 +131,17 @@ private:
 }
 
 import std.rational : Rational;
-auto vectorRE(T, size_t dim)(Rational!T[dim] coefficients...)
+auto reVector(T, size_t dim)(Rational!T[dim] coefficients...)
 {
     alias r = Rational!T;
-    return VectorRE!dim(coefficients[]);
+    return REVector!dim(coefficients[]);
 }
 
-unittest
+auto dotProduct(size_t dim)(REVector!dim v0, REVector!dim v1)
 {
 
-}
+} 
+
 
 private:
 
