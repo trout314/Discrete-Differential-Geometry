@@ -4,16 +4,24 @@ import simplex : Simplex, simplex;
 /// A simplicial complex type ... yada yada
 struct SimplicialComplex
 {
-    void insertFacet(S)(S s)
+    // Inserts a facet into the simplicial complex. T
+    void insertFacet(int[] vertices) pure nothrow @safe @nogc
+    in
     {
-
+        import std.algorithm : isSorted, findAdjacent;
+        assert(vertices.isSorted, "vertices must be sorted");
+        assert(vertices.findAdjacent.length == 0, "repeated vertices not allowed");
+    }
+    body
+    {
     }
     private:
     
 }
 
-unittest
+pure nothrow @safe unittest
 {
-    import simplex : Simplex, simplex;
-//    auto s = SimplicialComplex!(Simplex!2)([simplex(1,2,3), simplex(2,3,4)]);
+    SimplicialComplex sc;
+    sc.insertFacet([1,3,5]);
+    sc.insertFacet([1,3,3]);
 }
