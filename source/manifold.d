@@ -1,35 +1,12 @@
-/*
- * manifold.d
- * 
- * Copyright 2015 Aaron Trout <atrout@atrout-Lemur-Ultra>
- * 
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- * 
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
- * MA 02110-1301, USA.
- * 
- * 
- */
-
 import std.algorithm : all, canFind, countUntil, equal, filter, findAdjacent,
     remove, sort;
 import std.array : array;
-import std.conv : to, parse;
+import std.conv : parse, to;
 import std.datetime : Clock, DateTime;
 import std.exception : assertThrown;
 import std.getopt : getopt;
 import std.range : back, front, iota, popBack;
-import std.stdio : lines, File, writeln;
+import std.stdio : File, lines, writeln;
 import std.string : strip;
 
 /******************************************************************************/
@@ -52,6 +29,7 @@ alias Simplex = size_t[];
 */
 enum dimManifold = 3;
 
+///
 enum maxDimension = 16; // Can go higher, but unit tests will take longer
 enum minDimension = 2; // Easier to not support (boring!) 1-manifolds
 static assert(dimManifold <= maxDimension);

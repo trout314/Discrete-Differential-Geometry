@@ -12,7 +12,7 @@ void main()
     import factoring : primeFactors, squareFreePrimeFactors;
     import std.algorithm : each;
 
-    simplexPoints!3.each!writeln;
+    simplexPoints!10.each!writeln;
 
     enum x = primeFactors(360);
     x.writeln;

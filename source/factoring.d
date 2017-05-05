@@ -1,8 +1,8 @@
 version (unittest)
 {
     import std.algorithm : equal, reduce, sort;
-    import std.range : array, isForwardRange, chain;
-    import std.traits : ReturnType, hasFunctionAttributes;
+    import std.range : array, chain, isForwardRange;
+    import std.traits : hasFunctionAttributes, ReturnType;
     import std.typecons : staticIota, tuple;
 }
 
@@ -22,7 +22,7 @@ auto primeFactors(int num)
 }
 
 ///
-unittest
+pure nothrow @safe unittest
 {
     assert(primeFactors(1).array == []);
     assert(primeFactors(2 * 3 * 5).array == [2, 3, 5]);
@@ -61,7 +61,7 @@ auto squareFreePrimeFactors(int num)
 }
 
 ///
-unittest
+pure nothrow @safe unittest
 {
     assert(squareFreePrimeFactors(1).array == []);
     assert(squareFreePrimeFactors(11 * 11).array == []);
@@ -94,7 +94,7 @@ auto squarePrimeFactors(int num)
 }
 
 ///
-unittest
+pure nothrow @safe unittest
 {
     assert(squarePrimeFactors(1).array == []);
     assert(squarePrimeFactors(11 * 11).array == [11, 11]);
@@ -126,7 +126,7 @@ auto sqrtSquarePrimeFactors(int num)
 }
 
 ///
-unittest
+pure nothrow @safe unittest
 {
     assert(sqrtSquarePrimeFactors(1).array == []);
     assert(sqrtSquarePrimeFactors(11 * 11).array == [11]);
@@ -152,7 +152,7 @@ See_Also:
 +/
 auto squareFreePart(int num)
 {
-    assert(num > 0);
+assert(num > 0);
 
     import std.algorithm : reduce;
 
@@ -160,7 +160,7 @@ auto squareFreePart(int num)
 }
 
 ///
-unittest
+pure nothrow @nogc @safe unittest
 {
     assert(squareFreePart(1) == 1);
     assert(squareFreePart(11 * 11) == 1);
@@ -192,7 +192,7 @@ auto squarePart(int num)
 }
 
 ///
-unittest
+pure nothrow @nogc @safe unittest
 {
     assert(squarePart(1) == 1);
     assert(squarePart(11 * 11) == 11 * 11);
@@ -224,7 +224,7 @@ auto sqrtSquarePart(int num)
 }
 
 ///
-unittest
+pure nothrow @nogc @safe unittest
 {
     assert(sqrtSquarePart(1) == 1);
     assert(sqrtSquarePart(11 * 11) == 11);
@@ -235,7 +235,7 @@ unittest
 }
 
 // Some additional tests
-unittest
+pure nothrow @safe unittest
 {
     static assert(primeFactors(1).array == []);
     static assert(squareFreePrimeFactors(1).array == []);
@@ -324,7 +324,7 @@ auto lowestFactor(int num)
 }
 
 ///
-unittest
+pure nothrow @nogc @safe unittest
 {
     assert(lowestFactor(1) == 1);
     assert(lowestFactor(2) == 2);

@@ -273,8 +273,8 @@ unittest
     static assert(is(s2.VertexType == long));
 
     //    immutable i = 3, j = 5;
-    //    auto s3 = simplex(i, j);
-    //    static assert(is(typeof(s3) == Simplex!(1, immutable int)));
+    //    auto s(1,2,4,7) = simplex(i, j);
+    //    static assert(is(typeof(s(1,2,4,7)) == Simplex!(1, immutable int)));
 
     auto s4 = simplex("alice", "bob", "carol");
     static assert(is(s4.VertexType == string));
@@ -282,7 +282,7 @@ unittest
     assertThrown!Error(simplex("bob", "alice", "carol"));
     assertThrown!Error(simplex(0, 1, 2));
     assertThrown!Error(simplex(1, 3, 3, 5));
-    static assert(!__traits(compiles, s4.hasFace(s3)));
+    static assert(!__traits(compiles, s4.hasFace(s(1,2,4,7))));
 }
 
 /******************************************************************************
@@ -336,7 +336,7 @@ bool hasFace(S, F)(const ref S simplex, const ref F possibleFace)
 /******************************************************************************
 * Returns ...
 */
-auto oppositeFace(S, F)(const ref S simplex, const ref F face)
+auto oppositeFace(S, F)(S simplex, F face)
         if (isInstanceOf!(Simplex, S) && isInstanceOf!(Simplex, F))
 {
     static assert(F.dimension < S.dimension);
@@ -368,24 +368,17 @@ auto oppositeVertices(S, F)(const ref S simplex, const ref F face)
 ///
 unittest
 {
+    alias s = simplex;
 
-    auto s0 = simplex(2);
-    auto s1 = simplex(1);
-    auto s2 = simplex(1, 2);
-    auto s3 = simplex(1, 2, 4, 7);
-    auto s4 = simplex(1, 4, 7);
-    auto s5 = simplex(4, 7);
-    auto s6 = simplex(1, 2, 3);
+    assert(s(1,2).oppositeFace(s(2)) == s(1));
+    assert(s(1,2).oppositeFace(s(1)) == s(2));
+    assert(s(1,2,4,7).oppositeFace(s(2)) == s(1,4,7));
+    assert(s(1,2,4,7).oppositeFace(s(1,4,7)) == s(2));
+    assert(s(1,2,4,7).oppositeFace(s(4,7)) == s(1,2));
+    assert(s(1,2,4,7).oppositeFace(s(1,2)) == s(4,7));
 
-    assert(s2.oppositeFace(s0) == s1);
-    assert(s2.oppositeFace(s1) == s0);
-    assert(s3.oppositeFace(s0) == s4);
-    assert(s3.oppositeFace(s4) == s0);
-    assert(s3.oppositeFace(s5) == s2);
-    assert(s3.oppositeFace(s2) == s5);
-
-    static assert(!__traits(compiles, s0.oppositeFace(s1)));
-    assertThrown!Error(s3.oppositeFace(s6));
+    static assert(!__traits(compiles, s(2).oppositeFace(s(1))));
+    assertThrown!Error(s(1,2,4,7).oppositeFace(s(1,2,3)));
 }
 
 /******************************************************************************
