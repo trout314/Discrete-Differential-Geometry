@@ -21,30 +21,36 @@ struct SimplicialComplex
     {
         import std.range.primitives : walkLength;
         immutable numVerts = vertices.walkLength;
-        auto ptr = numVerts in facets;
+        auto ptr = numVerts in facets_;
         if (ptr is null)
         {
-            facets[numVerts] ~= vertices;
+            facets_[numVerts] ~= vertices;
         }
         else
         {
             import std.algorithm : canFind;
-            assert(!facets[numVerts].canFind(vertices), "facet must not already exist");
+            assert(!facets_[numVerts].canFind(vertices), "facet must not already exist");
             *ptr ~= vertices;
         }
     }
 
-    // Returns the number of facets
-    size_t numFacets()
+    auto facets()
     {
-        import std.algorithm : map, sum;
-        return facets.byValue.map!(facetList => facetList.length).sum;
+        import std.algorithm : joiner;
+        return facets_.byValue.joiner;
+    }
+
+    // Returns the number of facets
+    size_t numFacets() pure nothrow @nogc
+    {
+        import std.range : walkLength;
+        return facets.walkLength;
     }
 
 
     private:
     // Facets indexed by number of vertices
-    int[][][size_t] facets;
+    int[][][size_t] facets_;
     
 }
 
@@ -59,9 +65,7 @@ unittest
 
     // can get the number of facets
     assert(sc.numFacets == 3);
-
-    sc.numFacets.writeln;
-
+    writeln(sc.facets);
     // vertices in an inserted facet must be sorted
     assertThrown!Error(sc.insertFacet([1,5,2,3]));
 
@@ -71,5 +75,5 @@ unittest
     // cannot insert and already existing facet again
     assertThrown!Error(sc.insertFacet([7,9]));
 
-    writeln(sc.facets);
+    writeln(sc.facets_);
 }
