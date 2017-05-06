@@ -32,21 +32,40 @@ struct SimplicialComplex
             assert(!facets_[numVerts].canFind(vertices), "facet must not already exist");
             *ptr ~= vertices;
         }
+
+        import std.algorithm : sort;
+        sort(facets_[numVerts]);
+
+        // TO DO: Why doesn't sort(*ptr) work?
     }
 
+    // Returns the facets of the simplicial complex. These are simplicies that are not the face of another simplex.
     auto facets()
     {
-        import std.algorithm : joiner;
-        return facets_.byValue.joiner;
+        import std.range : array;
+        import std.algorithm : joiner, sort, map;
+
+        auto sizes = sort(facets_.keys);        
+        return sizes.map!(s => facets_[s]).joiner.array;
     }
 
     // Returns the number of facets
-    size_t numFacets() pure nothrow @nogc
+    size_t numFacets()
     {
         import std.range : walkLength;
         return facets.walkLength;
     }
 
+    // Returns the link of the given simplex as a list of facets
+    // in same order as they appear in facets()
+    auto link(int[] simplex)
+    {
+    }
+
+    // Returns the closure of the star of the given simplex. 
+    auto star(int[] simplex)
+    {
+    }
 
     private:
     // Facets indexed by number of vertices
@@ -59,9 +78,11 @@ unittest
     SimplicialComplex sc;
 
     // insert a 2-simplex [1,5,7]
-    sc.insertFacet([1,5,7]);
     sc.insertFacet([1,5,8]);
+    sc.insertFacet([1,5,7]);
     sc.insertFacet([7,9]);
+
+    assert(sc.facets == [[7, 9], [1,5,7], [1,5,8]]);
 
     // can get the number of facets
     assert(sc.numFacets == 3);
