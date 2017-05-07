@@ -81,7 +81,6 @@ struct SimplicialComplex
     private:
     // Lists of facets, indexed by number of vertices in the facet
     Simplex[][size_t] facets_;
-    
 }
 
 unittest
@@ -118,7 +117,8 @@ unittest
     // vertices may not be repeated
     assertThrown!Error(sc.insertFacet([1,3,3]));
 
-    // cannot insert a simplex that is already a face of an existing facet
+    // it is an error to insert a simplex that is
+    // already the face of an existing facet
     assertThrown!Error(sc.insertFacet([7,9]));
     assertThrown!Error(sc.insertFacet([7]));
 }
