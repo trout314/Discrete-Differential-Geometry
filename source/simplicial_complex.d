@@ -31,10 +31,10 @@ struct SimplicialComplex
     {
         import std.range : walkLength;
         immutable numVerts = simplex.walkLength; 
-        facets_[numVerts] ~= simplex;
+        facetLists[numVerts] ~= simplex;
 
         import std.algorithm : sort;
-        sort(facets_[numVerts]);
+        sort(facetLists[numVerts]);
     }
 
     // Returns the facets of the simplicial complex.
@@ -47,8 +47,8 @@ struct SimplicialComplex
         import std.range : array;
         import std.algorithm : joiner, sort, map;
 
-        auto sizes = sort(facets_.keys);        
-        return sizes.map!(s => facets_[s]).joiner.array;
+        auto sizes = sort(facetLists.keys);        
+        return sizes.map!(s => facetLists[s]).joiner.array;
     }
 
     // Returns the number of facets
@@ -80,7 +80,7 @@ struct SimplicialComplex
 
     private:
     // Lists of facets, indexed by number of vertices in the facet
-    Simplex[][size_t] facets_;
+    Simplex[][size_t] facetLists;
 }
 
 unittest

@@ -1,19 +1,3 @@
-/*******************************************************************************
-* simplex.d
-*
-* Copyright 2015 Aaron Trout <atrout@atrout-Lemur-Ultra>
-*
-* This program is free software; you can redistribute it and/or modify
-* it under the terms of the GNU General Public License as published by
-* the Free Software Foundation; either version 2 of the License, or
-* (at your option) any later version.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-*/
-
 import std.conv : to;
 import std.container : make;
 import std.traits : CommonType, isArray, isInstanceOf, isImplicitlyConvertible;
@@ -70,24 +54,6 @@ struct Simplex(size_t dim, Vertex = int)
                 "tried to create a simplex " ~this.toString ~ " using a vertex with value " ~ to!string(
                     Vertex.init) ~ " which is reserved for un-initialized vertices");
     }
-
-    //~ this(Vertex[] vertices_)
-    //~ {
-    //~ assert(vertices_.length == dim + 1, "tried to create a simplex of "
-    //~ "dimension "  ~ dim ~  " with too few vertices " ~ 
-    //~ vertices_.to!string);
-    //~ 
-    //~ copy(vertices_, verts_[]);
-    //~ 
-    //~ assert(vertices.isSorted, "tried to create a simplex " ~ this.toString
-    //~ ~ " with unsorted vertices");
-    //~ assert(vertices.findAdjacent.length == 0, "tried to create a simplex "
-    //~ ~ this.toString ~ " containing a repeated vertex");
-    //~ assert(!vertices.canFind(VertexType.init), "tried to create a simplex "
-    //~ ~ this.toString ~ " using a vertex with value " 
-    //~ ~ to!string(Vertex.init) ~ " which is reserved for un-initialized "
-    //~ "vertices");
-    //~ }
 
     /***************************************************************************
    * a simplex can be copy constructed from any other simplex type S if S has 
