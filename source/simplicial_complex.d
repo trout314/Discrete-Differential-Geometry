@@ -2,6 +2,7 @@ version(unittest)
 {
     import std.exception : assertThrown;
     import std.stdio : writeln;
+    import std.range : array;
 }
 
 bool hasFace(Simplex s1, Simplex s2)
@@ -16,39 +17,31 @@ private alias Simplex = int[];
 struct SimplicialComplex
 {
     // Inserts a facet into the simplicial complex.
-    void insertFacet(Simplex facet) pure nothrow @safe
+    void insertFacet(Simplex simplex)
     in
     {
-        import std.algorithm : isSorted, findAdjacent;
-        assert(facet.isSorted, "vertices must be sorted");
-        assert(facet.findAdjacent.length == 0,
-            "repeated vertices not allowed");
+        import std.algorithm : isSorted, findAdjacent, any;
+        assert(simplex.isSorted, "vertices in a simplex must be sorted");
+        assert(simplex.findAdjacent.length == 0,
+            "repeated vertices in a simplex not allowed");
+        assert(!facets.any!(f => f.hasFace(simplex)),
+            "inserted facet must not be a face of an existing facet");
     }
     body
     {
-        import std.range.primitives : walkLength;
-        immutable numVerts = facet.walkLength;
-        auto ptr = numVerts in facets_;
-        if (ptr is null)
-        {
-            facets_[numVerts] ~= facet;
-        }
-        else
-        {
-            import std.algorithm : canFind;
-            assert(!facets_[numVerts].canFind(facet),
-                "facet must not already exist");
-            *ptr ~= facet;
-        }
+        import std.range : walkLength;
+        immutable numVerts = simplex.walkLength; 
+        facets_[numVerts] ~= simplex;
 
         import std.algorithm : sort;
         sort(facets_[numVerts]);
-
-        // TO DO: Why doesn't sort(*ptr) work?
     }
 
     // Returns the facets of the simplicial complex.
     // These are simplicies that are not the face of another simplex.
+    // They are returned in increasing order of dimension and in
+    // lexicographic order within dimensions.
+    // e.g. [1],[2,3],[2,4],[5,6,7]
     auto facets()
     {
         import std.range : array;
@@ -76,13 +69,13 @@ struct SimplicialComplex
     auto star(Simplex simplex)
     {
         import std.algorithm : filter;
-        return facets.filter!(facet => facet.hasFace(simplex));
+        return facets.filter!(f => f.hasFace(simplex));
     }
 
     bool contains(Simplex simplex)
     {
         import std.algorithm : any;
-        return facets.any!(facet => facet.hasFace(simplex));
+        return facets.any!(f => f.hasFace(simplex));
     }
 
     private:
@@ -95,31 +88,37 @@ unittest
 {
     SimplicialComplex sc;
 
-    // insert a 2-simplex [1,5,7]
+    // insert some facets
     sc.insertFacet([1,5,8]);
     sc.insertFacet([1,5,7]);
     sc.insertFacet([7,9]);
 
+    // get list of facets back, in order of increasing dimension
+    // and dictionary order within a dimension 
     assert(sc.facets == [[7, 9], [1,5,7], [1,5,8]]);
 
-    // can check for the presence of simplices
+    // get the number of facets
+    assert(sc.numFacets == 3);
+
+    // check for the presence of simplices
     assert(sc.contains([7,9]));
     assert(!sc.contains([1,5,6]));
     assert(sc.contains([1,5]));
     assert(sc.contains([7]));
     assert(!sc.contains([8, 9]));
 
-    // can get the number of facets
-    assert(sc.numFacets == 3);
-    writeln(sc.facets);
+    // get the star of a simplex as list of facets
+    assert(sc.star([9]).array == [[7,9]]);
+    assert(sc.star([7]).array == [[7, 9], [1,5,7]]);
+    assert(sc.star([1,5]).array == [[1,5,7], [1,5,8]]);
+    
     // vertices in an inserted facet must be sorted
     assertThrown!Error(sc.insertFacet([1,5,2,3]));
 
     // vertices may not be repeated
     assertThrown!Error(sc.insertFacet([1,3,3]));
 
-    // cannot insert and already existing facet again
+    // cannot insert a simplex that is already a face of an existing facet
     assertThrown!Error(sc.insertFacet([7,9]));
-
-    writeln(sc.facets_);
+    assertThrown!Error(sc.insertFacet([7]));
 }
