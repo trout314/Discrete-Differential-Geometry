@@ -101,31 +101,44 @@ unittest
     SimplicialComplex sc;
 
     // insert some facets
-    sc.insertFacet([1,5,8]);
-    sc.insertFacet([1,5,7]);
-    sc.insertFacet([7,9]);
+    sc.insertFacet([1,2,3]);
+    sc.insertFacet([2,3,4]);
+    sc.insertFacet([4,5]);
+    sc.insertFacet([5,6]);
 
     // get list of facets back, in order of increasing dimension
     // and dictionary order within a dimension 
-    assert(sc.facets == [[7, 9], [1,5,7], [1,5,8]]);
+    assert(sc.facets == [[4,5], [5, 6], [1,2,3], [2,3,4]]);
 
     // get the number of facets
-    assert(sc.numFacets == 3);
+    assert(sc.numFacets == 4);
 
     // check for the presence of simplices
-    assert(sc.contains([7,9]));
-    assert(!sc.contains([1,5,6]));
-    assert(sc.contains([1,5]));
-    assert(sc.contains([7]));
-    assert(!sc.contains([8, 9]));
+    assert(sc.contains([4,5]));
+    assert(sc.contains([2,3,4]));
+    assert(sc.contains([6]));
+    assert(!sc.contains([1,2,5]));
+    assert(!sc.contains([4,6]));
 
     // get the star of a simplex as list of facets
-    assert(sc.star([9]) == [[7,9]]);
-    assert(sc.star([7]) == [[7, 9], [1,5,7]]);
-    assert(sc.star([1,5]) == [[1,5,7], [1,5,8]]);
+    assert(sc.star([5]) == [[4,5], [5,6]]);
+    assert(sc.star([4]) == [[4,5], [2,3,4]]);
+    assert(sc.star([2,3]) == [[1,2,3], [2,3,4]]);
 
     // get link of a simplex as list of facets
-    assert(sc.link([7]) == [[9], [1,5]]);
+    assert(sc.link([4]) == [[5], [2,3]]);
+
+    // star and link of an empty simplex give the entire complex
+    assert(sc.star([]) == sc.facets);
+    assert(sc.link([]) == sc.facets);
+
+    // the empty simplex is considered to be included in any 
+    // simplicial complex
+    assert(sc.contains([]));
+
+    // TO DO: Think about whether or not operations above using
+    // the empty simplex should be errors instead
+
 
     // --------------------------------------------------------------
     // Restrictions
@@ -139,6 +152,10 @@ unittest
 
     // it is an error to insert a simplex that is
     // already the face of an existing facet
-    assertThrown!Error(sc.insertFacet([7,9]));
-    assertThrown!Error(sc.insertFacet([7]));
+    assertThrown!Error(sc.insertFacet([4,5]));
+    assertThrown!Error(sc.insertFacet([2]));
+
+    // since the empty facet is contained in any complex
+    // it is an error to insert it too
+    assertThrown!Error(sc.insertFacet([]));
 }
