@@ -3,12 +3,20 @@ version(unittest)
     import std.exception : assertThrown;
     import std.stdio : writeln;
     import std.range : array;
+    import std.algorithm : map, each;
+    import std.conv : to;
 }
 
 bool hasFace(Simplex s1, Simplex s2)
 {
     import std.algorithm : all, canFind;
     return s2.all!(vertex => s1.canFind(vertex));
+}
+
+auto oppositeFace(Simplex simplex, Simplex face)
+{
+    import std.algorithm : filter, canFind;
+    return simplex.filter!(vertex => !face.canFind(vertex));
 }
 
 private alias Simplex = int[];
@@ -62,6 +70,8 @@ struct SimplicialComplex
     // in same order as they appear in facets()
     auto link(Simplex simplex)
     {
+        import std.algorithm : map;
+        return star(simplex).map!(facet => facet.oppositeFace(simplex).array).array;
     }
 
     // Returns the star of the given simplex as a list of facets
@@ -69,9 +79,10 @@ struct SimplicialComplex
     auto star(Simplex simplex)
     {
         import std.algorithm : filter;
-        return facets.filter!(f => f.hasFace(simplex));
+        return facets.filter!(f => f.hasFace(simplex)).array;
     }
 
+    // Returns true if simplex is in this simplicial complex and false otherwise
     bool contains(Simplex simplex)
     {
         import std.algorithm : any;
@@ -107,10 +118,17 @@ unittest
     assert(!sc.contains([8, 9]));
 
     // get the star of a simplex as list of facets
-    assert(sc.star([9]).array == [[7,9]]);
-    assert(sc.star([7]).array == [[7, 9], [1,5,7]]);
-    assert(sc.star([1,5]).array == [[1,5,7], [1,5,8]]);
-    
+    assert(sc.star([9]) == [[7,9]]);
+    assert(sc.star([7]) == [[7, 9], [1,5,7]]);
+    assert(sc.star([1,5]) == [[1,5,7], [1,5,8]]);
+
+    // get link of a simplex as list of facets
+    assert(sc.link([7]) == [[9], [1,5]]);
+
+    // --------------------------------------------------------------
+    // Restrictions
+    // --------------------------------------------------------------
+
     // vertices in an inserted facet must be sorted
     assertThrown!Error(sc.insertFacet([1,5,2,3]));
 
