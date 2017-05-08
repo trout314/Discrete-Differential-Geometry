@@ -2,22 +2,8 @@ version(unittest)
 {
     import std.exception : assertThrown;
     import std.stdio : writeln;
-    import std.range : array;
-    import std.algorithm : map, each;
-    import std.conv : to;
 }
 
-bool hasFace(Simplex s1, Simplex s2)
-{
-    import std.algorithm : all, canFind;
-    return s2.all!(vertex => s1.canFind(vertex));
-}
-
-auto oppositeFace(Simplex simplex, Simplex face)
-{
-    import std.algorithm : filter, canFind;
-    return simplex.filter!(vertex => !face.canFind(vertex));
-}
 
 private alias Simplex = int[];
 
@@ -29,11 +15,14 @@ struct SimplicialComplex
     in
     {
         import std.algorithm : isSorted, findAdjacent, any;
+        import std.range : walkLength;
         assert(simplex.isSorted, "vertices in a simplex must be sorted");
         assert(simplex.findAdjacent.length == 0,
             "repeated vertices in a simplex not allowed");
         assert(!facets.any!(f => f.hasFace(simplex)),
-            "inserted facet must not be a face of an existing facet");
+            "inserted simplex must not be a face of an existing facet");
+        assert(simplex.walkLength != 0,
+            "inserted simplex must have at least one vertex");
     }
     body
     {
@@ -72,7 +61,7 @@ struct SimplicialComplex
     {
         import std.range : array;
         import std.algorithm : map;
-        return star(simplex).map!(facet => facet.oppositeFace(simplex).array).array;
+        return star(simplex).map!(facet => facet.oppositeFace(simplex)).array;
     }
 
     // Returns the star of the given simplex as a list of facets
@@ -94,6 +83,19 @@ struct SimplicialComplex
     private:
     // Lists of facets, indexed by number of vertices in the facet
     Simplex[][size_t] facetLists;
+}
+
+bool hasFace(Simplex s1, Simplex s2)
+{
+    import std.algorithm : all, canFind;
+    return s2.all!(vertex => s1.canFind(vertex));
+}
+
+auto oppositeFace(Simplex simplex, Simplex face)
+{
+    import std.algorithm : filter, canFind;
+    import std.range : array;
+    return simplex.filter!(vertex => !face.canFind(vertex)).array;
 }
 
 unittest
@@ -133,12 +135,26 @@ unittest
     assert(sc.link([]) == sc.facets);
 
     // the empty simplex is considered to be included in any 
-    // simplicial complex
+    // non-empty simplicial complex
     assert(sc.contains([]));
 
-    // TO DO: Think about whether or not operations above using
-    // the empty simplex should be errors instead
+    // A newly constructed simplicial complex is empty
+    SimplicialComplex scInit;
+    assert(scInit.numFacets == 0);
+    assert(scInit.facets == []);
 
+    // star and link of an empty simplex give the entire (empty)
+    // complex, just as before.
+    assert(scInit.star([]) == []);
+    assert(scInit.link([]) == []);
+
+
+    // Note that an empty simplicial copmlex has no simplices
+    // so none of them have the empty simplex as a face
+    assert(!scInit.contains([]));
+
+    // TO DO: Think about whether or not some of the operations above
+    // that use the empty simplex should be errors instead?
 
     // --------------------------------------------------------------
     // Restrictions
@@ -155,7 +171,11 @@ unittest
     assertThrown!Error(sc.insertFacet([4,5]));
     assertThrown!Error(sc.insertFacet([2]));
 
-    // since the empty facet is contained in any complex
+    // since the empty facet is contained in any non-empty complex
     // it is an error to insert it too
     assertThrown!Error(sc.insertFacet([]));
+
+    // For consistency and sanity we forbid inserting an empty
+    // simplex into an empty complex as well
+    assertThrown!Error(SimplicialComplex.init.insertFacet([]));
 }
