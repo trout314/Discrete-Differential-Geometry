@@ -70,6 +70,7 @@ struct SimplicialComplex
     // in same order as they appear in facets()
     auto link(Simplex simplex)
     {
+        import std.range : array;
         import std.algorithm : map;
         return star(simplex).map!(facet => facet.oppositeFace(simplex).array).array;
     }
@@ -78,6 +79,7 @@ struct SimplicialComplex
     // in same order as they appear in facets() 
     auto star(Simplex simplex)
     {
+        import std.range : array;
         import std.algorithm : filter;
         return facets.filter!(f => f.hasFace(simplex)).array;
     }
