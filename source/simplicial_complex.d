@@ -196,23 +196,18 @@ unittest
     // Restrictions
     // --------------------------------------------------------------
 
-    // vertices in an inserted facet must be sorted
-    assertThrown!Error(sc.insertFacet([1,5,2,3].to!S));
+    // vertices used to construct a simplex must be sorted
+    assertThrown!Error(Simplex([1,5,2,3]));
 
-    // vertices may not be repeated
-    assertThrown!Error(sc.insertFacet([1,3,3].to!S));
+    // a simplex cannot have repeated vertices
+    assertThrown!Error(Simplex([1,3,3]));
+
+    // a simplex cannot be empty
+    int[] v;
+    assertThrown!Error(Simplex(v));
 
     // it is an error to insert a simplex that is
     // already the face of an existing facet
     assertThrown!Error(sc.insertFacet([4,5].to!S));
     assertThrown!Error(sc.insertFacet([2].to!S));
-
-    // since the empty facet is contained in any non-empty complex
-    // it is an error to insert it too
-//    auto s = Simplex([]);
-//    assertThrown!Error(sc.insertFacet([].to!S));
-
-    // For consistency and sanity we forbid inserting an empty
-    // simplex into an empty complex as well
-//    assertThrown!Error(SimplicialComplex.init.insertFacet([]));
 }
