@@ -47,10 +47,10 @@ struct Simplex(size_t dim, Vertex = int)
             ~ "vertex type (" ~ Vertex.stringof ~ ")");
 
         assert(vertices_.walkLength == dim + 1,
-                "tried to create a simplex of dimension " ~ dim
-                ~ " with too few vertices " ~ vertices_.to!string);
-
-        copy(vertices_[].map!(to!Vertex), verts_[]);
+            "tried to create a simplex of dimension " ~ dim
+            ~ " with too few vertices " ~ vertices_.to!string);
+        
+        verts_[] = vertices_[];
 
         assert(vertices.isSorted,
                 "tried to create a simplex " ~ this.toString ~ " with unsorted "
@@ -236,29 +236,30 @@ unittest
 */
 auto simplex(V, size_t numVertices)(V[numVertices] vertices...)
 {
-    return Simplex!(numVertices - 1, V)(vertices);
+    return Simplex!(numVertices - 1, V)(vertices[]);
 }
+
 ///
 unittest
 {
+    auto s1 = simplex(1, 2, 4, 7);
+    static assert(is(s1.VertexType == int));
 
-//    auto s1 = simplex(1, 2, 4, 7);
-//    static assert(is(s1.VertexType == int));
+    auto s2 = simplex(1L, 2L, 3L);
+    static assert(is(s2.VertexType == long));
 
-//    auto s2 = simplex(1L, 2L, 3L);
-//    static assert(is(s2.VertexType == long));
+    immutable i = 3, j = 5;
+    auto s = simplex(i, j);
+    static assert(is(typeof(s) == Simplex!(1, immutable int)));
 
-    //    immutable i = 3, j = 5;
-    //    auto s(1,2,4,7) = simplex(i, j);
-    //    static assert(is(typeof(s(1,2,4,7)) == Simplex!(1, immutable int)));
+   auto s4 = simplex("alice", "bob", "carol");
+   static assert(is(s4.VertexType == string));
 
-//    auto s4 = simplex("alice", "bob", "carol");
-//    static assert(is(s4.VertexType == string));
+    assertThrown!Error(simplex("bob", "alice", "carol"));
+    assertThrown!Error(simplex(0, 1, 2));
+    assertThrown!Error(simplex(1, 3, 3, 5));
 
-    // assertThrown!Error(simplex("bob", "alice", "carol"));
-    // assertThrown!Error(simplex(0, 1, 2));
-    // assertThrown!Error(simplex(1, 3, 3, 5));
-    // static assert(!__traits(compiles, s4.hasFace(s(1,2,4,7))));
+    static assert(!__traits(compiles, s4.hasFace(simplex(1,2,4,7))));
 }
 
 /******************************************************************************
@@ -331,7 +332,7 @@ auto oppositeFace(S, F)(S simplex, F face)
         }
     }
 
-    return Simplex!(coDimension - 1, S.VertexType)(verticesInAnswer);
+    return Simplex!(coDimension - 1, S.VertexType)(verticesInAnswer[]);
 }
 
 /******************************************************************************
@@ -347,15 +348,15 @@ unittest
 {
     alias s = simplex;
 
-    // assert(s(1,2).oppositeFace(s(2)) == s(1));
-    // assert(s(1,2).oppositeFace(s(1)) == s(2));
-    // assert(s(1,2,4,7).oppositeFace(s(2)) == s(1,4,7));
-    // assert(s(1,2,4,7).oppositeFace(s(1,4,7)) == s(2));
-    // assert(s(1,2,4,7).oppositeFace(s(4,7)) == s(1,2));
-    // assert(s(1,2,4,7).oppositeFace(s(1,2)) == s(4,7));
+    assert(s(1,2).oppositeFace(s(2)) == s(1));
+    assert(s(1,2).oppositeFace(s(1)) == s(2));
+    assert(s(1,2,4,7).oppositeFace(s(2)) == s(1,4,7));
+    assert(s(1,2,4,7).oppositeFace(s(1,4,7)) == s(2));
+    assert(s(1,2,4,7).oppositeFace(s(4,7)) == s(1,2));
+    assert(s(1,2,4,7).oppositeFace(s(1,2)) == s(4,7));
 
-    // static assert(!__traits(compiles, s(2).oppositeFace(s(1))));
-    // assertThrown!Error(s(1,2,4,7).oppositeFace(s(1,2,3)));
+    static assert(!__traits(compiles, s(2).oppositeFace(s(1))));
+    assertThrown!Error(s(1,2,4,7).oppositeFace(s(1,2,3)));
 }
 
 /******************************************************************************
@@ -401,54 +402,52 @@ auto faces(S)(const ref S simplex) if (isInstanceOf!(Simplex, S))
 ///
 unittest
 {
+    auto s0 = simplex(9);
+    auto s1 = simplex(5, 7);
+    auto s2 = simplex(1, 2, 3);
 
-    // auto s0 = simplex(9);
-    // auto s1 = simplex(5, 7);
-    // auto s2 = simplex(1, 2, 3);
-
-    // assert(s0.faces == [[9]]);
-    // assert(s1.faces == [[5], [7], [5, 7]]);
-    // assert(s2.faces == [[1], [2], [3], [1, 2], [1, 3], [2, 3], [1, 2, 3]]);
+    assert(s0.faces == [[9]]);
+    assert(s1.faces == [[5], [7], [5, 7]]);
+    assert(s2.faces == [[1], [2], [3], [1, 2], [1, 3], [2, 3], [1, 2, 3]]);
 }
 
 ///
 unittest
 {
 
-    // auto s1 = simplex(1, 2, 3, 5);
-    // auto s2 = simplex(2, 3, 5);
-    // auto s3 = simplex(1, 2, 3);
-    // auto s4 = simplex(3, 5);
-    // auto s5 = simplex(3);
-    // auto s6 = simplex(3, 7);
+    auto s1 = simplex(1, 2, 3, 5);
+    auto s2 = simplex(2, 3, 5);
+    auto s3 = simplex(1, 2, 3);
+    auto s4 = simplex(3, 5);
+    auto s5 = simplex(3);
+    auto s6 = simplex(3, 7);
 
-    // assert(s1.dimension == 3);
-    // assert(s5.dimension == 0);
+    assert(s1.dimension == 3);
+    assert(s5.dimension == 0);
 
-    // assert(s1.hasFace(s1));
-    // assert(hasFace(s1, s2));
-    // assert(s1.hasFace(s3));
-    // assert(s1.hasFace(s4));
-    // assert(s1.hasFace(s5));
-    // assert(s2.hasFace(s4));
-    // assert(s4.hasFace(s5));
-    // assert(!s2.hasFace(s1));
-    // assert(!s2.hasFace(s3));
-    // assert(!s3.hasFace(s2));
-    // assert(!s1.hasFace(s6));
+    assert(s1.hasFace(s1));
+    assert(hasFace(s1, s2));
+    assert(s1.hasFace(s3));
+    assert(s1.hasFace(s4));
+    assert(s1.hasFace(s5));
+    assert(s2.hasFace(s4));
+    assert(s4.hasFace(s5));
+    assert(!s2.hasFace(s1));
+    assert(!s2.hasFace(s3));
+    assert(!s3.hasFace(s2));
+    assert(!s1.hasFace(s6));
 }
 
 ///
 unittest
 {
+    auto s1 = Simplex!(2, ubyte)([ubyte(1), ubyte(2), ubyte(3)]);
+    auto s2 = Simplex!(0, long)([257L]);
+    auto s3 = Simplex!(1, ulong)([2UL, 3UL]);
 
-    // auto s1 = Simplex!(2, ubyte)([1, 2, 3]);
-    // auto s2 = Simplex!(0, long)([257]);
-    // auto s3 = Simplex!(1, ulong)([2, 3]);
-
-    // assert(!s1.hasFace(s2));
-    // assert(!s2.hasFace(s1));
-    // assert(s1.hasFace(s3));
+    assert(!s1.hasFace(s2));
+    assert(!s2.hasFace(s1));
+    assert(s1.hasFace(s3));
 }
 
 /******************************************************************************
