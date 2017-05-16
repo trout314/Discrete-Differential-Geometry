@@ -41,27 +41,54 @@ struct Simplex(size_t dim, Vertex = int)
         static assert(isInputRange!R || isArray!R,
             "Simplex must be constructed from a range or array");
 
-        static assert(is(ElementType!R : Vertex), "The element type ("
-            ~ ElementType!R.stringof ~ ") of the range or array used to "
-            ~ "constuct a Simplex must be implicitly convertible to the "
-            ~ "vertex type (" ~ Vertex.stringof ~ ")");
-
+        import utility : isConstructible;
+        static assert(isConstructible!(ElementType!R, Vertex),
+            "The vertex type (" ~ Vertex.stringof ~ ") must be constructible "
+            ~ "from the element type (" ~ ElementType!R.stringof ~ ") of the "
+            ~ "range or array used to construct a simplex");
+        
         assert(vertices_.walkLength == dim + 1,
             "tried to create a simplex of dimension " ~ dim
-            ~ " with too few vertices " ~ vertices_.to!string);
+            ~ " using the wrong number of vertices " ~ vertices_.to!string);
         
-        verts_[] = vertices_[];
+        import std.algorithm : map;
+        import std.conv : to;
+        verts_[] = vertices_.map!(to!Vertex).array;
 
-        assert(vertices.isSorted,
+
+        // We need to treat different types of vertice differently
+        import std.traits : isPointer;
+        static if (isPointer!Vertex)
+        {
+            // Probably don't want to sort by pointer values
+            // TO DO: Make this optional. Would be ok with custom allocator!
+            alias sortingCriterion = (v1, v2) => *v1 < *v2;
+
+            // Probably don't want to compare by pointer values
+            alias comparisonCriterion = (v1, v2) => *v1 == *v2;
+
+            // Make sure to check for null values
+            assert(vertices.all!(v => v !is null),
+                "null pointers are not a valid vertices");
+        }
+        else
+        {
+            alias sortingCriterion = (v1, v2) => v1 < v2;
+            alias comparisonCriterion = (v1, v2) => v1 == v2;
+        }
+
+        assert(!vertices.canFind(VertexType.init),
+            "tried to create a simplex " ~ this.toString ~ " using a vertex"
+            ~ " with value " ~ to!string(Vertex.init) ~ " which is reserved"
+            ~ " for un-initialized vertices");
+
+        assert(vertices.isSorted!sortingCriterion,
                 "tried to create a simplex " ~ this.toString ~ " with unsorted "
                 ~ "vertices");
-        assert(vertices.findAdjacent.length == 0,
+
+        assert(vertices.findAdjacent!comparisonCriterion.length == 0,
                 "tried to create a simplex " ~ this.toString ~ " containing a "
                 ~ "repeated vertex");
-        assert(!vertices.canFind(VertexType.init),
-                "tried to create a simplex " ~ this.toString ~ " using a vertex"
-                ~ " with value " ~ to!string(Vertex.init) ~ " which is reserved"
-                ~ " for un-initialized vertices");
     }
 
     /***************************************************************************
@@ -113,7 +140,6 @@ unittest
 
     // create a simplex of dimension 1 with vertices [1,2]
     auto s1 = Simplex!1([1, 2]);
-    pragma(msg, typeof(s1).stringof);
 
     // Need the proper number of vertices
     assertThrown!Error(Simplex!1([1, 2, 3]));
@@ -127,7 +153,7 @@ unittest
     static assert(s1.dimension == 1);
 
     // The user can specify the vertex type used
-    auto s2 = Simplex!(1, ubyte)([ubyte(1), ubyte(2)]);
+    auto s2 = Simplex!(1, ubyte)([ubyte(3), ubyte(5)]);
     static assert(is(s2.VertexType == ubyte));
 
     // Simplices are value types, so s4 becomes an independent copy of s1
@@ -143,6 +169,10 @@ unittest
     immutable s6 = s1;
     static assert(!__traits(compiles, s5 = s4));
     static assert(!__traits(compiles, s6 = s4));
+
+    immutable(int)[] v1 = [1,2];
+    immutable(int)[] v2 = [3,4];
+    auto s = simplex(v1, v2);
 }
 
 ///
@@ -152,89 +182,103 @@ unittest
     // User specified vertex types must be comparable using < and ==
     // many types work already.
     static assert(__traits(compiles, Simplex!(5, string)));
-    //    static assert(__traits(compiles, Simplex!(5, int[2]*)));
+
+    static assert(__traits(compiles, Simplex!(5, int[2]*)));
+
+
     auto s = Simplex!(5, int[2]*)();
     static assert(__traits(compiles, Simplex!(5, double[])));
 
-    // User defined struct and class types will not work automatically
-    struct A
-    {
-    }
+    // User defined structs and classes will not work automatically
+    struct A {}
+    static assert(!__traits(compiles, Simplex!(3, A)));
 
-    class B
-    {
-    }
+    class B {}
+    static assert(!__traits(compiles, Simplex!(5, B)));
 
-    static assert(!__traits(compiles, Simplex!(5, A)));
-    static assert(!__traits(compiles, Simplex!(3, B)));
-
-    // Less than comparison using < is implemented by defining opCmp
-    // TO DO: Explanation of why we need _two_ opCmp functions here?
+    // To make a struct work we need to define opCmp and opEquals
     struct C
     {
-        int opCmp(ref const C c) const
+        int label;
+        int opCmp()(auto ref const C rhs) const
         {
-            return 0;
+            if (this.label < rhs.label)
+            {
+                return -1;
+            }
+            else if (this.label > rhs.label)
+            {
+                return 1;
+            }
+            else
+            {
+                return 0;
+            }
         }
-
-        int opCmp(const C c) const
-        {
-            return 0;
-        }
+        // Note: the compiler-generated opEquals is OK here.
+        // See $(LINK https://dlang.org/spec/operatoroverloading.html#compare).
     }
-    //   static assert(__traits(compiles, Simplex!(5, C)));
 
-    Simplex!(5, C) testC;
+    auto testC = simplex(C(2), C(3));
+    static assert(is(testC.VertexType == C));
+    assertThrown!Error(simplex(C(1), C(0)));
+    assertThrown!Error(simplex(C(2), C(2)));
 
-    // Equality comparison using == is implemented by defining opEquals, though
-    // by default a struct defines opEquals
-    struct D
+    // We can use pointers to stucts and everything works
+    // (the dereferencing is done internally)
+    auto dynamicTestC = simplex(new C(2), new C(3));
+    static assert(is(dynamicTestC.VertexType == C*));
+
+    // null vertices are not allowed of course
+    assertThrown!Error(simplex(null, new C(0)));
+
+    // as well as the usual disallowed things
+    assertThrown!Error(simplex(new C(1), new C(0)));
+    assertThrown!Error(simplex(new C(2), new C(2)));
+
+    // To make a struct work we must define opCmp and opEquals as well
+    class D
     {
-        int opCmp(ref const D d) const
+        int label;
+
+        this(int label_)
         {
-            return 0;
+            label = label_;
         }
 
-        int opCmp(const D d) const
+        override int opCmp(Object rhs) const
         {
-            return 0;
+            if (this < rhs)
+            {
+                return -1;
+            }
+            else if (this > rhs)
+            {
+                return 1;
+            }
+            else
+            {
+                return 0;
+            }
         }
 
-        @disable bool opEquals()(auto ref const D d) const;
+        override bool opEquals(Object rhs) const
+        {
+            return this == rhs;
+        }
     }
 
-    static assert(!__traits(compiles, Simplex!(5, D)));
-
-    class E
-    {
-        override int opCmp(Object e) const
-        {
-            return 0;
-        }
-
-        override bool opEquals(Object e) const
-        {
-            return false;
-        }
-    }
-
-    auto x = new E;
-    auto y = new E;
-    //writeln(x < y, y < x, x == y);
-
-    // TO DO: Fix this! Probably don't want to compare pointers via
-    // the class opCmp right? comparison by actual pointers?
-    //    auto z = Simplex!(5, E);
-    //    static assert(__traits(compiles, Simplex!(5, E)));
-
-//    static assert(simplex(1, 5, 9).toString == "[1,5,9]");
+    // auto testD = simplex(new D(2), new D(3));
+    // static assert(is(testD.VertexType == D));
+    // assertThrown!Error(simplex(new D(1), new D(0)));
+    // assertThrown!Error(simplex(new D(2), new D(2)));
 }
 
 /******************************************************************************
 * This helper template returns (by value) a newly constructed simplex from
 * a list of vertices given as the arguments of simplex(...).
 */
-auto simplex(V, size_t numVertices)(V[numVertices] vertices...)
+auto simplex(size_t numVertices, V)(V[numVertices] vertices...)
 {
     return Simplex!(numVertices - 1, V)(vertices[]);
 }
