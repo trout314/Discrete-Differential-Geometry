@@ -68,18 +68,13 @@ struct Simplex(size_t dim, Vertex = int)
             // Make sure to check for any null values
             assert(vertices.all!(v => v !is null),
                 "null pointers are not a valid vertices");
-
-            writeln("using pointer comparisons");
         }
         else
         {
             // For non-pointer types we do the standard things
             alias sortingCriterion = (v1, v2) => v1 < v2;
             alias comparisonCriterion = (v1, v2) => v1 == v2;
-            writeln("using normal comparisons");
         }
-
-        writeln("got here: ", "verts = ", verts_);
 
         assert(verts_[].isSorted!sortingCriterion,
                 "tried to create a simplex " ~ this.toString ~ " with unsorted "
@@ -88,8 +83,6 @@ struct Simplex(size_t dim, Vertex = int)
         assert(verts_[].findAdjacent!comparisonCriterion.length == 0,
                 "tried to create a simplex " ~ this.toString ~ " containing a "
                 ~ "repeated vertex");
-
-
     }
 
     /***************************************************************************
@@ -127,12 +120,9 @@ struct Simplex(size_t dim, Vertex = int)
     }
 
     /// nice looking string representation
-    static if(__traits(compiles, verts_.front.to!string))
+    string toString() const
     {
-        string toString() const
-        {
-            return "[" ~ verts_[].map!(to!string).joiner(",").to!string ~ "]";
-        }
+        return "[" ~ verts_[].map!(to!string).joiner(",").to!string ~ "]";
     }
 
 private:
@@ -239,7 +229,7 @@ unittest
     assertThrown!Error(simplex(new C(1), new C(0)));
     assertThrown!Error(simplex(new C(2), new C(2)));
 
-    // To make a struct work we must define opCmp and opEquals as well
+    // To make a class work we must define opCmp and opEquals as well
     class D
     {
         int label;
@@ -251,27 +241,23 @@ unittest
 
         override int opCmp(Object rhs) const
         {
-            writeln("doing D comparison");
-            writeln(this.label, rhs.to!D.label, this.label < rhs.to!D.label );
-            writeln("starting if");
-            return 0;
-            // if (this.label < rhs.to!D.label)
-            // {
-            //     return -1;
-            // }
-            // else if (this.label > rhs.to!D.label)
-            // {
-            //     return 1;
-            // }
-            // else
-            // {
-            //     return 0;
-            // }
+            if (this.label < rhs.to!D.label)
+            {
+                return -1;
+            }
+            else if (this.label > rhs.to!D.label)
+            {
+                return 1;
+            }
+            else
+            {
+                return 0;
+            }
         }
 
         override bool opEquals(Object rhs)
         {
-            return this == rhs;
+            return this.label == rhs.to!D.label;
         }
 
         override string toString() const
@@ -281,24 +267,10 @@ unittest
         }
     }
 
-    D d2 = new D(2);
-    D d3 = new D(3);
-    D d4 = new D(4);
-    writeln(d2, d3);
-
-    auto s0 = simplex(d2);  // OK!
-    writeln(s0);
-
-    // The following give exit code -11 on running!! WTF?
-    // auto s1 = simplex(d2, d3);
-    writeln("trying to construct simplex with 2 D type vertices");
-    auto s1 = Simplex!(1, D)([d2, d3]);
-    writeln("finished");
-
-    // auto testD = simplex(new D(2), new D(3));
-    // static assert(is(testD.VertexType == D));
-    // assertThrown!Error(simplex(new D(1), new D(0)));
-    // assertThrown!Error(simplex(new D(2), new D(2)));
+    auto testD = simplex(new D(2), new D(3));
+    static assert(is(testD.VertexType == D));
+    assertThrown!Error(simplex(new D(1), new D(0)));
+    assertThrown!Error(simplex(new D(2), new D(2)));
 }
 
 /******************************************************************************
