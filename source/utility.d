@@ -77,10 +77,19 @@ unittest
 * Checks if items of type T can be compared for equality with ==. See
 * $(LINK https:dlang.org/operatoroverloading.html#eqcmp)
 */
-enum bool isEqualityComparable(T) = is(typeof(
+template isEqualityComparable(T)
 {
-    bool b = T.init == T.init;
-}));
+    static if (is(T == class))
+    {
+        enum isEqualityComparable = __traits(isOverrideFunction, T.opEquals);
+    }
+    else
+    {
+        enum isEqualityComparable = is(typeof({
+            bool b = T.init == T.init;   
+        }));
+    }
+}
 
 /// Basic type tests
 pure nothrow @nogc @safe unittest

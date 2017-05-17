@@ -13,12 +13,9 @@ version (unittest)
 }
 
 /*******************************************************************************
-* Represents a non-degenerate simplex whose dimension (dim) is known at
-* compile time. The simplex is represented as an array of vertices of
+* Represents a non-degenerate simplex represented as set of vertices of
 * user-specified type Vertex. Elements of type Vertex must be comparable with
-* the less-than operator "<" and also comparible for equality with "==". We
-* reserve the use of Vertex.init for vertices that have yet to be specified
-* by the user.
+* less-than "<" and also comparable for equality with "==".
 */
 struct Simplex(size_t dim, Vertex = int)
 {
@@ -34,7 +31,7 @@ struct Simplex(size_t dim, Vertex = int)
     /***************************************************************************
    * a simplex can be constructed from a range with element type Vertex. There
    * must be exactly dim + 1 vertices in the range, they must occur in order,
-   * and there can be no repeated vert!Rices.
+   * and there can be no repeated vertices.
    */
     this(R)(R vertices_)
     {
@@ -53,7 +50,7 @@ struct Simplex(size_t dim, Vertex = int)
         
         import std.algorithm : map;
         import std.conv : to;
-        verts_[] = vertices_.map!(to!Vertex).array;
+        verts_[] = vertices_.map!(to!Vertex).array[];
 
 
         // We need to treat different types of vertice differently
@@ -61,41 +58,45 @@ struct Simplex(size_t dim, Vertex = int)
         static if (isPointer!Vertex)
         {
             // Probably don't want to sort by pointer values
-            // TO DO: Make this optional. Would be ok with custom allocator!
+            // TO DO: Make this optional. Sorting by address would be ok with
+            // a custom allocator!
             alias sortingCriterion = (v1, v2) => *v1 < *v2;
 
-            // Probably don't want to compare by pointer values
+            // Also don't want to check for equality by pointer values
             alias comparisonCriterion = (v1, v2) => *v1 == *v2;
 
-            // Make sure to check for null values
+            // Make sure to check for any null values
             assert(vertices.all!(v => v !is null),
                 "null pointers are not a valid vertices");
+
+            writeln("using pointer comparisons");
         }
         else
         {
+            // For non-pointer types we do the standard things
             alias sortingCriterion = (v1, v2) => v1 < v2;
             alias comparisonCriterion = (v1, v2) => v1 == v2;
+            writeln("using normal comparisons");
         }
 
-        assert(!vertices.canFind(VertexType.init),
-            "tried to create a simplex " ~ this.toString ~ " using a vertex"
-            ~ " with value " ~ to!string(Vertex.init) ~ " which is reserved"
-            ~ " for un-initialized vertices");
+        writeln("got here: ", "verts = ", verts_);
 
-        assert(vertices.isSorted!sortingCriterion,
+        assert(verts_[].isSorted!sortingCriterion,
                 "tried to create a simplex " ~ this.toString ~ " with unsorted "
                 ~ "vertices");
 
-        assert(vertices.findAdjacent!comparisonCriterion.length == 0,
+        assert(verts_[].findAdjacent!comparisonCriterion.length == 0,
                 "tried to create a simplex " ~ this.toString ~ " containing a "
                 ~ "repeated vertex");
+
+
     }
 
     /***************************************************************************
-   * a simplex can be copy constructed from any other simplex type S if S has 
-   * the same dimension and has a vertex type (S.VertexType) implicitly
-   * convertible to this simplex type's vertex type (Vertex).
-   */
+    * a simplex can be copy constructed from any other simplex type S if S has 
+    * the same dimension and has a vertex type (S.VertexType) implicitly
+    * convertible to this simplex type's vertex type (Vertex).
+    */
     this(S)(ref S simplexToCopy)
             if (isInstanceOf!(Simplex, S)
                 && isImplicitlyConvertible!(S.VertexType, this.VertexType))
@@ -126,18 +127,20 @@ struct Simplex(size_t dim, Vertex = int)
     }
 
     /// nice looking string representation
-    string toString() const
+    static if(__traits(compiles, verts_.front.to!string))
     {
-        return "[" ~ vertices.map!(to!string).joiner(",").to!string ~ "]";
+        string toString() const
+        {
+            return "[" ~ verts_[].map!(to!string).joiner(",").to!string ~ "]";
+        }
     }
 
 private:
     Vertex[dim + 1] verts_;
 }
-/// Some basic examples of creating and using the Simplex struct
+/// Some basic examples
 unittest
 {
-
     // create a simplex of dimension 1 with vertices [1,2]
     auto s1 = Simplex!1([1, 2]);
 
@@ -248,25 +251,49 @@ unittest
 
         override int opCmp(Object rhs) const
         {
-            if (this < rhs)
-            {
-                return -1;
-            }
-            else if (this > rhs)
-            {
-                return 1;
-            }
-            else
-            {
-                return 0;
-            }
+            writeln("doing D comparison");
+            writeln(this.label, rhs.to!D.label, this.label < rhs.to!D.label );
+            writeln("starting if");
+            return 0;
+            // if (this.label < rhs.to!D.label)
+            // {
+            //     return -1;
+            // }
+            // else if (this.label > rhs.to!D.label)
+            // {
+            //     return 1;
+            // }
+            // else
+            // {
+            //     return 0;
+            // }
         }
 
-        override bool opEquals(Object rhs) const
+        override bool opEquals(Object rhs)
         {
             return this == rhs;
         }
+
+        override string toString() const
+        {
+            import std.conv : to;
+            return label.to!string;
+        }
     }
+
+    D d2 = new D(2);
+    D d3 = new D(3);
+    D d4 = new D(4);
+    writeln(d2, d3);
+
+    auto s0 = simplex(d2);  // OK!
+    writeln(s0);
+
+    // The following give exit code -11 on running!! WTF?
+    // auto s1 = simplex(d2, d3);
+    writeln("trying to construct simplex with 2 D type vertices");
+    auto s1 = Simplex!(1, D)([d2, d3]);
+    writeln("finished");
 
     // auto testD = simplex(new D(2), new D(3));
     // static assert(is(testD.VertexType == D));
@@ -300,7 +327,6 @@ unittest
    static assert(is(s4.VertexType == string));
 
     assertThrown!Error(simplex("bob", "alice", "carol"));
-    assertThrown!Error(simplex(0, 1, 2));
     assertThrown!Error(simplex(1, 3, 3, 5));
 
     static assert(!__traits(compiles, s4.hasFace(simplex(1,2,4,7))));
