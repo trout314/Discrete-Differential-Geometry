@@ -8,6 +8,7 @@ import std.array : array;
 
 version (unittest)
 {
+    import utility : throwsWithMsg;
     import std.stdio : writeln;
     import std.exception : assertThrown;
 }
@@ -17,7 +18,7 @@ version (unittest)
 * user-specified type Vertex. Elements of type Vertex must be comparable with
 * less-than "<" and also comparable for equality with "==".
 */
-struct Simplex(size_t dim, Vertex = int)
+struct Simplex(int dim, Vertex = int)
 {
     import utility : isEqualityComparable, isLessThanComparable;
 
@@ -45,13 +46,10 @@ struct Simplex(size_t dim, Vertex = int)
             ~ "range or array used to construct a simplex");
         
         assert(vertices_.walkLength == dim + 1,
-            "tried to create a simplex of dimension " ~ dim
-            ~ " using the wrong number of vertices " ~ vertices_.to!string);
+            "tried to create a simplex of dimension " ~ dim.stringof
+            ~ " using the wrong number of vertices: " ~ vertices_.to!string);
         
-        import std.algorithm : map;
-        import std.conv : to;
         verts_[] = vertices_.map!(to!Vertex).array[];
-
 
         // We need to treat different types of vertice differently
         import std.traits : isPointer;
@@ -64,10 +62,6 @@ struct Simplex(size_t dim, Vertex = int)
 
             // Also don't want to check for equality by pointer values
             alias comparisonCriterion = (v1, v2) => *v1 == *v2;
-
-            // Make sure to check for any null values
-            assert(vertices.all!(v => v !is null),
-                "null pointers are not a valid vertices");
         }
         else
         {
@@ -76,9 +70,22 @@ struct Simplex(size_t dim, Vertex = int)
             alias comparisonCriterion = (v1, v2) => v1 == v2;
         }
 
+        static if (is(Vertex == class))
+        {
+            // Make sure to check for any null values
+            assert(vertices.all!(v => v !is null),
+                "class references used as vertices cannot be null");
+        }
+
+        static if (isPointer!Vertex)
+        {
+            assert(vertices.all!(v => v !is null),
+                "pointers used as vertices cannot be null");
+        }
+
         assert(verts_[].isSorted!sortingCriterion,
-                "tried to create a simplex " ~ this.toString ~ " with unsorted "
-                ~ "vertices");
+                "tried to create a simplex: " ~ this.toString ~ " with "
+                ~"unsorted vertices");
 
         assert(verts_[].findAdjacent!comparisonCriterion.length == 0,
                 "tried to create a simplex " ~ this.toString ~ " containing a "
@@ -135,8 +142,12 @@ unittest
     auto s1 = Simplex!1([1, 2]);
 
     // Need the proper number of vertices
-    assertThrown!Error(Simplex!1([1, 2, 3]));
     assertThrown!Error(Simplex!1([7]));
+    throwsWithMsg(
+        Simplex!1([1,2,3]),
+        "tried to create a simplex of dimension 1 using the wrong number of vertices: [1, 2, 3]"
+    );
+
 
     // The type used to store the vertices is accessible through the
     // symbol VertexType. This type is set to an int by default
@@ -175,11 +186,7 @@ unittest
     // User specified vertex types must be comparable using < and ==
     // many types work already.
     static assert(__traits(compiles, Simplex!(5, string)));
-
     static assert(__traits(compiles, Simplex!(5, int[2]*)));
-
-
-    auto s = Simplex!(5, int[2]*)();
     static assert(__traits(compiles, Simplex!(5, double[])));
 
     // User defined structs and classes will not work automatically
@@ -222,10 +229,11 @@ unittest
     auto dynamicTestC = simplex(new C(2), new C(3));
     static assert(is(dynamicTestC.VertexType == C*));
 
-    // null vertices are not allowed of course
-    assertThrown!Error(simplex(null, new C(0)));
+    // null pointer vertices are not allowed
+    throwsWithMsg(simplex(null, new C(0)),
+        "pointers used as vertices cannot be null");
 
-    // as well as the usual disallowed things
+    // the usual things are disallowed too...
     assertThrown!Error(simplex(new C(1), new C(0)));
     assertThrown!Error(simplex(new C(2), new C(2)));
 
@@ -255,7 +263,7 @@ unittest
             }
         }
 
-        override bool opEquals(Object rhs)
+        override bool opEquals(Object rhs) const
         {
             return this.label == rhs.to!D.label;
         }
@@ -268,9 +276,14 @@ unittest
     }
 
     auto testD = simplex(new D(2), new D(3));
+    
     static assert(is(testD.VertexType == D));
     assertThrown!Error(simplex(new D(1), new D(0)));
     assertThrown!Error(simplex(new D(2), new D(2)));
+
+    // null class references are not allowed as vertices
+    throwsWithMsg(simplex(new D(1), new D(3), null ),
+        "class references used as vertices cannot be null");   
 }
 
 /******************************************************************************

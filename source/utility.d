@@ -156,3 +156,56 @@ pure nothrow @nogc @safe unittest
 {
     static assert(!isConstructible!(int, ubyte));
 }
+
+/*******************************************************************************
+Asserts that the given expression throws the given type of $(D Throwable).
+The $(D Throwable) is caught and does not escape assertThrown. However,
+any other $(D Throwable)s $(I will) escape, and if no $(D Throwable)
+of the given type is thrown, then an $(D AssertError) is thrown. Also, throws
+
+Params:
+    ThrownType = The Throwable type to test for. Default is $(D AssertError)
+    expression = The expression to test.
+    msg        = Optional message to output on test failure.
+    file       = The file where the error occurred.
+                 Defaults to $(D __FILE__).
+    line       = The line where the error occurred.
+                 Defaults to $(D __LINE__).
+
+    Throws:
+        $(D AssertError) if the given $(D Throwable) with message $(D msg) is
+        not thrown.
+*/  
+void throwsWithMsg(ThrownType : Throwable = Error, E)
+                  (lazy E expression,
+                  string msg = null,
+                  string file = __FILE__,
+                  size_t line = __LINE__)
+{
+    import std.conv : to;
+    try
+    {
+        expression();
+    }
+    catch(Throwable exception)
+    {
+        auto thrown = cast(ThrownType) exception;
+        if(thrown is null)
+        {
+            throw new Error("throwsWithMsg failed with wrong throwable "
+                ~ "type.\n  Actual  : " ~ typeid(exception).to!string ~ "\n  "
+                ~ "Expected: " ~ ThrownType.stringof, file, line);
+        }
+        else if (thrown.msg != msg)
+        {
+            throw new Error("throwsWithMsg failed with wrong message.\n"
+                ~ "  Actual  : " ~ thrown.msg ~ "\n  Expected: " ~ msg, file,
+                line);
+        }
+        else
+        {
+            return;
+        }
+    }
+
+}
