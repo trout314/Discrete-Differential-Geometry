@@ -2,11 +2,7 @@ void main()
 {
     import std.stdio : writeln;
     "Entering main...".writeln;
-    scope(exit)
-    {
-        "Exiting main.".writeln;
-    }
-
+    scope(exit) {"Exiting main.".writeln;}
 
     import simplicial_complex : SimplicialComplex, Simplex;
     SimplicialComplex sc;

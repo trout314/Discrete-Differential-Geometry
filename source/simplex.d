@@ -1,16 +1,19 @@
 import std.conv : to;
 import std.container : make;
-import std.traits : CommonType, isArray, isInstanceOf, isImplicitlyConvertible;
+import std.traits : CommonType, isArray, isInstanceOf, isImplicitlyConvertible, isPointer;
 import std.algorithm : all, canFind, copy, filter, findAdjacent, isSorted,
     joiner, map, sort;
-import std.range : chain, empty, front, popFront, walkLength, isInputRange, ElementType;
+import std.range : chain, empty, front, iota, popFront, walkLength, isInputRange, ElementType;
 import std.array : array;
+import utility : isEqualityComparable, isLessThanComparable, isConstructible;
+
 
 version (unittest)
 {
     import utility : throwsWithMsg;
     import std.stdio : writeln;
     import std.exception : assertThrown;
+    alias s = simplex;
 }
 
 /*******************************************************************************
@@ -20,7 +23,6 @@ version (unittest)
 */
 struct Simplex(int dim, Vertex = int)
 {
-    import utility : isEqualityComparable, isLessThanComparable;
     static assert(isLessThanComparable!Vertex,
             "Vertex type must support opCmp. See " ~
             "https://dlang.org/operatoroverloading.html#eqcmp");
@@ -36,28 +38,26 @@ struct Simplex(int dim, Vertex = int)
     this(R)(R vertices_)
     {
         static assert(isInputRange!R || isArray!R,
-            "Simplex must be constructed from a range or array");
+            "simplex must be constructed from a range or array");
 
-        import utility : isConstructible;
         static assert(isConstructible!(ElementType!R, Vertex),
-            "The vertex type (" ~ Vertex.stringof ~ ") must be constructible "
-            ~ "from the element type (" ~ ElementType!R.stringof ~ ") of the "
+            "the vertex type: " ~ Vertex.stringof ~ " must be constructible "
+            ~ "from the element type: " ~ ElementType!R.stringof ~ " of the "
             ~ "range or array used to construct a simplex");
         
         assert(vertices_.walkLength == dim + 1,
-            "wrong number of vertices for a dimension " ~ dim.to!string 
-            ~ " simplex. Expected " ~ (dim+1).to!string ~ " vertices but got"
-            ~ " vertices: " ~ vertices_.to!string);
+            "a dimension " ~ dim.to!string ~ " simplex needs "
+            ~ (dim+1).to!string ~ " vertices, but got vertices: " 
+            ~ vertices_.to!string);
         
         verts_[] = vertices_.map!(to!Vertex).array[];
 
-        // We need to treat different types of vertice differently
-        import std.traits : isPointer;
+        // We need to treat different types of vertices differently
         static if (isPointer!Vertex)
         {
-            // Probably don't want to sort by pointer values
-            // TO DO: Make this optional. Sorting by address would be ok with
-            // a custom allocator!
+            /* We probably don't want to sort by pointer values.
+            TO DO: Make this optional. Sorting by address would be ok with
+            a custom allocator! */
             alias sortingCriterion = (v1, v2) => *v1 < *v2;
 
             // Also don't want to check for equality by pointer values
@@ -78,9 +78,9 @@ struct Simplex(int dim, Vertex = int)
 
         static if (is(Vertex == class))
         {
-            // Make sure to check for any null values
             assert(vertices.all!(v => v !is null),
-                "class references used as vertices cannot be null");
+                "null class references cannot be vertices, but got vertices: "
+                ~ this.toString);
 
             static assert(__traits(isOverrideFunction, Vertex.toString),
                 "class type " ~ Vertex.stringof ~ " used as a vertex type must "
@@ -90,16 +90,16 @@ struct Simplex(int dim, Vertex = int)
         static if (isPointer!Vertex)
         {
             assert(vertices.all!(v => v !is null),
-                "pointers used as vertices cannot be null");
+                "null pointers cannot be vertices, but got vertices: "
+                ~ this.toString);
         }
 
         assert(verts_[].isSorted!sortingCriterion,
-                "tried to create a simplex: " ~ this.toString ~ " with "
-                ~"vertices not in strictly increasing order");
+                "vertices must occur in increasing order, but got vertices: " 
+                ~ this.toString);
 
         assert(verts_[].findAdjacent!comparisonCriterion.length == 0,
-                "tried to create a simplex " ~ this.toString ~ " containing a "
-                ~ "repeated vertex");
+                "vertices must be distinct, but got vertices: " ~ this.toString);
     }
 
     /***************************************************************************
@@ -130,7 +130,7 @@ struct Simplex(int dim, Vertex = int)
     alias VertexType = Vertex;
 
     /// provides read-only access to the vertices by returning a slice
-    // TO DO: Think about the safety of this! Will "return ref" improve it?
+    // TO DO: Think about DIP 1000 and how it relates to this
     const(Vertex)[] vertices() const
     {
         return verts_[];
@@ -139,7 +139,16 @@ struct Simplex(int dim, Vertex = int)
     /// nice looking string representation
     string toString() const
     {
-        return "[" ~ verts_[].map!(to!string).joiner(",").to!string ~ "]";
+        static if(isPointer!VertexType)
+        {
+            return "[" ~ verts_[]
+                .map!(v => (v is null) ? "null" : (*v).to!string)
+                .joiner(",").to!string ~ "]";        
+        }
+        else
+        {
+            return "[" ~ verts_[].map!(to!string).joiner(",").to!string ~ "]";
+        }
     }
 
 private:
@@ -148,17 +157,20 @@ private:
 /// Some basic examples
 unittest
 {
-    // create a simplex of dimension 1 with vertices [1,2]
+    // Create a simplex of dimension 1 with vertices [1,2]
     auto s1 = Simplex!1([1, 2]);
 
     // Need the proper number of vertices
     assertThrown!Error(Simplex!1([7]));
-    throwsWithMsg!Error(Simplex!1([1,2,3]),
-        "wrong number of vertices for a dimension 1 simplex. Expected 2 vertices but got vertices: [1, 2, 3]");
+    throwsWithMsg(Simplex!1([1,2,3]),
+        "a dimension 1 simplex needs 2 vertices, but got vertices: [1, 2, 3]");
 
+    // Vertices must be in strictly increasing order
+    throwsWithMsg(Simplex!3([5,2,3,4]),
+        "vertices must occur in increasing order, but got vertices: [5,2,3,4]");
 
     // The type used to store the vertices is accessible through the
-    // symbol VertexType. This type is set to an int by default
+    // symbol VertexType. This type defaults to an int.
     static assert(is(s1.VertexType == int));
 
     // The dimension of a simplex is also easily accesible
@@ -181,21 +193,47 @@ unittest
     immutable s6 = s1;
     static assert(!__traits(compiles, s5 = s4));
     static assert(!__traits(compiles, s6 = s4));
+}
 
-    immutable(int)[] v1 = [1,2];
-    immutable(int)[] v2 = [3,4];
-    auto s = simplex(v1, v2);
+/// Shorter way to construct simplices
+unittest
+{
+    /* For convenience we have a function template "simplex" which can be used
+    to costruct Simplex types. */
+
+    auto s1 = simplex(1,2,3);
+    static assert(is(typeof(s1) == Simplex!(2, int)));
+
+    // For clarity in the unittests, we have aliased "simplex" to just "s".
+    auto s2 = s(1,2,3);
+    assert(s1 == s2);
 }
 
 
 /// Suitable Vertex types
 unittest
 {
-    // User specified vertex types must be comparable using < and == and also
-    // be printable with writeln. Many types work already.
-    static assert(__traits(compiles, Simplex!(5, string)));
+    /* A user specified vertex types must be comparable using < and == and also
+    be printable with writeln. Many types work already. */
+
+    /* Arrays of comparable types like doubles work. The ordering used is the
+    "dictionary order" on the arrays. */
+    auto s1 = s([1.0, -3.4], [1.0, 1.5], [2.3, -1.6]);
+    static assert(is(s1.VertexType == double[]));
+
+    /* This would allows us to represent points in Euclidean plan for example.
+    Although we would likely want to use static arrays. */
+    double[2] v1 = [1.0, -3.4];
+    double[2] v2 = [1.0, 1.5];
+    double[2] v3 = [2.3, -1.6];
+    auto s2 = simplex(v1, v2, v3);
+    static assert(is(s2.VertexType == double[2]));
+
+    // As arrays of comparable elements, strings work too.
+    auto s3 = s("alice", "bob", "dinesh");
+
     static assert(__traits(compiles, Simplex!(5, int[2]*)));
-    static assert(__traits(compiles, Simplex!(5, double[])));
+
 
     // User defined structs and classes will not work automatically
     struct A {}
@@ -224,14 +262,16 @@ unittest
                 return 0;
             }
         }
-        // Note: the compiler-generated opEquals is OK here.
-        // See $(LINK https://dlang.org/spec/operatoroverloading.html#compare).
 
-        // string toString() const
-        // {
-        //     import std.conv : to;
-        //     return label.to!string;
-        // }
+        /* Note: the compiler-generated opEquals is OK here.
+        See $(LINK https://dlang.org/spec/operatoroverloading.html#compare). */
+
+        /* The compiler-generated toString is also fine, although the error 
+        messages and unittests will be easier to read with the following. */ 
+        string toString() const
+        {   
+            return this.label.to!string;
+        }
     }
 
     auto testC = simplex(C(2), C(3));
@@ -239,8 +279,6 @@ unittest
     assertThrown!Error(simplex(C(1), C(0)));
     assertThrown!Error(simplex(C(2), C(2)));
 
-    import std.range : iota;
-    import std.conv : to;
     writeln(Simplex!2(iota(3)));
     iota(5).to!(Simplex!4).writeln;
 
@@ -249,16 +287,16 @@ unittest
     auto dynamicTestC = simplex(new C(2), new C(3));
     static assert(is(dynamicTestC.VertexType == C*));
 
-    // null pointer vertices are not allowed
+    //    null pointer vertices are not allowed
     throwsWithMsg(simplex(null, new C(0)),
-        "pointers used as vertices cannot be null");
+        "null pointers cannot be vertices, but got vertices: [null,0]");
 
     // the usual things are disallowed too...
     assertThrown!Error(simplex(new C(1), new C(0)));
     assertThrown!Error(simplex(new C(2), new C(2)));
 
-    // To make a class work as a vertex type we must define suitable overrides
-    // for opCmp, opEquals and toString. 
+    /* To make a class work as a vertex type we must define suitable overrides
+    for opCmp, opEquals and toString. */ 
     class D
     {
         int label;
@@ -291,7 +329,6 @@ unittest
 
         override string toString() const
         {
-            import std.conv : to;
             return label.to!string;
         }
     }
@@ -302,8 +339,8 @@ unittest
     assertThrown!Error(simplex(new D(2), new D(2)));
 
     // null class references are not allowed as vertices
-    throwsWithMsg(simplex(new D(1), new D(3), null ),
-        "class references used as vertices cannot be null");   
+    throwsWithMsg(simplex(new D(3), null),
+        "null class references cannot be vertices, but got vertices: [3,null]");   
 }
 
 /******************************************************************************
@@ -410,19 +447,9 @@ auto oppositeFace(S, F)(S simplex, F face)
     return Simplex!(coDimension - 1, S.VertexType)(verticesInAnswer[]);
 }
 
-/******************************************************************************
-* Returns ...
-*/
-auto oppositeVertices(S, F)(const ref S simplex, const ref F face)
-        if (isInstanceOf!(Simplex, S) && isInstanceOf!(Simplex, F))
-{
-}
-
 ///
 unittest
 {
-    alias s = simplex;
-
     assert(s(1,2).oppositeFace(s(2)) == s(1));
     assert(s(1,2).oppositeFace(s(1)) == s(2));
     assert(s(1,2,4,7).oppositeFace(s(2)) == s(1,4,7));

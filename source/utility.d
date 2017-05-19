@@ -82,14 +82,14 @@ template isLessThanComparable(T)
     foreach(T; AliasSeq!(B, C))
     {
         T lvalue;
-        static assert(__traits(compiles, lvalue <= lvalue));
-        static assert(__traits(compiles, T.init <= T.init));
+        assert(lvalue <= lvalue);
+        assert(T.init <= T.init);
     }
 
     // Check that lvalues work but rvalues don't for type D
     {
         D lvalue;
-        static assert(__traits(compiles, lvalue <= lvalue));
+        assert(lvalue <= lvalue);
         static assert(!__traits(compiles, D.init <= D.init));
     }
 
@@ -191,14 +191,14 @@ pure nothrow @nogc @safe unittest
     foreach(T; AliasSeq!(B, C))
     {
         T lvalue;
-        static assert(__traits(compiles, lvalue == lvalue));
-        static assert(__traits(compiles, T.init == T.init));
+        assert(lvalue == lvalue);
+        assert(T.init == T.init);
     }
 
     // Check that lvalues work but rvalues don't for type D
     {
         D lvalue;
-        static assert(__traits(compiles, lvalue == lvalue));
+        assert(lvalue == lvalue);
         static assert(!__traits(compiles, D.init == D.init));
     }
 
@@ -232,38 +232,60 @@ pure nothrow @nogc @safe unittest
 /*******************************************************************************
 Checks if an instance of type S can be constructed from an instance of type T
 TO DO: Didn't see any phobos trait for this, ask about it on forums.
+TO DO: Make sure this actually works as advertised!
 */
-enum bool isConstructible(From, To) = is(typeof({
-    // Test to see if we can construct a To from a From. Note that we can't
-    // use To(From.init) since VRP (value range propagation) will allow us to
-    // construct a byte from an int.
-    import std.traits : lvalueOf;
-    To t = To(lvalueOf!From);
-    // TO DO: Why do we need the special case of string?
-})) || is(From == To);
+import std.conv : to;
+enum bool isConstructible(From, To) = is(From : To) ||
+is(typeof({
+    auto t = To(From());
+}));
 
 pure nothrow @nogc @safe unittest
 {
-    static assert(!isConstructible!(int, ubyte));
+    // static assert(!isConstructible!(int, ubyte));
+    // static assert(!isConstructible!(int, byte));
+    // static assert(!isConstructible!(int, ushort));
+    // static assert(!isConstructible!(int, short));
+    // static assert(!isConstructible!(int, string));
+
+    static assert(isConstructible!(ubyte, int));
+    static assert(isConstructible!(byte, int));
+    static assert(isConstructible!(ushort, int));
+    static assert(isConstructible!(short, int));
+    static assert(isConstructible!(string, string));
+//    static assert(!isConstructible!(string, int));
+
+    struct A {}
+    struct B {}
+    static assert(!isConstructible!(A, B));
+    static assert(isConstructible!(A, A));
+
+    struct C
+    {
+        this(A a) {}
+    }
+//    static assert(isConstructible!(A, C));
+    auto c = C(A());
+
 }
 
 /*******************************************************************************
-Asserts that the given expression throws the given type of $(D Throwable).
-The $(D Throwable) is caught and does not escape assertThrown. However,
-any other $(D Throwable)s $(I will) escape, and if no $(D Throwable)
-of the given type is thrown, then an $(D AssertError) is thrown. Also, throws
+Asserts that `expression` throws a `ThrownType` which must be
+a subtype of `Throwable`. All `Throwable`s are caught and will not escape
+throwsWithMsg. If a type other than `ThrownType` is thrown, or if the message in
+the thrown exception is not `msg` this funtion throws an AssertError. 
 
 Params:
-    ThrownType = The `Throwable` type to test for. Default is $(D AssertError)
+    ThrownType = The `Throwable` type to test for. Default is `Error`
     expression = The expression to test.
     msg        = Optional message to output on test failure.
     file       = The file where the error occurred.
-                 Defaults to $(D __FILE__).
+                 Defaults to `__FILE__`.
     line       = The line where the error occurred.
-                 Defaults to $(D __LINE__).
+                 Defaults to `__LINE__`.
 
     Throws:
-        $(D AssertError) if the given $(D Throwable) with message $(D msg) is
+        `AssertError` if the given `Throwable` with message `msg` is
         not thrown.
 */  
 void throwsWithMsg(ThrownType : Throwable = Error, E)
@@ -283,8 +305,8 @@ void throwsWithMsg(ThrownType : Throwable = Error, E)
         if(thrown is null)
         {
             throw new Error("throwsWithMsg failed with wrong throwable "
-                ~ "type.\n  Actual type  : " ~ typeid(exception).to!string ~ "\n  "
-                ~ "Expected type: " ~ ThrownType.stringof, file, line);
+                ~ "type.\n  Actual type  : " ~ typeid(exception).to!string 
+                ~ "\n  Expected type: " ~ ThrownType.stringof, file, line);
         }
         else if (thrown.msg != msg)
         {
@@ -297,5 +319,4 @@ void throwsWithMsg(ThrownType : Throwable = Error, E)
             return;
         }
     }
-
 }
