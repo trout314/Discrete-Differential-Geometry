@@ -42,15 +42,15 @@ template isLessThanComparable(T)
     struct A {}
     static assert(!isLessThanComparable!A);
 
-    /* Note that the "auto ref" template here allows us to have a single
-    function that accepts both rvalues and lvalues. lvalues are taken by
-    reference an rvalues are taken by copy. See
-    https://dlang.org/spec/template.html#auto-ref-parameters.*/
+    /* The "auto ref" template here allows us to have a single function that
+    accepts both rvalues and lvalues. lvalues are taken by reference an rvalues
+    are taken by copy. See
+    https://dlang.org/spec/template.html#auto-ref-parameters. */
     struct B
     {
         int opCmp()(auto ref const B rhs) const
         {
-            return 0; // All objects compare equal
+            return 0; // b1 <= b2 and b2 <= b1 for all objects b1, b2
         }
     }
     static assert(isLessThanComparable!B);
@@ -83,7 +83,7 @@ template isLessThanComparable(T)
     {
         T lvalue;
         static assert(__traits(compiles, lvalue <= lvalue));
-        static assert(__traits(compiles, T.init <= T.init)); // rvalues too
+        static assert(__traits(compiles, T.init <= T.init));
     }
 
     // Check that lvalues work but rvalues don't for type D
@@ -97,8 +97,9 @@ template isLessThanComparable(T)
     correctly on A, B, C, D above. Bug? */
     foreach(T; AliasSeq!(A, B, C, D))
     {
-        static assert(!__traits(compiles, lvalueOf!T < lvalueOf!T));
-        static assert(!__traits(compiles, rvalueOf!T < rvalueOf!T));
+        import std.traits : lvalueOf, rvalueOf;
+        static assert(!__traits(compiles, lvalueOf!T <= lvalueOf!T));
+        static assert(!__traits(compiles, rvalueOf!T <= rvalueOf!T));
     }
 }
 
@@ -119,8 +120,8 @@ unittest
 }
 
 /*******************************************************************************
-* Checks if items of type T can be compared for equality with ==. See
-* $(LINK https:dlang.org/operatoroverloading.html#eqcmp)
+Checks if items of type T can be compared for equality with ==. See
+$(LINK https:dlang.org/operatoroverloading.html#eqcmp)
 */
 template isEqualityComparable(T)
 {
@@ -164,29 +165,73 @@ pure nothrow @nogc @safe unittest
             return true;
         }
     }
+    
     static assert(isEqualityComparable!B);
+
+    struct C
+    {
+        bool opEquals(const C rhs) const
+        {
+            return true;
+        }
+    }
+    static assert(isEqualityComparable!C);
+
+    struct D
+    {
+        bool opEquals(ref const D rhs) const
+        {
+            return true;
+        }
+    }
+    static assert(!isEqualityComparable!D);
+    
+    // Check that rvalues and lvalues work for types B, C
+    import std.meta : AliasSeq;
+    foreach(T; AliasSeq!(B, C))
+    {
+        T lvalue;
+        static assert(__traits(compiles, lvalue == lvalue));
+        static assert(__traits(compiles, T.init == T.init));
+    }
+
+    // Check that lvalues work but rvalues don't for type D
+    {
+        D lvalue;
+        static assert(__traits(compiles, lvalue == lvalue));
+        static assert(!__traits(compiles, D.init == D.init));
+    }
+
+    /* TO DO: Find out why lvalueOf and rvalueOf don't seem to work
+    correctly on A, B, C, D above. Bug? */
+    foreach(T; AliasSeq!(A, B, C, D))
+    {
+        import std.traits : lvalueOf, rvalueOf;
+        static assert(!__traits(compiles, lvalueOf!T == lvalueOf!T));
+        static assert(!__traits(compiles, rvalueOf!T == rvalueOf!T));
+    }
 }
 
 /// Class tests
 pure nothrow @nogc @safe unittest
 {
     class A {}
-    // static assert(isEqualityComparable!A);
+    static assert(!isEqualityComparable!A);
  
-    // class B
-    // {
-    //     bool opEquals()(auto ref const B rhs) const
-    //     {
-    //         return true;
-    //     }
-    // }
-    // static assert(isEqualityComparable!B);
+    class B
+    {
+        override bool opEquals(Object rhs) const
+        {
+            return true;
+        }
+    }
+    static assert(isEqualityComparable!B);
 }
 
 
 /*******************************************************************************
-* Checks if an instance of type S can be constructed from an instance of type T
-* TO DO: Didn't see any phobos trait for this, ask about it on forums.
+Checks if an instance of type S can be constructed from an instance of type T
+TO DO: Didn't see any phobos trait for this, ask about it on forums.
 */
 enum bool isConstructible(From, To) = is(typeof({
     // Test to see if we can construct a To from a From. Note that we can't
