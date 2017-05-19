@@ -21,7 +21,6 @@ version (unittest)
 struct Simplex(int dim, Vertex = int)
 {
     import utility : isEqualityComparable, isLessThanComparable;
-
     static assert(isLessThanComparable!Vertex,
             "Vertex type must support opCmp. See " ~
             "https://dlang.org/operatoroverloading.html#eqcmp");
@@ -30,10 +29,10 @@ struct Simplex(int dim, Vertex = int)
             "https://dlang.org/operatoroverloading.html#eqcmp");
 
     /***************************************************************************
-   * a simplex can be constructed from a range with element type Vertex. There
-   * must be exactly dim + 1 vertices in the range, they must occur in order,
-   * and there can be no repeated vertices.
-   */
+    * a simplex can be constructed from a range with element type Vertex. There
+    * must be exactly dim + 1 vertices in the range, they must occur in order,
+    * and there can be no repeated vertices.
+    */
     this(R)(R vertices_)
     {
         static assert(isInputRange!R || isArray!R,
@@ -46,8 +45,9 @@ struct Simplex(int dim, Vertex = int)
             ~ "range or array used to construct a simplex");
         
         assert(vertices_.walkLength == dim + 1,
-            "tried to create a simplex of dimension " ~ dim.stringof
-            ~ " using the wrong number of vertices: " ~ vertices_.to!string);
+            "wrong number of vertices for a dimension " ~ dim.to!string 
+            ~ " simplex. Expected " ~ (dim+1).to!string ~ " vertices but got"
+            ~ " vertices: " ~ vertices_.to!string);
         
         verts_[] = vertices_.map!(to!Vertex).array[];
 
@@ -70,11 +70,21 @@ struct Simplex(int dim, Vertex = int)
             alias comparisonCriterion = (v1, v2) => v1 == v2;
         }
 
+        static if(is(Vertex == struct))
+        {
+            static assert(__traits(compiles, Vertex.init.to!string),
+            "struct must define toString method");
+        }
+
         static if (is(Vertex == class))
         {
             // Make sure to check for any null values
             assert(vertices.all!(v => v !is null),
                 "class references used as vertices cannot be null");
+
+            static assert(__traits(isOverrideFunction, Vertex.toString),
+                "class type " ~ Vertex.stringof ~ " used as a vertex type must "
+                ~ "override the toString method");
         }
 
         static if (isPointer!Vertex)
@@ -85,7 +95,7 @@ struct Simplex(int dim, Vertex = int)
 
         assert(verts_[].isSorted!sortingCriterion,
                 "tried to create a simplex: " ~ this.toString ~ " with "
-                ~"unsorted vertices");
+                ~"vertices not in strictly increasing order");
 
         assert(verts_[].findAdjacent!comparisonCriterion.length == 0,
                 "tried to create a simplex " ~ this.toString ~ " containing a "
@@ -143,10 +153,8 @@ unittest
 
     // Need the proper number of vertices
     assertThrown!Error(Simplex!1([7]));
-    throwsWithMsg(
-        Simplex!1([1,2,3]),
-        "tried to create a simplex of dimension 1 using the wrong number of vertices: [1, 2, 3]"
-    );
+    throwsWithMsg!Error(Simplex!1([1,2,3]),
+        "wrong number of vertices for a dimension 1 simplex. Expected 2 vertices but got vertices: [1, 2, 3]");
 
 
     // The type used to store the vertices is accessible through the
@@ -179,12 +187,12 @@ unittest
     auto s = simplex(v1, v2);
 }
 
-///
+
+/// Suitable Vertex types
 unittest
 {
-
-    // User specified vertex types must be comparable using < and ==
-    // many types work already.
+    // User specified vertex types must be comparable using < and == and also
+    // be printable with writeln. Many types work already.
     static assert(__traits(compiles, Simplex!(5, string)));
     static assert(__traits(compiles, Simplex!(5, int[2]*)));
     static assert(__traits(compiles, Simplex!(5, double[])));
@@ -196,10 +204,11 @@ unittest
     class B {}
     static assert(!__traits(compiles, Simplex!(5, B)));
 
-    // To make a struct work we need to define opCmp and opEquals
+    // To make a struct work we need to define opCmp and opEquals.
     struct C
     {
         int label;
+
         int opCmp()(auto ref const C rhs) const
         {
             if (this.label < rhs.label)
@@ -217,12 +226,23 @@ unittest
         }
         // Note: the compiler-generated opEquals is OK here.
         // See $(LINK https://dlang.org/spec/operatoroverloading.html#compare).
+
+        // string toString() const
+        // {
+        //     import std.conv : to;
+        //     return label.to!string;
+        // }
     }
 
     auto testC = simplex(C(2), C(3));
     static assert(is(testC.VertexType == C));
     assertThrown!Error(simplex(C(1), C(0)));
     assertThrown!Error(simplex(C(2), C(2)));
+
+    import std.range : iota;
+    import std.conv : to;
+    writeln(Simplex!2(iota(3)));
+    iota(5).to!(Simplex!4).writeln;
 
     // We can use pointers to stucts and everything works
     // (the dereferencing is done internally)
@@ -237,7 +257,8 @@ unittest
     assertThrown!Error(simplex(new C(1), new C(0)));
     assertThrown!Error(simplex(new C(2), new C(2)));
 
-    // To make a class work we must define opCmp and opEquals as well
+    // To make a class work as a vertex type we must define suitable overrides
+    // for opCmp, opEquals and toString. 
     class D
     {
         int label;
@@ -276,7 +297,6 @@ unittest
     }
 
     auto testD = simplex(new D(2), new D(3));
-    
     static assert(is(testD.VertexType == D));
     assertThrown!Error(simplex(new D(1), new D(0)));
     assertThrown!Error(simplex(new D(2), new D(2)));

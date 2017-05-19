@@ -3,12 +3,12 @@ version(unittest)
     import std.stdio : writeln;
 }
 
-
 /*******************************************************************************
-* Checks if items of type T can be compared with the less-than operation. Note 
-* that this means all other comparison operations are also valid, per dlang
-* rules about operator overloading. See
-* $(LINK https://dlang.org/operatoroverloading.html#eqcmp)
+Checks if items of type T can be compared with the less-than operation. Note 
+that this means all other comparison operations are also valid, per dlang rules 
+about operator overloading. Note also that the comparison must handle both
+rvalues and lvalues. See 
+$(LINK https://dlang.org/operatoroverloading.html#eqcmp)
 */
 template isLessThanComparable(T)
 {
@@ -18,9 +18,7 @@ template isLessThanComparable(T)
     }
     else
     {
-        enum isLessThanComparable = is(typeof({
-            bool b = T.init < T.init;   
-        }));
+        enum isLessThanComparable = is(typeof({bool b = T.init < T.init; }));
     }
 }
 
@@ -44,17 +42,64 @@ template isLessThanComparable(T)
     struct A {}
     static assert(!isLessThanComparable!A);
 
+    /* Note that the "auto ref" template here allows us to have a single
+    function that accepts both rvalues and lvalues. lvalues are taken by
+    reference an rvalues are taken by copy. See
+    https://dlang.org/spec/template.html#auto-ref-parameters.*/
     struct B
     {
-        /* Note that the "auto ref" template here allows us to have a single
-           function that accepts both rvalues and lvalues. See
-           https://dlang.org/spec/template.html#auto-ref-parameters. */
         int opCmp()(auto ref const B rhs) const
+        {
+            return 0; // All objects compare equal
+        }
+    }
+    static assert(isLessThanComparable!B);
+
+    /* Making opCmp a normal non-template function taking the struct to compare
+    by copy works but may result in unneccesary copying. */
+    struct C
+    {
+        int opCmp(const C rhs) const
         {
             return 0;
         }
     }
-    static assert(isLessThanComparable!B);
+    static assert(isLessThanComparable!C);
+
+    /* Making opCmp a normal non-template function taking the strut to compare
+    by reference does not work, since this opCmp cannot accept rvalues. */
+    struct D
+    {
+        int opCmp(const ref D rhs) const
+        {
+            return 0;
+        }
+    }
+    static assert(!isLessThanComparable!D);
+
+    // Check that rvalues and lvalues work for types B, C
+    import std.meta : AliasSeq;
+    foreach(T; AliasSeq!(B, C))
+    {
+        T lvalue;
+        static assert(__traits(compiles, lvalue <= lvalue));
+        static assert(__traits(compiles, T.init <= T.init)); // rvalues too
+    }
+
+    // Check that lvalues work but rvalues don't for type D
+    {
+        D lvalue;
+        static assert(__traits(compiles, lvalue <= lvalue));
+        static assert(!__traits(compiles, D.init <= D.init));
+    }
+
+    /* TO DO: Find out why lvalueOf and rvalueOf don't seem to work
+    correctly on A, B, C, D above. Bug? */
+    foreach(T; AliasSeq!(A, B, C, D))
+    {
+        static assert(!__traits(compiles, lvalueOf!T < lvalueOf!T));
+        static assert(!__traits(compiles, rvalueOf!T < rvalueOf!T));
+    }
 }
 
 /// Class tests    
@@ -164,7 +209,7 @@ any other $(D Throwable)s $(I will) escape, and if no $(D Throwable)
 of the given type is thrown, then an $(D AssertError) is thrown. Also, throws
 
 Params:
-    ThrownType = The Throwable type to test for. Default is $(D AssertError)
+    ThrownType = The `Throwable` type to test for. Default is $(D AssertError)
     expression = The expression to test.
     msg        = Optional message to output on test failure.
     file       = The file where the error occurred.
@@ -193,14 +238,14 @@ void throwsWithMsg(ThrownType : Throwable = Error, E)
         if(thrown is null)
         {
             throw new Error("throwsWithMsg failed with wrong throwable "
-                ~ "type.\n  Actual  : " ~ typeid(exception).to!string ~ "\n  "
-                ~ "Expected: " ~ ThrownType.stringof, file, line);
+                ~ "type.\n  Actual type  : " ~ typeid(exception).to!string ~ "\n  "
+                ~ "Expected type: " ~ ThrownType.stringof, file, line);
         }
         else if (thrown.msg != msg)
         {
             throw new Error("throwsWithMsg failed with wrong message.\n"
-                ~ "  Actual  : " ~ thrown.msg ~ "\n  Expected: " ~ msg, file,
-                line);
+                ~ "  Actual message  : " ~ thrown.msg ~ "\n  Expected message: "
+                ~ msg, file, line);
         }
         else
         {
