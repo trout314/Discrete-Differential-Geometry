@@ -1,5 +1,5 @@
 
-import std.algorithm : all, canFind, filter, findAdjacent, isSorted, joiner, 
+import std.algorithm : all, canFind, equal, filter, findAdjacent, isSorted, joiner, 
     map, sort;
 import std.conv : to;
 import std.exception : assertThrown;
@@ -96,12 +96,12 @@ struct Simplex(int dim, Vertex = int)
     and the vertex type of vertex `rhs` is implicitly convertible to the vertex 
     type of the lhs vertex (here, `this`).
     */
-    // void opAssign(S)(ref S rhs) if (isInstanceOf!(Simplex, S)
-    //     && isImplicitlyConvertible!(S.VertexType, this.VertexType))
-    // {
-    //     static assert(S.dimension == this.dimension);
-    //     this.verts_ = rhs.verts_;
-    // }
+    void opAssign(S)(auto ref const S rhs) if (isInstanceOf!(.Simplex, S))
+    {
+        static assert(isImplicitlyConvertible!(S.VertexType, this.VertexType));
+        static assert(S.dimension == this.dimension);
+        this.verts_[] = rhs.vertices.map!(to!Vertex).array[];
+    }
 
     /***************************************************************************
     The dimension of the simplex. Always one less than the number of vertices.
@@ -186,13 +186,28 @@ unittest
     /* Can explicitly construct one simplex from another if they have the same
     dimension and the vertex type of the origin simplex can be implicitly
     converted to the vertex type of the desitination simplex. */
-    auto s6 = Simplex!(1, int)(simplex(byte(1), byte(2)));
-    assert(s6 == simplex(1,2));
+    alias SI = Simplex!(1, int);
+    alias SB = Simplex!(1, byte);
 
-    // Here is an alternate way. (TO DO: Why terrible errors here on wrong dim?)
-    auto s7 = simplex(byte(1), byte(2)).to!(Simplex!(1, int));
-    assert(s7 == simplex(1,2));
-}
+    // OK, byte implicitly converts to int
+    auto s6 = SI(SB([1, 2])); 
+    assert(s6 == SI([1,2]));
+
+    // NOT OK, int will not convert to byte
+    static assert(!__traits(compiles, SB(SI([1,2]))));
+    
+    // Here is an alternate way. TO DO: Why terrible errors here on wrong dim?
+    auto s7 = SB([1, 2]).to!SI;
+    assert(s7 == SI([1,2]));
+
+    // Rules for assigning one simplex to another are same as for construction.
+    auto s8 = SB([2,9]);
+    auto s9 = SI([1,2]);
+    s9 = s8;    // OK, same dimension, and byte implicitly convertes int
+
+    // NOT OK, int doesn't implicitly convert to byte
+    static assert(!__traits(compiles, s8 = s9));
+}   
 
 
 // additional tests
@@ -214,9 +229,7 @@ unittest
     auto sByte = simplex(byte(10), byte(11), byte(12));
     static assert(is(sByte.VertexType == byte));
 
-//    sByte2 = sMut; // OK byte implicitly converts to int 
     Simplex!(2, byte) sByte3 = sMut.vertices.to!(Simplex!(2, byte));
-
 
     auto sStr = simplex("1", "2", "3");
     auto sMut2 = simplex(13, 14, 15);
@@ -249,9 +262,9 @@ unittest
 
     /* This would allows us to represent points in Euclidean plan for example.
     Although we would likely want to use static arrays. */
-    double[2] v1 = [1.0, -3.4];
-    double[2] v2 = [1.0, 1.5];
-    double[2] v3 = [2.3, -1.6];
+    double[2] v1 = [1.0, -3.4],
+              v2 = [1.0,  1.5],
+              v3 = [2.3, -1.6];
     auto s2 = simplex(v1, v2, v3);
     static assert(is(s2.VertexType == double[2]));
 
@@ -260,18 +273,24 @@ unittest
 
     // Pointer and union types not allowed
     static assert(!__traits(compiles, Simplex!(5, int*)));
-
     union U {}
     static assert(!__traits(compiles, Simplex!(2, U)));
 
     // User defined structs and classes will not work automatically
     struct A {}
     static assert(!__traits(compiles, Simplex!(3, A)));
-
     class B {}
     static assert(!__traits(compiles, Simplex!(5, B)));
     
-    // To make a struct work we need to define opCmp and opEquals.
+    /* For a struct to work as a vertex type we must define appropriate opCmp
+    and opEquals methods.
+    
+    Here is an example that works. Note that the compiler-generated opEquals
+    which does member-by-member comparison is OK here. The rule is that opEquals
+    and opCmp must be consistent with eachother. That is, for any c1 and c2 of 
+    type C we must have: (c1 <= c2) && (c2 <= c1) if and only if (c1 == c2).
+
+    See $(LINK https://dlang.org/spec/operatoroverloading.html#compare).*/
     struct C
     {
         int label;
@@ -279,64 +298,34 @@ unittest
         // Here, opCmp just compares labels and returns the appropriate result
         int opCmp()(auto ref const C rhs) const
         {
-            if (this.label < rhs.label)
-            {
-                return -1;
-            }
-            else if (this.label > rhs.label)
-            {
-                return 1;
-            }
-            else
-            {
-                return 0;
-            }
+            if (this.label < rhs.label)      { return -1;}
+            else if (this.label > rhs.label) { return  1;}
+            else                             { return  0;}
         }
 
-        /* Note: the compiler-generated opEquals which does member-by-member
-        comparison with == is OK here. The rule is that opEquals and opCmp must 
-        be consistent with eachother. That is, for any c1 and c2 of type C we
-        must have: (c1 <= c2) && (c2 <= c1) if and only if (c1 == c2).
-        See $(LINK https://dlang.org/spec/operatoroverloading.html#compare).*/
-
-        /* The compiler-generated toString is also fine, although the error 
+        /* The compiler-generated toString would be fine, although the error 
         messages and unittests will be easier to read with the following. */ 
-        string toString() const
-        {   
-            return this.label.to!string;
-        }
+        string toString() const { return this.label.to!string; }
     }
 
-    auto testC = simplex(C(2), C(3));
-    static assert(is(testC.VertexType == C));
+    auto s4 = simplex(C(2), C(3));
+    static assert(is(s4.VertexType == C));
     assertThrown!Error(simplex(C(1), C(0)));
     assertThrown!Error(simplex(C(2), C(2)));
 
-     /* To make a class work as a vertex type we must define suitable overrides
+    /* To make a class work as a vertex type we must define suitable overrides
     for opCmp, opEquals and toString. */ 
     class D
     {
         int label;
 
-        this(int label_)
-        {
-            label = label_;
-        }
+        this(int label_) { label = label_;}
 
         override int opCmp(Object rhs) const
         {
-            if (this.label < rhs.to!D.label)
-            {
-                return -1;
-            }
-            else if (this.label > rhs.to!D.label)
-            {
-                return 1;
-            }
-            else
-            {
-                return 0;
-            }
+            if (this.label < rhs.to!D.label)      { return -1;}
+            else if (this.label > rhs.to!D.label) { return  1;}
+            else                                  { return  0;} 
         }
 
         override bool opEquals(Object rhs) const
@@ -346,12 +335,12 @@ unittest
 
         override string toString() const
         {
-            return label.to!string;
+            return this.label.to!string;
         }
     }
 
-    auto testD = simplex(new D(2), new D(3));
-    static assert(is(testD.VertexType == D));
+    auto s5 = simplex(new D(2), new D(3));
+    static assert(is(s5.VertexType == D));
     assertThrown!Error(simplex(new D(1), new D(0)));
     assertThrown!Error(simplex(new D(2), new D(2)));
 
@@ -361,8 +350,8 @@ unittest
 }
 
 /******************************************************************************
-* This helper template returns (by value) a newly constructed simplex from
-* a list of vertices given as the arguments of simplex(...).
+This helper template returns (by value) a newly constructed simplex from a list 
+of vertices given as the arguments of simplex(...).
 */
 auto simplex(size_t numVertices, V)(V[numVertices] vertices...)
 {
@@ -382,8 +371,8 @@ unittest
     auto s = simplex(i, j);
     static assert(is(typeof(s) == Simplex!(1, immutable int)));
 
-   auto s4 = simplex("alice", "bob", "carol");
-   static assert(is(s4.VertexType == string));
+    auto s4 = simplex("alice", "bob", "carol");
+    static assert(is(s4.VertexType == string));
 
     assertThrown!Error(simplex("bob", "alice", "carol"));
     assertThrown!Error(simplex(1, 3, 3, 5));
@@ -392,7 +381,7 @@ unittest
 }
 
 /******************************************************************************
-* Returns true if simplex has possibleFace as a face. Otherwise returns false
+Returns true if simplex has possibleFace as a face. Otherwise, returns false.
 */
 bool hasFace(S, F)(auto ref const S simplex, auto ref const F possibleFace)
         if (isInstanceOf!(Simplex, S) && isInstanceOf!(Simplex, F))
@@ -441,7 +430,7 @@ bool hasFace(S, F)(auto ref const S simplex, auto ref const F possibleFace)
 }
 
 /******************************************************************************
-* Returns ...
+Returns the face opposite `face` in `simplex`.
 */
 auto oppositeFace(S, F)(S simplex, F face)
         if (isInstanceOf!(Simplex, S) && isInstanceOf!(Simplex, F))
@@ -481,14 +470,25 @@ unittest
 }
 
 /******************************************************************************
-* Returns... 
+Returns a range that gives the common vertices of simplices `s1` and `s2`
 */
-auto commonVertices(S)(const ref S simplex) if (isInstanceOf!(Simplex, S))
+auto commonVertices(S1, S2)(const ref S1 s1, const ref S2 s2)
+    if (isInstanceOf!(Simplex, S1) && isInstanceOf!(Simplex, S2))
 {
+    auto result = s1.vertices.filter!(v => s2.vertices.canFind(v));
+    assert(result.equal(s2.vertices.filter!(v => s1.vertices.canFind(v))));
+    return result;
+}
+///
+unittest
+{
+    auto s1 = simplex(2, 3, 5);
+    auto s2 = simplex(3, 5, 7, 11);
+    writeln(commonVertices(s1, s2));
 }
 
 /******************************************************************************
-* Returns a newly allocated dynamic array containing all faces of dimension...
+Returns a newly allocated dynamic array containing all faces of dimension...
 */
 auto facesOfDim(size_t dim, S)(const ref S simplex)
 if (isInstanceOf!(Simplex, S))
