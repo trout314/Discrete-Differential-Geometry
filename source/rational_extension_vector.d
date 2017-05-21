@@ -1,11 +1,13 @@
-version(unittest)
-{
-    import std.algorithm : all, equal;
-    import std.range : array, isForwardRange;
-    import std.traits : hasFunctionAttributes, ReturnType;
-}
+import std.algorithm : all, copy, equal, map;
+import std.conv : to;
+import std.format : format;
+import std.range : array, enumerate, iota, isForwardRange, walkLength;
+import std.traits : hasFunctionAttributes, ReturnType;
 
-/++
+import std.rational : rational, Rational;
+import factoring : squarePart, sqrtSquarePart, squareFreePart;
+
+/*******************************************************************************
 Returns a forward range that ... TO DO
 
 Params:
@@ -13,12 +15,9 @@ Params:
 
 Returns:
     Forward range of `REVector`s giving the  ... 
-+/
-auto simplexPoints(int dim)()
+*/
+auto simplexPoints(int dim)() pure nothrow @nogc @safe
 {
-    import std.algorithm : map;
-    import std.range : array, iota;
-
     alias Vec = REVector!dim;
     return iota(0, dim + 1).map!(k => Vec(simplexCoefs(dim)[k]));
 }
@@ -33,21 +32,15 @@ pure nothrow @safe unittest
     v3 = (1/2, (1/6)√3, (1/3)√6)
     */
 
-    import std.rational : rational;
-    alias vec = reVector;
+    alias Vec = reVector;
     alias r = rational;
+    auto pts = [Vec(  r(0),   r(0),   r(0)),
+                Vec(  r(1),   r(0),   r(0)),
+                Vec(r(1,2), r(1,2),   r(0)),
+                Vec(r(1,2), r(1,6), r(1,3))];
 
-    auto v0 = vec(  r(0),   r(0),   r(0));
-    auto v1 = vec(  r(1),   r(0),   r(0));
-    auto v2 = vec(r(1,2), r(1,2),   r(0));
-    auto v3 = vec(r(1,2), r(1,6), r(1,3));
-
-
-    assert(simplexPoints!3.equal([v0,v1,v2,v3]));
+    assert(simplexPoints!3.equal(pts));
     assert(simplexPoints!3.all!(v => v.roots == [1,3,6]));
-
-    static assert(hasFunctionAttributes!(simplexPoints!3,
-        "pure", "nothrow", "@nogc", "@safe"));
 
     static assert(isForwardRange!(ReturnType!(simplexPoints!3)));
 }
@@ -57,9 +50,6 @@ struct REVector(int dim)
     ///
     string toString()
     {
-        import std.conv : to;
-        import std.format : format;
-
         string result = "(";
         foreach (i, coef; rationalCoefs)
         {
@@ -101,17 +91,12 @@ struct REVector(int dim)
     // TO DO: Add some constraints to this template?
     this(T)(T coefs)
     {
-        import std.range : walkLength;
-        import std.algorithm : copy;
-
         assert(coefs.walkLength == dim);
         copy(coefs, rationalCoefs[]);
     }
 
     static this()
     {
-        import std.range : enumerate;
-
         foreach (index, root; enumerate(simplexRoots(dim)))
         {
             roots_[index] = root;
@@ -125,12 +110,9 @@ struct REVector(int dim)
 
 private:
     static immutable int[dim] roots_;
-
-    import std.rational : Rational;
     Rational!int[dim] rationalCoefs;
 }
 
-import std.rational : Rational;
 auto reVector(T, size_t dim)(Rational!T[dim] coefficients...)
 {
     alias r = Rational!T;
@@ -148,19 +130,12 @@ private:
 auto simplexRoots(int dim)
 {
     assert(dim >= 0);
-
-    import std.algorithm : map;
-    import std.range : iota;
-    import factoring : squareFreePart;
-
     return iota(1, dim + 1).map!(k => squareFreePart(k * (k + 1) / 2));
 }
 
 unittest
 {
     assert(simplexRoots(10).array == [1, 3, 6, 10, 15, 21, 7, 1, 5, 55]);
-
-    import factoring : squarePart, squareFreePart;
     foreach (radicand; simplexRoots(50))
     {
         assert(radicand > 0);
@@ -174,11 +149,6 @@ unittest
 
 auto simplexCoefs(int dim)
 {
-    import std.range : iota;
-    import std.algorithm : map;
-    import std.rational : rational;
-    import factoring : sqrtSquarePart;
-
     auto computeCoef(int pointIndex, int basisIndex)
     {
         auto n = basisIndex * (basisIndex + 1) / 2;

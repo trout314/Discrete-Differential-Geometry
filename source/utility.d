@@ -1,3 +1,7 @@
+import std.conv : to;
+import std.meta : AliasSeq, allSatisfy, anySatisfy;
+import std.traits : lvalueOf, rvalueOf;
+
 version(unittest)
 {
     import std.stdio : writeln;
@@ -25,8 +29,6 @@ template isLessThanComparable(T)
 /// Basic type tests
 @safe pure nothrow @nogc unittest
 {
-    import std.meta : AliasSeq, allSatisfy, anySatisfy;
-
     alias ComparableTypes = AliasSeq!(bool, byte, ubyte, short, ushort, int, 
         uint, long, ulong, float, double, real, ifloat, idouble, ireal, char,
         wchar, dchar, int*, void*);
@@ -97,7 +99,6 @@ template isLessThanComparable(T)
     correctly on A, B, C, D above. Bug? */
     foreach(T; AliasSeq!(A, B, C, D))
     {
-        import std.traits : lvalueOf, rvalueOf;
         static assert(!__traits(compiles, lvalueOf!T <= lvalueOf!T));
         static assert(!__traits(compiles, rvalueOf!T <= rvalueOf!T));
     }
@@ -117,6 +118,26 @@ unittest
         }
     }
     static assert(isLessThanComparable!B);
+}
+
+/*******************************************************************************
+Checks if items of type T can be converted to a string. TO DO: Clean this up
+and make sure it works as advertised!
+*/
+template isPrintable(T)
+{
+    static if(is(Vertex == class))
+    {
+        enum isPrintable = __traits(isOverrideFunction, T.toString);
+    }
+    else static if (is(Vertex == struct))
+    {
+        enum isPrintable = __traits(compiles, T.init.to!string);
+    }
+    else
+    {
+        enum isPrintable = __traits(compiles, T.init.to!string);
+    }
 }
 
 /*******************************************************************************
@@ -294,7 +315,6 @@ void throwsWithMsg(ThrownType : Throwable = Error, E)
                   string file = __FILE__,
                   size_t line = __LINE__)
 {
-    import std.conv : to;
     try
     {
         expression();
