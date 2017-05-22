@@ -484,7 +484,7 @@ unittest
 {
     auto s1 = simplex(2, 3, 5);
     auto s2 = simplex(3, 5, 7, 11);
-    writeln(commonVertices(s1, s2));
+    assert(commonVertices(s1, s2).equal([3, 5]));
 }
 
 /******************************************************************************
@@ -497,10 +497,10 @@ if (isInstanceOf!(Simplex, S))
 }
 
 /******************************************************************************
-* Returns a newly allocated dynamic array containing arrays of vertices. These
-* are the vertices in all the faces of the given simplex (simplex). They are
-* returned sorted by dimension (lowest to highest) and in dictionary order
-* within each dimension.
+Returns a newly allocated dynamic array containing arrays of vertices. These are
+the vertices in all the faces of the given simplex (simplex). They are returned 
+sorted by dimension (lowest to highest) and in dictionary order within each
+dimension.
 */
 auto faces(S)(const ref S simplex) if (isInstanceOf!(Simplex, S))
 {
@@ -566,14 +566,14 @@ unittest
 }
 
 /******************************************************************************
-* Returns ...
+Returns ...
 */
 auto hinges(S)(const ref S simplex) if (isInstanceOf!(Simplex, S))
 {
 }
 
 /******************************************************************************
-* Returns ...
+Returns ...
 */
 auto ridges(S)(ref S simplex) if (isInstanceOf!(Simplex, S))
 {
@@ -612,4 +612,10 @@ auto ridges(S)(ref S simplex) if (isInstanceOf!(Simplex, S))
     }
 
     return RidgeRange(simplex);
+}
+///
+unittest
+{
+    auto s1 = simplex(1,2,3);
+    writeln(s1.ridges);
 }

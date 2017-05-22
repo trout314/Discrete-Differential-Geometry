@@ -1,6 +1,8 @@
 import std.conv : to;
 import std.meta : AliasSeq, allSatisfy, anySatisfy;
 import std.traits : lvalueOf, rvalueOf;
+import std.range : array, chain, repeat, take;
+import std.algorithm : map;
 
 version(unittest)
 {
@@ -339,4 +341,37 @@ void throwsWithMsg(ThrownType : Throwable = Error, E)
             return;
         }
     }
+}
+
+/*******************************************************************************
+Returns all sequences of length `length` which contain `numOnes` ones and all 
+other elements zero. Sequences given in increasing dictionary order. (This is 
+the same as saying the corresponding binary numbers are in increasing order.)
+*/
+auto binarySequences(int length, int numOnes)
+{
+    assert(length >= numOnes);
+
+    if(numOnes == length) {
+        return [1.repeat.take(numOnes).array];
+    }
+
+    if(numOnes == 0)
+    {
+        return [0.repeat.take(length).array];
+    }
+
+    return chain(
+        binarySequences(length - 1, numOnes    ).map!(seq => [0] ~ seq),
+        binarySequences(length - 1, numOnes - 1).map!(seq => [1] ~ seq)
+    ).array;
+}
+///
+unittest
+{
+    assert(binarySequences(3, 1) == [[0,0,1],[0,1,0],[1,0,0]]);
+    assert(binarySequences(3, 2) == [[0,1,1],[1,0,1],[1,1,0]]);
+    assert(binarySequences(4, 2) == [[0,0,1,1],[0,1,0,1],[0,1,1,0],
+                                     [1,0,0,1],[1,0,1,0],[1,1,0,0]]);
+    assert(binarySequences(0, 0) == [[]]);
 }
