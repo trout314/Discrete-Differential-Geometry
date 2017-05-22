@@ -1,7 +1,7 @@
 import std.conv : to;
 import std.meta : AliasSeq, allSatisfy, anySatisfy;
 import std.traits : lvalueOf, rvalueOf;
-import std.range : array, chain, repeat, take;
+import std.range : array, chain, repeat, take, only;
 import std.algorithm : map;
 
 version(unittest)
@@ -350,15 +350,18 @@ the same as saying the corresponding binary numbers are in increasing order.)
 */
 auto binarySequences(int length, int numOnes)
 {
+    assert(length >= 0);
+    assert(numOnes >= 0);
     assert(length >= numOnes);
 
-    if(numOnes == length) {
-        return [1.repeat.take(numOnes).array];
+    if(numOnes == length)
+    {
+        return [1.repeat(numOnes).array];
     }
 
     if(numOnes == 0)
     {
-        return [0.repeat.take(length).array];
+        return [0.repeat(length).array];
     }
 
     return chain(
@@ -369,9 +372,26 @@ auto binarySequences(int length, int numOnes)
 ///
 unittest
 {
+    assert(binarySequences(3, 0) == [[0,0,0]]);
     assert(binarySequences(3, 1) == [[0,0,1],[0,1,0],[1,0,0]]);
     assert(binarySequences(3, 2) == [[0,1,1],[1,0,1],[1,1,0]]);
+    assert(binarySequences(3, 3) == [[1,1,1]]);
+
     assert(binarySequences(4, 2) == [[0,0,1,1],[0,1,0,1],[0,1,1,0],
                                      [1,0,0,1],[1,0,1,0],[1,1,0,0]]);
+                                     
     assert(binarySequences(0, 0) == [[]]);
+
+    /* Careful! The number of such sequences is "length choose numOnes" which
+    can grow super-exponentially (depending on how numOnes is chosen). It is 
+    easy to exhaust memory. For example, there are (50 choose 25) length 50
+    sequences with 25 ones and 25 zeros, more than 126 trillion sequences! */
+
+    // So the following would probably exhaust memory!
+    // auto seqs = binarySequences(50, 25); 
+
+    // Listing length 50 sequences with only a small numbers of ones is fine.
+    assert(binarySequences(50, 0).length == 1);
+    assert(binarySequences(50, 1).length == 50);
+    assert(binarySequences(50, 2).length == (50 * 49) / 2);
 }

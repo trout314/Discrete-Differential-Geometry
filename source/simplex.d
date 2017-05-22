@@ -4,11 +4,11 @@ import std.algorithm : all, canFind, equal, filter, findAdjacent, isSorted, join
 import std.conv : to;
 import std.exception : assertThrown;
 import std.range : array, chain, ElementType, empty, front, iota, isInputRange, 
-    popFront, walkLength;
+    popFront, walkLength, zip, enumerate;
 import std.traits : CommonType, isArray, isImplicitlyConvertible, isInstanceOf, 
     isPointer, PointerTarget;
 import utility : isConstructible, isEqualityComparable, isLessThanComparable, 
-    isPrintable, throwsWithMsg;
+    isPrintable, throwsWithMsg, binarySequences;
 
 version(unittest)
 {
@@ -22,11 +22,11 @@ specified type Vertex. Elements of type Vertex must be comparable with less-than
 */
 struct Simplex(int dim, Vertex = int)
 {
-    static assert(!isPointer!Vertex,
-        "Vertex type cannot be a pointer type");
+    static assert(dim >= 0, "dimension cannot be negative");
 
-    static assert(!is(Vertex == union),
-        "Vertex type cannot be a union type");
+    static assert(!isPointer!Vertex, "Vertex type cannot be a pointer type");
+
+    static assert(!is(Vertex == union), "Vertex type cannot be a union type");
 
     static assert(isEqualityComparable!Vertex,
         "Vertex type must be equality comparable");
@@ -84,11 +84,6 @@ struct Simplex(int dim, Vertex = int)
         static assert(isImplicitlyConvertible!(S.VertexType, this.VertexType),
             "vertex types not implicitly convertible");
         this.verts_[] = simplexToCopy.vertices.map!(to!Vertex).array[];
-    }
-    ///
-    unittest
-    {
-        auto s = Simplex!2([1,5,7]);
     }
 
     /***************************************************************************
@@ -465,6 +460,8 @@ unittest
     assert(s(1,2,4,7).oppositeFace(s(4,7)) == s(1,2));
     assert(s(1,2,4,7).oppositeFace(s(1,2)) == s(4,7));
 
+    static assert(s(1,2,4,7).oppositeFace(s(1,4)) == s(2,7));
+
     static assert(!__traits(compiles, s(2).oppositeFace(s(1))));
     assertThrown!Error(s(1,2,4,7).oppositeFace(s(1,2,3)));
 }
@@ -472,7 +469,7 @@ unittest
 /******************************************************************************
 Returns a range that gives the common vertices of simplices `s1` and `s2`
 */
-auto commonVertices(S1, S2)(const ref S1 s1, const ref S2 s2)
+auto commonVertices(S1, S2)(auto ref const S1 s1, auto ref const S2 s2)
     if (isInstanceOf!(Simplex, S1) && isInstanceOf!(Simplex, S2))
 {
     auto result = s1.vertices.filter!(v => s2.vertices.canFind(v));
@@ -485,15 +482,43 @@ unittest
     auto s1 = simplex(2, 3, 5);
     auto s2 = simplex(3, 5, 7, 11);
     assert(commonVertices(s1, s2).equal([3, 5]));
+
+    static assert(commonVertices(simplex(1,3,7), simplex(7, 10)).equal([7]));
 }
 
 /******************************************************************************
-Returns a newly allocated dynamic array containing all faces of dimension...
+Returns array containing all faces of `simplex` with dimension `dim`. Faces
+given in dictionary order.
 */
-auto facesOfDim(size_t dim, S)(const ref S simplex)
+auto facesOfDim(int dim, S)(auto ref const S simplex)
 if (isInstanceOf!(Simplex, S))
 {
-    return 4;
+    assert(dim >= 0);
+    assert(dim <= simplex.dimension);
+
+    alias simplexType = Simplex!(dim, S.VertexType);
+
+    auto vertexChoices = 
+        binarySequences(simplex.dimension + 1, simplex.dimension - dim);
+    return vertexChoices.map!(
+        choice => enumerate(choice)
+                  .filter!(c => c.value == 0)
+                  .map!(c => simplex.vertices[c.index])
+                  .to!simplexType
+    ).array;
+}
+///
+unittest
+{
+    alias s = simplex;   // For clarity
+
+    assert(s(1,2,3).facesOfDim!0 == [s(1), s(2), s(3)]);
+    assert(s(1,2,3).facesOfDim!1 == [s(1,2), s(1,3), s(2,3)]);
+    assert(s(1,2,3).facesOfDim!2 == [s(1,2,3)]);
+
+    static assert(s(1,2,3).facesOfDim!0 == [s(1), s(2), s(3)]);
+    static assert(s(1,2,3).facesOfDim!1 == [s(1,2), s(1,3), s(2,3)]);
+    static assert(s(1,2,3).facesOfDim!2 == [s(1,2,3)]);
 }
 
 /******************************************************************************
@@ -617,5 +642,6 @@ auto ridges(S)(ref S simplex) if (isInstanceOf!(Simplex, S))
 unittest
 {
     auto s1 = simplex(1,2,3);
-    writeln(s1.ridges);
+    assert(s1.ridges.array == s1.facesOfDim!1);
+
 }
