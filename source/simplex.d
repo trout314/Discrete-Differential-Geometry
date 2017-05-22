@@ -593,8 +593,23 @@ unittest
 /******************************************************************************
 Returns ...
 */
-auto hinges(S)(const ref S simplex) if (isInstanceOf!(Simplex, S))
+auto hinges(S)(auto ref const S simplex) if (isInstanceOf!(Simplex, S))
 {
+    static assert(simplex.dimension >= 2);
+    return simplex.facesOfDim!(simplex.dimension - 2);
+}
+///
+unittest
+{
+    alias s = simplex;
+
+    assert(s(1,2,3).hinges == [s(1), s(2), s(3)]);
+    assert(s(1,3,5,7).hinges 
+        == [s(1,3), s(1,5), s(1,7), s(3,5), s(3,7), s(5,7)]);
+
+    static assert(s(1,2,3).hinges == [s(1), s(2), s(3)]);
+    static assert(s(1,3,5,7).hinges 
+        == [s(1,3), s(1,5), s(1,7), s(3,5), s(3,7), s(5,7)]);
 }
 
 /******************************************************************************
@@ -643,5 +658,19 @@ unittest
 {
     auto s1 = simplex(1,2,3);
     assert(s1.ridges.array == s1.facesOfDim!1);
+}
 
+auto join(S1, S2)(auto ref const S1 s1, auto ref const S2 s2)
+    if (isInstanceOf!(Simplex, S1) && isInstanceOf!(Simplex, S2))
+{
+    return Simplex!(s1.dimension + s2.dimension + 1)(
+        sort(chain(s1.vertices, s2.vertices).array.dup));
+}
+///
+unittest
+{
+    alias s = simplex;
+
+    assert(join(s(1, 3), s(2, 4)) == s(1,2,3,4));
+    assert(join(s(1, 3), s(2)) == s(1,2,3));
 }
