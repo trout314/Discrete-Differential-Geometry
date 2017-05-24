@@ -1,67 +1,36 @@
-struct Simplex
+import std.algorithm : all, any, canFind, filter, map, sort;
+import std.exception : enforce;
+import std.conv : to;
+import std.range : array, walkLength;
+
+import simplex : Simplex, simplex;
+
+import std.range : array;
+import std.algorithm : joiner, sort, map;
+
+
+version(unittest)
 {
-    this(R)(R vertices_)
-    {
-        import std.traits : isArray;
-        import std.range : isInputRange, ElementType;
-        import std.algorithm : isSorted, findAdjacent;
-        import std.range : walkLength, empty;
-
-        static assert(isInputRange!R || isArray!R,
-            "Simplex must be constructed from a range or array");
-
-        static assert(is(ElementType!R : int), "Element type of range or "
-            ~ "array used to constuct a Simplex must be implicitly "
-            ~ "convertible to int");
-
-        assert(vertices_.isSorted, "vertices must be sorted");
-        assert(vertices_.findAdjacent.walkLength == 0,
-            "repeated vertices not allowed");
-        assert(!vertices_.empty, "empty simplices not allowed");
-
-        slice = vertices_.dup;
-    }
-
-    int[] vertices()
-    {
-        return slice[];
-    }
-
-    int opCmp(Simplex s) const
-    {
-        return this.slice < s.slice;
-    }
-
-    string toString() const
-    {
-        import std.conv : to;
-        return slice.to!string;
-    }
-
-    private:
-    int[] slice;
+    import std.exception : assertThrown;
+    import std.stdio : writeln;
 }
 
 
-/// A simplicial complex type ... yada yada
-struct SimplicialComplex
-{
-    // Inserts a facet into the simplicial complex.
-    void insertFacet(Simplex simplex)
-    in
-    {
-        import std.algorithm : any;
-        assert(!facets.any!(f => f.hasFace(simplex)),
-            "inserted simplex must not be a face of an existing facet");
-    }
-    body
-    {
-        import std.range : walkLength;
-        immutable numVerts = simplex.vertices.walkLength; 
-        facetLists[numVerts] ~= simplex;
 
-        import std.algorithm : sort;
-        sort(facetLists[numVerts]);
+/// A simplicial complex type ... yada yada
+struct SimplicialComplex(Vertex = int)
+{
+    alias VertexType = Vertex;
+
+    // Inserts a facet into the simplicial complex.
+    void insertFacet(int dim)(Simplex!(dim, Vertex) simplex)
+    {
+        enforce(!facets.any!(f => f.hasFace_Verts(simplex.vertices)),
+            "inserted simplex must not be a face of an existing facet");
+
+        facetLists[dim + 1] ~= simplex.vertices.dup;
+
+        sort(facetLists[dim + 1]);
     }
 
     // Returns the facets of the simplicial complex.
@@ -69,10 +38,8 @@ struct SimplicialComplex
     // They are returned in increasing order of dimension and in
     // lexicographic order within dimensions.
     // e.g. [8],[2,3],[2,4],[1,6,7]
-    Simplex[] facets()
+    int[][] facets()
     {
-        import std.range : array;
-        import std.algorithm : joiner, sort, map;
 
         auto sizes = sort(facetLists.keys);        
         return sizes.map!(s => facetLists[s]).joiner.array;
@@ -81,133 +48,98 @@ struct SimplicialComplex
     // Returns the number of facets
     size_t numFacets()
     {
-        import std.range : walkLength;
         return facets.walkLength;
     }
 
     // Returns the link of the given simplex as a list of facets
     // in same order as they appear in facets()
-    Simplex[] link(Simplex simplex)
+    int[][] link(int dim)(auto ref const Simplex!(dim, Vertex) simplex)
     {
-        import std.range : array;
-        import std.algorithm : map;
         return this.star(simplex)
-            .map!(facet => facet.oppositeFace(simplex)).array;
+            .map!(facet => facet.oppositeFace_Verts(simplex.vertices)).array;
     }
 
     // Returns the star of the given simplex as a list of facets
     // in same order as they appear in facets() 
-    Simplex[] star(Simplex simplex)
+    int[][] star(int dim)(auto ref const Simplex!(dim, Vertex) simplex)
     {
-        import std.range : array;
-        import std.algorithm : filter;
-        return this.facets.filter!(f => f.hasFace(simplex)).array;
+        return this.facets.filter!(f => f.hasFace_Verts(simplex.vertices)).array;
     }
 
     // Returns true if simplex is in this simplicial complex and false otherwise
-    bool contains(Simplex simplex)
+    bool contains(int dim)(auto ref const Simplex!(dim, Vertex) simplex)
     {
-        import std.algorithm : any;
-        return this.facets.any!(f => f.hasFace(simplex));
+        return this.facets.any!(f => f.hasFace_Verts(simplex.vertices));
     }
 
     string toString()
     {
-        import std.conv : to;
         return "SComp" ~ this.facets.to!string;
     }
 
     private:
     // Lists of facets, indexed by number of vertices in the facet
-    Simplex[][size_t] facetLists;
+    int[][][size_t] facetLists;
 
     // TO DO: Make the above into an array of (size_t, Simplex[])
     // pairs. Probably won't ever have enough distince facet
     // dimenstion to justify using an associative array
 }
 
-bool hasFace(Simplex s1, Simplex s2)
+bool hasFace_Verts(const(int)[] s1, const(int)[] s2)
 {
-    import std.algorithm : all, canFind;
-    return s2.vertices.all!(vertex => s1.vertices.canFind(vertex));
+    return s2.all!(vertex => s1.canFind(vertex));
 }
 
-Simplex oppositeFace(Simplex simplex, Simplex face)
+auto oppositeFace_Verts(const(int)[] simplex, const(int)[] face)
 {
-    import std.algorithm : filter, canFind;
-    import std.range : array;
-    import std.conv : to;
-
-    return simplex.vertices.filter!(v => !face.vertices.canFind(v)).array.to!Simplex;
+    return simplex.filter!(v => !face.canFind(v)).array.to!(int[]);
 }
 
-version(unittest)
-{
-    import std.exception : assertThrown;
-    import std.stdio : writeln;
-    import std.conv : to;
-    import std.algorithm : map, each;
-    import std.range : array;
-}
 
 unittest
 {
 
-    // To help with readability, we define a short aliases for Simplex and
-    // Simplex[].
-    // NOTE: Unfortunately we can't locally alias to!Simplex and
-    // to!(Simplex[]) and also use UFCS.
-    alias S = Simplex;
-    alias SA = Simplex[];
-
-    SimplicialComplex sc;
+    SimplicialComplex!() sc;
     assert(sc.numFacets == 0);
     assert(sc.facets == []);
 
     // insert some facets
-    sc.insertFacet([1,2,3].to!S);
-    sc.insertFacet([2,3,4].to!S);
-    sc.insertFacet([4,5].to!S);
-    sc.insertFacet([5,6].to!S);
+    alias s = simplex;
+
+    sc.insertFacet(s(1,2,3));
+    sc.insertFacet(s(2,3,4));
+    sc.insertFacet(s(4,5));
+    sc.insertFacet(s(5,6));
 
     // get list of facets back, in order of increasing dimension
     // and dictionary order within a dimension 
-    assert(sc.facets == [[4,5], [5,6], [1,2,3], [2,3,4]].to!SA);
+    assert(sc.facets == [[4,5], [5,6], [1,2,3], [2,3,4]]);
     assert(sc.numFacets == 4);
 
     // check for the presence of simplices
-    assert(sc.contains([4,5].to!S));
-    assert(sc.contains([2,3,4].to!S));
-    assert(sc.contains([6].to!S));
-    assert(!sc.contains([1,2,5].to!S));
-    assert(!sc.contains([4,6].to!S));
+    assert(sc.contains(s(4,5)));
+    assert(sc.contains(s(2,3,4)));
+    assert(sc.contains(s(6)));
+    assert(!sc.contains(s(1,2,5)));
+    assert(!sc.contains(s(4,6)));
 
     // get the star of a simplex as list of facets
-    assert(sc.star([5].to!S) == [[4,5], [5,6]].to!SA);
-    assert(sc.star([4].to!S) == [[4,5], [2,3,4]].to!SA);
-    assert(sc.star([2,3].to!S) == [[1,2,3], [2,3,4]].to!SA);
+    assert(sc.star(s(5)) == [[4,5], [5,6]]);
+    assert(sc.star(s(4)) == [[4,5], [2,3,4]]);
+    assert(sc.star(s(2,3)) == [[1,2,3], [2,3,4]]);
 
     // get link of a simplex as list of facets
-    assert(sc.link([5].to!S) == [[4], [6]].to!SA);
-    assert(sc.link([4].to!S) == [[5], [2,3]].to!SA);
-    assert(sc.link([2,3].to!S) == [[1], [4]].to!SA);
+    assert(sc.link(s(5)) == [[4], [6]]);
+    assert(sc.link(s(4)) == [[5], [2,3]]);
+    assert(sc.link(s(2,3)) == [[1], [4]]);
 
     // --------------------------------------------------------------
     // Restrictions
     // --------------------------------------------------------------
 
-    // vertices used to construct a simplex must be sorted
-    assertThrown!Error(Simplex([1,5,2,3]));
-
-    // a simplex cannot have repeated vertices
-    assertThrown!Error(Simplex([1,3,3]));
-
-    // a simplex cannot be empty
-    int[] v;
-    assertThrown!Error(Simplex(v));
-
     // it is an error to insert a simplex that is
     // already the face of an existing facet
-    assertThrown!Error(sc.insertFacet([4,5].to!S));
-    assertThrown!Error(sc.insertFacet([2].to!S));
+    assertThrown(sc.insertFacet(s(4,5)));
+    assertThrown(sc.insertFacet(s(2)));
 }
