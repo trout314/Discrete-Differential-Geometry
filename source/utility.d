@@ -1,13 +1,8 @@
+import std.algorithm : map;
 import std.conv : to;
 import std.meta : AliasSeq, allSatisfy, anySatisfy;
+import std.range : array, chain, only, repeat, take;
 import std.traits : lvalueOf, rvalueOf;
-import std.range : array, chain, repeat, take, only;
-import std.algorithm : map;
-
-version(unittest)
-{
-    import std.stdio : writeln;
-}
 
 /*******************************************************************************
 Checks if items of type T can be compared with the less-than operation. Note 
@@ -107,7 +102,7 @@ template isLessThanComparable(T)
 }
 
 /// Class tests    
-unittest
+@safe pure nothrow @nogc unittest
 {
     class A {}
     static assert(!isLessThanComparable!A);
@@ -257,7 +252,6 @@ Checks if an instance of type S can be constructed from an instance of type T
 TO DO: Didn't see any phobos trait for this, ask about it on forums.
 TO DO: Make sure this actually works as advertised!
 */
-import std.conv : to;
 enum bool isConstructible(From, To) = is(From : To) ||
 is(typeof({
     auto t = To(From());
@@ -311,7 +305,7 @@ Params:
         `AssertError` if the given `Throwable` with message `msg` is
         not thrown.
 */  
-void throwsWithMsg(ThrownType : Throwable = Error, E)
+void throwsWithMsg(ThrownType : Throwable = Exception, E)
                   (lazy E expression,
                   string msg = null,
                   string file = __FILE__,
@@ -321,7 +315,7 @@ void throwsWithMsg(ThrownType : Throwable = Error, E)
     {
         expression();
     }
-    catch(Throwable exception)
+    catch(Exception exception)
     {
         auto thrown = cast(ThrownType) exception;
         if(thrown is null)
@@ -370,7 +364,7 @@ auto binarySequences(int length, int numOnes)
     ).array;
 }
 ///
-unittest
+@safe pure unittest
 {
     assert(binarySequences(3, 0) == [[0,0,0]]);
     assert(binarySequences(3, 1) == [[0,0,1],[0,1,0],[1,0,0]]);

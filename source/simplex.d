@@ -1,19 +1,14 @@
 
-import std.algorithm : all, canFind, equal, filter, findAdjacent, isSorted, joiner, 
-    map, sort;
+import std.algorithm : all, canFind, equal, filter, findAdjacent, isSorted, 
+    joiner, map, sort;
 import std.conv : to;
-import std.exception : assertThrown;
-import std.range : array, chain, ElementType, empty, front, iota, isInputRange, 
-    popFront, walkLength, zip, enumerate;
+import std.exception : assertThrown, enforce;
+import std.range : array, chain, ElementType, empty, enumerate, front, iota, 
+    isInputRange, popFront, walkLength;
 import std.traits : CommonType, isArray, isImplicitlyConvertible, isInstanceOf, 
     isPointer, PointerTarget;
-import utility : isConstructible, isEqualityComparable, isLessThanComparable, 
-    isPrintable, throwsWithMsg, binarySequences;
-
-version(unittest)
-{
-    import std.stdio : writeln;
-}
+import utility : binarySequences, isConstructible, isEqualityComparable, 
+    isLessThanComparable, isPrintable, throwsWithMsg;
 
 /*******************************************************************************
 Represents a non-degenerate simplex represented as set of vertices of user
@@ -23,19 +18,13 @@ specified type Vertex. Elements of type Vertex must be comparable with less-than
 struct Simplex(int dim, Vertex = int)
 {
     static assert(dim >= 0, "dimension cannot be negative");
-
     static assert(!isPointer!Vertex, "Vertex type cannot be a pointer type");
-
     static assert(!is(Vertex == union), "Vertex type cannot be a union type");
-
-    static assert(isEqualityComparable!Vertex,
-        "Vertex type must be equality comparable");
-
-    static assert(isLessThanComparable!Vertex,
-        "Vertex type must be less-than comparable");
-
-    static assert(isPrintable!Vertex,
-        "Vertex type must be printable");
+    static assert(isEqualityComparable!Vertex, "Vertex type must be equality "
+        ~ "comparable");
+    static assert(isLessThanComparable!Vertex, "Vertex type must be less-than "
+        ~ "comparable");
+    static assert(isPrintable!Vertex, "Vertex type must be printable");
 
     /***************************************************************************
     A simplex can be constructed from a range with element type Vertex. There
@@ -52,7 +41,7 @@ struct Simplex(int dim, Vertex = int)
             ~ "from the element type: " ~ ElementType!R.stringof ~ " of the "
             ~ "range or array used to construct a simplex");
         
-        assert(vertices_.walkLength == dim + 1,
+        enforce(vertices_.walkLength == dim + 1,
             "a dimension " ~ dim.to!string ~ " simplex needs "
             ~ (dim+1).to!string ~ " vertices, but got vertices: " 
             ~ vertices_.to!string);
@@ -61,14 +50,14 @@ struct Simplex(int dim, Vertex = int)
 
         static if (is(Vertex == class))
         {
-            assert(vertices.all!(v => v !is null), "null class references "
+            enforce(vertices.all!(v => v !is null), "null class references "
                 ~ "cannot be vertices, but got vertices: " ~ this.toString);
         }
 
-        assert(verts_[].isSorted, "vertices must occur in increasing order, "
+        enforce(verts_[].isSorted, "vertices must occur in increasing order, "
             ~ "but got vertices: " ~ this.toString);
 
-        assert(verts_[].findAdjacent.length == 0, "vertices must be distinct, "
+        enforce(verts_[].findAdjacent.length == 0, "vertices must be distinct, "
             ~ "but got vertices: " ~ this.toString);
     }
 
@@ -130,7 +119,7 @@ private:
 }
 
 /// Some basic examples
-unittest
+pure @safe unittest
 {
     // Create a simplex of dimension 1 with vertices [1,2]
     auto s1 = Simplex!1([1, 2]);
@@ -204,9 +193,8 @@ unittest
     static assert(!__traits(compiles, s8 = s9));
 }   
 
-
 // additional tests
-unittest
+pure @safe unittest
 {
     // Of course, constant or immutable simplices can't be modified
     const sCon = simplex(1,2,3);
@@ -231,11 +219,11 @@ unittest
     sMut = sStr.vertices.to!(int[]).to!(Simplex!2);
     sMut2 = Simplex!(2, int)(sByte);
 
-    assertThrown!Error(Simplex!1([7]));
+    assertThrown(Simplex!1([7]));
 }
 
 /// Shorter way to construct simplices
-unittest
+pure @safe unittest
 {
     /* For convenience we have a function template "simplex" which can be used
     to costruct Simplex types. */
@@ -305,8 +293,8 @@ unittest
 
     auto s4 = simplex(C(2), C(3));
     static assert(is(s4.VertexType == C));
-    assertThrown!Error(simplex(C(1), C(0)));
-    assertThrown!Error(simplex(C(2), C(2)));
+    assertThrown(simplex(C(1), C(0)));
+    assertThrown(simplex(C(2), C(2)));
 
     /* To make a class work as a vertex type we must define suitable overrides
     for opCmp, opEquals and toString. */ 
@@ -336,8 +324,8 @@ unittest
 
     auto s5 = simplex(new D(2), new D(3));
     static assert(is(s5.VertexType == D));
-    assertThrown!Error(simplex(new D(1), new D(0)));
-    assertThrown!Error(simplex(new D(2), new D(2)));
+    assertThrown(simplex(new D(1), new D(0)));
+    assertThrown(simplex(new D(2), new D(2)));
 
     // null class references are not allowed as vertices
     throwsWithMsg(simplex(new D(3), null),
@@ -354,7 +342,7 @@ auto simplex(size_t numVertices, V)(V[numVertices] vertices...)
 }
 
 ///
-unittest
+pure @safe unittest
 {
     auto s1 = simplex(1, 2, 4, 7);
     static assert(is(s1.VertexType == int));
@@ -369,8 +357,8 @@ unittest
     auto s4 = simplex("alice", "bob", "carol");
     static assert(is(s4.VertexType == string));
 
-    assertThrown!Error(simplex("bob", "alice", "carol"));
-    assertThrown!Error(simplex(1, 3, 3, 5));
+    assertThrown(simplex("bob", "alice", "carol"));
+    assertThrown(simplex(1, 3, 3, 5));
 
     static assert(!__traits(compiles, s4.hasFace(simplex(1,2,4,7))));
 }
@@ -432,7 +420,7 @@ auto oppositeFace(S, F)(S simplex, F face)
 {
     static assert(F.dimension < S.dimension);
     enum coDimension = S.dimension - F.dimension;
-    assert(simplex.hasFace(face));
+    enforce(simplex.hasFace(face));
 
     S.VertexType[coDimension] verticesInAnswer;
     size_t index = 0;
@@ -449,7 +437,7 @@ auto oppositeFace(S, F)(S simplex, F face)
 }
 
 ///
-unittest
+pure @safe unittest
 {
     alias s = simplex; // For clarity
 
@@ -463,7 +451,7 @@ unittest
     static assert(s(1,2,4,7).oppositeFace(s(1,4)) == s(2,7));
 
     static assert(!__traits(compiles, s(2).oppositeFace(s(1))));
-    assertThrown!Error(s(1,2,4,7).oppositeFace(s(1,2,3)));
+    assertThrown(s(1,2,4,7).oppositeFace(s(1,2,3)));
 }
 
 /******************************************************************************
@@ -477,7 +465,7 @@ auto commonVertices(S1, S2)(auto ref const S1 s1, auto ref const S2 s2)
     return result;
 }
 ///
-unittest
+pure @safe unittest
 {
     auto s1 = simplex(2, 3, 5);
     auto s2 = simplex(3, 5, 7, 11);
@@ -508,7 +496,7 @@ if (isInstanceOf!(Simplex, S))
     ).array;
 }
 ///
-unittest
+pure @safe unittest
 {
     alias s = simplex;   // For clarity
 
@@ -546,7 +534,7 @@ auto faces(S)(const ref S simplex) if (isInstanceOf!(Simplex, S))
     return faces;
 }
 ///
-unittest
+pure @safe unittest
 {
     auto s0 = simplex(9);
     auto s1 = simplex(5, 7);
@@ -558,7 +546,7 @@ unittest
 }
 
 ///
-unittest
+pure @safe unittest
 {
     alias s = simplex; // For clarity
 
@@ -579,7 +567,7 @@ unittest
 }
 
 ///
-unittest
+pure @safe unittest
 {
     auto s1 = Simplex!(2, ubyte)([ubyte(1), ubyte(2), ubyte(3)]);
     auto s2 = Simplex!(0, long)([257L]);
@@ -599,7 +587,7 @@ auto hinges(S)(auto ref const S simplex) if (isInstanceOf!(Simplex, S))
     return simplex.facesOfDim!(simplex.dimension - 2);
 }
 ///
-unittest
+pure @safe unittest
 {
     alias s = simplex;
 
@@ -615,37 +603,37 @@ unittest
 /******************************************************************************
 Returns ...
 */
-auto ridges(S)(ref S simplex) if (isInstanceOf!(Simplex, S))
+pure nothrow @safe auto ridges(S)(auto ref S simplex) if (isInstanceOf!(Simplex, S))
 {
     struct RidgeRange
     {
         S.VertexType[] vertices;
         size_t missing; // index of missing vertex plus one
 
-        this(ref S simplex)
+        pure @safe this(ref S simplex)
         {
-            vertices = simplex.verts_[];
+            vertices = simplex.verts_[].dup;
             missing = simplex.verts_.length;
         }
 
-        @property bool empty() const
+        pure nothrow @safe @property bool empty() const
         {
             return missing == 0;
         }
 
-        @property auto front()
+        pure @safe @property auto front()
         {
             return Simplex!(S.dimension - 1)(chain(vertices[0 .. missing - 1],
                     vertices[missing .. $]).array);
         }
 
-        void popFront()
+        pure nothrow @safe void popFront()
         {
             assert(!empty, "tried to popFront on empty range of ridges");
             --missing;
         }
 
-        @property size_t length() const
+        pure nothrow @safe @property size_t length() const
         {
             return missing;
         }
@@ -654,7 +642,7 @@ auto ridges(S)(ref S simplex) if (isInstanceOf!(Simplex, S))
     return RidgeRange(simplex);
 }
 ///
-unittest
+pure @safe unittest
 {
     auto s1 = simplex(1,2,3);
     assert(s1.ridges.array == s1.facesOfDim!1);
@@ -663,11 +651,15 @@ unittest
 auto join(S1, S2)(auto ref const S1 s1, auto ref const S2 s2)
     if (isInstanceOf!(Simplex, S1) && isInstanceOf!(Simplex, S2))
 {
+    assert(sort(chain(s1.vertices, s2.vertices).array.dup).findAdjacent.length == 0,
+        "join expected two simplices without any common vertices, but got: "
+        ~ s1.toString ~ " and " ~ s2.toString);
+
     return Simplex!(s1.dimension + s2.dimension + 1)(
         sort(chain(s1.vertices, s2.vertices).array.dup));
 }
 ///
-unittest
+pure @safe unittest
 {
     alias s = simplex;
 
