@@ -1,7 +1,8 @@
-import std.algorithm : map;
+import std.algorithm : canFind, find, map, sort;
 import std.conv : to;
+import std.exception : enforce;
 import std.meta : AliasSeq, allSatisfy, anySatisfy;
-import std.range : array, chain, only, repeat, take;
+import std.range : array, chain, front, only, repeat, take;
 import std.traits : lvalueOf, rvalueOf;
 
 /*******************************************************************************
@@ -388,4 +389,73 @@ auto binarySequences(int length, int numOnes)
     assert(binarySequences(50, 0).length == 1);
     assert(binarySequences(50, 1).length == 50);
     assert(binarySequences(50, 2).length == (50 * 49) / 2);
+}
+
+/*******************************************************************************
+An set class which uses an array to hold the underlying data. Should be very
+fast for small data sets. (TO DO: Benchmarks!)
+*/
+struct SmallMap(KeyType, ValueType)
+{
+    static struct Record
+    {
+        KeyType key;
+        ValueType value;
+    }
+
+    void insert(KeyType key, ValueType value)
+    {
+        enforce(key !in this, "key already present");
+        data ~= Record(key, value);
+        data.sort!((r1, r2) => r1.key < r2.key);
+    }
+
+    bool opBinaryRight(string op : "in")(KeyType key)
+    {
+        return this.keys.canFind(key);
+    }
+
+    auto keys()
+    {
+        return data.map!(r => r.key);
+    }
+
+    auto values()
+    {
+        return data.map!(r => r.value);
+    }
+
+    ref ValueType opIndex(KeyType key_)
+    {
+        auto found = data.find!(r => r.key == key_);
+
+        if (found.length > 0)
+        {
+            return found.front.value;
+        }
+        else
+        {
+            this.insert(key_, ValueType.init);
+            return data.find!(r => r.key == key_).front.value;
+        }
+    }
+
+private:
+    Record[] data;
+}
+///
+unittest
+{
+    SmallMap!(int, string) sm;
+    sm.insert(5, "hello");
+    assert(5 in sm);
+    assert(2 !in sm);
+
+    sm.insert(2, "goodbye");
+    assert(2 in sm);
+
+    sm[2] = "bubba";
+    assert(sm[2] == "bubba");
+
+    throwsWithMsg(sm.insert(5, "busted!"), "key already present");
 }

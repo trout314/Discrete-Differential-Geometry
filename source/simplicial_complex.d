@@ -1,21 +1,11 @@
-import std.algorithm : all, any, canFind, filter, map, sort;
-import std.exception : enforce;
+import std.algorithm : all, any, canFind, filter, joiner, map, sort;
 import std.conv : to;
+import std.exception : enforce, assertThrown;
 import std.range : array, walkLength;
+import std.typecons : Tuple, tuple;
 
 import simplex : Simplex, simplex;
-
-import std.range : array;
-import std.algorithm : joiner, sort, map;
-
-
-version(unittest)
-{
-    import std.exception : assertThrown;
-    import std.stdio : writeln;
-}
-
-
+import utility : SmallMap;
 
 /// A simplicial complex type ... yada yada
 struct SimplicialComplex(Vertex = int)
@@ -33,15 +23,13 @@ struct SimplicialComplex(Vertex = int)
         sort(facetLists[dim + 1]);
     }
 
-    // Returns the facets of the simplicial complex.
-    // These are simplicies that are not the face of another simplex.
-    // They are returned in increasing order of dimension and in
-    // lexicographic order within dimensions.
-    // e.g. [8],[2,3],[2,4],[1,6,7]
+    /* Returns the facets of the simplicial complex. These are simplicies that 
+    are not the face of another simplex. They are returned in increasing order 
+    of dimension and in lexicographic order within dimensions. */
     int[][] facets()
     {
 
-        auto sizes = sort(facetLists.keys);        
+        auto sizes = sort(facetLists.keys.array);        
         return sizes.map!(s => facetLists[s]).joiner.array;
     }
 
@@ -79,11 +67,7 @@ struct SimplicialComplex(Vertex = int)
 
     private:
     // Lists of facets, indexed by number of vertices in the facet
-    int[][][size_t] facetLists;
-
-    // TO DO: Make the above into an array of (size_t, Simplex[])
-    // pairs. Probably won't ever have enough distince facet
-    // dimenstion to justify using an associative array
+    SmallMap!(size_t, int[][]) facetLists;
 }
 
 bool hasFace_Verts(const(int)[] s1, const(int)[] s2)
