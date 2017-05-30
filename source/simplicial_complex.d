@@ -1,11 +1,11 @@
-import std.algorithm : all, any, canFind, filter, joiner, map, sort;
+import std.algorithm : all, any, canFind, filter, find, joiner, map, sort;
 import std.conv : to;
 import std.exception : enforce, assertThrown;
-import std.range : array, walkLength;
+import std.range : array, front, walkLength;
 import std.typecons : Tuple, tuple;
 
-import simplex : Simplex, simplex;
-import utility : SmallMap;
+import simplex : Simplex, simplex, hasFace;
+import utility : SmallMap, throwsWithMsg;
 
 /// A simplicial complex type ... yada yada
 struct SimplicialComplex(Vertex = int)
@@ -15,40 +15,55 @@ struct SimplicialComplex(Vertex = int)
     // Inserts a facet into the simplicial complex.
     void insertFacet(int dim)(Simplex!(dim, Vertex) simplex)
     {
-        enforce(!facets.any!(f => f.hasFace_Verts(simplex.vertices)),
-            "inserted simplex must not be a face of an existing facet");
+        enforce(!this.contains(simplex), "insertFacet expects an inserted "
+            ~ "simplex not already in the simplicial complex, but got " 
+            ~ simplex.toString ~ " and already have facet " 
+            ~ facets.find!(f => f.hasFace_Verts(simplex.vertices))
+                    .front.to!string);
 
         facetLists[dim + 1] ~= simplex.vertices.dup;
 
-        sort(facetLists[dim + 1]);
+        facetLists[dim + 1].sort();
     }
 
-    /* Returns the facets of the simplicial complex. These are simplicies that 
+    /***************************************************************************
+    Returns the facets of the simplicial complex of a particular dimension.
+    */
+    auto facets(int dim)()
+    {
+        static assert(dim > 0);
+        return facetLists[dim + 1].map!(vList => Simplex!(dim, Vertex)(vList));
+    }
+
+    /***************************************************************************
+    Returns the facets of the simplicial complex. These are simplicies that 
     are not the face of another simplex. They are returned in increasing order 
     of dimension and in lexicographic order within dimensions. */
-    int[][] facets()
+    int[][] facets() pure @safe
     {
 
-        auto sizes = sort(facetLists.keys.array);        
+        auto sizes = facetLists.keys.array.sort();        
         return sizes.map!(s => facetLists[s]).joiner.array;
     }
 
-    // Returns the number of facets
-    size_t numFacets()
+    /***************************************************************************
+    Returns the number of facets */
+    size_t numFacets() pure @safe
     {
         return facets.walkLength;
     }
 
-    // Returns the link of the given simplex as a list of facets
-    // in same order as they appear in facets()
+    /***************************************************************************
+    Returns the link of the given simplex as a list of facets, given in same 
+    order as they appear in facets() */
     int[][] link(int dim)(auto ref const Simplex!(dim, Vertex) simplex)
     {
         return this.star(simplex)
             .map!(facet => facet.oppositeFace_Verts(simplex.vertices)).array;
     }
 
-    // Returns the star of the given simplex as a list of facets
-    // in same order as they appear in facets() 
+    /* Returns the star of the given simplex as a list of facets in same order 
+    as they appear in facets() */ 
     int[][] star(int dim)(auto ref const Simplex!(dim, Vertex) simplex)
     {
         return this.facets.filter!(f => f.hasFace_Verts(simplex.vertices)).array;
@@ -60,9 +75,9 @@ struct SimplicialComplex(Vertex = int)
         return this.facets.any!(f => f.hasFace_Verts(simplex.vertices));
     }
 
-    string toString()
+    string toString() @safe
     {
-        return "SComp" ~ this.facets.to!string;
+        return this.facets.to!string;
     }
 
     private:
@@ -96,8 +111,8 @@ unittest
     sc.insertFacet(s(4,5));
     sc.insertFacet(s(5,6));
 
-    // get list of facets back, in order of increasing dimension
-    // and dictionary order within a dimension 
+    /* get list of facets back, in order of increasing dimension and dictionary 
+    order within a dimension */ 
     assert(sc.facets == [[4,5], [5,6], [1,2,3], [2,3,4]]);
     assert(sc.numFacets == 4);
 
@@ -122,8 +137,9 @@ unittest
     // Restrictions
     // --------------------------------------------------------------
 
-    // it is an error to insert a simplex that is
-    // already the face of an existing facet
-    assertThrown(sc.insertFacet(s(4,5)));
-    assertThrown(sc.insertFacet(s(2)));
+    // cannot insert a simplex if it is already the face of an existing facet
+    sc.insertFacet(s(4,5)).assertThrown;
+    sc.insertFacet(s(2)).throwsWithMsg(
+        "insertFacet expects an inserted simplex not already in the simplicial "
+        ~ "complex, but got [2] and already have facet [1, 2, 3]");
 }

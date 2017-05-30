@@ -397,12 +397,13 @@ fast for small data sets. (TO DO: Benchmarks!)
 */
 struct SmallMap(KeyType, ValueType)
 {
-    static struct Record
+    private static struct Record
     {
         KeyType key;
         ValueType value;
     }
 
+    /// insert a (key, value) pair into the map
     void insert(KeyType key, ValueType value)
     {
         enforce(key !in this, "key already present");
@@ -410,21 +411,25 @@ struct SmallMap(KeyType, ValueType)
         data.sort!((r1, r2) => r1.key < r2.key);
     }
 
+    /// We support the (key in smallMap) syntax 
     bool opBinaryRight(string op : "in")(KeyType key)
     {
         return this.keys.canFind(key);
     }
 
+    /// Get a lazy range returning the keys
     auto keys()
     {
         return data.map!(r => r.key);
     }
 
+    /// Get a lazy range returning the values
     auto values()
     {
         return data.map!(r => r.value);
     }
 
+    /// Provide index operator axes like this: smallMap[key]
     ref ValueType opIndex(KeyType key_)
     {
         auto found = data.find!(r => r.key == key_);
@@ -444,7 +449,7 @@ private:
     Record[] data;
 }
 ///
-unittest
+pure @safe unittest
 {
     SmallMap!(int, string) sm;
     sm.insert(5, "hello");
@@ -457,5 +462,5 @@ unittest
     sm[2] = "bubba";
     assert(sm[2] == "bubba");
 
-    throwsWithMsg(sm.insert(5, "busted!"), "key already present");
+    sm.insert(5, "nope").throwsWithMsg("key already present");
 }

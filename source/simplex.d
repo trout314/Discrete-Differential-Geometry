@@ -324,11 +324,11 @@ unittest
 
     auto s5 = simplex(new D(2), new D(3));
     static assert(is(s5.VertexType == D));
-    assertThrown(simplex(new D(1), new D(0)));
-    assertThrown(simplex(new D(2), new D(2)));
+    simplex(new D(1), new D(0)).assertThrown;
+    simplex(new D(2), new D(2)).assertThrown;
 
     // null class references are not allowed as vertices
-    throwsWithMsg(simplex(new D(3), null),
+    simplex(new D(3), null).throwsWithMsg(
         "null class references cannot be vertices, but got vertices: [3,null]");
 }
 
@@ -357,8 +357,8 @@ pure @safe unittest
     auto s4 = simplex("alice", "bob", "carol");
     static assert(is(s4.VertexType == string));
 
-    assertThrown(simplex("bob", "alice", "carol"));
-    assertThrown(simplex(1, 3, 3, 5));
+    simplex("bob", "alice", "carol").assertThrown;
+    simplex(1, 3, 3, 5).assertThrown;
 
     static assert(!__traits(compiles, s4.hasFace(simplex(1,2,4,7))));
 }
@@ -420,7 +420,8 @@ auto oppositeFace(S, F)(S simplex, F face)
 {
     static assert(F.dimension < S.dimension);
     enum coDimension = S.dimension - F.dimension;
-    enforce(simplex.hasFace(face));
+    enforce(simplex.hasFace(face), "oppositeFace expected a face of " ~ 
+        simplex.toString ~ " but got " ~ face.toString);
 
     S.VertexType[coDimension] verticesInAnswer;
     size_t index = 0;
@@ -451,7 +452,8 @@ pure @safe unittest
     static assert(s(1,2,4,7).oppositeFace(s(1,4)) == s(2,7));
 
     static assert(!__traits(compiles, s(2).oppositeFace(s(1))));
-    assertThrown(s(1,2,4,7).oppositeFace(s(1,2,3)));
+    s(1,2,4,7).oppositeFace(s(1,2,3)).throwsWithMsg(
+        "oppositeFace expected a face of [1,2,4,7] but got [1,2,3]");
 }
 
 /******************************************************************************
@@ -515,7 +517,7 @@ the vertices in all the faces of the given simplex (simplex). They are returned
 sorted by dimension (lowest to highest) and in dictionary order within each
 dimension.
 */
-auto faces(S)(const ref S simplex) if (isInstanceOf!(Simplex, S))
+auto faces(S)(auto ref const S simplex) if (isInstanceOf!(Simplex, S))
 {
     S.VertexType[][] faces;
     foreach (bitChoice; 1 .. 2 ^^ simplex.vertices.length)

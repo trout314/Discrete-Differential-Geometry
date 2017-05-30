@@ -4,12 +4,11 @@ void main()
     "Entering main...".writeln;
     scope(exit) {"Exiting main.".writeln;}
 
-    import simplicial_complex : SimplicialComplex, Simplex;
-    SimplicialComplex sc;
+    import simplicial_complex : SimplicialComplex;
+    import simplex : simplex;
+    SimplicialComplex!() sc;
 
-    import std.conv : to;
-    auto s = Simplex([1,2,3]);
-    sc.insertFacet(s);
+    sc.insertFacet(simplex(1,2,3));
     writeln(sc);
 
 /*    import simplex : simplex;
