@@ -1,0 +1,56 @@
+{
+    "version": "0.1.0",
+    "command": "dub",
+    "isShellCommand": true,
+    "showOutput": "silent",
+    "options": {
+        "env": {
+            "LANG": "C",
+            "TERM": "xterm-256color"
+        }
+    },
+    "tasks": [
+        {
+            "taskName": "build",
+            "isBuildCommand": true,
+            "problemMatcher": {
+                "fileLocation": [
+                    "relative",
+                    "${workspaceRoot}"
+                ],
+                "pattern": {
+                    "regexp": "^(.+\\.di?)[\\D](\\d+)(,|:)?(\\d+)?\\S+\\s+([Ee]rror|[Ww]arning):\\s+(.+)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 4,
+                    "severity": 5,
+                    "message": 6
+                }
+            },
+            "args": []
+        },
+        {
+            "taskName": "test",
+            "isTestCommand": true,
+            "problemMatcher": {
+                "fileLocation": [
+                    "relative",
+                    "${workspaceRoot}"
+                ],
+                "pattern": {
+                    "regexp": "^.+@(.+\\.di?)\\((\\d+)\\S+\\s+(.+)$",
+                    "file": 1,
+                    "line": 2,
+                    "message": 3
+                }
+            },
+            "args": []
+        },
+        {
+            "taskName": "run"
+        },
+        {
+            "taskName": "clean"
+        }
+    ]
+}

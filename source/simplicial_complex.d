@@ -75,6 +75,12 @@ struct SimplicialComplex(Vertex = int)
         return this.facets.any!(f => f.hasFace_Verts(simplex.vertices));
     }
 
+    int[] fVector()
+    {   
+        return [];
+    } 
+
+
     string toString() @safe
     {
         return this.facets.to!string;
@@ -95,6 +101,24 @@ auto oppositeFace_Verts(const(int)[] simplex, const(int)[] face)
     return simplex.filter!(v => !face.canFind(v)).array.to!(int[]);
 }
 
+auto faces_Verts(const(int)[] simplex)
+{
+    int[][] faces;
+    foreach (bitChoice; 1 .. 2 ^^ simplex.length)
+    {
+        int[] face;
+        foreach (index, vertex; simplex)
+        {
+            if ((1 << index) & bitChoice)
+            {
+                face ~= vertex;
+            }
+        }
+        faces ~= face.dup;
+    }
+    faces.sort!((a, b) => a.length < b.length);
+    return faces;
+}
 
 unittest
 {
@@ -115,6 +139,12 @@ unittest
     order within a dimension */ 
     assert(sc.facets == [[4,5], [5,6], [1,2,3], [2,3,4]]);
     assert(sc.numFacets == 4);
+
+    // get the f-vector of the simplicial complex
+    import std.stdio : writeln;
+    sc.fVector.writeln;
+    [1,2,3].faces_Verts.writeln;
+//    assert(sc.fVector == [1,2,3]);
 
     // check for the presence of simplices
     assert(sc.contains(s(4,5)));

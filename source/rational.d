@@ -111,15 +111,15 @@ private template CommonRational(R1, R2)
 {
     static if (isRational!R1)
     {
-        alias CommonRational!(typeof(R1.num), R2) CommonRational;
+        alias CommonRational = CommonRational!(typeof(R1.num), R2);
     }
     else static if (isRational!R2)
     {
-        alias CommonRational!(R1, typeof(R2.num)) CommonRational;
+        alias CommonRational = CommonRational!(R1, typeof(R2.num));
     }
     else static if (is(CommonInteger!(R1, R2)))
     {
-        alias Rational!(CommonInteger!(R1, R2)) CommonRational;
+        alias CommonRational = Rational!(CommonInteger!(R1, R2));
     }
 }
 
