@@ -1,11 +1,12 @@
-import std.algorithm : all, any, canFind, filter, find, joiner, map, sort;
+import std.algorithm : all, any, canFind, filter, find, joiner, map, 
+    setDifference, sort;
 import std.conv : to;
 import std.exception : enforce, assertThrown;
 import std.range : array, front, walkLength;
 import std.typecons : Tuple, tuple;
 
 import simplex : Simplex, simplex, hasFace;
-import utility : SmallMap, throwsWithMsg;
+import utility : isSubsetOf, SmallMap, throwsWithMsg;
 
 /// A simplicial complex type ... yada yada
 struct SimplicialComplex(Vertex = int)
@@ -18,7 +19,7 @@ struct SimplicialComplex(Vertex = int)
         enforce(!this.contains(simplex), "insertFacet expects an inserted "
             ~ "simplex not already in the simplicial complex, but got " 
             ~ simplex.toString ~ " and already have facet " 
-            ~ facets.find!(f => f.hasFace_Verts(simplex.vertices))
+            ~ facets.find!(f => simplex.vertices.isSubsetOf(f))
                     .front.to!string);
 
         facetLists[dim + 1] ~= simplex.vertices.dup;
@@ -59,20 +60,20 @@ struct SimplicialComplex(Vertex = int)
     int[][] link(int dim)(auto ref const Simplex!(dim, Vertex) simplex)
     {
         return this.star(simplex)
-            .map!(facet => facet.oppositeFace_Verts(simplex.vertices)).array;
+            .map!(facet => setDifference(facet, simplex.vertices).array).array;
     }
 
     /* Returns the star of the given simplex as a list of facets in same order 
     as they appear in facets() */ 
     int[][] star(int dim)(auto ref const Simplex!(dim, Vertex) simplex)
     {
-        return this.facets.filter!(f => f.hasFace_Verts(simplex.vertices)).array;
+        return this.facets.filter!(f => simplex.vertices.isSubsetOf(f)).array;
     }
 
     // Returns true if simplex is in this simplicial complex and false otherwise
     bool contains(int dim)(auto ref const Simplex!(dim, Vertex) simplex)
     {
-        return this.facets.any!(f => f.hasFace_Verts(simplex.vertices));
+        return this.facets.any!(f => simplex.vertices.isSubsetOf(f));
     }
 
     auto simplices(int dim)()
@@ -92,7 +93,6 @@ struct SimplicialComplex(Vertex = int)
         return 4;
     }
 
-
     int[] fVector()
     {   
         return [];
@@ -103,40 +103,9 @@ struct SimplicialComplex(Vertex = int)
         return this.facets.to!string;
     }
 
-
-
     private:
     // Lists of facets, indexed by number of vertices in the facet
     SmallMap!(size_t, int[][]) facetLists;
-}
-
-bool hasFace_Verts(const(int)[] s1, const(int)[] s2)
-{
-    return s2.all!(vertex => s1.canFind(vertex));
-}
-
-auto oppositeFace_Verts(const(int)[] simplex, const(int)[] face)
-{
-    return simplex.filter!(v => !face.canFind(v)).array.to!(int[]);
-}
-
-auto faces_Verts(const(int)[] simplex)
-{
-    int[][] faces;
-    foreach (bitChoice; 1 .. 2 ^^ simplex.length)
-    {
-        int[] face;
-        foreach (index, vertex; simplex)
-        {
-            if ((1 << index) & bitChoice)
-            {
-                face ~= vertex;
-            }
-        }
-        faces ~= face.dup;
-    }
-    faces.sort!((a, b) => a.length < b.length);
-    return faces;
 }
 
 unittest
@@ -164,7 +133,6 @@ unittest
     // get the f-vector of the simplicial complex
     import std.stdio : writeln;
     sc.fVector.writeln;
-    [1,2,3].faces_Verts.writeln;
 //    assert(sc.fVector == [1,2,3]);
 
     // check for the presence of simplices

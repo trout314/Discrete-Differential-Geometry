@@ -7,8 +7,8 @@ import std.range : array, chain, ElementType, empty, enumerate, front, iota,
     isInputRange, popFront, walkLength;
 import std.traits : CommonType, isArray, isImplicitlyConvertible, isInstanceOf, 
     isPointer, PointerTarget;
-import utility : binarySequences, contains, isConstructible, isEqualityComparable, 
-    isLessThanComparable, isPrintable, throwsWithMsg;
+import utility : binarySequences, isConstructible, isEqualityComparable, 
+    isLessThanComparable, isPrintable, isSubsetOf, throwsWithMsg;
 
 /*******************************************************************************
 Represents a non-degenerate simplex represented as set of vertices of user
@@ -381,8 +381,8 @@ bool hasFace(S, F)(auto ref const S simplex, auto ref const F possibleFace)
     }
     else
     {
-        return simplex.vertices.map!(v => v.to!CommonVertex)
-            .contains(possibleFace.vertices.map!(v => v.to!CommonVertex));
+        return possibleFace.vertices.map!(v => v.to!CommonVertex)
+                .isSubsetOf(simplex.vertices.map!(v => v.to!CommonVertex));
     }
 }
 

@@ -466,14 +466,14 @@ pure @safe unittest
 }
 
 /*******************************************************************************
-Returns true if set B is contained in set A
+Returns true if set A is contained in set B
 */
-auto contains(A, B)(A setA, B setB)
+auto isSubsetOf(A, B)(A setA, B setB)
 {
-    return setB.all!(element => setA.canFind(element));
+    return setA.all!(element => setB.canFind(element));
 }
 ///
 unittest
 {
-    assert([1,3,4].contains([1,3]));
+    assert([1,3].isSubsetOf([1,3,4]));
 }
