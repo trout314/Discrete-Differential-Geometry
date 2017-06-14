@@ -7,7 +7,7 @@ import std.range : array, chain, ElementType, empty, enumerate, front, iota,
     isInputRange, popFront, walkLength;
 import std.traits : CommonType, isArray, isImplicitlyConvertible, isInstanceOf, 
     isPointer, PointerTarget;
-import utility : binarySequences, isConstructible, isEqualityComparable, 
+import utility : binarySequences, contains, isConstructible, isEqualityComparable, 
     isLessThanComparable, isPrintable, throwsWithMsg;
 
 /*******************************************************************************
@@ -373,42 +373,16 @@ bool hasFace(S, F)(auto ref const S simplex, auto ref const F possibleFace)
             "hasFace called on simplices with vertices of incompatible types: "
             ~ "simplex.VertexType = " ~ S.VertexType.stringof ~ " and "
             ~ "possibleFace.VertexType = " ~ F.VertexType.stringof);
-
     alias CommonVertex = CommonType!(F.VertexType, S.VertexType);
-
-    // Check using phobos algorithms
-    bool phobosAnswer; // Can't put this in assert block. Why? no {} stripping?
-    version (assert)
-    {
-        auto possFace = possibleFace.vertices.map!(to!CommonVertex);
-        auto simpToCheck = simplex.vertices.map!(to!CommonVertex);
-        phobosAnswer = possFace.all!(v => simpToCheck.canFind(v));
-    }
 
     static if (S.dimension < F.dimension)
     {
-        assert(phobosAnswer == false);
         return false;
     }
     else
     {
-        auto simp = simplex.vertices;
-        auto face = possibleFace.vertices;
-        while ((simp.length > 0) && (face.length > 0))
-        {
-            if (face.front < simp.front)
-            {
-                assert(phobosAnswer == false);
-                return false;
-            }
-            else if (face.front == simp.front)
-            {
-                face.popFront;
-            }
-            simp.popFront;
-        }
-        assert(phobosAnswer == (face.length == 0));
-        return face.length == 0;
+        return simplex.vertices.map!(v => v.to!CommonVertex)
+            .contains(possibleFace.vertices.map!(v => v.to!CommonVertex));
     }
 }
 

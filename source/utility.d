@@ -1,4 +1,4 @@
-import std.algorithm : canFind, find, map, sort;
+import std.algorithm : all, canFind, find, map, sort;
 import std.conv : to;
 import std.exception : enforce;
 import std.meta : AliasSeq, allSatisfy, anySatisfy;
@@ -466,4 +466,14 @@ pure @safe unittest
 }
 
 /*******************************************************************************
+Returns true if set B is contained in set A
 */
+auto contains(A, B)(A setA, B setB)
+{
+    return setB.all!(element => setA.canFind(element));
+}
+///
+unittest
+{
+    assert([1,3,4].contains([1,3]));
+}
