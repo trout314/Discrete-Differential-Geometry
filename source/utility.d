@@ -1,8 +1,8 @@
-import std.algorithm : all, canFind, find, map, sort;
+import std.algorithm : all, canFind, filter, find, map, sort;
 import std.conv : to;
 import std.exception : enforce;
 import std.meta : AliasSeq, allSatisfy, anySatisfy;
-import std.range : array, chain, front, only, repeat, take;
+import std.range : array, chain, enumerate, front, only, repeat, take, walkLength;
 import std.traits : lvalueOf, rvalueOf;
 
 /*******************************************************************************
@@ -343,7 +343,7 @@ Returns all sequences of length `length` which contain `numOnes` ones and all
 other elements zero. Sequences given in increasing dictionary order. (This is 
 the same as saying the corresponding binary numbers are in increasing order.)
 */
-auto binarySequences(int length, int numOnes)
+auto binarySequences(ulong length, ulong numOnes)
 {
     assert(length >= 0);
     assert(numOnes >= 0);
@@ -476,4 +476,31 @@ auto isSubsetOf(A, B)(A setA, B setB)
 unittest
 {
     assert([1,3].isSubsetOf([1,3,4]));
+}
+
+/*******************************************************************************
+Returns all the sub-ranges of length `sizeOfSubset` from the ordered range `set` 
+*/
+auto subsetsOfSize(R)(R set, int subsetSize)
+{
+    auto setSize = set.walkLength;
+
+    assert(setSize >= 0);
+    assert(subsetSize >= 0);
+    assert(subsetSize <= setSize);
+
+    auto elementChoices = binarySequences(setSize, setSize - subsetSize);
+    return elementChoices.map!(
+        choice => enumerate(choice)
+                  .filter!(c => c.value == 0)
+                  .map!(c => set[c.index])
+                  .array
+    ).array;
+
+}
+///
+unittest
+{
+    import std.stdio : writeln;
+    [1,2,3,4,5].subsetsOfSize(2).writeln;
 }

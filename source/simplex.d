@@ -1,6 +1,6 @@
 
 import std.algorithm : all, canFind, equal, filter, findAdjacent, isSorted, 
-    joiner, map, sort;
+    joiner, map, setDifference, sort;
 import std.conv : to;
 import std.exception : assertThrown, enforce;
 import std.range : array, chain, ElementType, empty, enumerate, front, iota, 
@@ -8,7 +8,7 @@ import std.range : array, chain, ElementType, empty, enumerate, front, iota,
 import std.traits : CommonType, isArray, isImplicitlyConvertible, isInstanceOf, 
     isPointer, PointerTarget;
 import utility : binarySequences, isConstructible, isEqualityComparable, 
-    isLessThanComparable, isPrintable, isSubsetOf, throwsWithMsg;
+    isLessThanComparable, isPrintable, isSubsetOf, subsetsOfSize, throwsWithMsg;
 
 /*******************************************************************************
 Represents a non-degenerate simplex represented as set of vertices of user
@@ -381,8 +381,10 @@ bool hasFace(S, F)(auto ref const S simplex, auto ref const F possibleFace)
     }
     else
     {
-        return possibleFace.vertices.map!(v => v.to!CommonVertex)
-                .isSubsetOf(simplex.vertices.map!(v => v.to!CommonVertex));
+        auto possibleFaceVertices = 
+            possibleFace.vertices.map!(v => v.to!CommonVertex);
+        auto simplexVertices = simplex.vertices.map!(v => v.to!CommonVertex);
+        return possibleFaceVertices.isSubsetOf(simplexVertices);
     }
 }
 
@@ -393,22 +395,11 @@ auto oppositeFace(S, F)(S simplex, F face)
         if (isInstanceOf!(Simplex, S) && isInstanceOf!(Simplex, F))
 {
     static assert(F.dimension < S.dimension);
-    enum coDimension = S.dimension - F.dimension;
     enforce(simplex.hasFace(face), "oppositeFace expected a face of " ~ 
         simplex.toString ~ " but got " ~ face.toString);
 
-    S.VertexType[coDimension] verticesInAnswer;
-    size_t index = 0;
-    foreach (vertex; simplex.vertices)
-    {
-        if (!face.vertices.canFind(vertex))
-        {
-            verticesInAnswer[index] = vertex;
-            ++index;
-        }
-    }
-
-    return Simplex!(coDimension - 1, S.VertexType)(verticesInAnswer[]);
+    return Simplex!(S.dimension - F.dimension - 1, S.VertexType)(
+        setDifference(simplex.vertices, face.vertices));
 }
 
 ///
@@ -431,26 +422,6 @@ pure @safe unittest
 }
 
 /******************************************************************************
-Returns a range that gives the common vertices of simplices `s1` and `s2`
-*/
-auto commonVertices(S1, S2)(auto ref const S1 s1, auto ref const S2 s2)
-    if (isInstanceOf!(Simplex, S1) && isInstanceOf!(Simplex, S2))
-{
-    auto result = s1.vertices.filter!(v => s2.vertices.canFind(v));
-    assert(result.equal(s2.vertices.filter!(v => s1.vertices.canFind(v))));
-    return result;
-}
-///
-pure @safe unittest
-{
-    auto s1 = simplex(2, 3, 5);
-    auto s2 = simplex(3, 5, 7, 11);
-    assert(commonVertices(s1, s2).equal([3, 5]));
-
-    static assert(commonVertices(simplex(1,3,7), simplex(7, 10)).equal([7]));
-}
-
-/******************************************************************************
 Returns array containing all faces of `simplex` with dimension `dim`. Faces
 given in dictionary order.
 */
@@ -460,16 +431,19 @@ if (isInstanceOf!(Simplex, S))
     assert(dim >= 0);
     assert(dim <= simplex.dimension);
 
-    alias simplexType = Simplex!(dim, S.VertexType);
+    alias SimplexType = Simplex!(dim, S.VertexType);
 
-    auto vertexChoices = 
-        binarySequences(simplex.dimension + 1, simplex.dimension - dim);
-    return vertexChoices.map!(
-        choice => enumerate(choice)
-                  .filter!(c => c.value == 0)
-                  .map!(c => simplex.vertices[c.index])
-                  .to!simplexType
-    ).array;
+    // auto vertexChoices = 
+    //     binarySequences(simplex.dimension + 1, simplex.dimension - dim);
+    // return vertexChoices.map!(
+    //     choice => enumerate(choice)
+    //               .filter!(c => c.value == 0)
+    //               .map!(c => simplex.vertices[c.index])
+    //               .to!simplexType
+    // ).array;
+
+    return simplex.vertices.subsetsOfSize(dim + 1)
+        .map!(vertexList => SimplexType(vertexList)).array;
 }
 ///
 pure @safe unittest
@@ -494,7 +468,7 @@ dimension.
 auto faces(S)(auto ref const S simplex) if (isInstanceOf!(Simplex, S))
 {
     S.VertexType[][] faces;
-    foreach (bitChoice; 1 .. 2 ^^ simplex.vertices.length)
+    foreach (bitChoice; 1 .. 2 ^^ simplex.vertices.walkLength)
     {
         S.VertexType[] face;
         foreach (index, vertex; simplex.vertices)
@@ -512,13 +486,10 @@ auto faces(S)(auto ref const S simplex) if (isInstanceOf!(Simplex, S))
 ///
 pure @safe unittest
 {
-    auto s0 = simplex(9);
-    auto s1 = simplex(5, 7);
-    auto s2 = simplex(1, 2, 3);
-
-    assert(s0.faces == [[9]]);
-    assert(s1.faces == [[5], [7], [5, 7]]);
-    assert(s2.faces == [[1], [2], [3], [1, 2], [1, 3], [2, 3], [1, 2, 3]]);
+    assert(simplex(9).faces == [[9]]);
+    assert(simplex(5,7).faces == [[5], [7], [5, 7]]);
+    assert(simplex(1,2,3).faces == [[1], [2], [3], [1, 2], [1, 3], [2, 3],
+        [1, 2, 3]]);
 }
 
 ///
