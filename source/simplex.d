@@ -581,7 +581,7 @@ pure @safe unittest
 }
 
 /******************************************************************************
-Returns ...
+Returns the codimension-2 faces (hinges)
 */
 auto hinges(S)(auto ref const S simplex) if (isInstanceOf!(Simplex, S))
 {
@@ -594,7 +594,7 @@ pure @safe unittest
     alias s = simplex;
 
     assert(s(1,2,3).hinges == [s(1), s(2), s(3)]);
-    assert(s(1,3,5,7).hinges 
+    assert(s(1,3,5,7).hinges
         == [s(1,3), s(1,5), s(1,7), s(3,5), s(3,7), s(5,7)]);
 
     static assert(s(1,2,3).hinges == [s(1), s(2), s(3)]);
@@ -603,51 +603,23 @@ pure @safe unittest
 }
 
 /******************************************************************************
-Returns ...
+Returns the codimension-1 faces (ridges)
 */
-pure nothrow @safe auto ridges(S)(auto ref S simplex) if (isInstanceOf!(Simplex, S))
+auto ridges(S)(auto ref S simplex) if (isInstanceOf!(Simplex, S))
 {
-    struct RidgeRange
-    {
-        S.VertexType[] vertices;
-        size_t missing; // index of missing vertex plus one
-
-        pure @safe this(ref S simplex)
-        {
-            vertices = simplex.verts_[].dup;
-            missing = simplex.verts_.length;
-        }
-
-        pure nothrow @safe @property bool empty() const
-        {
-            return missing == 0;
-        }
-
-        pure @safe @property auto front()
-        {
-            return Simplex!(S.dimension - 1)(chain(vertices[0 .. missing - 1],
-                    vertices[missing .. $]).array);
-        }
-
-        pure nothrow @safe void popFront()
-        {
-            assert(!empty, "tried to popFront on empty range of ridges");
-            --missing;
-        }
-
-        pure nothrow @safe @property size_t length() const
-        {
-            return missing;
-        }
-    }
-
-    return RidgeRange(simplex);
+    static assert(simplex.dimension >= 1);
+    return simplex.facesOfDim!(simplex.dimension - 1);
 }
 ///
 pure @safe unittest
 {
-    auto s1 = simplex(1,2,3);
-    assert(s1.ridges.array == s1.facesOfDim!1);
+    alias s = simplex;
+
+    assert(s(1,2,3).ridges == [s(1,2), s(1,3), s(2,3)]);
+    assert(s(2, 3, 5, 7).ridges == s(2, 3, 5, 7).facesOfDim!2);
+
+    static assert(s(1,2).ridges == [s(1), s(2)]);
+    static assert(s(2, 3, 5, 7).ridges == s(2, 3, 5, 7).facesOfDim!2);
 }
 
 auto join(S1, S2)(auto ref const S1 s1, auto ref const S2 s2)

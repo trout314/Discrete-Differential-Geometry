@@ -75,16 +75,35 @@ struct SimplicialComplex(Vertex = int)
         return this.facets.any!(f => f.hasFace_Verts(simplex.vertices));
     }
 
+    auto simplices(int dim)()
+    {
+        static assert(dim >= 0);
+        Simplex!(dim, Vertex)[] simplicesSeen;
+        foreach(key; facetLists.keys)
+        {
+            if (key >= dim + 1)
+            {
+                foreach(facet; facetLists[key])
+                {
+                    //facet.to!Simplex(dim, Vertex).facesOfDim!dim;
+                }
+            }
+        }
+        return 4;
+    }
+
+
     int[] fVector()
     {   
         return [];
     } 
 
-
     string toString() @safe
     {
         return this.facets.to!string;
     }
+
+
 
     private:
     // Lists of facets, indexed by number of vertices in the facet
@@ -122,7 +141,6 @@ auto faces_Verts(const(int)[] simplex)
 
 unittest
 {
-
     SimplicialComplex!() sc;
     assert(sc.numFacets == 0);
     assert(sc.facets == []);
@@ -139,6 +157,9 @@ unittest
     order within a dimension */ 
     assert(sc.facets == [[4,5], [5,6], [1,2,3], [2,3,4]]);
     assert(sc.numFacets == 4);
+
+    import std.stdio : writeln;
+    writeln(sc.simplices!1);
 
     // get the f-vector of the simplicial complex
     import std.stdio : writeln;

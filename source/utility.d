@@ -417,7 +417,7 @@ struct SmallMap(KeyType, ValueType)
         return this.keys.canFind(key);
     }
 
-    /// Get a lazy range returning the keys
+    /// Get a lazy range returning the keys in increasing order sorted
     auto keys()
     {
         return data.map!(r => r.key);
@@ -464,3 +464,6 @@ pure @safe unittest
 
     sm.insert(5, "nope").throwsWithMsg("key already present");
 }
+
+/*******************************************************************************
+*/
