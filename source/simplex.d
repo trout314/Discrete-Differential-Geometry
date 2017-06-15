@@ -3,12 +3,14 @@ import std.algorithm : all, canFind, equal, filter, findAdjacent, isSorted,
     joiner, map, setDifference, sort;
 import std.conv : to;
 import std.exception : assertThrown, enforce;
+import std.format : format;
+import std.meta : staticMap;
 import std.range : array, chain, ElementType, empty, enumerate, front, iota, 
     isInputRange, popFront, walkLength;
 import std.traits : CommonType, isArray, isImplicitlyConvertible, isInstanceOf, 
     isPointer, PointerTarget;
 import utility : binarySequences, isConstructible, isEqualityComparable, 
-    isLessThanComparable, isPrintable, isSubsetOf, subsetsOfSize, throwsWithMsg;
+    isLessThanComparable, isPrintable, isSubsetOf, subsetsOfSize, staticIota, throwsWithMsg;
 
 /*******************************************************************************
 Represents a non-degenerate simplex represented as set of vertices of user
@@ -432,16 +434,6 @@ if (isInstanceOf!(Simplex, S))
     assert(dim <= simplex.dimension);
 
     alias SimplexType = Simplex!(dim, S.VertexType);
-
-    // auto vertexChoices = 
-    //     binarySequences(simplex.dimension + 1, simplex.dimension - dim);
-    // return vertexChoices.map!(
-    //     choice => enumerate(choice)
-    //               .filter!(c => c.value == 0)
-    //               .map!(c => simplex.vertices[c.index])
-    //               .to!simplexType
-    // ).array;
-
     return simplex.vertices.subsetsOfSize(dim + 1)
         .map!(vertexList => SimplexType(vertexList)).array;
 }
@@ -467,28 +459,21 @@ dimension.
 */
 auto faces(S)(auto ref const S simplex) if (isInstanceOf!(Simplex, S))
 {
-    S.VertexType[][] faces;
-    foreach (bitChoice; 1 .. 2 ^^ simplex.vertices.walkLength)
+    string makeArgs()
     {
-        S.VertexType[] face;
-        foreach (index, vertex; simplex.vertices)
-        {
-            if ((1 << index) & bitChoice)
-            {
-                face ~= vertex;
-            }
-        }
-        faces ~= face.dup;
+        return iota(simplex.dimension + 1).map!(dim => 
+                format!"simplex.facesOfDim!%s.map!(f => f.vertices.dup)"(dim))
+            .joiner(", ").to!string;
     }
-    faces.sort!((a, b) => a.length < b.length);
-    return faces;
+
+    mixin("return chain(" ~ makeArgs() ~ ");");
 }
 ///
 pure @safe unittest
 {
-    assert(simplex(9).faces == [[9]]);
-    assert(simplex(5,7).faces == [[5], [7], [5, 7]]);
-    assert(simplex(1,2,3).faces == [[1], [2], [3], [1, 2], [1, 3], [2, 3],
+    assert(simplex(9).faces.array == [[9]]);
+    assert(simplex(5,7).faces.array == [[5], [7], [5, 7]]);
+    assert(simplex(1,2,3).faces.array == [[1], [2], [3], [1, 2], [1, 3], [2, 3],
         [1, 2, 3]]);
 }
 

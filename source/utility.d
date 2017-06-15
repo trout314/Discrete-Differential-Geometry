@@ -504,3 +504,39 @@ unittest
     import std.stdio : writeln;
     [1,2,3,4,5].subsetsOfSize(2).writeln;
 }
+
+/*******************************************************************************
+Gives AliasSeq containing integers `begin`, `begin + 1`, ... ,`end - 1`
+*/
+template staticIota(int begin, int end)
+{
+    static if (begin + 1 >= end)
+    {
+        static if (begin >= end)
+        {
+            alias staticIota = AliasSeq!();
+        }
+        else
+        {
+            alias staticIota = AliasSeq!(begin);
+        }
+    }
+    else
+    {
+        enum middle = begin + (end - begin) / 2;
+        alias staticIota = AliasSeq!(
+            staticIota!(begin, middle), staticIota!(middle, end));
+    }
+}
+///
+unittest
+{
+    alias seq = staticIota!(3, 6);
+    static assert(seq[0] == 3);
+    static assert(seq[1] == 4);
+    static assert(seq[2] == 5);
+
+    alias seq2 = staticIota!(0, 3);
+    alias func = (a,b,c) => a+b+c;
+    static assert(func(seq2) == 3);
+}
