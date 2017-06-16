@@ -2,7 +2,7 @@ import std.algorithm : all, any, canFind, filter, find, joiner, map, maxElement,
     setDifference, sort, uniq;
 import std.conv : to;
 import std.exception : enforce, assertThrown;
-import std.range : array, front, iota, walkLength;
+import std.range : array, ElementType, front, iota, isInputRange, walkLength;
 import std.typecons : Tuple, tuple;
 
 import simplex : Simplex, simplex, hasFace, facesOfDim;
@@ -63,13 +63,25 @@ struct SimplicialComplex(Vertex = int)
             .map!(facet => setDifference(facet, simplex.vertices).array).array;
     }
 
+    /***************************************************************************
+    Returns ...*/
+    int[][] link(V)(V vertices) if (isInputRange!V)
+    {
+        static assert(is(ElementType!V == Vertex));
+        return this.star(vertice).map!(
+            facet => setDifference(facet, vertices).array).array;
+
+        return [];
+    }
+
+
     /* Returns the star of the given simplex as a list of facets in same order 
     as they appear in facets() */ 
     int[][] star(int dim)(auto ref const Simplex!(dim, Vertex) simplex)
     {
         return this.facets.filter!(f => simplex.vertices.isSubsetOf(f)).array;
     }
-
+  
     // Returns true if simplex is in this simplicial complex and false otherwise
     bool contains(int dim)(auto ref const Simplex!(dim, Vertex) simplex)
     {
@@ -118,20 +130,22 @@ struct SimplicialComplex(Vertex = int)
 
 unittest
 {
+    // create an empty simplicial complex
     SimplicialComplex!() sc;
     assert(sc.numFacets == 0);
     assert(sc.facets == []);
 
-    // insert some facets
+    // for clarity
     alias s = simplex;
 
+    // insert some facets
     sc.insertFacet(s(1,2,3));
     sc.insertFacet(s(2,3,4));
     sc.insertFacet(s(4,5));
     sc.insertFacet(s(5,6));
 
-    /* get list of facets back, in order of increasing dimension and dictionary 
-    order within a dimension */ 
+    /* get the vertices in the facets, returned in order of increasing dimension
+    and dictionary order within a dimension */ 
     assert(sc.facets == [[4,5], [5,6], [1,2,3], [2,3,4]]);
     assert(sc.numFacets == 4);
 
