@@ -50,5 +50,4 @@ unittest
 
     auto sm = SmallManifold!1([s(1,2), s(2,3), s(1,3)]);
 
-    sm.writeln;
 }

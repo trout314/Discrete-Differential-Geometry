@@ -116,6 +116,22 @@ struct Simplex(int dim, Vertex = int)
         return "[" ~ verts_[].map!(to!string).joiner(",").to!string ~ "]";
     }
 
+    auto opCmp(Simplex!(dim, Vertex) rhs) const
+    {
+        if(this.verts_ < rhs.verts_)
+        {
+            return -1;
+        }
+        else if(this.verts_ > rhs.verts_)
+        {
+            return 1;
+        }
+        else
+        {
+            return 0;
+        }
+    }
+
 private:
     Vertex[dim + 1] verts_;
 }
@@ -459,7 +475,7 @@ dimension.
 */
 auto faces(S)(auto ref const S simplex) if (isInstanceOf!(Simplex, S))
 {
-    string makeArgs()
+    auto makeArgs()
     {
         return iota(simplex.dimension + 1).map!(dim => 
                 format!"simplex.facesOfDim!%s.map!(f => f.vertices.dup)"(dim))

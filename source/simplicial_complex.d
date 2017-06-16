@@ -1,12 +1,12 @@
-import std.algorithm : all, any, canFind, filter, find, joiner, map, 
-    setDifference, sort;
+import std.algorithm : all, any, canFind, filter, find, joiner, map, maxElement,
+    setDifference, sort, uniq;
 import std.conv : to;
 import std.exception : enforce, assertThrown;
-import std.range : array, front, walkLength;
+import std.range : array, front, iota, walkLength;
 import std.typecons : Tuple, tuple;
 
-import simplex : Simplex, simplex, hasFace;
-import utility : isSubsetOf, SmallMap, throwsWithMsg;
+import simplex : Simplex, simplex, hasFace, facesOfDim;
+import utility : isSubsetOf, subsetsOfSize, SmallMap, throwsWithMsg;
 
 /// A simplicial complex type ... yada yada
 struct SimplicialComplex(Vertex = int)
@@ -76,26 +76,34 @@ struct SimplicialComplex(Vertex = int)
         return this.facets.any!(f => simplex.vertices.isSubsetOf(f));
     }
 
+    /// Get simplices of dimension `dim`
     auto simplices(int dim)()
     {
-        static assert(dim >= 0);
-        Simplex!(dim, Vertex)[] simplicesSeen;
-        foreach(key; facetLists.keys)
-        {
-            if (key >= dim + 1)
-            {
-                foreach(facet; facetLists[key])
-                {
-                    //facet.to!Simplex(dim, Vertex).facesOfDim!dim;
-                }
-            }
-        }
-        return 4;
+        static assert(dim >= 0, "dimension must be non-negative, but got "
+            ~ dim.to!string);
+        return simplices(dim).map!(verts => Simplex!(dim, Vertex)(verts));
     }
 
-    int[] fVector()
+    /// Get the simplices of dimension `dim` as lists of vertices.
+    auto simplices(int dim)
+    {
+        assert(dim >= 0, "dimension must be non-negative, but got "
+            ~ dim.to!string);
+        Vertex[][] simplicesSeen;
+        foreach(key; facetLists.keys.filter!(key => key >= dim+1))
+        {
+            foreach(facet; facetLists[key])
+            {
+                simplicesSeen ~= facet.subsetsOfSize(dim + 1).array;
+            }
+        }
+        return simplicesSeen.sort().uniq;
+    }
+
+    ulong[] fVector()
     {   
-        return [];
+        int maxDim = facetLists.keys.maxElement.to!int;
+        return iota(maxDim).map!(dim => simplices(dim).walkLength).array; 
     } 
 
     string toString() @safe
@@ -127,13 +135,12 @@ unittest
     assert(sc.facets == [[4,5], [5,6], [1,2,3], [2,3,4]]);
     assert(sc.numFacets == 4);
 
-    import std.stdio : writeln;
-    writeln(sc.simplices!1);
+    // Can get a sorted array of all the simplices of a given dimension
+    assert(sc.simplices!1.array == [s(1,2), s(1,3), s(2,3), s(2,4), s(3,4), 
+        s(4,5), s(5,6)]);
 
     // get the f-vector of the simplicial complex
-    import std.stdio : writeln;
-    sc.fVector.writeln;
-//    assert(sc.fVector == [1,2,3]);
+    assert(sc.fVector == [6,7,2]);
 
     // check for the presence of simplices
     assert(sc.contains(s(4,5)));
