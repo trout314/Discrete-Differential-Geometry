@@ -1,35 +1,47 @@
+import simplex : facesOfDim, hasFace, simplex, Simplex;
+
 import std.algorithm : all, any, canFind, filter, find, joiner, map, maxElement,
     setDifference, sort, uniq;
 import std.conv : to;
-import std.exception : enforce, assertThrown;
+import std.exception : assertThrown, enforce;
 import std.range : array, ElementType, front, iota, isInputRange, walkLength;
+import std.traits : Unqual;
 import std.typecons : Tuple, tuple;
 
-import simplex : Simplex, simplex, hasFace, facesOfDim;
-import utility : isSubsetOf, subsetsOfSize, SmallMap, throwsWithMsg;
+import utility : isSubsetOf, SmallMap, subsetsOfSize, throwsWithMsg;
 
-/// A simplicial complex type ... yada yada
+/// A simplicial complex type whose vertices are of type `Vertex`.
 struct SimplicialComplex(Vertex = int)
 {
+    /***************************************************************************
+    The type of the vertices in this simplicial complex. */
     alias VertexType = Vertex;
 
-    // Inserts a facet into the simplicial complex.
-    void insertFacet(int dim)(Simplex!(dim, Vertex) simplex)
+    /***************************************************************************
+    Inserts the simplex s as a facet in the simplicial complex. */
+    void insertFacet(int dim)(Simplex!(dim, Vertex) s)
     {
-        enforce(!this.contains(simplex), "insertFacet expects an inserted "
-            ~ "simplex not already in the simplicial complex, but got " 
-            ~ simplex.toString ~ " and already have facet " 
-            ~ facets.find!(f => simplex.vertices.isSubsetOf(f))
-                    .front.to!string);
-
-        facetLists[dim + 1] ~= simplex.vertices.dup;
-
-        facetLists[dim + 1].sort();
+        insertFacet(s.vertices);
     }
 
     /***************************************************************************
-    Returns the facets of the simplicial complex of a particular dimension.
-    */
+    Inserts a facet (given as an input range of vertices) into the simplicial
+    complex */
+    void insertFacet(V)(V vertices) if (isInputRange!V)
+    {
+        static assert(is(Unqual!(ElementType!V) == Vertex));
+        enforce(!this.contains(vertices), "insertFacet expects an inserted "
+            ~ "simplex not already in the simplicial complex, but got " 
+            ~ vertices.to!string ~ " and already have facet " 
+            ~ facets.find!(f => vertices.isSubsetOf(f)).front.to!string);
+
+        auto numVertices = vertices.walkLength;
+        facetLists[numVertices] ~= vertices.dup;
+        facetLists[numVertices].sort();
+    }
+
+    /***************************************************************************
+    Returns the facets of the simplicial complex of a particular dimension. */
     auto facets(int dim)()
     {
         static assert(dim > 0);
@@ -55,40 +67,49 @@ struct SimplicialComplex(Vertex = int)
     }
 
     /***************************************************************************
-    Returns the link of the given simplex as a list of facets, given in same 
-    order as they appear in facets() */
-    int[][] link(int dim)(auto ref const Simplex!(dim, Vertex) simplex)
+    Returns the facets in the link of the simplex `s` as an array of arrays of 
+    vertices, given in same order as they appear in `facets()` */
+    Vertex[][] link(int dim)(auto ref const Simplex!(dim, Vertex) s)
     {
-        return this.star(simplex)
-            .map!(facet => setDifference(facet, simplex.vertices).array).array;
+        return this.star(s).map!(f => setDifference(f, s.vertices).array).array;
+    }
+    /***************************************************************************
+    Returns the facets in the link of the simplex `s` as an array of arrays of 
+    vertices, given in same order as they appear in `facets()` */
+    Vertex[][] link(V)(V vertices) if (isInputRange!V)
+    {
+        static assert(is(ElementType!V == Vertex));
+        return this.star(vertices).map!(
+            f => setDifference(f, vertices).array).array;
     }
 
     /***************************************************************************
-    Returns ...*/
-    int[][] link(V)(V vertices) if (isInputRange!V)
-    {
-        static assert(is(ElementType!V == Vertex));
-        return this.star(vertice).map!(
-            facet => setDifference(facet, vertices).array).array;
-
-        return [];
-    }
-
-
-    /* Returns the star of the given simplex as a list of facets in same order 
-    as they appear in facets() */ 
+    Returns the star of the given simplex as an array of arrays of vertices of 
+    the facets. These are given in the same order as specified facets() */ 
     int[][] star(int dim)(auto ref const Simplex!(dim, Vertex) simplex)
     {
         return this.facets.filter!(f => simplex.vertices.isSubsetOf(f)).array;
     }
   
-    // Returns true if simplex is in this simplicial complex and false otherwise
-    bool contains(int dim)(auto ref const Simplex!(dim, Vertex) simplex)
+    /***************************************************************************
+    Returns true if the simplex `s` is in this simplicial complex and false 
+    otherwise */
+    bool contains(int dim)(auto ref const Simplex!(dim, Vertex) s)
     {
-        return this.facets.any!(f => simplex.vertices.isSubsetOf(f));
+        return this.contains(s.vertices);
     }
 
-    /// Get simplices of dimension `dim`
+    /***************************************************************************
+    Returns true if the simplex with vertices given by the input range 
+    `vertices` is in this simplicial complex and false otherwise */
+    bool contains(V)(V vertices) if (isInputRange!V)
+    {
+        static assert(is(Unqual!(ElementType!V) == Vertex));
+        return this.facets.any!(f => vertices.isSubsetOf(f));
+    }
+
+    /***************************************************************************
+    Get simplices of dimension `dim` */
     auto simplices(int dim)()
     {
         static assert(dim >= 0, "dimension must be non-negative, but got "
@@ -112,9 +133,11 @@ struct SimplicialComplex(Vertex = int)
         return simplicesSeen.sort().uniq;
     }
 
+    /** Get the f-vector of the simplicial complex. The returned array lists the
+    number of simplices in each dimension. */
     ulong[] fVector()
     {   
-        int maxDim = facetLists.keys.maxElement.to!int;
+        immutable maxDim = facetLists.keys.maxElement.to!int;
         return iota(maxDim).map!(dim => simplices(dim).walkLength).array; 
     } 
 
@@ -128,7 +151,8 @@ struct SimplicialComplex(Vertex = int)
     SmallMap!(size_t, int[][]) facetLists;
 }
 
-unittest
+///
+@safe pure unittest
 {
     // create an empty simplicial complex
     SimplicialComplex!() sc;
@@ -173,9 +197,9 @@ unittest
     assert(sc.link(s(4)) == [[5], [2,3]]);
     assert(sc.link(s(2,3)) == [[1], [4]]);
 
-    // --------------------------------------------------------------
+    // -------------------------------------------------------------------------
     // Restrictions
-    // --------------------------------------------------------------
+    // -------------------------------------------------------------------------
 
     // cannot insert a simplex if it is already the face of an existing facet
     sc.insertFacet(s(4,5)).assertThrown;
