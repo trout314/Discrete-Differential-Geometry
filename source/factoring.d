@@ -30,7 +30,6 @@ pure nothrow @safe unittest
 
     // Everything works at compile-time too
     static assert(primeFactors(24).array == [2, 2, 2, 3]);
-
     static assert(isForwardRange!(ReturnType!primeFactors));
 }
 
@@ -368,4 +367,14 @@ struct PrimeFactorsRange
     {
         return this;
     }
+}
+
+pure nothrow @safe unittest
+{
+    auto pf = primeFactors(6);
+    auto pfCopy = pf.save;
+
+    pf.popFront;
+    assert(pfCopy.array == [2, 3]);
+    assert(pf.array == [3]);
 }

@@ -2,7 +2,8 @@ import std.algorithm : all, canFind, filter, find, map, sort;
 import std.conv : to;
 import std.exception : enforce;
 import std.meta : AliasSeq, allSatisfy, anySatisfy;
-import std.range : array, chain, enumerate, front, only, repeat, take, walkLength;
+import std.range : array, chain, enumerate, front, only, repeat, take, 
+    walkLength;
 import std.traits : lvalueOf, rvalueOf;
 
 /*******************************************************************************
@@ -412,19 +413,19 @@ struct SmallMap(KeyType, ValueType)
     }
 
     /// We support the (key in smallMap) syntax 
-    bool opBinaryRight(string op : "in")(KeyType key)
+    bool opBinaryRight(string op : "in")(KeyType key) const
     {
         return this.keys.canFind(key);
     }
 
     /// Get a lazy range returning the keys in increasing order sorted
-    auto keys()
+    auto keys() const
     {
         return data.map!(r => r.key);
     }
 
     /// Get a lazy range returning the values
-    auto values()
+    auto values() const
     {
         return data.map!(r => r.value);
     }
@@ -463,6 +464,10 @@ pure @safe unittest
     assert(sm[2] == "bubba");
 
     sm.insert(5, "nope").throwsWithMsg("key already present");
+
+    assert(sm.keys.array == [2, 5]);
+    assert(sm.values.array == ["bubba", "hello"]);
+    
 }
 
 /*******************************************************************************

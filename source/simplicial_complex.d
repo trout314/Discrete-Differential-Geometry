@@ -54,8 +54,7 @@ struct SimplicialComplex(Vertex = int)
     of dimension and in lexicographic order within dimensions. */
     int[][] facets() pure @safe
     {
-
-        auto sizes = facetLists.keys.array.sort();        
+        auto sizes = facetLists.keys.array.dup.sort();        
         return sizes.map!(s => facetLists[s]).joiner.array;
     }
 
@@ -141,14 +140,14 @@ struct SimplicialComplex(Vertex = int)
         return iota(maxDim).map!(dim => simplices(dim).walkLength).array; 
     } 
 
-    string toString() @safe
+    string toString() @safe pure
     {
         return this.facets.to!string;
     }
 
     private:
     // Lists of facets, indexed by number of vertices in the facet
-    SmallMap!(size_t, int[][]) facetLists;
+    SmallMap!(size_t, Vertex[][]) facetLists;
 }
 
 ///
@@ -173,9 +172,13 @@ struct SimplicialComplex(Vertex = int)
     assert(sc.facets == [[4,5], [5,6], [1,2,3], [2,3,4]]);
     assert(sc.numFacets == 4);
 
+    // Can get a sorted array of all the facet simplices of a given dimension
+    assert(sc.facets!1.array == [s(4,5), s(5,6)]);
+
     // Can get a sorted array of all the simplices of a given dimension
     assert(sc.simplices!1.array == [s(1,2), s(1,3), s(2,3), s(2,4), s(3,4), 
         s(4,5), s(5,6)]);
+
 
     // get the f-vector of the simplicial complex
     assert(sc.fVector == [6,7,2]);
@@ -196,6 +199,8 @@ struct SimplicialComplex(Vertex = int)
     assert(sc.link(s(5)) == [[4], [6]]);
     assert(sc.link(s(4)) == [[5], [2,3]]);
     assert(sc.link(s(2,3)) == [[1], [4]]);
+
+    assert(sc.toString == "[[4, 5], [5, 6], [1, 2, 3], [2, 3, 4]]");
 
     // -------------------------------------------------------------------------
     // Restrictions
