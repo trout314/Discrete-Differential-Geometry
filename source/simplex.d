@@ -15,8 +15,7 @@ import utility : binarySequences, isConstructible, isEqualityComparable,
 /*******************************************************************************
 Represents a non-degenerate simplex represented as set of vertices of user
 specified type Vertex. Elements of type Vertex must be comparable with less-than
-"<" and also comparable for equality with "==".
-*/
+"<" and also comparable for equality with "==". */
 struct Simplex(int dim, Vertex = int)
 {
     static assert(dim >= 0, "dimension cannot be negative");
@@ -31,8 +30,7 @@ struct Simplex(int dim, Vertex = int)
     /***************************************************************************
     A simplex can be constructed from a range with element type Vertex. There
     must be exactly dim + 1 vertices in the range, they must occur in order,
-    and there can be no repeated vertices.
-    */
+    and there can be no repeated vertices. */
     this(R)(R vertices_) if (!isInstanceOf!(.Simplex, R))
     {
         static assert(isInputRange!R || isArray!R,
@@ -67,8 +65,7 @@ struct Simplex(int dim, Vertex = int)
     A simplex can be copy constructed from any other simplex type S if S has the
     same dimension and has a vertex type (S.VertexType) implicitly convertible 
     to this simplex type's vertex type (Vertex). TO DO: Make sure I understand
-    why we need .Simplex in if-constraint instead of just Simplex
-    */
+    why we need .Simplex in if-constraint instead of just Simplex */
     this(S)(auto ref const S simplexToCopy) if (isInstanceOf!(.Simplex, S))
     {
         static assert(S.dimension == this.dimension, "wrong dimension");   
@@ -80,8 +77,7 @@ struct Simplex(int dim, Vertex = int)
     /***************************************************************************
     A simplex can be assigned to another simplex if they have the same dimension
     and the vertex type of vertex `rhs` is implicitly convertible to the vertex 
-    type of the lhs vertex (here, `this`).
-    */
+    type of the lhs vertex (here, `this`). */
     void opAssign(S)(auto ref const S rhs) if (isInstanceOf!(.Simplex, S))
     {
         static assert(isImplicitlyConvertible!(S.VertexType, this.VertexType));
@@ -90,27 +86,23 @@ struct Simplex(int dim, Vertex = int)
     }
 
     /***************************************************************************
-    The dimension of the simplex. Always one less than the number of vertices.
-    */
+    The dimension of the simplex. Always one less than the number of vertices.*/
     enum dimension = dim;
 
     /***************************************************************************
-    The type of vertices used in the simplex.
-    */
+    The type of vertices used in the simplex. */
     alias VertexType = Vertex;
 
     /***************************************************************************
     Provides read-only access to the vertices by returning a slice. TO DO: Think
-    about DIP 1000 and how it relates to this.
-    */
-    const(Vertex)[] vertices() const
+    about DIP 1000 and how it relates to this. */
+    const(Vertex)[] vertices() const pure nothrow @nogc @safe
     {
         return verts_[];
     }
 
     /***************************************************************************
-    Returns a nice looking string representation.
-    */
+    Returns a nice looking string representation. */
     string toString() const
     {
         return "[" ~ verts_[].map!(to!string).joiner(",").to!string ~ "]";
@@ -365,9 +357,8 @@ pure @safe unittest
     static assert(!__traits(compiles, s4.hasFace(simplex(1,2,4,7))));
 }
 
-/******************************************************************************
-Returns true if simplex has possibleFace as a face. Otherwise, returns false.
-*/
+/*******************************************************************************
+Returns true if simplex has possibleFace as a face. Otherwise, returns false. */
 bool hasFace(S, F)(auto ref const S simplex, auto ref const F possibleFace)
         if (isInstanceOf!(Simplex, S) && isInstanceOf!(Simplex, F))
 {
@@ -391,8 +382,7 @@ bool hasFace(S, F)(auto ref const S simplex, auto ref const F possibleFace)
 }
 
 /******************************************************************************
-Returns the face opposite `face` in `simplex`.
-*/
+Returns the face opposite `face` in `simplex`. */
 auto oppositeFace(S, F)(S simplex, F face)
         if (isInstanceOf!(Simplex, S) && isInstanceOf!(Simplex, F))
 {
@@ -424,39 +414,36 @@ pure @safe unittest
 }
 
 /******************************************************************************
-Returns array containing all faces of `simplex` with dimension `dim`. Faces
-given in dictionary order.
-*/
-auto facesOfDim(int dim, S)(auto ref const S simplex)
-if (isInstanceOf!(Simplex, S))
+Returns array containing all faces of simplex `s` with dimension `dim`. Faces
+given in dictionary order. */
+auto facesOfDim(int dim, S)(auto ref const S s) if (isInstanceOf!(Simplex, S))
 {
     assert(dim >= 0);
-    assert(dim <= simplex.dimension);
+    assert(dim <= s.dimension);
 
-    alias SimplexType = Simplex!(dim, S.VertexType);
-    return simplex.vertices.subsetsOfSize(dim + 1)
-        .map!(vertexList => SimplexType(vertexList)).array;
+    alias SimplexType = Simplex!(dim, s.VertexType);
+    return s.vertices.subsetsOfSize(dim + 1)
+        .map!(verts => SimplexType(verts));
 }
 ///
 pure @safe unittest
 {
     alias s = simplex;   // For clarity
 
-    assert(s(1,2,3).facesOfDim!0 == [s(1), s(2), s(3)]);
-    assert(s(1,2,3).facesOfDim!1 == [s(1,2), s(1,3), s(2,3)]);
-    assert(s(1,2,3).facesOfDim!2 == [s(1,2,3)]);
+    assert(s(1,2,3).facesOfDim!0.array == [s(1), s(2), s(3)]);
+    assert(s(1,2,3).facesOfDim!1.array == [s(1,2), s(1,3), s(2,3)]);
+    assert(s(1,2,3).facesOfDim!2.array == [s(1,2,3)]);
 
-    static assert(s(1,2,3).facesOfDim!0 == [s(1), s(2), s(3)]);
-    static assert(s(1,2,3).facesOfDim!1 == [s(1,2), s(1,3), s(2,3)]);
-    static assert(s(1,2,3).facesOfDim!2 == [s(1,2,3)]);
+    static assert(s(1,2,3).facesOfDim!0.array == [s(1), s(2), s(3)]);
+    static assert(s(1,2,3).facesOfDim!1.array == [s(1,2), s(1,3), s(2,3)]);
+    static assert(s(1,2,3).facesOfDim!2.array == [s(1,2,3)]);
 }
 
 /******************************************************************************
 Returns a newly allocated dynamic array containing arrays of vertices. These are
 the vertices in all the faces of the given simplex (simplex). They are returned 
 sorted by dimension (lowest to highest) and in dictionary order within each
-dimension.
-*/
+dimension. */
 auto faces(S)(auto ref const S simplex) if (isInstanceOf!(Simplex, S))
 {
     auto makeArgs()
@@ -511,8 +498,7 @@ pure @safe unittest
 }
 
 /******************************************************************************
-Returns the codimension-2 faces (hinges)
-*/
+Returns the codimension-2 faces (hinges) */
 auto hinges(S)(auto ref const S simplex) if (isInstanceOf!(Simplex, S))
 {
     static assert(simplex.dimension >= 2);
@@ -523,18 +509,17 @@ pure @safe unittest
 {
     alias s = simplex;
 
-    assert(s(1,2,3).hinges == [s(1), s(2), s(3)]);
-    assert(s(1,3,5,7).hinges
+    assert(s(1,2,3).hinges.array == [s(1), s(2), s(3)]);
+    assert(s(1,3,5,7).hinges.array
         == [s(1,3), s(1,5), s(1,7), s(3,5), s(3,7), s(5,7)]);
 
-    static assert(s(1,2,3).hinges == [s(1), s(2), s(3)]);
-    static assert(s(1,3,5,7).hinges 
+    static assert(s(1,2,3).hinges.array == [s(1), s(2), s(3)]);
+    static assert(s(1,3,5,7).hinges.array 
         == [s(1,3), s(1,5), s(1,7), s(3,5), s(3,7), s(5,7)]);
 }
 
 /******************************************************************************
-Returns the codimension-1 faces (ridges)
-*/
+Returns the codimension-1 faces (ridges) */
 auto ridges(S)(auto ref S simplex) if (isInstanceOf!(Simplex, S))
 {
     static assert(simplex.dimension >= 1);
@@ -545,17 +530,17 @@ pure @safe unittest
 {
     alias s = simplex;
 
-    assert(s(1,2,3).ridges == [s(1,2), s(1,3), s(2,3)]);
-    assert(s(2, 3, 5, 7).ridges == s(2, 3, 5, 7).facesOfDim!2);
+    assert(s(1, 2, 3).ridges.array == [s(1, 2), s(1, 3), s(2, 3)]);
+    assert(s(2, 3, 5, 7).ridges.array == s(2, 3, 5, 7).facesOfDim!2.array);
 
-    static assert(s(1,2).ridges == [s(1), s(2)]);
-    static assert(s(2, 3, 5, 7).ridges == s(2, 3, 5, 7).facesOfDim!2);
+    static assert(s(1,2 ).ridges.array == [s(1), s(2)]);
+    static assert(s(2, 3, 5).ridges.array == s(2, 3, 5).facesOfDim!1.array);
 }
 
 auto join(S1, S2)(auto ref const S1 s1, auto ref const S2 s2)
     if (isInstanceOf!(Simplex, S1) && isInstanceOf!(Simplex, S2))
 {
-    assert(sort(chain(s1.vertices, s2.vertices).array.dup).findAdjacent.length == 0,
+    assert(chain(s1.vertices, s2.vertices).array.dup.sort().findAdjacent.empty,
         "join expected two simplices without any common vertices, but got: "
         ~ s1.toString ~ " and " ~ s2.toString);
 
