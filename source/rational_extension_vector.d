@@ -18,8 +18,7 @@ Returns:
 */
 auto simplexPoints(int dim)() pure nothrow @nogc @safe
 {
-    alias Vec = REVector!(
-        iota(1, dim + 1).map!(k => squareFreePart(k * (k + 1) / 2)).array);
+    alias Vec = REVector!(simplexRoots(dim).array);
     return iota(0, dim + 1).map!(k => Vec(simplexCoefs(dim)[k]));
 }
 
@@ -34,8 +33,7 @@ pure nothrow @safe unittest
     */
 
     alias r = rational;
-    enum roots = [1,3,6];
-    alias vec = reVector!roots;
+    alias vec = reVector!([1, 3, 6]);
     auto pts = [vec(  r(0),   r(0),   r(0)),
                 vec(  r(1),   r(0),   r(0)),
                 vec(r(1,2), r(1,2),   r(0)),
@@ -48,8 +46,6 @@ pure nothrow @safe unittest
 
 struct REVector(int[] theRoots)
 {
-    
-
     // TO DO: Add some constraints to this template?
     this(T)(T coefs)
     {
@@ -122,9 +118,8 @@ template reVector(int[] roots)
     }
 }
 
-auto dotProduct(size_t dim)(REVector!dim v0, REVector!dim v1)
+auto dotProduct(size_t dim)()
 {
-
 } 
 
 

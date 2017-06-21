@@ -484,7 +484,8 @@ unittest
 }
 
 /*******************************************************************************
-Returns all the sub-ranges of length `sizeOfSubset` from the ordered range `set` 
+Returns all the sub-ranges of length `sizeOfSubset` from the ordered range `set`
+TO DO: Replace this with a lazy @nogc version.
 */
 auto subsetsOfSize(R)(R set, int subsetSize)
 {
@@ -501,7 +502,6 @@ auto subsetsOfSize(R)(R set, int subsetSize)
                   .map!(c => set[c.index])
                   .array
     ).array;
-
 }
 ///
 unittest
