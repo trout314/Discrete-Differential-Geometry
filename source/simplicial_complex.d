@@ -45,7 +45,7 @@ struct SimplicialComplex(Vertex = int)
     auto facets(int dim)()
     {
         static assert(dim > 0);
-        return facetLists[dim + 1].map!(vList => Simplex!(dim, Vertex)(vList));
+        return facetLists[dim + 1].map!(verts => Simplex!(dim, Vertex)(verts));
     }
 
     /***************************************************************************
@@ -62,7 +62,7 @@ struct SimplicialComplex(Vertex = int)
     Returns the number of facets */
     size_t numFacets() pure @safe
     {
-        return facets.walkLength;
+        return this.facets.walkLength;
     }
 
     /***************************************************************************

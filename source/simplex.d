@@ -1,5 +1,5 @@
 
-import std.algorithm : all, canFind, equal, filter, findAdjacent, isSorted, 
+import std.algorithm : all, canFind, copy, equal, filter, findAdjacent, isSorted, 
     joiner, map, setDifference, sort;
 import std.conv : to;
 import std.exception : assertThrown, enforce;
@@ -10,7 +10,7 @@ import std.range : array, chain, ElementType, empty, enumerate, front, iota,
 import std.traits : CommonType, isArray, isImplicitlyConvertible, isInstanceOf, 
     isPointer, PointerTarget;
 import utility : binarySequences, isConstructible, isEqualityComparable, 
-    isLessThanComparable, isPrintable, isSubsetOf, subsetsOfSize, staticIota, throwsWithMsg;
+    isLessThanComparable, isPrintable, isSubsetOf, subsetsOfSize, throwsWithMsg;
 
 /*******************************************************************************
 Represents a non-degenerate simplex represented as set of vertices of user
@@ -46,7 +46,7 @@ struct Simplex(int dim, Vertex = int)
             ~ (dim+1).to!string ~ " vertices, but got vertices: " 
             ~ vertices_.to!string);
         
-        this.verts_[] = vertices_.map!(to!Vertex).array[];
+        verts_[] = vertices_.map!(to!Vertex).array[];
 
         static if (is(Vertex == class))
         {
@@ -268,21 +268,19 @@ unittest
     type C we must have: (c1 <= c2) && (c2 <= c1) if and only if (c1 == c2).
 
     See $(LINK https://dlang.org/spec/operatoroverloading.html#compare).*/
-    struct C
+    static struct C
     {
         int label;
 
         // Here, opCmp just compares labels and returns the appropriate result
         int opCmp()(auto ref const C rhs) const
         {
-            if (this.label < rhs.label)      { return -1;}
-            else if (this.label > rhs.label) { return  1;}
-            else                             { return  0;}
+            return (label < rhs.label) ? -1 : (label > rhs.label);
         }
 
         /* The compiler-generated toString would be fine, although the error 
         messages and unittests will be easier to read with the following. */ 
-        string toString() const { return this.label.to!string; }
+        string toString() const { return label.to!string; }
     }
 
     auto s4 = simplex(C(2), C(3));
@@ -300,20 +298,15 @@ unittest
 
         override int opCmp(Object rhs) const
         {
-            if (this.label < rhs.to!D.label)      { return -1;}
-            else if (this.label > rhs.to!D.label) { return  1;}
-            else                                  { return  0;} 
+            return (label < rhs.to!D.label) ? -1 : (label > rhs.to!D.label);
         }
 
         override bool opEquals(Object rhs) const
         {
-            return this.label == rhs.to!D.label;
+            return label == rhs.to!D.label;
         }
 
-        override string toString() const
-        {
-            return this.label.to!string;
-        }
+        override string toString() const { return label.to!string; }
     }
 
     auto s5 = simplex(new D(2), new D(3));
@@ -345,8 +338,8 @@ pure @safe unittest
     static assert(is(s2.VertexType == long));
 
     immutable i = 3, j = 5;
-    auto s = simplex(i, j);
-    static assert(is(typeof(s) == Simplex!(1, immutable int)));
+//    auto s = simplex(i, j);
+//    static assert(is(typeof(s) == Simplex!(1, immutable int)));
 
     auto s4 = simplex("alice", "bob", "carol");
     static assert(is(s4.VertexType == string));
@@ -418,8 +411,7 @@ Returns array containing all faces of simplex `s` with dimension `dim`. Faces
 given in dictionary order. */
 auto facesOfDim(int dim, S)(auto ref const S s) if (isInstanceOf!(Simplex, S))
 {
-    assert(dim >= 0);
-    assert(dim <= s.dimension);
+    static assert(dim <= s.dimension, "faces");
 
     alias SimplexType = Simplex!(dim, s.VertexType);
     return s.vertices.subsetsOfSize(dim + 1)
@@ -441,17 +433,14 @@ pure @safe unittest
 
 /******************************************************************************
 Returns a newly allocated dynamic array containing arrays of vertices. These are
-the vertices in all the faces of the given simplex (simplex). They are returned 
+the vertices in all the faces of the given simplex `s`. They are returned 
 sorted by dimension (lowest to highest) and in dictionary order within each
 dimension. */
-auto faces(S)(auto ref const S simplex) if (isInstanceOf!(Simplex, S))
+auto faces(S)(auto ref const S s) if (isInstanceOf!(Simplex, S))
 {
-    auto makeArgs()
-    {
-        return iota(simplex.dimension + 1).map!(dim => 
-                format!"simplex.facesOfDim!%s.map!(f => f.vertices.dup)"(dim))
-            .joiner(", ").to!string;
-    }
+    alias makeArgs = () => iota(s.dimension + 1).map!(dim => 
+        "s.facesOfDim!" ~ dim.to!string ~ ".map!(f => f.vertices.dup)")
+        .joiner(", ").to!string;
 
     mixin("return chain(" ~ makeArgs() ~ ");");
 }
@@ -462,6 +451,12 @@ pure @safe unittest
     assert(simplex(5,7).faces.array == [[5], [7], [5, 7]]);
     assert(simplex(1,2,3).faces.array == [[1], [2], [3], [1, 2], [1, 3], [2, 3],
         [1, 2, 3]]);
+}
+
+pure @safe unittest // TO DO: Make this @nogc
+{
+    auto pt = simplex(9);
+    // assert(simplex(9).faces.front == [9]);
 }
 
 ///
@@ -540,12 +535,12 @@ pure @safe unittest
 auto join(S1, S2)(auto ref const S1 s1, auto ref const S2 s2)
     if (isInstanceOf!(Simplex, S1) && isInstanceOf!(Simplex, S2))
 {
-    assert(chain(s1.vertices, s2.vertices).array.dup.sort().findAdjacent.empty,
-        "join expected two simplices without any common vertices, but got: "
-        ~ s1.toString ~ " and " ~ s2.toString);
+    auto commonVertices = chain(s1.vertices, s2.vertices).array.dup.sort();
+    enforce(commonVertices.findAdjacent.empty, "join expected two simplices "
+        ~ "without any common vertices, but got: " ~ s1.toString ~ " and " 
+        ~ s2.toString);
 
-    return Simplex!(s1.dimension + s2.dimension + 1)(
-        sort(chain(s1.vertices, s2.vertices).array.dup));
+    return Simplex!(s1.dimension + s2.dimension + 1)(commonVertices);
 }
 ///
 pure @safe unittest
@@ -554,4 +549,7 @@ pure @safe unittest
 
     assert(join(s(1, 3), s(2, 4)) == s(1,2,3,4));
     assert(join(s(1, 3), s(2)) == s(1,2,3));
+
+    throwsWithMsg(join(s(1, 2), s(1, 3)), "join expected two simplices without "
+        ~"any common vertices, but got: [1,2] and [1,3]");
 }
