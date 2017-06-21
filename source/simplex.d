@@ -46,7 +46,7 @@ struct Simplex(int dim, Vertex = int)
             ~ (dim+1).to!string ~ " vertices, but got vertices: " 
             ~ vertices_.to!string);
         
-        verts_[] = vertices_.map!(to!Vertex).array[];
+        copy(vertices_.map!(to!Vertex), verts_[]);
 
         static if (is(Vertex == class))
         {
@@ -71,7 +71,7 @@ struct Simplex(int dim, Vertex = int)
         static assert(S.dimension == this.dimension, "wrong dimension");   
         static assert(isImplicitlyConvertible!(S.VertexType, this.VertexType),
             "vertex types not implicitly convertible");
-        this.verts_[] = simplexToCopy.vertices.map!(to!Vertex).array[];
+        copy(simplexToCopy.verts_[].map!(to!Vertex), verts_[]);
     }
 
     /***************************************************************************
@@ -82,7 +82,7 @@ struct Simplex(int dim, Vertex = int)
     {
         static assert(isImplicitlyConvertible!(S.VertexType, this.VertexType));
         static assert(S.dimension == this.dimension);
-        this.verts_[] = rhs.vertices.map!(to!Vertex).array[];
+        copy(rhs.verts_[].map!(to!Vertex), verts_[]);
     }
 
     /***************************************************************************
@@ -414,8 +414,7 @@ auto facesOfDim(int dim, S)(auto ref const S s) if (isInstanceOf!(Simplex, S))
     static assert(dim <= s.dimension, "faces");
 
     alias SimplexType = Simplex!(dim, s.VertexType);
-    return s.vertices.subsetsOfSize(dim + 1)
-        .map!(verts => SimplexType(verts));
+    return s.vertices.subsetsOfSize(dim + 1).map!(verts => SimplexType(verts));
 }
 ///
 pure @safe unittest
@@ -453,10 +452,12 @@ pure @safe unittest
         [1, 2, 3]]);
 }
 
-pure @safe unittest // TO DO: Make this @nogc
+pure @safe unittest // NOTE: could have @nogc here if exceptions were @nogc
 {
     auto pt = simplex(9);
-    // assert(simplex(9).faces.front == [9]);
+
+    // TO DO: Can we make this @nogc?
+    // assert(simplex(9).faces.front.front == 9);
 }
 
 ///
