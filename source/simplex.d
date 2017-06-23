@@ -1,8 +1,8 @@
 
-import std.algorithm : all, canFind, copy, equal, filter, findAdjacent, isSorted, 
+import std.algorithm : all, canFind, copy, each, equal, filter, findAdjacent, isSorted, 
     joiner, map, setDifference, sort;
-import std.conv : to;
-import std.exception : assertThrown, enforce;
+import std.conv : to, Unqual;
+import std.exception : assertThrown, assumeUnique, enforce;
 import std.format : format;
 import std.meta : staticMap;
 import std.range : array, chain, ElementType, empty, enumerate, front, iota, 
@@ -45,8 +45,21 @@ struct Simplex(int dim, Vertex = int)
             "a dimension " ~ dim.to!string ~ " simplex needs "
             ~ (dim+1).to!string ~ " vertices, but got vertices: " 
             ~ vertices_.to!string);
-        
-        copy(vertices_.map!(to!Vertex), verts_[]);
+
+
+        // TO DO: Figure out how to do this without allocating!
+        verts_[] = vertices_.map!(to!Vertex).array[];
+
+        // THIS WORKS! Why do I need this cast? is it acutally OK?
+        // copy(vertices_.map!(to!Vertex), cast(Unqual!Vertex[])(verts_[]));
+
+
+        // vertices_.map!(to!Vertex).enumerate.each!((indx, v) => verts_[indx] = v);
+
+        // foreach(indx, v;vertices_.map!(to!Vertex).enumerate)
+        // {
+        //     verts_[indx] = v;
+        // }
 
         static if (is(Vertex == class))
         {
@@ -338,8 +351,8 @@ pure @safe unittest
     static assert(is(s2.VertexType == long));
 
     immutable i = 3, j = 5;
-//    auto s = simplex(i, j);
-//    static assert(is(typeof(s) == Simplex!(1, immutable int)));
+    auto s = simplex(i, j);
+    static assert(is(typeof(s) == Simplex!(1, immutable int)));
 
     auto s4 = simplex("alice", "bob", "carol");
     static assert(is(s4.VertexType == string));

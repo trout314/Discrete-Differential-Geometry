@@ -1,20 +1,25 @@
-import std.algorithm : all, copy, equal, map;
+import std.algorithm : all, copy, equal, map, sum;
 import std.conv : to;
 import std.format : format;
-import std.range : array, enumerate, iota, isForwardRange, walkLength;
-import std.traits : hasFunctionAttributes, ReturnType;
+import std.meta : allSatisfy;
+import std.range : array, drop, enumerate, iota, isForwardRange, walkLength, zip;
+import std.traits : hasFunctionAttributes, ReturnType, isInstanceOf;
 
 import std.rational : rational, Rational;
 import factoring : squarePart, sqrtSquarePart, squareFreePart;
 
 /*******************************************************************************
-Returns a forward range that ... TO DO
+Returns a forward range which lists the points in the regular unit-edge simplex
+of dimension `dim`. The points are returned as REVectors. The first point is
+always the origin (0,0,...,0) and from then the non-zero entries appear on the
+left. For example, in dimension three the points would be: (0,0,0), (1,0,0),
+(1/2,(1/2)√3,0), (1/2,(1/6)√3,(1/3)√6). 
 
 Params:
-    dim = 
+    dim = dimension of the simplex
 
 Returns:
-    Forward range of `REVector`s giving the  ... 
+    Forward range of `REVector`s listing points in the simplex. 
 */
 auto simplexPoints(int dim)() pure nothrow @nogc @safe
 {
@@ -23,7 +28,7 @@ auto simplexPoints(int dim)() pure nothrow @nogc @safe
 }
 
 ///
-pure nothrow @safe unittest
+unittest
 {
     /* We check that the vertices of the 3-simplex are as they should be:
     v0 = (0,         0,       0)
@@ -33,7 +38,7 @@ pure nothrow @safe unittest
     */
 
     alias r = rational;
-    alias vec = reVector!([1, 3, 6]);
+    alias vec = reVector!(1, 3, 6);
     auto pts = [vec(  r(0),   r(0),   r(0)),
                 vec(  r(1),   r(0),   r(0)),
                 vec(r(1,2), r(1,2),   r(0)),
@@ -42,60 +47,66 @@ pure nothrow @safe unittest
     assert(simplexPoints!3.equal(pts));
     assert(simplexPoints!3.all!(v => v.roots == [1,3,6]));
     static assert(isForwardRange!(ReturnType!(simplexPoints!3)));
+
+    assert(simplexPoints!5.drop(1).all!(pt => dotProduct(pt, pt) == 1));
+
+    // TO DO: Check distances between points are all 1. subsumes above check
 }
 
-struct REVector(int[] theRoots)
+/*******************************************************************************
+A "rational-extension vector" that stores vectors of the form:
+(r1√d1, r2√d2, ... , rN√dN) where r1, ..., rN are rational numbers and
+d1, ... , dN are integers. The rational coefficients may vary at runtime, but 
+the integers under the roots are part of the type.
+*/
+struct REVector(int[] roots_) if (roots_.all!(r => r>0))
 {
-    // TO DO: Add some constraints to this template?
-    this(T)(T coefs)
+    ///
+    alias roots = roots_;
+
+    ///
+    static immutable dimension = roots_.length;
+
+    ///
+    this(T)(T coefficients) if (isForwardRange!T)
     {
-        assert(coefs.walkLength == dim);
-        copy(coefs, rationalCoefs[]);
+        assert(coefficients.walkLength == dimension);
+        copy(coefficients, rationalCoefs[]);
     }
 
-    static this()
-    {
-        roots_[] = theRoots[];
-    }
-
-    auto roots() const
-    {
-        return roots_[];
-    }
-    
     ///
     string toString()
     {
         string result = "(";
-        foreach (i, coef; rationalCoefs)
+        foreach (indx, coef, root; zip(rationalCoefs[], roots[]).enumerate)
         {
             // Take care of initial rational part
             if (coef == 0)
             {
                 result ~= "0";
             }
-            else if ((roots_[i] == 1) && (coef == 1))
+            else if ((root == 1) && (coef == 1))
             {
                 result ~= "1";
             }
-            else if ((roots_[i] == 1) && (coef != 1))
+            else if ((root == 1) && (coef != 1))
             {
-                result ~= to!string(coef);
+                result ~= coef.to!string;
             }
-            else if ((roots_[i] != 1) && (coef == 1))
+            else if ((root != 1) && (coef == 1))
             {
                 result ~= x"E2 88 9A"; // square root symbol UTF-8 (hex)
-                result ~= to!string(roots_[i]);
+                result ~= root.to!string;
             }
-            else if ((roots_[i] != 1) && (coef != 1))
+            else if ((root != 1) && (coef != 1))
             {
-                result ~= "(" ~ to!string(coef) ~ ")";            
+                result ~= "(" ~ coef.to!string ~ ")";            
                 result ~= x"E2 88 9A";
-                result ~= to!string(roots_[i]);
+                result ~= root.to!string;
             }
 
             // Append comma and space if needed
-            if (i + 1 < rationalCoefs.length)
+            if (indx + 1 < dimension)
             {
                 result ~= ", ";
             }
@@ -104,24 +115,56 @@ struct REVector(int[] theRoots)
         return result;
     }
 private:
-    static immutable dim = theRoots.walkLength;
-    static immutable int[dim] roots_;
-    Rational!int[dim] rationalCoefs;
+    Rational!int[dimension] rationalCoefs;
 }
 
-template reVector(int[] roots)
+/// Convenience function for creating REVectors
+template reVector(R...)
 {
+    enum int[] roots = [R];
+    static assert(roots.length > 1, "must have at least one root");
+
     auto reVector(T, size_t dim)(Rational!T[dim] coefficients...)
     {
-        static assert(coefficients.length == roots.walkLength);
+        static assert(coefficients.length == roots.length, "expected "
+            ~ roots.length.to!string ~ " coefficients but recieved "
+            ~ coefficients.length.to!string);
         return REVector!roots(coefficients[]);
     }
 }
-
-auto dotProduct(size_t dim)()
+///
+unittest
 {
-} 
+    alias r = rational;
 
+    auto v = reVector!(1,3,6)(r(1), r(2), r(3));
+    assert(dotProduct(v,v) == 67);
+}
+
+Rational!int dotProduct(int[] roots)(REVector!roots v, REVector!roots w)
+{
+    static assert(v.roots.equal(w.roots));
+    static assert(v.rationalCoefs.length == w.rationalCoefs.length);
+    static assert(v.roots.length == v.rationalCoefs.length);
+    
+    auto total = rational(0);
+    foreach(indx; 0 .. roots.length)
+    {
+        total += roots[indx] * v.rationalCoefs[indx] * w.rationalCoefs[indx];
+    }
+    return total;
+}
+
+unittest
+{
+    alias vec = reVector!(1,3);
+    alias r = rational;
+
+    auto v = vec(r(1,3), r(2,5));
+    auto w = vec(r(1,2), r(2,3));
+
+    assert(dotProduct(v, w) == r(29,30));
+}
 
 private:
 
@@ -174,17 +217,9 @@ unittest
 {
     alias r = rational;
 
-    assert(REVector!([1,3,6])([r(1, 1), r(3, 7), r(11, 2)]).toString ==
+    assert(reVector!(1,3,6)(r(1, 1), r(3, 7), r(11, 2)).toString ==
         "(1, (3/7)√3, (11/2)√6)");
 
-    assert(REVector!([1,3,6])([r(1, 2), r(0, 1), r(1, 1)]).toString ==
+    assert(reVector!(1,3,6)(r(1, 2), r(0, 1), r(1, 1)).toString ==
         "(1/2, 0, √6)");
-
-    auto v = REVector!([1,3,6])([r(1,2), r(1,3), r(0,1)]);
-
-
-    import std.stdio : writeln;
-    v.writeln;
-    v.roots.writeln;
-
 }

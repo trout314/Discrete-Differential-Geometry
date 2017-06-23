@@ -247,13 +247,20 @@ public:
 
     typeof(this) opOpAssign(string op, Rhs)(Rhs rhs) if (op == "*" && isRational!Rhs)
     {
+        if (this.numerator == 0 || rhs.numerator == 0)
+        {
+            return typeof(this)(0);
+        }
+
         // Cancel common factors first, then multiply.  This prevents
         // overflows and is much more efficient when using BigInts.
         auto divisor = gcf(this.numerator, rhs.denominator);
+        assert(divisor != 0);
         this.numerator /= divisor;
         rhs.denominator /= divisor;
 
         divisor = gcf(this.denominator, rhs.numerator);
+        assert(divisor != 0);
         this.denominator /= divisor;
         rhs.numerator /= divisor;
 
@@ -270,6 +277,8 @@ public:
             if (op == "*" && isIntegerLike!Rhs)
     {
         auto divisor = gcf(this.denominator, rhs);
+        assert(divisor != 0);
+
         this.denominator /= divisor;
         rhs /= divisor;
         this.numerator *= rhs;
@@ -308,6 +317,8 @@ public:
             if (op == "/" && isIntegerLike!Rhs)
     {
         auto divisor = gcf(this.numerator, rhs);
+        assert(divisor != 0);
+
         this.numerator /= divisor;
         rhs /= divisor;
         this.denominator *= rhs;
@@ -349,6 +360,10 @@ public:
         }
 
         Int commonDenom = lcm(this.denominator, rhs.denominator);
+
+        assert(this.denominator != 0);
+        assert(rhs.denominator != 0);
+
         this.numerator *= commonDenom / this.denominator;
         this.numerator += (commonDenom / rhs.denominator) * rhs.numerator;
         this.denominator = commonDenom;
@@ -385,6 +400,10 @@ public:
         }
 
         auto commonDenom = lcm(this.denominator, rhs.denominator);
+
+        assert(this.denominator != 0);
+        assert(rhs.denominator != 0);
+
         this.numerator *= commonDenom / this.denominator;
         this.numerator -= (commonDenom / rhs.denominator) * rhs.numerator;
         this.denominator = commonDenom;
@@ -515,6 +534,10 @@ public:
 
         // Can't do it without common denominator.  Argh.
         auto commonDenom = lcm(this.denominator, rhs.denominator);
+
+        assert(this.denominator != 0);
+        assert(rhs.denominator != 0);
+
         auto lhsNum = this.numerator * (commonDenom / this.denominator);
         auto rhsNum = rhs.numerator * (commonDenom / rhs.denominator);
 
@@ -564,6 +587,7 @@ public:
     /**Fast inversion, equivalent to 1 / rational.*/
     typeof(this) invert()
     {
+        assert(denominator != 0);
         swap(numerator, denominator);
         return this;
     }
@@ -706,8 +730,8 @@ public:
     }
 
 private:
-    Int numerator;
-    Int denominator;
+    Int numerator= 0;
+    Int denominator = 1;
 
     void simplify()
     {
@@ -718,6 +742,9 @@ private:
         }
 
         auto divisor = gcf(numerator, denominator);
+
+        assert(divisor != 0);
+
         numerator /= divisor;
         denominator /= divisor;
 
@@ -833,6 +860,9 @@ unittest
     auto one = zero + 1;
     one -= one;
     assert(one == zero);
+
+    // Added by Aaron Trout June 2017
+    assert(rational(3, 3) * rational(0,5) == rational(0,1));
 
     // Test integerPart, fraction part.
     auto intFract = rational(5, 4);
@@ -956,6 +986,9 @@ Find the greatest common factor of num1 and num2 using Euclid's Algorithm.
 CommonInteger!(I1, I2) gcf(I1, I2)(I1 num1, I2 num2)
         if (isIntegerLike!I1 && isIntegerLike!I2)
 {
+    assert(num1 != 0);
+    assert(num2 != 0);
+
     num1 = iAbs(num1);
     num2 = iAbs(num2);
     if (num2 > num1)
