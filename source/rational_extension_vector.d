@@ -50,6 +50,15 @@ unittest
 
     assert(simplexPoints!5.drop(1).all!(pt => dotProduct(pt, pt) == 1));
 
+    assert(-pts[3] == vec(-r(1,2), -r(1,6), -r(1,3)));
+    assert(+pts[3] == pts[3]);
+
+    import std.stdio : writeln;
+
+    assert(pts[3] - pts[2] == vec(r(0), -r(1,3), r(1,3)));
+    assert(pts[3] + pts[2] == vec(r(1),  r(2,3), r(1,3)));
+    assert(  r(6) * pts[3] == vec(r(3),    r(1),   r(2)));
+    
     // TO DO: Check distances between points are all 1. subsumes above check
 }
 
@@ -66,6 +75,35 @@ struct REVector(int[] roots_) if (roots_.all!(r => r>0))
 
     ///
     static immutable dimension = roots_.length;
+
+    ///
+    typeof(this) opUnary(string op)() if (op == "-" || op == "+")
+    {
+        static if(op == "-")
+        {
+            return typeof(this)(this.rationalCoefs[].map!(c => -c));
+        }
+        else
+        {
+            return this;
+        }
+    }
+
+    ///
+    typeof(this) opBinary(string s)(typeof(this) rhs) if (s == "-" || s == "+")
+    {
+        mixin(q{
+            return zip(this.rationalCoefs[], rhs.rationalCoefs[])
+                .map!(pair => pair[0]} ~ s ~ q{pair[1])
+                .to!(typeof(this));
+        });
+    }
+
+    ///
+    typeof(this) opBinaryRight(string op)(Rational!int scalar) if (op == "*")
+    {
+        return this.rationalCoefs[].map!(c => scalar * c).to!(typeof(this));
+    }
 
     ///
     this(T)(T coefficients) if (isForwardRange!T)
