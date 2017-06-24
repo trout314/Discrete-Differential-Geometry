@@ -2,9 +2,11 @@ import std.algorithm : all, copy, equal, map, sum;
 import std.conv : to;
 import std.format : format;
 import std.meta : allSatisfy;
-import std.range : array, drop, enumerate, iota, isForwardRange, walkLength, zip;
+import std.range : array, drop, enumerate, iota, isForwardRange, walkLength,
+    zip;
 import std.traits : hasFunctionAttributes, ReturnType, isInstanceOf;
 
+import utility : staticIota, subsetsOfSize;
 import std.rational : rational, Rational;
 import factoring : squarePart, sqrtSquarePart, squareFreePart;
 
@@ -53,11 +55,12 @@ unittest
     assert(-pts[3] == vec(-r(1,2), -r(1,6), -r(1,3)));
     assert(+pts[3] == pts[3]);
 
-    import std.stdio : writeln;
-
     assert(pts[3] - pts[2] == vec(r(0), -r(1,3), r(1,3)));
     assert(pts[3] + pts[2] == vec(r(1),  r(2,3), r(1,3)));
     assert(  r(6) * pts[3] == vec(r(3),    r(1),   r(2)));
+
+    // Check distributivity
+    assert(r(2,3) * (pts[2] + pts[3]) == r(2,3) * pts[2] + r(2,3) * pts[3]);
     
     // TO DO: Check distances between points are all 1. subsumes above check
 }
@@ -260,4 +263,39 @@ unittest
 
     assert(reVector!(1,3,6)(r(1, 2), r(0, 1), r(1, 1)).toString ==
         "(1/2, 0, √6)");
+}
+
+///
+Rational!int distanceSquared(int[] roots)(REVector!roots v, REVector!roots w)
+{
+    return dotProduct(v - w, v - w);
+}
+
+///
+unittest
+{
+    alias r = rational;
+    alias vec = reVector!(1,2,3);
+    assert(distanceSquared(
+        vec(r(1), r(2, 5), r(11, 2)),    
+        vec(r(0), r(1, 5), r(11, 2))) == r(27,25));
+
+    foreach(pair; simplexPoints!4.subsetsOfSize(2))
+    {
+        assert(distanceSquared(pair[0], pair[1]) == 1);
+        assert(distanceSquared(pair[1], pair[0]) == 1);       
+    }
+}
+
+// Additional unittests
+unittest
+{
+    foreach(dim; staticIota!(1, 8))
+    {
+         foreach(pair; simplexPoints!dim.subsetsOfSize(2))
+        {
+            assert(distanceSquared(pair[0], pair[1]) == 1);
+            assert(distanceSquared(pair[1], pair[0]) == 1);       
+        }
+    }
 }
