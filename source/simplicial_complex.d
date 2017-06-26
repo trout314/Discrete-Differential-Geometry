@@ -26,7 +26,7 @@ struct SimplicialComplex(Vertex = int)
 
     /***************************************************************************
     Inserts a facet (given as an input range of vertices) into the simplicial
-    complex */
+    complex. */
     void insertFacet(V)(V vertices) if (isInputRange!V)
     {
         static assert(is(Unqual!(ElementType!V) == Vertex));
@@ -46,6 +46,15 @@ struct SimplicialComplex(Vertex = int)
     {
         static assert(dim > 0);
         return facetLists[dim + 1].map!(verts => Simplex!(dim, Vertex)(verts));
+    }
+
+    /***************************************************************************
+    Returns the facets of the simplicial complex of a particular dimension as an 
+    array of arrays of vertices. */
+    auto facets(int dim)
+    {
+        assert(dim > 0);
+        return facetLists[dim + 1];
     }
 
     /***************************************************************************
@@ -87,9 +96,17 @@ struct SimplicialComplex(Vertex = int)
     the facets. These are given in the same order as specified facets() */ 
     int[][] star(int dim)(auto ref const Simplex!(dim, Vertex) simplex)
     {
-        return this.facets.filter!(f => simplex.vertices.isSubsetOf(f)).array;
+        return star(simplex.vertices);
     }
-  
+
+    /***************************************************************************
+    Returns the star of the given simplex as an array of arrays of vertices of 
+    the facets. These are given in the same order as specified facets() */ 
+    int[][] star(V)(V vertices) if (isInputRange!V)
+    {
+        return this.facets.filter!(f => vertices.isSubsetOf(f)).array;
+    }
+
     /***************************************************************************
     Returns true if the simplex `s` is in this simplicial complex and false 
     otherwise */
@@ -134,7 +151,7 @@ struct SimplicialComplex(Vertex = int)
 
     /** Get the f-vector of the simplicial complex. The returned array lists the
     number of simplices in each dimension. */
-    ulong[] fVector()
+    auto fVector()
     {   
         immutable maxDim = facetLists.keys.maxElement.to!int;
         return iota(maxDim).map!(dim => simplices(dim).walkLength).array; 
@@ -178,7 +195,6 @@ struct SimplicialComplex(Vertex = int)
     // Can get a sorted array of all the simplices of a given dimension
     assert(sc.simplices!1.array == [s(1,2), s(1,3), s(2,3), s(2,4), s(3,4), 
         s(4,5), s(5,6)]);
-
 
     // get the f-vector of the simplicial complex
     assert(sc.fVector == [6,7,2]);

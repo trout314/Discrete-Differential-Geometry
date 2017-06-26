@@ -7,7 +7,7 @@ import std.range : array, drop, enumerate, iota, isForwardRange, walkLength,
 import std.traits : hasFunctionAttributes, ReturnType, isInstanceOf;
 
 import utility : staticIota, subsetsOfSize;
-import std.rational : rational, Rational;
+import rational : rational, Rational;
 import factoring : squarePart, sqrtSquarePart, squareFreePart;
 
 /*******************************************************************************
@@ -49,21 +49,14 @@ unittest
     assert(simplexPoints!3.equal(pts));
     assert(simplexPoints!3.all!(v => v.roots == [1,3,6]));
     static assert(isForwardRange!(ReturnType!(simplexPoints!3)));
-
-    assert(simplexPoints!5.drop(1).all!(pt => dotProduct(pt, pt) == 1));
-
-    assert(-pts[3] == vec(-r(1,2), -r(1,6), -r(1,3)));
-    assert(+pts[3] == pts[3]);
-
-    assert(pts[3] - pts[2] == vec(r(0), -r(1,3), r(1,3)));
-    assert(pts[3] + pts[2] == vec(r(1),  r(2,3), r(1,3)));
-    assert(  r(6) * pts[3] == vec(r(3),    r(1),   r(2)));
-
-    // Check distributivity
-    assert(r(2,3) * (pts[2] + pts[3]) == r(2,3) * pts[2] + r(2,3) * pts[3]);
-    
-    // TO DO: Check distances between points are all 1. subsumes above check
+ 
+    foreach(pair; simplexPoints!4.subsetsOfSize(2))
+    {
+        assert(distanceSquared(pair[0], pair[1]) == 1);
+        assert(distanceSquared(pair[1], pair[0]) == 1);       
+    }
 }
+
 
 /*******************************************************************************
 A "rational-extension vector" that stores vectors of the form:
@@ -115,6 +108,9 @@ struct REVector(int[] roots_) if (roots_.all!(r => r>0))
         copy(coefficients, rationalCoefs[]);
     }
 
+    // square root symbol UTF-8 (hex)
+    auto rootSym = x"E2 88 9A";
+
     ///
     string toString()
     {
@@ -136,14 +132,11 @@ struct REVector(int[] roots_) if (roots_.all!(r => r>0))
             }
             else if ((root != 1) && (coef == 1))
             {
-                result ~= x"E2 88 9A"; // square root symbol UTF-8 (hex)
-                result ~= root.to!string;
+                result ~= rootSym ~ root.to!string;
             }
             else if ((root != 1) && (coef != 1))
             {
-                result ~= "(" ~ coef.to!string ~ ")";            
-                result ~= x"E2 88 9A";
-                result ~= root.to!string;
+                result ~= "(" ~ coef.to!string ~ ")" ~ rootSym ~ root.to!string;
             }
 
             // Append comma and space if needed
@@ -157,6 +150,24 @@ struct REVector(int[] roots_) if (roots_.all!(r => r>0))
     }
 private:
     Rational!int[dimension] rationalCoefs;
+}
+
+///
+unittest
+{
+    auto pts = simplexPoints!3.array;
+    alias vec = reVector!(1,3,6);
+    alias r = rational;
+    
+    assert(-pts[3] == vec(-r(1,2), -r(1,6), -r(1,3)));
+    assert(+pts[3] == pts[3]);
+
+    assert(pts[3] - pts[2] == vec(r(0), -r(1,3), r(1,3)));
+    assert(pts[3] + pts[2] == vec(r(1),  r(2,3), r(1,3)));
+    assert(  r(6) * pts[3] == vec(r(3),    r(1),   r(2)));
+
+    // Check distributivity
+    assert(r(2,3) * (pts[2] + pts[3]) == r(2,3) * pts[2] + r(2,3) * pts[3]);
 }
 
 /// Convenience function for creating REVectors
@@ -173,6 +184,7 @@ template reVector(R...)
         return REVector!roots(coefficients[]);
     }
 }
+
 ///
 unittest
 {
@@ -279,12 +291,6 @@ unittest
     assert(distanceSquared(
         vec(r(1), r(2, 5), r(11, 2)),    
         vec(r(0), r(1, 5), r(11, 2))) == r(27,25));
-
-    foreach(pair; simplexPoints!4.subsetsOfSize(2))
-    {
-        assert(distanceSquared(pair[0], pair[1]) == 1);
-        assert(distanceSquared(pair[1], pair[0]) == 1);       
-    }
 }
 
 // Additional unittests

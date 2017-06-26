@@ -54,7 +54,7 @@ struct Simplex(int dim, Vertex = int)
         // copy(vertices_.map!(to!Vertex), cast(Unqual!Vertex[])(verts_[]));
 
 
-        // vertices_.map!(to!Vertex).enumerate.each!((indx, v) => verts_[indx] = v);
+        // vertices_.map!(to!Vertex).enumerate.each!((i, v) => verts_[i] = v);
 
         // foreach(indx, v;vertices_.map!(to!Vertex).enumerate)
         // {
@@ -565,5 +565,13 @@ pure @safe unittest
     assert(join(s(1, 3), s(2)) == s(1,2,3));
 
     throwsWithMsg(join(s(1, 2), s(1, 3)), "join expected two simplices without "
-        ~"any common vertices, but got: [1,2] and [1,3]");
+        ~ "any common vertices, but got: [1,2] and [1,3]");
+}
+
+/// BigInt tests
+unittest
+{
+    import std.bigint : BigInt;
+    auto s = simplex(BigInt(1), BigInt(2), BigInt(3));
+    static assert(is(s.VertexType == BigInt));
 }

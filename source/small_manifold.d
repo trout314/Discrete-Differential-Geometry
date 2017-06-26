@@ -21,22 +21,17 @@ struct SmallManifold(int dim, Vertex = int)
 
         facets_.each!(f => facets.insertFacet(f));
 
-        static if(dim == 1)
+        // TO DO: Check links of codimension-1 simplices
+
+        static if(dim >= 2)
         {
-            // TO DO: Check manifold-ness
+            // TO DO: Check links of codimension-2 simplices
         }
 
-        static if(dim == 2)
+        static if(dim >= 3)
         {
-            // TO DO: Check manifold-ness
+            // TO DO: Check links of codimension-3 simplices
         }
-
-        static if(dim == 2)
-        {
-            // TO DO: Check manifold-ness
-        }
-
-
     }
 private:
     SimplicialComplex!Vertex facets;
@@ -49,5 +44,5 @@ unittest
     alias s = simplex;
 
     auto sm = SmallManifold!1([s(1,2), s(2,3), s(1,3)]);
-
+    sm.writeln;
 }
