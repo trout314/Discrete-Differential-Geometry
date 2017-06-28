@@ -575,3 +575,21 @@ unittest
     auto s = simplex(BigInt(1), BigInt(2), BigInt(3));
     static assert(is(s.VertexType == BigInt));
 }
+
+/// REVector Tests
+unittest
+{
+    import std.bigint : BigInt;
+    import rational : rational, Rational;
+    import rational_extension_vector : REVector, reVector, simplexPoints;
+
+    alias vec = reVector!(1, 3, 6);
+    alias r = (a, b) => rational(BigInt(a), BigInt(b));
+
+    auto pts = simplexPoints!3.array.sort();
+    auto s = simplex(pts[0], pts[1], pts[2], pts[3]);
+    static assert(is(s.VertexType == REVector!([1,3,6], Rational!BigInt)));
+    
+    import std.stdio : writeln;
+    s.writeln;
+}

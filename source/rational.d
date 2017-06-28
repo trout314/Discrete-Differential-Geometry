@@ -161,7 +161,7 @@ writeln(f1);
 writeln(cast(real) result);
 ---
  */
-Rational!(CommonInteger!(I1, I2)) rational(I1, I2)(I1 i1, I2 i2)
+Rational!(CommonInteger!(I1, I2)) rational(I1, I2)(const I1 i1, const I2 i2)
         if (isIntegerLike!I1 && isIntegerLike!I2)
 {
     static if (is(typeof(typeof(return)(i1, i2))))
@@ -182,7 +182,7 @@ Rational!(CommonInteger!(I1, I2)) rational(I1, I2)(I1 i1, I2 i2)
 }
 
 /**Overload for creating a rational that initially has an integer value.*/
-Rational!(I) rational(I)(I val) if (isIntegerLike!I)
+Rational!I rational(I)(const I val) if (isIntegerLike!I)
 {
     return rational(val, 1);
 }
@@ -197,34 +197,37 @@ The struct that implements rational numbers.  All relevant operators
 struct Rational(Int) if (isIntegerLike!Int)
 {
 public:
+    alias IntType = Int;
 
     // ----------------Multiplication operators----------------------------------
-    auto opBinary(string op, Rhs)(Rhs rhs)
+    auto opBinary(string op, Rhs)(const Rhs rhs) const
         if (op == "*" && is(CommonRational!(Int, Rhs)) && isRational!Rhs)
     {
         auto ret = CommonRational!(Int, Rhs)(this.numer, this.denom);
         return ret *= rhs;
     }
 
-    auto opBinary(string op, Rhs)(Rhs rhs)
+    auto opBinary(string op, Rhs)(Rhs rhs) const
         if (op == "*" && is(CommonRational!(Int, Rhs)) && isIntegerLike!Rhs)
     {
-        auto ret = this;
+        Rational!Int ret = this;
         return ret *= rhs;
     }
 
-    auto opBinaryRight(string op, Rhs)(Rhs rhs)
+    Rational!Int opBinaryRight(string op, Rhs)(Rhs rhs) const
         if (op == "*" && is(CommonRational!(Int, Rhs)) && isIntegerLike!Rhs)
     {
         return opBinary!(op, Rhs)(rhs);
     }
 
-    typeof(this) opOpAssign(string op, Rhs)(Rhs rhs)
+    Rational!Int opOpAssign(string op, Rhs)(const Rhs rhs)
         if (op == "*" && isRational!Rhs)
     {
+        Rhs rhs_ = rhs;
+
         if (this.numer == 0 || rhs.numer == 0)
         {
-            return typeof(this)(Int(0));
+            return Rational!Int(Int(0));
         }
 
         // Cancel common factors first, then multiply.  This prevents
@@ -232,15 +235,15 @@ public:
         auto divisor = gcf(this.numer, rhs.denom);
         assert(divisor != 0);
         this.numer /= divisor;
-        rhs.denom /= divisor;
+        rhs_.denom /= divisor;
 
         divisor = gcf(this.denom, rhs.numer);
         assert(divisor != 0);
         this.denom /= divisor;
-        rhs.numer /= divisor;
+        rhs_.numer /= divisor;
 
-        this.numer *= rhs.numer;
-        this.denom *= rhs.denom;
+        this.numer *= rhs_.numer;
+        this.denom *= rhs_.denom;
 
         // Don't need to simplify.  Already cancelled common factors before
         // multiplying.
@@ -248,14 +251,14 @@ public:
         return this;
     }
 
-    typeof(this) opOpAssign(string op, Rhs)(Rhs rhs)
+    Rational!Int opOpAssign(string op, Rhs)(Rhs rhs)
             if (op == "*" && isIntegerLike!Rhs)
     {
         auto divisor = gcf(this.denom, rhs);
         assert(divisor != 0);
 
         this.denom /= divisor;
-        rhs /= divisor;
+        rhs = rhs / divisor;
         this.numer *= rhs;
 
         // Don't need to simplify.  Already cancelled common factors before
@@ -266,29 +269,28 @@ public:
 
     // --------------------Division operators-----------------------------------
 
-    auto opBinary(string op, Rhs)(Rhs rhs)
+    Rational!Int opBinary(string op, Rhs)(const Rhs rhs) const
         if (op == "/" && is(CommonRational!(Int, Rhs)) && isRational!Rhs)
     {
-        // Division = multiply by inverse.
-        swap(rhs.numer, rhs.denom);
-        return this *= rhs;
+        // multiply by inverse.
+        return this * Rhs(rhs.denom, rhs.numer);
     }
 
-    typeof(this) opBinary(string op, Rhs)(Rhs rhs)
+    Rational!Int opBinary(string op, Rhs)(Rhs rhs) const
         if (op == "/" && is(CommonRational!(Int, Rhs)) && isIntegerLike!(Rhs))
     {
         auto ret = CommonRational!(Int, Rhs)(this.numer, this.denom);
         return ret /= rhs;
     }
 
-    typeof(this) opBinaryRight(string op, Rhs)(Rhs rhs)
+    Rational!Int opBinaryRight(string op, Rhs)(Rhs rhs) const
         if (op == "/" && is(CommonRational!(Int, Rhs)) && isIntegerLike!Rhs)
     {
         auto ret = CommonRational!(Int, Rhs)(this.denom, this.numer);
         return ret *= rhs;
     }
 
-    typeof(this) opOpAssign(string op, Rhs)(Rhs rhs)
+    Rational!Int opOpAssign(string op, Rhs)(Rhs rhs)
         if (op == "/" && isIntegerLike!Rhs)
     {
         auto divisor = gcf(this.numer, rhs);
@@ -304,7 +306,7 @@ public:
         return this;
     }
 
-    typeof(this) opOpAssign(string op, Rhs)(Rhs rhs)
+    Rational!Int opOpAssign(string op, Rhs)(Rhs rhs)
         if (op == "/" && isRational!Rhs)
     {
         // Division = multiply by inverse.
@@ -316,7 +318,7 @@ public:
     auto opBinary(string op, Rhs)(Rhs rhs)
         if (op == "+" && (isRational!Rhs || isIntegerLike!Rhs))
     {
-        auto ret = CommonRational!(typeof(this), Rhs)(this.numer, this.denom);
+        auto ret = CommonRational!(Rational!Int, Rhs)(this.numer, this.denom);
         return ret += rhs;
     }
 
@@ -326,7 +328,7 @@ public:
         return opBinary!(op, Rhs)(rhs);
     }
 
-    typeof(this) opOpAssign(string op, Rhs)(Rhs rhs)
+    Rational!Int opOpAssign(string op, Rhs)(Rhs rhs)
         if (op == "+" && isRational!Rhs)
     {
         if (this.denom == rhs.denom)
@@ -349,7 +351,7 @@ public:
         return this;
     }
 
-    typeof(this) opOpAssign(string op, Rhs)(Rhs rhs)
+    Rational!Int opOpAssign(string op, Rhs)(Rhs rhs)
         if (op == "+" && isIntegerLike!Rhs)
     {
         this.numer += rhs * this.denom;
@@ -360,14 +362,14 @@ public:
 
     // -----------------------Subtraction operators-----------------------------
 
-    auto opBinary(string op, Rhs)(Rhs rhs)
+    auto opBinary(string op, Rhs)(Rhs rhs) const
         if (op == "-" && is(CommonRational!(Int, Rhs)))
     {
-        auto ret = CommonRational!(typeof(this), Rhs)(this.numer, this.denom);
+        auto ret = CommonRational!(Rational!Int, Rhs)(this.numer, this.denom);
         return ret -= rhs;
     }
 
-    typeof(this) opOpAssign(string op, Rhs)(Rhs rhs)
+    Rational!Int opOpAssign(string op, Rhs)(Rhs rhs)
         if (op == "-" && isRational!Rhs)
     {
         if (this.denom == rhs.denom)
@@ -390,7 +392,7 @@ public:
         return this;
     }
 
-    typeof(this) opOpAssign(string op, Rhs)(Rhs rhs)
+    Rational!Int opOpAssign(string op, Rhs)(Rhs rhs)
         if (op == "-" && isIntegerLike!Rhs)
     {
         this.numer -= rhs * this.denom;
@@ -399,22 +401,23 @@ public:
         return this;
     }
 
-    typeof(this) opBinaryRight(string op, Rhs)(Rhs rhs)
+    Rational!Int opBinaryRight(string op, Rhs)(const Rhs rhs) const
         if (op == "-" && is(CommonInteger!(Int, Rhs)) && isIntegerLike!Rhs)
     {
-        typeof(this) ret;
+        Rational!Int ret;
         ret.denom = this.denom;
         ret.numer = (rhs * this.denom) - this.numer;
 
-        simplify();
+        // NOTE: Aaron Trout added "ret." of the following. June 2017
+        ret.simplify();
         return ret;
     }
 
     // ----------------------Unary operators------------------------------------
 
-    typeof(this) opUnary(string op)() if (op == "-" || op == "+")
+    Rational!Int opUnary(string op)() const if (op == "-" || op == "+")
     {
-        mixin("return typeof(this)(" ~ op ~ "numer, denom);");
+        mixin("return Rational!Int(" ~ op ~ "numer, denom);");
     }
 
     // ---------------------Exponentiation operator-----------------------------
@@ -422,7 +425,7 @@ public:
     // Can only handle integer powers if the result has to also be
     // rational.
 
-    typeof(this) opOpAssign(string op, Rhs)(Rhs rhs)
+    Rational!Int opOpAssign(string op, Rhs)(Rhs rhs)
         if (op == "^^" && isIntegerLike!Rhs)
     {
         if (rhs < 0)
@@ -440,7 +443,7 @@ public:
         return this;
     }
 
-    auto opBinary(string op, Rhs)(Rhs rhs)
+    auto opBinary(string op, Rhs)(Rhs rhs) const
         if (op == "^^" && isIntegerLike!Rhs && is(CommonRational!(Int, Rhs)))
     {
         auto ret = CommonRational!(Int, Rhs)(this.numer, this.denom);
@@ -449,7 +452,7 @@ public:
     }
 
     // ---------------------Assignment operators--------------------------------
-    typeof(this) opAssign(Rhs)(Rhs rhs)
+    Rational!Int opAssign(Rhs)(Rhs rhs)
         if (isIntegerLike!Rhs && isAssignable!(Int, Rhs))
     {
         this.numer = rhs;
@@ -457,7 +460,7 @@ public:
         return this;
     }
 
-    typeof(this) opAssign(Rhs)(Rhs rhs)
+    Rational!Int opAssign(Rhs)(Rhs rhs)
         if (isRational!Rhs && isAssignable!(Int, typeof(Rhs.numer)))
     {
         this.numer = rhs.numer;
@@ -467,7 +470,7 @@ public:
 
     // --------------------Comparison/Equality Operators---------------------------
 
-    bool opEquals(Rhs)(Rhs rhs) if (isRational!Rhs || isIntegerLike!Rhs)
+    bool opEquals(Rhs)(Rhs rhs) const if (isRational!Rhs || isIntegerLike!Rhs)
     {
         static if (isRational!Rhs)
         {
@@ -480,7 +483,7 @@ public:
         }
     }
 
-    int opCmp(Rhs)(Rhs rhs) if (isRational!Rhs)
+    int opCmp(Rhs)(Rhs rhs) const if (isRational!Rhs)
     {
         if (opEquals(rhs))
         {
@@ -565,7 +568,7 @@ public:
     ////////////////////////////////////////////////////////////////////////////
 
     /**Fast inversion, equivalent to 1 / rational.*/
-    typeof(this) invert()
+    Rational!Int invert()
     {
         assert(denom != 0);
         swap(numer, denom);
@@ -622,7 +625,7 @@ public:
                     // This checks for overflow in case we're working with a
                     // user-defined fixed-precision integer.
                     enforce(temp.numer > 0, text("Overflow while ",
-                        "converting ", typeof(this).stringof, " to ",
+                        "converting ", Rational!Int.stringof, " to ",
                         F.stringof, "."));
 
                 }
@@ -666,13 +669,13 @@ public:
     }
 
     /**Returns the numerator.*/
-    @property Int numerator()
+    @property Int numerator() const
     {
         return numer;
     }
 
     /**Returns the denominator.*/
-    @property Int denominator()
+    @property Int denominator() const
     {
         return denom;
     }
@@ -680,7 +683,7 @@ public:
     /**
     Returns the integer part of this rational, with any remainder truncated.
      */
-    @property Int integerPart()
+    @property Int integerPart() const
     {
         return numer / denom;
     }
@@ -688,7 +691,7 @@ public:
     /**
     Returns the fractional part of this rational.
     */
-    @property typeof(this) fractionPart()
+    @property Rational!Int fractionPart()
     {
         return this - integerPart;
     }
@@ -709,6 +712,8 @@ public:
             return to!string(numer) ~ "/" ~ to!string(denom);
         }
     }
+
+//    this(I1, I1)
 
 private:
     Int numer = 0;
@@ -969,34 +974,34 @@ unittest
 /**
 Find the greatest common factor of num1 and num2 using Euclid's Algorithm.
 */
-CommonInteger!(I1, I2) gcf(I1, I2)(I1 num1, I2 num2)
+CommonInteger!(I1, I2) gcf(I1, I2)(const I1 num1, const I2 num2)
         if (isIntegerLike!I1 && isIntegerLike!I2)
 {
     assert(num1 != 0);
     assert(num2 != 0);
 
-    num1 = iAbs(num1);
-    num2 = iAbs(num2);
-    if (num2 > num1)
+    I1 n1 = iAbs(num1);
+    I2 n2 = iAbs(num2);
+    if (n2 > n1)
     {
-        return gcf(num2, num1);
+        return gcf(n2, n1);
     }
-    else if (num2 == num1)
+    else if (n2 == n1)
     {
-        typeof(return) ret = num1;
+        typeof(return) ret = n1;
         return ret;
     }
 
-    auto remainder = num1 % num2;
+    auto remainder = n1 % n2;
 
     if (remainder == 0)
     {
-        typeof(return) ret = num2;
+        typeof(return) ret = n2;
         return ret;
     }
     else
     {
-        return gcf(num2, remainder);
+        return gcf(n2, remainder);
     }
     assert(0);
 }
@@ -1012,23 +1017,23 @@ unittest
 /**
 Find the least common multiple of num1, num2.
 */
-CommonInteger!(I1, I2) lcm(I1, I2)(I1 num1, I2 num2)
+CommonInteger!(I1, I2) lcm(I1, I2)(const I1 num1, const I2 num2)
         if (isIntegerLike!I1 && isIntegerLike!I2)
 {
-    num1 = iAbs(num1);
-    num2 = iAbs(num2);
-    if (num1 == num2)
+    I1 n1 = iAbs(num1);
+    I2 n2 = iAbs(num2);
+    if (n1 == n2)
     {
-        return num1;
+        return n1;
     }
-    return (num1 / gcf(num1, num2)) * num2;
+    return (n1 / gcf(n1, n2)) * n2;
 }
 
 /**
 Absolute value function that should gracefully handle any reasonable
 BigInt implementation.
 */
-Int iAbs(Int)(Int num1) if (isIntegerLike!Int)
+Int iAbs(Int)(const Int num1) if (isIntegerLike!Int)
 {
     static if (isUnsigned!Int)
     {
