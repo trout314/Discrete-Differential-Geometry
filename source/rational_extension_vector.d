@@ -33,12 +33,6 @@ auto simplexPoints(int dim, RationalType = Rational!BigInt)()
 ///
 unittest // TO DO: BigInt won't let me put @safe here!
 {
-    /* We check that the vertices of the 3-simplex are as they should be:
-    v0 = (0,         0,       0)
-    v1 = (1,         0,       0)
-    v2 = (1/2, (1/2)√3,       0)
-    v3 = (1/2, (1/6)√3, (1/3)√6)
-    */
     assert(simplexPoints!3.map!(pt => pt.toString).equal([
         "(0, 0, 0)",
         "(1, 0, 0)",
@@ -57,9 +51,11 @@ unittest // TO DO: BigInt won't let me put @safe here!
     assert(simplexPoints!3.all!(v => v.roots == [1,3,6]));
     static assert(isForwardRange!(ReturnType!(simplexPoints!3)));
 
-    foreach(T; AliasSeq!(int, uint, long, ulong, BigInt))
+    foreach(T; AliasSeq!(int, long, BigInt))
     {
-        foreach(pair; simplexPoints!3.subsetsOfSize(2))
+        auto sPts = simplexPoints!(3, Rational!T);
+
+        foreach(pair; sPts.subsetsOfSize(2))
         {
             assert(distanceSquared(pair[0], pair[1]) == 1);
             assert(distanceSquared(pair[1], pair[0]) == 1);
@@ -67,10 +63,9 @@ unittest // TO DO: BigInt won't let me put @safe here!
     }
 
     // NOTE: smaller types like short, byte, etc. won't work. TO DO: Why?
-    static assert(!__traits(compiles, simplexPoints!(3, short)));
-    static assert(!__traits(compiles, simplexPoints!(3, ushort))); 
-    static assert(!__traits(compiles, simplexPoints!(3, byte)));
-    static assert(!__traits(compiles, simplexPoints!(3, ubyte))); 
+    static assert(!__traits(compiles, simplexPoints!(3, Rational!short)));
+    static assert(!__traits(compiles, simplexPoints!(3, Rational!byte)));
+
 }
 
 /*******************************************************************************
