@@ -41,6 +41,11 @@ unittest // TO DO: BigInt won't let me put @safe here!
     v2 = (1/2, (1/2)√3,       0)
     v3 = (1/2, (1/6)√3, (1/3)√6)
     */
+    assert(simplexPoints!3.map!(pt => pt.toString).equal([
+        "(0, 0, 0)",
+        "(1, 0, 0)",
+        "(1/2, (1/2)√3, 0)",
+        "(1/2, (1/6)√3, (1/3)√6)"]));
 
     alias vec = reVector!(1, 3, 6);
     alias r = (a, b) => rational(BigInt(a), BigInt(b));
@@ -54,13 +59,12 @@ unittest // TO DO: BigInt won't let me put @safe here!
     assert(simplexPoints!3.all!(v => v.roots == [1,3,6]));
     static assert(isForwardRange!(ReturnType!(simplexPoints!3)));
 
-    foreach(pair; simplexPoints!4.subsetsOfSize(2))
+    foreach(pair; simplexPoints!3.subsetsOfSize(2))
     {
         assert(distanceSquared(pair[0], pair[1]) == 1);
-        assert(distanceSquared(pair[1], pair[0]) == 1);       
+        assert(distanceSquared(pair[1], pair[0]) == 1);
     }
 }
-
 
 /*******************************************************************************
 A "rational-extension vector" that stores vectors of the form:
@@ -76,10 +80,16 @@ if (roots_.all!(r => r>0))
     alias IntType = RationalType_.IntType;
 
     ///
-    alias roots = roots_;
+    static immutable roots = roots_;
 
     ///
     static immutable dimension = roots_.length;
+
+    ///
+    const(RationalType)[] coefficients() const
+    {
+        return coefs[];
+    }
 
     ///
     auto opUnary(string op)() if (op == "-" || op == "+")
@@ -95,10 +105,11 @@ if (roots_.all!(r => r>0))
     }
 
     ///
-    auto opBinary(string op)(typeof(this) rhs) if (op == "-" || op == "+")
+    auto opBinary(string op)(REVector!(roots, RationalType) rhs) 
+    if (op == "-" || op == "+")
     {
         mixin(q{
-            return typeof(this)(zip(coefs[], rhs.coefs[])
+            return REVector!(roots, RationalType)(zip(coefs[], rhs.coefs[])
                 .map!(pair => pair[0]} ~ op ~ q{pair[1]));
         });
     }
@@ -110,18 +121,18 @@ if (roots_.all!(r => r>0))
     }
 
     ///
-    this(R)(R coefficients) if (isForwardRange!R)
+    this(R)(R coefficients_) if (isForwardRange!R)
     {
-        assert(coefficients.walkLength == dimension);
-        copy(coefficients, coefs[]);
+        assert(coefficients_.walkLength == dimension);
+        copy(coefficients_, coefs[]);
     }
-
-    // square root symbol UTF-8 (hex)
-    private auto rootSym = x"E2 88 9A";
 
     ///
     string toString() const
     {
+        // square root symbol UTF-8 (hex)
+        auto rootSym = x"E2 88 9A";
+
         string result = "(";
         foreach (indx, coef, root; zip(coefs[], roots[]).enumerate)
         {
@@ -157,7 +168,7 @@ if (roots_.all!(r => r>0))
         return result;
     }
     
-    int opCmp()(auto ref typeof(this) rhs)
+    int opCmp()(const typeof(this) rhs) const
     {
         return (coefs < rhs.coefs) ? -1 : (coefs > rhs.coefs);
     }
@@ -189,10 +200,7 @@ unittest // TO DO: BigInt won't allow @safe.
     assert(r(2,3) * (v + w) == r(2,3) * v + r(2,3) * w);
     
     // Can be compared using dictionary order on coords
-    // (w.coefs < v.coefs).writeln;
-    // (v.coefs < w.coefs).writeln;
-
-//    assert((w < v) || (v < w));
+    assert(w > v);
 }
 
 /// Convenience function for creating REVectors
