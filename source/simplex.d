@@ -3,7 +3,6 @@ import std.algorithm : all, canFind, copy, each, equal, filter, findAdjacent, is
     joiner, map, setDifference, sort;
 import std.conv : to, Unqual;
 import std.exception : assertThrown, assumeUnique, enforce;
-import std.format : format;
 import std.meta : staticMap;
 import std.range : array, chain, ElementType, empty, enumerate, front, iota, 
     isInputRange, popFront, walkLength;

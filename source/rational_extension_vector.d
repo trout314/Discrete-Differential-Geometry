@@ -3,12 +3,10 @@ import rational : rational, Rational;
 import std.algorithm : all, copy, equal, map, sum;
 import std.bigint : BigInt;
 import std.conv : to;
-import std.format : format;
-import std.meta : allSatisfy;
+import std.meta : AliasSeq;
 import std.range : array, drop, ElementType, enumerate, iota, isForwardRange,
     walkLength, zip;
 import std.traits : hasFunctionAttributes, isInstanceOf, ReturnType;
-
 import utility : staticIota, subsetsOfSize;
 
 import std.stdio : writeln;
@@ -26,9 +24,9 @@ Params:
 Returns:
     Forward range of `REVector`s listing points in the simplex. 
 */
-auto simplexPoints(int dim)()
+auto simplexPoints(int dim, RationalType = Rational!BigInt)()
 {
-    alias Vec = REVector!(simplexRoots(dim).array);
+    alias Vec = REVector!(simplexRoots(dim).array, RationalType);
     return iota(0, dim + 1).map!(k => Vec(simplexCoefs(dim)[k]));
 }
 
@@ -59,11 +57,20 @@ unittest // TO DO: BigInt won't let me put @safe here!
     assert(simplexPoints!3.all!(v => v.roots == [1,3,6]));
     static assert(isForwardRange!(ReturnType!(simplexPoints!3)));
 
-    foreach(pair; simplexPoints!3.subsetsOfSize(2))
+    foreach(T; AliasSeq!(int, uint, long, ulong, BigInt))
     {
-        assert(distanceSquared(pair[0], pair[1]) == 1);
-        assert(distanceSquared(pair[1], pair[0]) == 1);
+        foreach(pair; simplexPoints!3.subsetsOfSize(2))
+        {
+            assert(distanceSquared(pair[0], pair[1]) == 1);
+            assert(distanceSquared(pair[1], pair[0]) == 1);
+        }
     }
+
+    // NOTE: smaller types like short, byte, etc. won't work. TO DO: Why?
+    static assert(!__traits(compiles, simplexPoints!(3, short)));
+    static assert(!__traits(compiles, simplexPoints!(3, ushort))); 
+    static assert(!__traits(compiles, simplexPoints!(3, byte)));
+    static assert(!__traits(compiles, simplexPoints!(3, ubyte))); 
 }
 
 /*******************************************************************************
@@ -358,11 +365,11 @@ auto simplexCoefs(int dim)
 pure @safe unittest
 {
     alias r = rational;
+    alias vec = reVector!(1,3,6);
 
-    assert(reVector!(1,3,6)(r(1, 1), r(3, 7), r(11, 2)).toString ==
-        "(1, (3/7)√3, (11/2)√6)");
+    assert(vec(r(1), r(3, 7), r(11, 2)).toString == "(1, (3/7)√3, (11/2)√6)");
+    assert(vec(r(1, 2), r(0), r(1)).toString == "(1/2, 0, √6)");
+    assert(vec(r(4), r(3), r(1, 1)).toString == "(4, 3√3, √6)");
 
-    assert(reVector!(1,3,6)(r(1, 2), r(0, 1), r(1, 1)).toString ==
-        "(1/2, 0, √6)");
 }
 
