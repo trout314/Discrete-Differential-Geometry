@@ -92,11 +92,11 @@ if (roots_.all!(r => r>0))
     }
 
     ///
-    auto opUnary(string op)() if (op == "-" || op == "+")
+    auto opUnary(string op)() const if (op == "-" || op == "+")
     {
         static if(op == "-")
         {
-            return typeof(this)(coefs[].map!(c => -c));
+            return REVector!(roots, RationalType)(coefs[].map!(c => -c));
         }
         else
         {
@@ -105,7 +105,7 @@ if (roots_.all!(r => r>0))
     }
 
     ///
-    auto opBinary(string op)(REVector!(roots, RationalType) rhs) 
+    auto opBinary(string op)(const REVector!(roots, RationalType) rhs) const
     if (op == "-" || op == "+")
     {
         mixin(q{
@@ -115,9 +115,10 @@ if (roots_.all!(r => r>0))
     }
 
     ///
-    auto opBinaryRight(string op)(RationalType scalar) if (op == "*")
+    auto opBinaryRight(string op)(const RationalType scalar) const
+    if (op == "*")
     {
-        return typeof(this)(coefs[].map!(c => scalar * c));
+        return REVector!(roots, RationalType)(coefs[].map!(c => scalar * c));
     }
 
     ///
@@ -236,7 +237,8 @@ pure unittest
 }
 
 RationalType dotProduct(int[] roots, RationalType)(
-    REVector!(roots, RationalType) v, REVector!(roots, RationalType) w)
+    const REVector!(roots, RationalType) v,
+    const REVector!(roots, RationalType) w)
 {
     static assert(v.roots.equal(w.roots));
     static assert(v.coefs.length == w.coefs.length);
@@ -266,7 +268,8 @@ pure @safe unittest
 
 ///
 RationalType distanceSquared(int[] roots, RationalType)(
-    REVector!(roots, RationalType) v, REVector!(roots, RationalType) w)
+    const REVector!(roots, RationalType) v,
+    const REVector!(roots, RationalType) w)
 {
     return dotProduct(v - w, v - w);
 }

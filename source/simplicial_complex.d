@@ -77,7 +77,7 @@ struct SimplicialComplex(Vertex = int)
     /***************************************************************************
     Returns the facets in the link of the simplex `s` as an array of arrays of 
     vertices, given in same order as they appear in `facets()` */
-    Vertex[][] link(int dim)(auto ref const Simplex!(dim, Vertex) s)
+    Vertex[][] link(int dim)(const Simplex!(dim, Vertex) s)
     {
         return this.star(s).map!(f => setDifference(f, s.vertices).array).array;
     }
@@ -94,7 +94,7 @@ struct SimplicialComplex(Vertex = int)
     /***************************************************************************
     Returns the star of the given simplex as an array of arrays of vertices of 
     the facets. These are given in the same order as specified facets() */ 
-    int[][] star(int dim)(auto ref const Simplex!(dim, Vertex) simplex)
+    int[][] star(int dim)(const Simplex!(dim, Vertex) simplex)
     {
         return star(simplex.vertices);
     }
@@ -110,7 +110,7 @@ struct SimplicialComplex(Vertex = int)
     /***************************************************************************
     Returns true if the simplex `s` is in this simplicial complex and false 
     otherwise */
-    bool contains(int dim)(auto ref const Simplex!(dim, Vertex) s)
+    bool contains(int dim)(const Simplex!(dim, Vertex) s)
     {
         return this.contains(s.vertices);
     }
