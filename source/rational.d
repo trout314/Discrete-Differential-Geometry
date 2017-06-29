@@ -715,11 +715,25 @@ public:
         static if (is(Int == std.bigint.BigInt))
         {
             // Special case it for now.  This should be fixed later.
-            return toDecimalString(numer) ~ "/" ~ toDecimalString(denom);
+            if (denom != 1)
+            {
+                return toDecimalString(numer) ~ "/" ~ toDecimalString(denom);
+            }
+            else
+            {
+                return toDecimalString(numer);
+            }
         }
         else
         {
-            return to!string(numer) ~ "/" ~ to!string(denom);
+            if (denom != 1)
+            {
+                return numer.to!string ~ "/" ~ denom.to!string;
+            }
+            else
+            {
+                return numer.to!string;            
+            }
         }
     }
 

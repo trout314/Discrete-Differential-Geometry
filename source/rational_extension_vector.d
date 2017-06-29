@@ -156,7 +156,15 @@ if (roots_.all!(r => r>0))
             }
             else if (root != 1 && coef != 1)
             {
-                result ~= "(" ~ coef.to!string ~ ")" ~ rootSym ~ root.to!string;
+                if(coef.denominator != 1)
+                {
+                    result ~= "(" ~ coef.to!string ~ ")" ~ rootSym 
+                        ~ root.to!string;
+                }
+                else
+                {
+                    result ~= coef.to!string ~ rootSym ~ root.to!string;                    
+                }
             }
 
             // Append comma and space if needed
@@ -225,7 +233,7 @@ unittest
     alias r = rational;
     auto v = reVector!(3,5,11)(r(1), r(2, 3), r(6));
     static assert(is(typeof(v.coefs[0]) == Rational!int));
-    assert(v.toString == "(√3, (2/3)√5, (6/1)√11)");
+    assert(v.toString == "(√3, (2/3)√5, 6√11)");
 }
 
 ///
