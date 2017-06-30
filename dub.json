@@ -11,7 +11,7 @@
 		"clear"
 	],
 	"dflags-dmd": [
-		"-fPIC"
+		"-fPIC", "-debug"
 	],
 	"dflags-ldc": [
 		"-relocation-model=pic"

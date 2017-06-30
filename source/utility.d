@@ -431,21 +431,12 @@ struct SmallMap(KeyType, ValueType)
     }
 
     /// Provide index operator axes like this: smallMap[key]
-    ref ValueType opIndex(KeyType key_)
+    ref inout(ValueType) opIndex(KeyType key_) inout
     {
         auto found = data.find!(r => r.key == key_);
-
-        if (found.length > 0)
-        {
-            return found.front.value;
-        }
-        else
-        {
-            this.insert(key_, ValueType.init);
-            return data.find!(r => r.key == key_).front.value;
-        }
+        enforce(found.length > 0, "SmallMap access error");
+        return found.front.value;
     }
-
 private:
     Record[] data;
 }
@@ -467,7 +458,6 @@ pure @safe unittest
 
     assert(sm.keys.array == [2, 5]);
     assert(sm.values.array == ["bubba", "hello"]);
-    
 }
 
 /*******************************************************************************

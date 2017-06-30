@@ -5,7 +5,7 @@ import std.algorithm : all, any, canFind, filter, find, joiner, map, maxElement,
 import std.conv : to;
 import std.exception : assertThrown, enforce;
 import std.range : array, ElementType, front, iota, isInputRange, walkLength;
-import std.traits : Unqual;
+import std.traits : isArray, Unqual;
 import std.typecons : Tuple, tuple;
 
 import utility : isSubsetOf, SmallMap, subsetsOfSize, throwsWithMsg;
@@ -36,13 +36,21 @@ struct SimplicialComplex(Vertex = int)
             ~ facets.find!(f => vertices.isSubsetOf(f)).front.to!string);
 
         auto numVertices = vertices.walkLength;
-        facetLists[numVertices] ~= vertices.dup;
+        if (numVertices in facetLists)
+        {
+            facetLists[numVertices] ~= vertices.dup;            
+        }
+        else
+        {
+            facetLists.insert(numVertices, [vertices.dup]);
+        }
+        
         facetLists[numVertices].sort();
     }
 
     /***************************************************************************
     Returns the facets of the simplicial complex of a particular dimension. */
-    auto facets(int dim)()
+    auto facets(int dim)() const
     {
         static assert(dim > 0);
         return facetLists[dim + 1].map!(verts => Simplex!(dim, Vertex)(verts));
@@ -51,7 +59,7 @@ struct SimplicialComplex(Vertex = int)
     /***************************************************************************
     Returns the facets of the simplicial complex of a particular dimension as an 
     array of arrays of vertices. */
-    auto facets(int dim)
+    auto facets(int dim) const
     {
         assert(dim > 0);
         return facetLists[dim + 1];
@@ -61,7 +69,7 @@ struct SimplicialComplex(Vertex = int)
     Returns the facets of the simplicial complex. These are simplicies that 
     are not the face of another simplex. They are returned in increasing order 
     of dimension and in lexicographic order within dimensions. */
-    int[][] facets() pure @safe
+    VertexType[][] facets() pure @safe /* const */
     {
         auto sizes = facetLists.keys.array.dup.sort();        
         return sizes.map!(s => facetLists[s]).joiner.array;
@@ -94,7 +102,7 @@ struct SimplicialComplex(Vertex = int)
     /***************************************************************************
     Returns the star of the given simplex as an array of arrays of vertices of 
     the facets. These are given in the same order as specified facets() */ 
-    int[][] star(int dim)(const Simplex!(dim, Vertex) simplex)
+    VertexType[][] star(int dim)(const Simplex!(dim, Vertex) simplex)
     {
         return star(simplex.vertices);
     }
@@ -102,7 +110,7 @@ struct SimplicialComplex(Vertex = int)
     /***************************************************************************
     Returns the star of the given simplex as an array of arrays of vertices of 
     the facets. These are given in the same order as specified facets() */ 
-    int[][] star(V)(V vertices) if (isInputRange!V)
+    VertexType[][] star(V)(V vertices) if (isInputRange!V || isArray!V)
     {
         return this.facets.filter!(f => vertices.isSubsetOf(f)).array;
     }
