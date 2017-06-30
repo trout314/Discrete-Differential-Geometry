@@ -405,7 +405,7 @@ struct SmallMap(KeyType, ValueType)
     }
 
     /// insert a (key, value) pair into the map
-    void insert(KeyType key, ValueType value)
+    void insert(const KeyType key, /* const */ ValueType value)
     {
         enforce(key !in this, "key already present");
         data ~= Record(key, value);
@@ -413,7 +413,7 @@ struct SmallMap(KeyType, ValueType)
     }
 
     /// We support the (key in smallMap) syntax 
-    bool opBinaryRight(string op : "in")(KeyType key) const
+    bool opBinaryRight(string op : "in")(const KeyType key) const
     {
         return this.keys.canFind(key);
     }
@@ -531,7 +531,7 @@ unittest
     static assert(seq[1] == 4);
     static assert(seq[2] == 5);
 
-    alias seq2 = staticIota!(0, 3);
-    alias func = (a,b,c) => a+b+c;
-    static assert(func(seq2) == 3);
+    alias seq2 = staticIota!(1, 5);
+    alias func = (a,b,c,d) => a+b+c+d;
+    static assert(func(seq2) == 10);
 }

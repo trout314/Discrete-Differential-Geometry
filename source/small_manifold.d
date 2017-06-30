@@ -39,11 +39,10 @@ struct SmallManifold(int dimension_, Vertex_ = int)
         }
     }
 
-    auto star(int dim)(Simplex!(dim, Vertex) s)
+    auto star(int dim)(const Simplex!(dim, Vertex) s) const
     {
         return simpComp_.star(s).map!(verts => Facet(verts));
     }
-
 
     alias asSimplicialComplex this;
     ref const(SimplicialComplex!Vertex) asSimplicialComplex()

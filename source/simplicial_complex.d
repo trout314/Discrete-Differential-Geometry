@@ -10,23 +10,33 @@ import std.typecons : Tuple, tuple;
 
 import utility : isSubsetOf, SmallMap, subsetsOfSize, throwsWithMsg;
 
-/// A simplicial complex type whose vertices are of type `Vertex`.
+/*******************************************************************************
+A simplicial complex type whose vertices are of type `Vertex`.
+*/
 struct SimplicialComplex(Vertex = int)
 {
+private:
+    // Lists of facets, indexed by number of vertices in the facet
+    SmallMap!(size_t, Vertex[][]) facetLists;
+
+public:
     /***************************************************************************
-    The type of the vertices in this simplicial complex. */
+    The type of the vertices in this simplicial complex.
+    */
     alias VertexType = Vertex;
 
     /***************************************************************************
-    Inserts the simplex s as a facet in the simplicial complex. */
-    void insertFacet(int dim)(Simplex!(dim, Vertex) s)
+    Inserts the simplex s as a facet in the simplicial complex.
+    */
+    void insertFacet(int dim)(const Simplex!(dim, Vertex) s)
     {
         insertFacet(s.vertices);
     }
 
     /***************************************************************************
     Inserts a facet (given as an input range of vertices) into the simplicial
-    complex. */
+    complex.
+    */
     void insertFacet(V)(V vertices) if (isInputRange!V)
     {
         static assert(is(Unqual!(ElementType!V) == Vertex));
@@ -49,7 +59,8 @@ struct SimplicialComplex(Vertex = int)
     }
 
     /***************************************************************************
-    Returns the facets of the simplicial complex of a particular dimension. */
+    Returns the facets of the simplicial complex of a particular dimension.
+    */
     auto facets(int dim)() const
     {
         static assert(dim > 0);
@@ -58,7 +69,8 @@ struct SimplicialComplex(Vertex = int)
 
     /***************************************************************************
     Returns the facets of the simplicial complex of a particular dimension as an 
-    array of arrays of vertices. */
+    array of arrays of vertices.
+    */
     auto facets(int dim) const
     {
         assert(dim > 0);
@@ -68,31 +80,36 @@ struct SimplicialComplex(Vertex = int)
     /***************************************************************************
     Returns the facets of the simplicial complex. These are simplicies that 
     are not the face of another simplex. They are returned in increasing order 
-    of dimension and in lexicographic order within dimensions. */
-    VertexType[][] facets() pure @safe /* const */
+    of dimension and in lexicographic order within dimensions.
+    */
+    VertexType[][] facets() const pure @safe
     {
         auto sizes = facetLists.keys.array.dup.sort();        
-        return sizes.map!(s => facetLists[s]).joiner.array;
+        return sizes.map!(
+            s => facetLists[s].map!(vlist => vlist.dup)).array.joiner.array;
     }
 
     /***************************************************************************
-    Returns the number of facets */
-    size_t numFacets() pure @safe
+    Returns the number of facets
+    */
+    size_t numFacets() const pure @safe
     {
         return this.facets.walkLength;
     }
 
     /***************************************************************************
     Returns the facets in the link of the simplex `s` as an array of arrays of 
-    vertices, given in same order as they appear in `facets()` */
-    Vertex[][] link(int dim)(const Simplex!(dim, Vertex) s)
+    vertices, given in same order as they appear in `facets()`
+    */
+    Vertex[][] link(int dim)(const Simplex!(dim, Vertex) s) const
     {
         return this.star(s).map!(f => setDifference(f, s.vertices).array).array;
     }
     /***************************************************************************
     Returns the facets in the link of the simplex `s` as an array of arrays of 
-    vertices, given in same order as they appear in `facets()` */
-    Vertex[][] link(V)(V vertices) if (isInputRange!V)
+    vertices, given in same order as they appear in `facets()`
+    */
+    Vertex[][] link(V)(V vertices) const if (isInputRange!V)
     {
         static assert(is(ElementType!V == Vertex));
         return this.star(vertices).map!(
@@ -101,48 +118,55 @@ struct SimplicialComplex(Vertex = int)
 
     /***************************************************************************
     Returns the star of the given simplex as an array of arrays of vertices of 
-    the facets. These are given in the same order as specified facets() */ 
-    VertexType[][] star(int dim)(const Simplex!(dim, Vertex) simplex)
+    the facets. These are given in the same order as specified facets()
+    */ 
+    VertexType[][] star(int dim)(const Simplex!(dim, Vertex) simplex) const
     {
         return star(simplex.vertices);
     }
 
     /***************************************************************************
     Returns the star of the given simplex as an array of arrays of vertices of 
-    the facets. These are given in the same order as specified facets() */ 
-    VertexType[][] star(V)(V vertices) if (isInputRange!V || isArray!V)
+    the facets. These are given in the same order as specified facets()
+    */ 
+    VertexType[][] star(V)(V vertices) const if (isInputRange!V || isArray!V)
     {
         return this.facets.filter!(f => vertices.isSubsetOf(f)).array;
     }
 
     /***************************************************************************
     Returns true if the simplex `s` is in this simplicial complex and false 
-    otherwise */
-    bool contains(int dim)(const Simplex!(dim, Vertex) s)
+    otherwise
+    */
+    bool contains(int dim)(const Simplex!(dim, Vertex) s) const
     {
         return this.contains(s.vertices);
     }
 
     /***************************************************************************
     Returns true if the simplex with vertices given by the input range 
-    `vertices` is in this simplicial complex and false otherwise */
-    bool contains(V)(V vertices) if (isInputRange!V)
+    `vertices` is in this simplicial complex and false otherwise
+    */
+    bool contains(V)(V vertices) const if (isInputRange!V)
     {
         static assert(is(Unqual!(ElementType!V) == Vertex));
         return this.facets.any!(f => vertices.isSubsetOf(f));
     }
 
     /***************************************************************************
-    Get simplices of dimension `dim` */
-    auto simplices(int dim)()
+    Get simplices of dimension `dim`
+    */
+    auto simplices(int dim)() const
     {
         static assert(dim >= 0, "dimension must be non-negative, but got "
             ~ dim.to!string);
         return simplices(dim).map!(verts => Simplex!(dim, Vertex)(verts));
     }
 
-    /// Get the simplices of dimension `dim` as lists of vertices.
-    auto simplices(int dim)
+    /***************************************************************************
+    Get the simplices of dimension `dim` as lists of vertices.
+    */
+    auto simplices(int dim) const
     {
         assert(dim >= 0, "dimension must be non-negative, but got "
             ~ dim.to!string);
@@ -151,28 +175,30 @@ struct SimplicialComplex(Vertex = int)
         {
             foreach(facet; facetLists[key])
             {
-                simplicesSeen ~= facet.subsetsOfSize(dim + 1).array;
+                simplicesSeen ~= facet.subsetsOfSize(dim + 1)
+                    .map!(f => f.dup).array;
             }
         }
         return simplicesSeen.sort().uniq;
     }
 
-    /** Get the f-vector of the simplicial complex. The returned array lists the
-    number of simplices in each dimension. */
-    auto fVector()
+    /***************************************************************************
+    Get the f-vector of the simplicial complex. The returned array lists the
+    number of simplices in each dimension.
+    */
+    auto fVector() const
     {   
         immutable maxDim = facetLists.keys.maxElement.to!int;
         return iota(maxDim).map!(dim => simplices(dim).walkLength).array; 
     } 
 
-    string toString() @safe pure
+    /***************************************************************************
+    Returns a nice looking representation of the simplicial complex as a string.
+    */
+    auto toString() const
     {
         return this.facets.to!string;
     }
-
-    private:
-    // Lists of facets, indexed by number of vertices in the facet
-    SmallMap!(size_t, Vertex[][]) facetLists;
 }
 
 ///
