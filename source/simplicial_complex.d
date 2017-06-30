@@ -4,11 +4,13 @@ import std.algorithm : all, any, canFind, filter, find, joiner, map, maxElement,
     setDifference, sort, uniq;
 import std.conv : to;
 import std.exception : assertThrown, enforce;
-import std.range : array, ElementType, front, iota, isInputRange, walkLength;
+import std.range : array, chunks, ElementType, front, iota, isInputRange, walkLength;
 import std.traits : isArray, Unqual;
 import std.typecons : Tuple, tuple;
 
 import utility : isSubsetOf, SmallMap, subsetsOfSize, throwsWithMsg;
+
+import std.stdio : writeln;
 
 /*******************************************************************************
 A simplicial complex type whose vertices are of type `Vertex`.
@@ -16,8 +18,12 @@ A simplicial complex type whose vertices are of type `Vertex`.
 struct SimplicialComplex(Vertex = int)
 {
 private:
-    // Lists of facets, indexed by number of vertices in the facet
-    SmallMap!(size_t, Vertex[][]) facetLists;
+    /* We store arrays containing all the vertices in the facets of a given 
+    dimension. These arrays are flattened, so the array storing the 2-dim
+    facets has the form [v1, v2, v3, w1, w2, w3, ... ] where [v1, v2, v3] give
+    the first simplex, [w1, w2, w3] the second, etc.
+    */
+    SmallMap!(int, Vertex[]) facetVertices;
 
 public:
     /***************************************************************************
@@ -45,17 +51,19 @@ public:
             ~ vertices.to!string ~ " and already have facet " 
             ~ facets.find!(f => vertices.isSubsetOf(f)).front.to!string);
 
-        auto numVertices = vertices.walkLength;
-        if (numVertices in facetLists)
+        int dim = vertices.walkLength.to!int - 1;
+        if (dim in facetVertices)
         {
-            facetLists[numVertices] ~= vertices.dup;            
+            facetVertices[dim] ~= vertices.dup;            
         }
         else
         {
-            facetLists.insert(numVertices, [vertices.dup]);
+            facetVertices.insert(dim, vertices.dup);
         }
         
-        facetLists[numVertices].sort();
+        // TO DO: Improve this sorting function? Seems yucky!
+        facetVertices[dim][] = facetVertices[dim].chunks(dim+1)
+            .array.sort().joiner.array[];
     }
 
     /***************************************************************************
@@ -64,7 +72,7 @@ public:
     auto facets(int dim)() const
     {
         static assert(dim > 0);
-        return facetLists[dim + 1].map!(verts => Simplex!(dim, Vertex)(verts));
+        return facets(dim).map!(verts => Simplex!(dim, Vertex)(verts));
     }
 
     /***************************************************************************
@@ -74,7 +82,7 @@ public:
     auto facets(int dim) const
     {
         assert(dim > 0);
-        return facetLists[dim + 1];
+        return facetVertices[dim].chunks(dim+1).array.to!(Vertex[][]);
     }
 
     /***************************************************************************
@@ -84,9 +92,8 @@ public:
     */
     VertexType[][] facets() const pure @safe
     {
-        auto sizes = facetLists.keys.array.dup.sort();        
-        return sizes.map!(
-            s => facetLists[s].map!(vlist => vlist.dup)).array.joiner.array;
+        auto dims = facetVertices.keys.array;
+        return dims.map!(d => facets(d)).joiner.array;
     }
 
     /***************************************************************************
@@ -171,9 +178,10 @@ public:
         assert(dim >= 0, "dimension must be non-negative, but got "
             ~ dim.to!string);
         Vertex[][] simplicesSeen;
-        foreach(key; facetLists.keys.filter!(key => key >= dim+1))
+        auto dims = facetVertices.keys.array;
+        foreach(key; dims.filter!(d => d >= dim))
         {
-            foreach(facet; facetLists[key])
+            foreach(facet; facetVertices[key].chunks(key + 1))
             {
                 simplicesSeen ~= facet.subsetsOfSize(dim + 1)
                     .map!(f => f.dup).array;
@@ -188,8 +196,8 @@ public:
     */
     auto fVector() const
     {   
-        immutable maxDim = facetLists.keys.maxElement.to!int;
-        return iota(maxDim).map!(dim => simplices(dim).walkLength).array; 
+        immutable maxDim = facetVertices.keys.maxElement.to!int;
+        return iota(maxDim + 1).map!(dim => simplices(dim).walkLength).array; 
     } 
 
     /***************************************************************************
