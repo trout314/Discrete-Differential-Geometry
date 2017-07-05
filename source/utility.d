@@ -2,7 +2,7 @@ import std.algorithm : all, canFind, filter, find, map, sort;
 import std.conv : to;
 import std.exception : enforce;
 import std.meta : AliasSeq, allSatisfy, anySatisfy;
-import std.range : array, chain, enumerate, front, only, repeat, take, 
+import std.range : array, chain, ElementType, enumerate, front, isForwardRange, only, repeat, take, 
     walkLength;
 import std.traits : lvalueOf, rvalueOf;
 
@@ -431,7 +431,7 @@ struct SmallMap(KeyType, ValueType)
     }
 
     /// Provide index operator axes like this: smallMap[key]
-    ref inout(ValueType) opIndex(KeyType key_) inout
+    ref inout(ValueType) opIndex(const KeyType key_) inout
     {
         auto found = data.find!(r => r.key == key_);
         enforce(found.length > 0, "SmallMap access error");
@@ -464,26 +464,38 @@ pure @safe unittest
 Returns true if set A is contained in set B
 */
 auto isSubsetOf(A, B)(A setA, B setB)
+if (isForwardRange!A && isForwardRange!B && is(ElementType!A : ElementType!B))
 {
-    return setA.all!(element => setB.canFind(element));
+    return setA.all!(element => setB.canFind(element));        
 }
 ///
 unittest
 {
     assert([1,3].isSubsetOf([1,3,4]));
+    assert(![2,3].isSubsetOf([1,3,4]));
+
+    int[] empty;
+    assert(empty.isSubsetOf([6,8]));
+    assert(empty.isSubsetOf(empty));
+
+    /* Note that using an empty string literal in the above example will not
+    work since [] has type void[] */
+    static assert(!__traits(compiles, [].isSubsetOf([6, 8])));
 }
 
 /*******************************************************************************
 Returns all the sub-ranges of length `sizeOfSubset` from the ordered range `set`
 TO DO: Replace this with a lazy @nogc version.
 */
-auto subsetsOfSize(R)(R set, int subsetSize)
+auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
 {
     auto setSize = set.walkLength;
 
-    assert(setSize >= 0);
-    assert(subsetSize >= 0);
-    assert(subsetSize <= setSize);
+    enforce(subsetSize >= 0, "subsetsOfSize expects a positive subset size but "
+        ~ "got subset size " ~ subsetSize.to!string);
+    enforce(subsetSize <= setSize, "subsetsOfSize expects a subset size not "
+        ~ "larger than the size of the set, but got subset size " 
+        ~ subsetSize.to!string ~ " and a set of size " ~ setSize.to!string);
 
     auto elementChoices = binarySequences(setSize, setSize - subsetSize);
     return elementChoices.map!(
@@ -496,8 +508,26 @@ auto subsetsOfSize(R)(R set, int subsetSize)
 ///
 unittest
 {
+    assert([1,2,3].subsetsOfSize(1) == [[1], [2], [3]]);
+
     assert([1,2,3,4,5].subsetsOfSize(2) == [[1, 2], [1, 3], [1, 4], [1, 5],
         [2, 3], [2, 4], [2, 5], [3, 4], [3, 5], [4, 5]]);
+
+    assert([1,2,3].subsetsOfSize(3) == [[1,2,3]]);
+
+    int[] empty;
+    assert(empty.subsetsOfSize(0) == [[]]);
+
+    /* Note that using an empty string literal in the above example will not
+    work since [] has type void[] */
+    static assert(!__traits(compiles, [].subsetsOfSize(0) == [[]]));
+
+    throwsWithMsg([6,8].subsetsOfSize(3),
+        "subsetsOfSize expects a subset size not larger than the size of the "
+        ~ "set, but got subset size 3 and a set of size 2");
+
+    throwsWithMsg([1,2,3].subsetsOfSize(-2),
+        "subsetsOfSize expects a positive subset size but got subset size -2");
 }
 
 /*******************************************************************************

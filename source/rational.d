@@ -1,73 +1,60 @@
 // NOTE: Code taken from David Simcha. See https://github.com/dsimcha/Rational
+// Updated by Aaron Trout June/July 2017
 
-/**
+/*******************************************************************************
 This module contains an implementation of rational numbers that is templated
 on the underlying integer type.  It can be used with either builtin fixed
 width integers or arbitrary precision integers.  All relevant operators are
 overloaded for both rational-rational and rational-integer operations.
 
-Synopsis:
----
-// Compute pi using the generalized continued fraction approximation.
-import std.bigint;
-
-enum maxTerm = 30;
-
-Rational!(BigInt) getTerm(int termNumber) {
-    auto addFactor = 2 * termNumber - 1;
-
-    if(termNumber == maxTerm) {
-        return rational(BigInt(addFactor));
-    }
-
-    auto termNumberSquared = BigInt(termNumber * termNumber);
-    auto continued = termNumberSquared / getTerm(termNumber + 1);
-
-    continued += addFactor;
-    return continued;
-}
-
-void main() {
-
-    auto pi = rational(BigInt(4)) / getTerm(1);
-
-    // Display the result in rational form.
-    writeln(pi);
-
-    // Display the decimal equivalent, which is accurate to 18 decimal places.
-    writefln("%.18f", cast(real) pi);
-}
----
-
-
 Author:  David Simcha
 Copyright:  Copyright (c) 2009-2011, David Simcha.
 License:    $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0)
- */
+*/
 
-import std.algorithm, std.bigint, std.conv, std.exception, std.math, std.stdio,
+import std.algorithm, std.bigint, std.conv, std.exception, std.format, std.math, std.stdio,
     std.traits;
+
+ ///
+ unittest
+ {
+     enum maxTerm = 30;
+
+    Rational!(BigInt) getTerm(int termNumber)
+    {
+        auto addFactor = 2 * termNumber - 1;
+
+        if(termNumber == maxTerm)
+        {
+            return rational(BigInt(addFactor));
+        }
+    
+        auto termNumberSquared = BigInt(termNumber * termNumber);
+        auto continued = termNumberSquared / getTerm(termNumber + 1);
+        continued += addFactor;
+        return continued;
+    }
+    
+    auto pi = rational(BigInt(4)) / getTerm(1);
+    assert(pi.to!string == "586398465775082011623424/186656428899215824574025");
+    assert("%.18f".format(cast(real) pi) == "3.141592653589793238");
+ }
 
 alias abs = std.math.abs; // Allow cross-module overloading.
 
-/**
+/*******************************************************************************
 Checks whether $(D T) is structurally an integer, i.e. whether it supports
 all of the operations an integer type should support.  Does not check the
 nominal type of $(D T).  In particular, the following must compile:
 
 ---
-T num;
-num = 2;
-num <<= 1;
-num >>= 1;
-num += num;
-num *= num;
-num /= num;
-num -= num;
-num %= 2;
-num %= num;
+T num; num = 2;
+num += num; num *= num;
+num /= num; num -= num;
+num %= 2; num %= num;
 bool foo = num < 2;
 bool bar = num == 2;
+num <<= 1; num >>= 1;
 ---
 
 All builtin D integers and $(D std.bigint.BigInt) are integer-like by this
@@ -92,7 +79,7 @@ template isIntegerLike(T)
                 return num;
             }));
 }
-
+///
 @safe unittest
 {
     static assert(isIntegerLike!BigInt);
@@ -122,45 +109,28 @@ private template CommonRational(R1, R2)
     }
 }
 
-/**
+/*******************************************************************************
 Returns a common integral type between $(D I1) and $(D I2).  This is defined
 as the type returned by I1.init * I2.init.
- */
+*/
 template CommonInteger(I1, I2) if (isIntegerLike!I1 && isIntegerLike!I2)
 {
     alias CommonInteger = typeof(I1.init * I2.init);
 }
-
+///
 @safe unittest
 {
     static assert(is(CommonInteger!(BigInt, int) == BigInt));
     static assert(is(CommonInteger!(byte, int) == int));
 }
 
-/**
+/*******************************************************************************
 Implements rational numbers on top of whatever integer type is specified
 by the user.  The integer type used may be any type that behaves as an integer.
 Specifically, $(D isIntegerLike) must return true, the integer type must
 have value semantics, and the semantics of all integer operations must follow
 the normal rules of integer arithmetic.
-
-Examples:
----
-auto r1 = rational( BigInt("314159265"), BigInt("27182818"));
-auto r2 = rational( BigInt("8675309"), BigInt("362436"));
-r1 += r2;
-assert(r1 == rational( BigInt("174840986505151"),
-    BigInt("4926015912324")));
-
-// Print result.  Prints:
-// "174840986505151 / 4926015912324"
-writeln(f1);
-
-// Print result in decimal form.  Prints:
-// "35.4934"
-writeln(cast(real) result);
----
- */
+*/
 Rational!(CommonInteger!(I1, I2)) rational(I1, I2)(const I1 i1, const I2 i2)
         if (isIntegerLike!I1 && isIntegerLike!I2)
 {
@@ -180,14 +150,33 @@ Rational!(CommonInteger!(I1, I2)) rational(I1, I2)(const I1 i1, const I2 i2)
     ret.simplify();
     return ret;
 }
+///
+unittest
+{
+    auto r1 = rational( BigInt("314159265"), BigInt("27182818"));
+    auto r2 = rational( BigInt("8675309"), BigInt("362436"));
+    r1 += r2;
+    assert(r1 == rational(BigInt("174840986505151"), BigInt("4926015912324")));
+    assert(r1.to!string == "174840986505151/4926015912324");
+    assert(r1.to!real.to!string == "35.4934");
+}
 
-/**Overload for creating a rational that initially has an integer value.*/
+/*******************************************************************************
+Overload for creating a rational that initially has an integer value.
+*/
 Rational!I rational(I)(const I val) if (isIntegerLike!I)
 {
     return rational(val, 1);
 }
+///
+unittest
+{
+    assert(rational(5) == rational(5,1));
+    assert(rational(BigInt("94362349639838383827627")) ==
+        rational(BigInt("94362349639838383827627"), BigInt("1")));
+}
 
-/**
+/*******************************************************************************
 The struct that implements rational numbers.  All relevant operators
 (addition, subtraction, multiplication, division, exponentiation by a
  non-negative integer, equality and comparison) are overloaded.  The second
@@ -197,9 +186,11 @@ The struct that implements rational numbers.  All relevant operators
 struct Rational(Int) if (isIntegerLike!Int)
 {
 public:
+    ///
     alias IntType = Int;
 
     // ----------------Multiplication operators----------------------------------
+ 
     auto opBinary(string op, Rhs)(const Rhs rhs) const
         if (op == "*" && is(CommonRational!(Int, Rhs)) && isRational!Rhs)
     {
@@ -321,6 +312,7 @@ public:
     }
 
     // ---------------------Addition operators----------------------------------
+ 
     auto opBinary(string op, Rhs)(const Rhs rhs) const
         if (op == "+" && (isRational!Rhs || isIntegerLike!Rhs))
     {
@@ -460,6 +452,7 @@ public:
     }
 
     // ---------------------Assignment operators--------------------------------
+
     Rational!Int opAssign(Rhs)(const Rhs rhs)
         if (isIntegerLike!Rhs && isAssignable!(Int, Rhs))
     {
@@ -575,17 +568,24 @@ public:
         assert(0);
     }
 
-    ////////////////////////////////////////////////////////////////////////////
-
-    /**Fast inversion, equivalent to 1 / rational.*/
+    /***************************************************************************
+    Fast inversion, equivalent to 1 / rational.
+    */
     Rational!Int invert()
     {
         assert(denom != 0);
         swap(numer, denom);
         return this;
     }
+    ///
+    unittest
+    {
+        assert(rational(2,3).invert == rational(3,2));
+    }
 
-    /**Convert to floating point representation.*/
+    /***************************************************************************
+    Convert to floating point representation.
+    */
     F opCast(F)() const if (isFloatingPoint!F)
     {
         // Do everything in real precision, then convert to F at the end.
@@ -668,77 +668,114 @@ public:
             return ans * sign;
         }
     }
+    ///
+    unittest
+    {
+        assert(rational(10, 1).to!double == 10.0);
+    }
 
-    /**
+    /***************************************************************************
     Casts $(D this) to an integer by truncating the fractional part.
     Equivalent to $(D integerPart), and then casting it to type $(D I).
-     */
+    */
     I opCast(I)() const if (isIntegerLike!I && is(typeof(cast(I) Int.init)))
     {
         return cast(I) integerPart;
     }
 
-    /**Returns the numerator.*/
+    /***************************************************************************
+    Returns the numerator.
+    */
     @property Int numerator() const
     {
         return numer;
     }
+    ///
+    unittest
+    {
+        assert(rational(23, 44).numerator == 23);
+        assert(rational(BigInt("8"), BigInt("17")).numerator == BigInt("8"));
+    }
 
-    /**Returns the denominator.*/
+    /***************************************************************************
+    Returns the denominator.
+    */
     @property Int denominator() const
     {
         return denom;
     }
+    ///
+    unittest
+    {
+        assert(rational(17, 324).denominator == 324);
+        assert(rational(BigInt("82"), BigInt("7")).denominator == BigInt("7"));        
+    }
 
-    /**
+    /***************************************************************************
     Returns the integer part of this rational, with any remainder truncated.
-     */
+    */
     @property Int integerPart() const
     {
         return numer / denom;
     }
+    ///
+    unittest
+    {
+        alias r = rational;
 
-    /**
+        assert(r(99, 100).integerPart == 0);
+        assert(r(23, 10).integerPart == 2);
+        assert(r(BigInt("6"), BigInt("7")).integerPart == BigInt("0"));        
+        assert(r(BigInt("82"), BigInt("7")).integerPart == BigInt("11"));
+    }
+
+    /***************************************************************************
     Returns the fractional part of this rational.
     */
     @property Rational!Int fractionPart() const
     {
         return this - integerPart;
     }
+    ///
+    unittest
+    {
+        alias r = rational;
 
-    /**
-    Returns a string representation of $(D this) in the form this.numerator /
-    this.denominator.
+        assert(r(99, 100).fractionPart == r(99, 100));
+        assert(r(23, 10).fractionPart == r(3, 10));
+        assert(r(BigInt("6"), BigInt("7")).fractionPart 
+            == r(BigInt("6"), BigInt("7")));        
+        assert(r(BigInt("82"), BigInt("7")).fractionPart
+            == r(BigInt("5"), BigInt("7")));        
+    }
+
+    /***************************************************************************
+    Returns a string representation of $(D this) in the form:
+    "numerator/denominator" if the denomintaor is not 1 and simply "numerator"
+    if the denominator is 1.
     */
     string toString() const
     {
-        static if (is(Int == std.bigint.BigInt))
+        if (denom != 1)
         {
-            // Special case it for now.  This should be fixed later.
-            if (denom != 1)
-            {
-                return toDecimalString(numer) ~ "/" ~ toDecimalString(denom);
-            }
-            else
-            {
-                return toDecimalString(numer);
-            }
+            return numer.to!string ~ "/" ~ denom.to!string;
         }
         else
         {
-            if (denom != 1)
-            {
-                return numer.to!string ~ "/" ~ denom.to!string;
-            }
-            else
-            {
-                return numer.to!string;            
-            }
+            return numer.to!string;            
         }
+    }
+    ///
+    unittest
+    {
+        assert(rational(3,4).toString == "3/4");
+        assert(rational(BigInt(3),BigInt(4)).toString == "3/4");
+        assert(rational(3,1).toString == "3");
+        assert(rational(BigInt(3),BigInt(1)).toString == "3");
     }
 
 private:
-    Int numer = 0;
+    Int numer = 0;  // NOTE: Default values added by Aaron Trout
     Int denom = 1;
 
     void simplify()
