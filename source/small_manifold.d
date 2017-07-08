@@ -1,7 +1,7 @@
-import std.algorithm : all, each, map;
+import std.algorithm : all, each, find, map;
 import std.conv : to;
 import std.exception : enforce;
-import std.range : isInputRange, ElementType, walkLength;
+import std.range : array, isInputRange, ElementType, walkLength;
 import std.traits : isArray;
 import simplex : Simplex, simplex;
 import simplicial_complex : SimplicialComplex;
@@ -28,12 +28,16 @@ struct SmallManifold(int dimension_, Vertex_ = int)
 
         // TO DO: Check links of codimension-1 simplices
 
-        static if(dimension >= 2)
+        static if(dimension_ >= 1)
         {
-            // TO DO: Check links of codimension-2 simplices
+            auto badRidge = simpComp_.simplices!(dimension_ - 1).find!(
+                s => degree(s) != 2);
+            enforce(badRidge.empty, "manifold constructor expects ridges of "
+            ~ "degree 2, but found a ridge " ~ badRidge.front.to!string 
+            ~ " with degree " ~ degree(badRidge.front).to!string);
         }
 
-        static if(dimension >= 3)
+        static if(dimension >= 2)
         {
             // TO DO: Check links of codimension-3 simplices
         }
@@ -50,6 +54,11 @@ struct SmallManifold(int dimension_, Vertex_ = int)
         return simpComp_; 
     }
 
+    auto degree(int dim)(Simplex!(dim, Vertex) s) const
+    {
+        return star(s).walkLength;
+    }
+
 
 private:
     SimplicialComplex!Vertex simpComp_;
@@ -58,17 +67,5 @@ private:
 unittest
 {
     import manifold_test : test;
-
     assert(test!SmallManifold);
-
-    import std.stdio : writeln;
-
-    alias s = simplex;
-
-    auto sm = SmallManifold!1([s(1,2), s(2,3), s(1,3)]);
-    sm.writeln;
-
-    auto sm2 = SmallManifold!1([[1,2], [2,3], [1,3]]);
-    assert(sm == sm2);
-
 }

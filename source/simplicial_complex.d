@@ -1,10 +1,10 @@
 import simplex : facesOfDim, hasFace, simplex, Simplex;
 
-import std.algorithm : all, any, canFind, filter, find, joiner, map, maxElement,
-    setDifference, sort, uniq;
+import std.algorithm : all, any, canFind, countUntil, each, filter, find, joiner, map, 
+    maxElement, remove, setDifference, sort, sum, uniq;
 import std.conv : to;
 import std.exception : assertThrown, enforce;
-import std.range : array, chunks, ElementType, front, iota, isInputRange, walkLength;
+import std.range : array, chunks, enumerate, ElementType, front, iota, isInputRange, walkLength;
 import std.traits : isArray, Unqual;
 import std.typecons : Tuple, tuple;
 
@@ -31,12 +31,35 @@ public:
     */
     alias VertexType = Vertex;
 
+
+    /***************************************************************************
+    Construct a simplicial complex from an array of vertex arrays, specifying
+    the facets.
+    */
+    this(Vertex[][] facets)
+    {
+        facets.each!(f => insertFacet(f));
+    }
+    ///
+    unittest
+    {
+        auto sc = SimplicialComplex!int([[1,2], [2,3], [3,4,5]]);
+        assert(sc.facets == [[1,2], [2,3], [3,4,5]]);
+    }
+
     /***************************************************************************
     Inserts the simplex s as a facet in the simplicial complex.
     */
     void insertFacet(int dim)(const Simplex!(dim, Vertex) s)
     {
         insertFacet(s.vertices);
+    }
+    ///
+    unittest
+    {
+        SimplicialComplex!int sc;
+        sc.insertFacet([1,2,3]);
+        assert(sc.facets == [[1,2,3]]);
     }
 
     /***************************************************************************
@@ -45,13 +68,18 @@ public:
     */
     void insertFacet(V)(V vertices) if (isInputRange!V)
     {
+        /* TO DO: Validate vertex lists. How can we do this without duplicating
+        functionality from simplex.d */
+
+
         static assert(is(Unqual!(ElementType!V) == Vertex));
-        enforce(!this.contains(vertices), "insertFacet expects an inserted "
-            ~ "simplex not already in the simplicial complex, but got " 
+        enforce(!contains(vertices), "insertFacet expects an inserted simplex "
+            ~ "not already in the simplicial complex, but got " 
             ~ vertices.to!string ~ " and already have facet " 
             ~ facets.find!(f => vertices.isSubsetOf(f)).front.to!string);
 
         int dim = vertices.walkLength.to!int - 1;
+
         if (dim in facetVertices)
         {
             facetVertices[dim] ~= vertices.dup;            
@@ -60,10 +88,64 @@ public:
         {
             facetVertices.insert(dim, vertices.dup);
         }
+
+        // auto dimsToCheck = facetVertices.keys.filter!(d => d < dim);
+
         
         // TO DO: Improve this sorting function? Seems yucky!
-        facetVertices[dim][] = facetVertices[dim].chunks(dim+1)
+        facetVertices[dim][] = facetVertices[dim].chunks(dim + 1)
             .array.sort().joiner.array[];
+    }
+
+    /***************************************************************************
+    Removes the simplex `s`` as a facet in the simplicial complex.
+    */
+    void removeFacet(int dim)(const Simplex!(dim, Vertex) s)
+    {
+        removeFacet(s.vertices);
+    }
+    ///
+    unittest
+    {
+        SimplicialComplex!int sc;
+        sc.insertFacet([1,2,3]);
+        assert(sc.facets == [[1,2,3]]);
+        sc.removeFacet(simplex(1,2,3));
+        assert(sc.facets == []);
+    }
+
+    /***************************************************************************
+    Removes an existing facet of the simplicial complex a facet (given as an 
+    input range of vertices)
+    */
+    void removeFacet(V)(V vertices) if (isInputRange!V)
+    {
+        enforce(this.contains(vertices), "tried to remove a facet "
+            ~ vertices.to!string ~ " not in the simplicial complex");
+
+        int dim = vertices.walkLength.to!int - 1;
+        auto indx = facetVertices[dim].chunks(dim + 1).countUntil(vertices);
+        facetVertices[dim][indx * (dim + 1) .. $ - (dim + 1)]
+            = facetVertices[dim][(indx + 1) * (dim + 1) .. $];
+        facetVertices[dim] = facetVertices[dim][0 .. $ - (dim + 1)];
+    }
+    ///
+    unittest
+    {
+        auto sc = SimplicialComplex!()([[1,2], [1,3], [1,4], [4,5,6]]);
+
+        assert(sc.facets == [[1,2], [1,3], [1,4], [4,5,6]]);
+        sc.removeFacet([1,3]);
+        assert(sc.facets == [[1,2], [1,4], [4,5,6]]);
+        sc.removeFacet([1,2]);
+        assert(sc.facets == [[1,4], [4,5,6]]);
+        sc.removeFacet([4,5,6]);
+        assert(sc.facets == [[1,4]]);
+        sc.removeFacet([1,4]);
+        assert(sc.facets == []);
+
+        throwsWithMsg(sc.removeFacet([2,3]), "tried to remove a facet [2, 3] "
+            ~ "not in the simplicial complex");
     }
 
     /***************************************************************************
@@ -71,7 +153,8 @@ public:
     */
     auto facets(int dim)() const
     {
-        static assert(dim > 0);
+        static assert(dim >= 0, "facets expected a non-negative dimension but "
+            ~ "got dimension " ~ dim.to!string);
         return facets(dim).map!(verts => Simplex!(dim, Vertex)(verts));
     }
 
@@ -81,8 +164,17 @@ public:
     */
     auto facets(int dim) const
     {
-        assert(dim > 0);
-        return facetVertices[dim].chunks(dim+1).array.to!(Vertex[][]);
+        enforce(dim >= 0, "facets expected a non-negative dimension but "
+            ~ "got dimension " ~ dim.to!string);
+        if (dim !in facetVertices)
+        {
+            Vertex[][] empty;
+            return empty;
+        }
+        else
+        {
+            return facetVertices[dim].chunks(dim + 1).array.to!(Vertex[][]);
+        }
     }
 
     /***************************************************************************
@@ -110,6 +202,7 @@ public:
     */
     Vertex[][] link(int dim)(const Simplex!(dim, Vertex) s) const
     {
+        enforce(contains(s), "expected a simplex in the simplicial complex");
         return this.star(s).map!(f => setDifference(f, s.vertices).array).array;
     }
     /***************************************************************************
@@ -198,7 +291,36 @@ public:
     {   
         immutable maxDim = facetVertices.keys.maxElement.to!int;
         return iota(maxDim + 1).map!(dim => simplices(dim).walkLength).array; 
-    } 
+    }
+    ///
+    unittest
+    {
+        SimplicialComplex!() sc;
+        sc.insertFacet([1,2]);
+        assert(sc.fVector == [2,1]);        
+    }
+
+    /***************************************************************************
+    Returns the Euler characteristic of the simplicial complex
+    */
+    auto eulerCharacteristic() const
+    {
+        return fVector.enumerate.map!(f => (-1)^^f.index * f.value).sum;
+    }
+    ///
+    unittest
+    {
+        SimplicialComplex!() sc;
+        sc.insertFacet([1,2]);
+        assert(sc.eulerCharacteristic == 1);
+        sc.insertFacet([2,3]);
+        sc.insertFacet([2,4]);
+        assert(sc.eulerCharacteristic == 1);
+        sc.insertFacet([3,4]);
+        assert(sc.eulerCharacteristic == 0);
+        sc.insertFacet([1,3]);
+        assert(sc.eulerCharacteristic == -1);        
+    }
 
     /***************************************************************************
     Returns a nice looking representation of the simplicial complex as a string.
@@ -207,6 +329,13 @@ public:
     {
         return this.facets.to!string;
     }
+}
+
+///
+unittest
+{
+    import simplicial_complex_test : test;
+    assert(test!SimplicialComplex);
 }
 
 ///

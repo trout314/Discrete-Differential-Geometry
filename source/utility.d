@@ -508,12 +508,13 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
 ///
 unittest
 {
+    assert([1,2,3].subsetsOfSize(0) == [[]]);
     assert([1,2,3].subsetsOfSize(1) == [[1], [2], [3]]);
+    assert([1,2,3].subsetsOfSize(2) == [[1,2], [1,3], [2,3]]);
+    assert([1,2,3].subsetsOfSize(3) == [[1,2,3]]);
 
     assert([1,2,3,4,5].subsetsOfSize(2) == [[1, 2], [1, 3], [1, 4], [1, 5],
         [2, 3], [2, 4], [2, 5], [3, 4], [3, 5], [4, 5]]);
-
-    assert([1,2,3].subsetsOfSize(3) == [[1,2,3]]);
 
     int[] empty;
     assert(empty.subsetsOfSize(0) == [[]]);
