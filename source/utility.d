@@ -1,10 +1,11 @@
-import std.algorithm : all, canFind, filter, find, map, sort;
+import std.algorithm : all, canFind, equal, filter, find, joiner, map, sort;
 import std.conv : to;
 import std.exception : enforce;
 import std.meta : AliasSeq, allSatisfy, anySatisfy;
-import std.range : array, chain, ElementType, enumerate, front, isForwardRange, only, repeat, take, 
-    walkLength;
+import std.range : array, chain, drop, ElementType, enumerate, front, iota, isForwardRange, only, repeat, take, walkLength;
 import std.traits : lvalueOf, rvalueOf;
+
+import std.stdio : writeln;
 
 /*******************************************************************************
 Checks if items of type T can be compared with the less-than operation. Note 
@@ -529,6 +530,33 @@ unittest
 
     throwsWithMsg([1,2,3].subsetsOfSize(-2),
         "subsetsOfSize expects a positive subset size but got subset size -2");
+}
+
+/*******************************************************************************
+Returns a list of all non-empty subsets of the given set
+*/
+auto subsets(R)(R set) if (isForwardRange!R)
+{
+    auto setSize = set.walkLength.to!int;
+    return iota(setSize + 1).map!(
+        s => set.subsetsOfSize(s)).joiner.drop(1);
+}
+///
+unittest
+{
+    int[] emptySet;
+    int[][] emptySet2;
+    assert(emptySet.subsets.equal(emptySet2));
+
+    auto set = [1,2,3];
+    assert(set.subsets.equal([[1],[2],[3],[1,2],[1,3],[2,3],[1,2,3]]));
+
+    assert([1,2,3,4].subsets.equal([
+        [1], [2], [3], [4],
+        [1,2], [1,3], [1,4], [2,3], [2,4], [3,4],
+        [1,2,3], [1,2,4], [1,3,4], [2,3,4],
+        [1,2,3,4]
+    ]));
 }
 
 /*******************************************************************************

@@ -8,7 +8,7 @@ import std.range : array, chunks, enumerate, ElementType, front, iota, isInputRa
 import std.traits : isArray, Unqual;
 import std.typecons : Tuple, tuple;
 
-import utility : isSubsetOf, SmallMap, subsetsOfSize, throwsWithMsg;
+import utility : isSubsetOf, SmallMap, subsets, subsetsOfSize, throwsWithMsg;
 
 import std.stdio : writeln;
 
@@ -78,6 +78,16 @@ public:
             ~ vertices.to!string ~ " and already have facet " 
             ~ facets.find!(f => vertices.isSubsetOf(f)).front.to!string);
 
+
+        // First we remove any existing facets which are faces of inserted facet
+        foreach(vSet; vertices.subsets)
+        {
+            if (this.facets.canFind(vSet))
+            {
+                this.removeFacet(vSet);
+            }
+        }
+
         int dim = vertices.walkLength.to!int - 1;
 
         if (dim in facetVertices)
@@ -88,13 +98,23 @@ public:
         {
             facetVertices.insert(dim, vertices.dup);
         }
-
-        // auto dimsToCheck = facetVertices.keys.filter!(d => d < dim);
-
         
         // TO DO: Improve this sorting function? Seems yucky!
         facetVertices[dim][] = facetVertices[dim].chunks(dim + 1)
             .array.sort().joiner.array[];
+    }
+    ///
+    unittest
+    {
+        auto sc = SimplicialComplex!()();
+        sc.insertFacet([1,2]);
+        assert(sc.facets == [[1,2]]);
+        sc.insertFacet([2,3,4]);
+        assert(sc.facets == [[1,2], [2,3,4]]);
+        sc.insertFacet([1,5,6]);
+        assert(sc.facets == [[1,2], [1,5,6], [2,3,4]]);
+        sc.insertFacet([1,5,6,7]);
+        assert(sc.facets == [[1,2], [2,3,4], [1,5,6,7]]);
     }
 
     /***************************************************************************
