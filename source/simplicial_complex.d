@@ -57,9 +57,11 @@ public:
     ///
     unittest
     {
+        alias s = simplex;
+
         SimplicialComplex!int sc;
-        sc.insertFacet([1,2,3]);
-        assert(sc.facets == [[1,2,3]]);
+        sc.insertFacet(s(1,2,3));
+        assert(sc.facets!2.array == [s(1,2,3)]);
     }
 
     /***************************************************************************
@@ -71,22 +73,17 @@ public:
         /* TO DO: Validate vertex lists. How can we do this without duplicating
         functionality from simplex.d */
 
-
         static assert(is(Unqual!(ElementType!V) == Vertex));
         enforce(!contains(vertices), "insertFacet expects an inserted simplex "
             ~ "not already in the simplicial complex, but got " 
             ~ vertices.to!string ~ " and already have facet " 
             ~ facets.find!(f => vertices.isSubsetOf(f)).front.to!string);
 
-
         // First we remove any existing facets which are faces of inserted facet
-        foreach(vSet; vertices.subsets)
-        {
-            if (this.facets.canFind(vSet))
-            {
-                this.removeFacet(vSet);
-            }
-        }
+        // TO DO: Improve this?
+        vertices.subsets
+            .filter!(vSet => this.facets.canFind(vSet))
+            .each!(vSet => this.removeFacet(vSet));
 
         int dim = vertices.walkLength.to!int - 1;
 
