@@ -115,7 +115,7 @@ public:
     }
 
     /***************************************************************************
-    Removes the simplex `s`` as a facet in the simplicial complex.
+    Removes the simplex `s` as a facet in the simplicial complex.
     */
     void removeFacet(int dim)(const Simplex!(dim, Vertex) s)
     {
@@ -346,6 +346,23 @@ public:
     {
         return this.facets.to!string;
     }
+}
+
+/*******************************************************************************
+Decide if a simplicial complex is homeomorphic to a 1-sphere (circle)
+*/
+bool isCircle(Vertex)(SimplicialComplex!Vertex sc)
+{
+    return sc.simplices!0.all!(v => sc.star(v).walkLength == 2);
+}
+///
+unittest
+{
+    auto s = SimplicialComplex!()([[1,2], [2,3], [3,4], [1,4]]);
+    assert(s.isCircle);
+
+    s.removeFacet([2,3]);
+    assert(!s.isCircle);
 }
 
 ///

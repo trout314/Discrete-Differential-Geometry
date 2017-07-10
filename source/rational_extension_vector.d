@@ -274,6 +274,11 @@ pure @safe unittest
     auto w = vec(r(1,2), r(2,3));
 
     assert(dotProduct(v, w) == r(29,30));
+
+    assert(dotProduct(
+        vec(  r(0),r(5,7)),
+        vec(r(1,3),  r(0))
+    ) == 0);
 }
 
 ///

@@ -28,9 +28,9 @@ struct SmallManifold(int dimension_, Vertex_ = int)
 
         // TO DO: Check links of codimension-1 simplices
 
-        static if(dimension_ >= 1)
+        static if(dimension >= 1)
         {
-            auto badRidge = simpComp_.simplices!(dimension_ - 1).find!(
+            auto badRidge = simpComp_.simplices!(dimension - 1).find!(
                 s => degree(s) != 2);
             enforce(badRidge.empty, "manifold constructor expects ridges of "
             ~ "degree 2, but found a ridge " ~ badRidge.front.to!string 
@@ -39,8 +39,15 @@ struct SmallManifold(int dimension_, Vertex_ = int)
 
         static if(dimension >= 2)
         {
+            // this.simplices!(dimension - 2).map(
+            //     s => link(s).to!SimplicialComplex)
+        }
+
+        static if(dimension >= 3)
+        {
             // TO DO: Check links of codimension-3 simplices
         }
+
     }
 
     auto star(int dim)(const Simplex!(dim, Vertex) s) const
