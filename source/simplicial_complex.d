@@ -353,16 +353,33 @@ Decide if a simplicial complex is homeomorphic to a 1-sphere (circle)
 */
 bool isCircle(Vertex)(SimplicialComplex!Vertex sc)
 {
-    return sc.simplices!0.all!(v => sc.star(v).walkLength == 2);
+    // TO DO: What about connected components?
+
+    // All facets must be edges and the star of each vertex must contain 2 edges
+    return sc.facets.all!(f => f.walkLength == 2)
+        && sc.simplices!0.all!(v => sc.star(v).walkLength == 2);
 }
 ///
 unittest
 {
+    // Start with a circle with 4 edges
     auto s = SimplicialComplex!()([[1,2], [2,3], [3,4], [1,4]]);
     assert(s.isCircle);
 
     s.removeFacet([2,3]);
     assert(!s.isCircle);
+
+    // Simplicial complex must be homeomorphic to a circle, not just homotopic
+    s.insertFacet([2,3,5]);
+    assert(!s.isCircle);
+
+    // WARNING: Currently returns true for disjoint copies of the circle.
+    // TO DO: Fix this
+    auto manyCircles = SimplicialComplex!()([
+        [1,2], [2,3], [1,3],
+        [4,5], [5,6], [4,6]]);
+
+    assert(manyCircles.isCircle);
 }
 
 ///
