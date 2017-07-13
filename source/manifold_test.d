@@ -19,6 +19,15 @@ auto test(alias Manifold)()
     assert(octahedron.fVector == [6,12,8]);
     assert(octahedron.eulerCharacteristic == 2);
 
+    octahedron.pachnerMoves.writeln;
+
+
+
+
+
+
+
+
     alias s = simplex;
 
     assert(octahedron.star(s(1,2)).equal([s(0,1,2), s(1,2,5)]));    
@@ -32,8 +41,11 @@ auto test(alias Manifold)()
     throwsWithMsg(Manifold!2([[1,2,3]]), "manifold constructor expects ridges "
         ~ "of degree 2, but found a ridge [1,2] with degree 1");
 
-    // auto f = [[1,2,3], [2,3,4]].map!(v => Simplex!2(v));
-    // auto y = Manifold!2(f);
+    throwsWithMsg(Manifold!2([[1,2,3], [1,2,4], [1,3,4], [2,3,4],
+        [1,5,6], [1,5,7], [1,6,7], [5,6,7]]), "dfdger");
+
+    
+    throwsWithMsg(octahedron.star(s(1,14)), "test");
 
     return true;
 }

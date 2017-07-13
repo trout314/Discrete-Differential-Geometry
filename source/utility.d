@@ -2,7 +2,8 @@ import std.algorithm : all, canFind, equal, filter, find, joiner, map, sort;
 import std.conv : to;
 import std.exception : enforce;
 import std.meta : AliasSeq, allSatisfy, anySatisfy;
-import std.range : array, chain, drop, ElementType, enumerate, front, iota, isForwardRange, only, repeat, take, walkLength;
+import std.range : array, chain, drop, ElementType, enumerate, front, iota, 
+    isForwardRange, only, repeat, take, walkLength;
 import std.traits : lvalueOf, rvalueOf;
 
 import std.stdio : writeln;
@@ -338,6 +339,7 @@ void throwsWithMsg(ThrownType : Throwable = Exception, E)
             return;
         }
     }
+    throw new Error("throwsWithMsg failed because expression did not throw");
 }
 
 /*******************************************************************************
