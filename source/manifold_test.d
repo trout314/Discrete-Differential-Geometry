@@ -21,13 +21,6 @@ auto test(alias Manifold)()
 
     auto pMoves = octahedron.pachnerMoves;
 
-
-
-
-
-
-
-
     alias s = simplex;
 
     assert(octahedron.star(s(1,2)).equal([s(0,1,2), s(1,2,5)]));    
@@ -38,12 +31,16 @@ auto test(alias Manifold)()
     static assert(is(m1.Vertex == string));
     static assert(is(m1.Facet == Simplex!(1, string)));
 
+    throwsWithMsg(Manifold!2([[1,2,3,4]]), "expected facets of dimension 2 but "
+        ~ "got the facet [1, 2, 3, 4]");
+
     throwsWithMsg(Manifold!2([[1,2,3]]), "manifold constructor expects ridges "
         ~ "of degree 2, but found a ridge [1,2] with degree 1");
 
-    // TO DO: Fix isCircle to fix this...
-    // throwsWithMsg(Manifold!2([[1,2,3], [1,2,4], [1,3,4], [2,3,4],
-    //     [1,5,6], [1,5,7], [1,6,7], [5,6,7]]), "");
+    throwsWithMsg(Manifold!2([[1,2,3], [1,2,4], [1,3,4], [2,3,4], [1,5,6], 
+        [1,5,7], [1,6,7], [5,6,7]]), "manifold constructor expects hinges whose"
+        ~ " links are circles but found a hinge [1] with link"
+        ~ " [[2, 3], [2, 4], [3, 4], [5, 6], [5, 7], [6, 7]]");
 
     return true;
 }

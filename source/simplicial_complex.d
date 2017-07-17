@@ -438,7 +438,6 @@ public:
         assert(nada.isConnected);
     }
 
-
     /***************************************************************************
     Returns a nice looking representation of the simplicial complex as a string.
     */
@@ -478,8 +477,6 @@ unittest
 
     assert(!disjointCircles.isCircle);
 }
-
-
 
 ///
 unittest

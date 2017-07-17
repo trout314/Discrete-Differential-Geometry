@@ -1,7 +1,7 @@
 import std.algorithm : all, each, find, map, sort;
 import std.conv : to;
 import std.exception : enforce;
-import std.range : array, isInputRange, ElementType, walkLength;
+import std.range : array, front, isInputRange, ElementType, walkLength;
 import std.traits : isArray;
 import simplex : Simplex, simplex;
 import simplicial_complex : SimplicialComplex, isCircle;
@@ -25,14 +25,19 @@ struct SmallManifold(int dimension_, Vertex_ = int)
             ~ Facet.stringof ~ " or " ~ Vertex[].stringof ~ " but got element "
             ~ "type " ~ ElementType!F.stringof);
 
-        initialFacets.each!(f => simpComp_.insertFacet(f));
+        enforce(initialFacets.all!(f => f.walkLength == dimension + 1),
+            "expected facets of dimension " ~ dimension.to!string
+            ~ " but got the facet " 
+            ~ initialFacets.find!(f => f.walkLength != dimension + 1)
+                .front.to!string);
 
-        // TO DO: Check links of codimension-1 simplices
+        initialFacets.each!(f => simpComp_.insertFacet(f));
 
         static if(dimension >= 1)
         {
             auto badRidge = this.simplices!(dimension - 1).find!(
                 s => this.degree(s) != 2);
+
             enforce(badRidge.empty, "manifold constructor expects ridges of "
             ~ "degree 2, but found a ridge " ~ badRidge.front.to!string 
             ~ " with degree " ~ this.degree(badRidge.front).to!string);
@@ -42,7 +47,8 @@ struct SmallManifold(int dimension_, Vertex_ = int)
         {
             auto badHinge = this.simplices!(dimension - 2).find!(
                 s => !(this.link(s).to!(SimplicialComplex!Vertex).isCircle));
-            enforce(badHinge.empty, "manifold constructor excpets hinges whose "
+
+            enforce(badHinge.empty, "manifold constructor expects hinges whose "
                 ~ "links are circles but found a hinge " 
                 ~ badHinge.front.to!string ~ " with link " 
                 ~ this.link(badHinge.front).to!string);
