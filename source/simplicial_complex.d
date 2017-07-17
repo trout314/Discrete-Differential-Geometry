@@ -414,6 +414,30 @@ public:
         assert(sc.connectedComponents.array == [c1, c2, c3, c4]);       
     }
 
+    /***************************************************************************
+    Returns true if the simplicial complex is connected and false otherwise.
+    Note that an empty complex counts as connected.
+    */
+    auto isConnected()
+    {
+        return connectedComponents.walkLength <= 1;
+    }
+    ///
+    unittest
+    {
+        auto disjointCircles = SimplicialComplex!()([
+            [1,2], [2,3], [1,3],
+            [4,5], [5,6], [4,6]]);
+        
+        assert(!disjointCircles.isConnected);
+
+        auto barbell = SimplicialComplex!()(disjointCircles.facets ~ [[3,4]]);
+        assert(barbell.isConnected);
+
+        auto nada = SimplicialComplex!()();
+        assert(nada.isConnected);
+    }
+
 
     /***************************************************************************
     Returns a nice looking representation of the simplicial complex as a string.
