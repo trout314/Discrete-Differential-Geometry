@@ -339,8 +339,10 @@ public:
         assert(sc.eulerCharacteristic == -1);        
     }
 
-
-    // TO DO: Finish this....
+    /***************************************************************************
+    Returns a range containing this simplicial complex's connected components
+    (returned as simplicial complexes of the same vertex type.)
+    */
     auto connectedComponents()
     {
         static struct FacetRecord
