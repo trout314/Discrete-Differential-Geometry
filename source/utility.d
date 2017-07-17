@@ -339,7 +339,8 @@ void throwsWithMsg(ThrownType : Throwable = Exception, E)
             return;
         }
     }
-    throw new Error("throwsWithMsg failed because expression did not throw");
+    throw new Error("throwsWithMsg failed because expression did not throw",
+        file, line);
 }
 
 /*******************************************************************************

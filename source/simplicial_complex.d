@@ -1,10 +1,10 @@
 import simplex : facesOfDim, hasFace, simplex, Simplex;
 
-import std.algorithm : all, any, canFind, countUntil, each, filter, find, joiner, map, 
+import std.algorithm : all, any, canFind, chunkBy, countUntil, each, filter, find, joiner, map, 
     maxElement, remove, setDifference, sort, sum, uniq;
 import std.conv : to;
 import std.exception : assertThrown, enforce;
-import std.range : array, chunks, enumerate, ElementType, front, iota, isInputRange, walkLength;
+import std.range : array, chunks, empty, enumerate, ElementType, front, iota, isInputRange, refRange, walkLength, zip;
 import std.traits : isArray, Unqual;
 import std.typecons : Tuple, tuple;
 
@@ -339,6 +339,80 @@ public:
         assert(sc.eulerCharacteristic == -1);        
     }
 
+
+    // TO DO: Finish this....
+    auto connectedComponents()
+    {
+        static struct FacetRecord
+        {
+            Vertex[] facet;
+            int label;      // labels which connected component facet is in
+            bool seenNear;  // looked at facets in the star of the vertices?
+        }
+
+        /* We will label each facet with an integer 1, 2, 3 ... etc, marking its
+        connected component */
+        // auto labels = new int[numFacets];
+        // auto allFacets = facets.array;
+
+
+        /* We keep track of the facets we've yet to examine, the facets we've 
+        labeled (but are not yet done with) and those that are completed (which
+        means both labeled and all the facets in the star of its vertices are
+        also labeled. */
+        FacetRecord[] records = facets.map!(f => FacetRecord(f)).array;
+
+        int currentLabel = 1;
+
+        // Deal with the facets that are (necessarily isolated) vertices
+        auto nVertFac = facets!0.walkLength;
+        auto vertexFacets = records[0 .. nVertFac];
+
+        foreach(indx, ref f; vertexFacets)
+        {
+            f.label = currentLabel;
+            f.seenNear = true;
+            ++currentLabel;
+        }
+
+        while(!records.find!(r => r.label == 0).empty)
+        {
+            records.find!(r => r.label == 0).front.label = currentLabel;
+
+            // Now we propagate the current label as far as we can
+            while(records.canFind!(r => r.label != 0 && !r.seenNear))
+            {
+                auto toDo = records.find!(r => r.label != 0 && !r.seenNear);
+
+                foreach(f; toDo.front.facet.map!(v => star(simplex(v))).joiner)
+                {
+                    auto findIt = records.find!(r => r.facet == f);
+                    assert(!findIt.empty);
+                    findIt.front.label = currentLabel;
+                }
+
+                toDo.front.seenNear = true;           
+            }
+            currentLabel += 1;
+        }
+
+        return records.chunkBy!((r1, r2) => r1.label == r2.label)
+            .map!(rList => SimplicialComplex(rList.map!(r => r.facet).array));           
+    }
+    ///
+    unittest
+    {
+        auto sc = SimplicialComplex!()([[1],[9], [2,3],[3,4],[5,6],[6,7,8]]);
+
+        auto c1 = SimplicialComplex!()([[1]]);
+        auto c2 = SimplicialComplex!()([[9]]);
+        auto c3 = SimplicialComplex!()([[2,3], [3,4]]);
+        auto c4 = SimplicialComplex!()([[5,6], [6,7,8]]);
+
+        assert(sc.connectedComponents.array == [c1, c2, c3, c4]);       
+    }
+
+
     /***************************************************************************
     Returns a nice looking representation of the simplicial complex as a string.
     */
@@ -375,12 +449,14 @@ unittest
 
     // WARNING: Currently returns true for disjoint copies of the circle.
     // TO DO: Fix this
-    auto manyCircles = SimplicialComplex!()([
+    auto disjointCircles = SimplicialComplex!()([
         [1,2], [2,3], [1,3],
         [4,5], [5,6], [4,6]]);
 
-    assert(manyCircles.isCircle);
+    assert(disjointCircles.isCircle);
 }
+
+
 
 ///
 unittest
