@@ -34,13 +34,18 @@ auto test(alias Manifold)()
     throwsWithMsg(Manifold!2([[1,2,3,4]]), "expected facets of dimension 2 but "
         ~ "got the facet [1, 2, 3, 4]");
 
-    throwsWithMsg(Manifold!2([[1,2,3]]), "manifold constructor expects ridges "
+    throwsWithMsg(Manifold!2([[1,2,3]]), "manifold constructor expected ridges "
         ~ "of degree 2, but found a ridge [1,2] with degree 1");
 
     throwsWithMsg(Manifold!2([[1,2,3], [1,2,4], [1,3,4], [2,3,4], [1,5,6], 
-        [1,5,7], [1,6,7], [5,6,7]]), "manifold constructor expects hinges whose"
-        ~ " links are circles but found a hinge [1] with link"
+        [1,5,7], [1,6,7], [5,6,7]]), "manifold constructor expected hinges"
+        ~ " whose links are circles but found a hinge [1] with link"
         ~ " [[2, 3], [2, 4], [3, 4], [5, 6], [5, 7], [6, 7]]");
+
+    auto sphere = [[6,7,8], [6,7,9], [6,8,9], [7,8,9]];
+    throwsWithMsg(Manifold!2(octahedron.facets ~ sphere), "manifold constructor"
+        ~ " expected a connected simplicial complex but got one with"
+        ~ " 2 connected components");
 
     return true;
 }

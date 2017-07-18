@@ -38,7 +38,7 @@ struct SmallManifold(int dimension_, Vertex_ = int)
             auto badRidge = this.simplices!(dimension - 1).find!(
                 s => this.degree(s) != 2);
 
-            enforce(badRidge.empty, "manifold constructor expects ridges of "
+            enforce(badRidge.empty, "manifold constructor expected ridges of "
             ~ "degree 2, but found a ridge " ~ badRidge.front.to!string 
             ~ " with degree " ~ this.degree(badRidge.front).to!string);
         }
@@ -48,7 +48,7 @@ struct SmallManifold(int dimension_, Vertex_ = int)
             auto badHinge = this.simplices!(dimension - 2).find!(
                 s => !(this.link(s).to!(SimplicialComplex!Vertex).isCircle));
 
-            enforce(badHinge.empty, "manifold constructor expects hinges whose "
+            enforce(badHinge.empty, "manifold constructor expected hinges whose "
                 ~ "links are circles but found a hinge " 
                 ~ badHinge.front.to!string ~ " with link " 
                 ~ this.link(badHinge.front).to!string);
@@ -56,9 +56,14 @@ struct SmallManifold(int dimension_, Vertex_ = int)
 
         static if(dimension >= 3)
         {
-            // TO DO: Check links of codimension-3 simplices
+            // auto badCodim3 = this.simplices!(dimension - 3).find!(
+            //     s => !(this.link(s).to!(SimplicialComplex!Vertex).eulerCharacteristic == 2));
         }
 
+        enforce(this.isConnected, "manifold constructor expected a connected "
+            ~ "simplicial complex but got one with "
+            ~ this.connectedComponents.walkLength.to!string 
+            ~ " connected components");
     }
 
     auto star(int dim)(const Simplex!(dim, Vertex) s) const

@@ -343,7 +343,7 @@ public:
     Returns a range containing this simplicial complex's connected components
     (returned as simplicial complexes of the same vertex type.)
     */
-    auto connectedComponents()
+    auto connectedComponents() const
     {
         static struct FacetRecord
         {
@@ -418,7 +418,7 @@ public:
     Returns true if the simplicial complex is connected and false otherwise.
     Note that an empty complex counts as connected.
     */
-    auto isConnected()
+    auto isConnected() const
     {
         return connectedComponents.walkLength <= 1;
     }
