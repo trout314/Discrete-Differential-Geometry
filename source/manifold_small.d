@@ -56,8 +56,16 @@ struct SmallManifold(int dimension_, Vertex_ = int)
 
         static if(dimension >= 3)
         {
-            // auto badCodim3 = this.simplices!(dimension - 3).find!(
-            //     s => !(this.link(s).to!(SimplicialComplex!Vertex).eulerCharacteristic == 2));
+            auto badCodim3 = this.simplices!(dimension - 3).find!(
+                s => this.link(s).to!(SimplicialComplex!Vertex).eulerCharacteristic != 2
+                    || !this.link(s).to!(SimplicialComplex!Vertex).isConnected);
+
+            // TO DO: Write test that uses the isConnected part of above
+
+            enforce(badCodim3.empty, "manifold constructor expected the links "
+                ~ "of all codimension-3 simplices to be spheres but found the "
+                ~ "simplex " ~ badCodim3.front.to!string ~ " with link "
+                ~ this.link(badCodim3.front).to!string);
         }
 
         enforce(this.isConnected, "manifold constructor expected a connected "

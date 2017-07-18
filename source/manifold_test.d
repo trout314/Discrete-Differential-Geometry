@@ -47,5 +47,17 @@ auto test(alias Manifold)()
         ~ " expected a connected simplicial complex but got one with"
         ~ " 2 connected components");
 
+    auto sphere3 = Manifold!3(
+        [[1,2,3,4], [1,2,3,5], [1,2,4,5], [1,3,4,5], [2,3,4,5]]);
+
+    auto sphere3A = Manifold!3(
+        [[1,6,7,8], [1,6,7,9], [1,6,8,9], [1,7,8,9], [6,7,8,9]]);
+
+    throwsWithMsg(Manifold!3(sphere3.facets ~ sphere3A.facets),
+        "manifold constructor expected the links of all codimension-3 "
+        ~ "simplices to be spheres but found the simplex [1] with link "
+        ~ "[[2, 3, 4], [2, 3, 5], [2, 4, 5], [3, 4, 5], [6, 7, 8], [6, 7, 9],"
+        ~ " [6, 8, 9], [7, 8, 9]]");
+
     return true;
 }
