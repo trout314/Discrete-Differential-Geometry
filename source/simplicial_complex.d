@@ -479,6 +479,36 @@ unittest
 }
 
 /*******************************************************************************
+Decide if a simplicial complex is pure of dimension `d`
+*/
+bool isPureOfDim(Vertex)(SimplicialComplex!Vertex sc, int d)
+{
+    enforce(d >= 0, "expected a non-negative dimension but got " ~ d.to!string);
+    return sc.facets(d).walkLength == sc.numFacets;
+}
+///
+unittest
+{
+    auto sc = SimplicialComplex!()();
+
+    // An empty simplicial complex is pure of any dimension
+    assert(iota(10).all!(d => sc.isPureOfDim(d)));
+
+    sc.insertFacet([1,2]);
+    sc.insertFacet([2,3]);
+    assert(sc.isPureOfDim(1));
+    assert(!sc.isPureOfDim(0));
+    assert(iota(2, 10).all!(d => !sc.isPureOfDim(d)));
+    
+    sc.insertFacet([4,5,6]);
+    assert(iota(10).all!(d => !sc.isPureOfDim(d)));
+    
+    throwsWithMsg(sc.isPureOfDim(-2),
+        "expected a non-negative dimension but got -2");
+}
+
+
+/*******************************************************************************
 Decide if a simplicial complex is homeomorphic to a surface of genus `g`
 */
 bool isSurfaceOfGenus(Vertex)(SimplicialComplex!Vertex sc, int g)
@@ -510,6 +540,16 @@ unittest
         [4,6,12],[4,7,10],[4,8,9],[4,10,11],[4,11,12],[5,6,9],[5,6,12],[5,7,11],
         [5,8,10],[5,10,11],[6,7,8],[6,7,10],[6,9,11],[7,9,12],[8,9,12]]);
     assert(g6.isSurfaceOfGenus(6));
+
+    // Non orientable?
+    // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n10_o0_g5
+    // Surface #4941 on non-orientable genus 5 list
+    auto g5 = SimplicialComplex!()([[1,2,3],[1,2,4],[1,3,5],[1,4,6],[1,5,7],
+        [1,6,7],[2,3,6],[2,4,8],[2,5,7],[2,5,9],[2,6,10],[2,7,8],[2,9,10],
+        [3,4,6],[3,4,10],[3,5,8],[3,7,8],[3,7,10],[4,5,9],[4,5,10],[4,8,9],
+        [5,8,10],[6,7,9],[6,8,9],[6,8,10],[7,9,10]]);
+    (g5.eulerCharacteristic == -3).writeln;
+
 }
 
 /*******************************************************************************
