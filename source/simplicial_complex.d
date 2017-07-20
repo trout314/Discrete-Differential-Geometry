@@ -479,16 +479,30 @@ unittest
 }
 
 /*******************************************************************************
+Decide if a simplicial complex is homeomorphic to a surface of genus `g`
+*/
+bool isSurfaceOfGenus(Vertex)(SimplicialComplex!Vertex sc, int g)
+{
+    alias SimpComp = SimplicialComplex!Vertex;
+
+    return sc.isConnected
+        && sc.facets.all!(f => f.walkLength == 3)
+        && sc.simplices!0.all!(v => sc.link(v).to!SimpComp.isCircle)
+        && sc.eulerCharacteristic == 2 - 2 * g;    
+}
+///
+unittest
+{
+    // TO DO: More tests
+}
+
+/*******************************************************************************
 Decide if a simplicial complex is homeomorphic to a 2-sphere
 */
 bool is2Sphere(Vertex)(SimplicialComplex!Vertex sc)
 {
-    alias SimpComp = SimplicialComplex!Vertex;
 
-    return sc.facets.all!(f => f.walkLength == 3)
-        && sc.simplices!0.all!(v => sc.link(v).to!SimpComp.isCircle)
-        && sc.eulerCharacteristic == 2
-        && sc.isConnected;
+    return sc.isSurfaceOfGenus(0);
 }
 ///
 unittest
