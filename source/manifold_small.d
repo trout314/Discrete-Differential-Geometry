@@ -4,7 +4,7 @@ import std.exception : enforce;
 import std.range : array, front, isInputRange, ElementType, walkLength;
 import std.traits : isArray;
 import simplex : Simplex, simplex;
-import simplicial_complex : SimplicialComplex, isCircle;
+import simplicial_complex : SimplicialComplex, isCircle, is2Sphere;
 import utility : staticIota, subsets;
 
 struct SmallManifold(int dimension_, Vertex_ = int)
@@ -22,8 +22,7 @@ struct SmallManifold(int dimension_, Vertex_ = int)
             && is(ElementType!F == Facet) || is(ElementType!F == Vertex[]),
             "a " ~ SmallManifold!(dimension, Vertex).stringof ~ " must be "
             ~ "constructed from a range or array of elements with type " 
-            ~ Facet.stringof ~ " or " ~ Vertex[].stringof ~ " but got element "
-            ~ "type " ~ ElementType!F.stringof);
+            ~ Facet.stringof ~ " or " ~ Vertex[].stringof);
 
         enforce(initialFacets.all!(f => f.walkLength == dimension + 1),
             "expected facets of dimension " ~ dimension.to!string
@@ -34,39 +33,36 @@ struct SmallManifold(int dimension_, Vertex_ = int)
         initialFacets.each!(f => simpComp_.insertFacet(f));
 
         static if(dimension >= 1)
-        {
+        {{
             auto badRidge = this.simplices!(dimension - 1).find!(
                 s => this.degree(s) != 2);
 
             enforce(badRidge.empty, "manifold constructor expected ridges of "
             ~ "degree 2, but found a ridge " ~ badRidge.front.to!string 
             ~ " with degree " ~ this.degree(badRidge.front).to!string);
-        }
+        }}
 
         static if(dimension >= 2)
-        {
+        {{
             auto badHinge = this.simplices!(dimension - 2).find!(
                 s => !(this.link(s).to!(SimplicialComplex!Vertex).isCircle));
 
-            enforce(badHinge.empty, "manifold constructor expected hinges whose "
-                ~ "links are circles but found a hinge " 
+            enforce(badHinge.empty, "manifold constructor expected hinges whose"
+                ~ " links are circles but found a hinge " 
                 ~ badHinge.front.to!string ~ " with link " 
                 ~ this.link(badHinge.front).to!string);
-        }
+        }}
 
         static if(dimension >= 3)
-        {
+        {{
             auto badCodim3 = this.simplices!(dimension - 3).find!(
-                s => this.link(s).to!(SimplicialComplex!Vertex).eulerCharacteristic != 2
-                    || !this.link(s).to!(SimplicialComplex!Vertex).isConnected);
-
-            // TO DO: Write test that uses the isConnected part of above
+                s => !this.link(s).to!(SimplicialComplex!Vertex).is2Sphere);
 
             enforce(badCodim3.empty, "manifold constructor expected the links "
-                ~ "of all codimension-3 simplices to be spheres but found the "
+                ~ "of all codimension-3 simplices to be 2-spheres but found "
                 ~ "simplex " ~ badCodim3.front.to!string ~ " with link "
                 ~ this.link(badCodim3.front).to!string);
-        }
+        }}
 
         enforce(this.isConnected, "manifold constructor expected a connected "
             ~ "simplicial complex but got one with "
@@ -80,7 +76,7 @@ struct SmallManifold(int dimension_, Vertex_ = int)
     }
 
     alias asSimplicialComplex this;
-    ref const(SimplicialComplex!Vertex) asSimplicialComplex()
+    ref const(SimplicialComplex!Vertex) asSimplicialComplex() const
     {
         return simpComp_; 
     }

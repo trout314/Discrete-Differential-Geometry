@@ -478,6 +478,35 @@ unittest
     assert(!disjointCircles.isCircle);
 }
 
+/*******************************************************************************
+Decide if a simplicial complex is homeomorphic to a 2-sphere
+*/
+bool is2Sphere(Vertex)(SimplicialComplex!Vertex sc)
+{
+    alias SimpComp = SimplicialComplex!Vertex;
+
+    return sc.facets.all!(f => f.walkLength == 3)
+        && sc.simplices!0.all!(v => sc.link(v).to!SimpComp.isCircle)
+        && sc.eulerCharacteristic == 2
+        && sc.isConnected;
+}
+///
+unittest
+{
+    auto s1 = SimplicialComplex!()([[1,2,3], [1,2,4], [1,3,4], [2,3,4]]);
+    assert(s1.is2Sphere);
+
+    auto disjoint2Spheres = SimplicialComplex!()(s1.facets
+        ~ [[5,6,7], [5,6,8], [5,7,8], [6,7,8]]);
+    assert(!disjoint2Spheres.is2Sphere);
+
+    auto s2 = SimplicialComplex!()(s1.facets
+        ~ [[1,6,7], [1,6,8], [1,7,8], [6,7,8]]);
+    assert(!s2.is2Sphere);
+
+    // TO DO: Some more tests
+}
+
 ///
 unittest
 {
