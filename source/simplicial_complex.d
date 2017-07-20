@@ -494,13 +494,22 @@ bool isSurfaceOfGenus(Vertex)(SimplicialComplex!Vertex sc, int g)
 unittest
 {
     // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n10_o1_g2
-
     // Surface #514 in the genus 2 list 
     auto g2 = SimplicialComplex!()([[1,2,3],[1,2,4],[1,3,5],[1,4,6],[1,5,6],
         [2,3,6],[2,4,7],[2,6,8],[2,7,9],[2,8,9],[3,5,8],[3,6,9],[3,7,8],
         [3,7,9],[4,5,7],[4,5,9],[4,6,10],[4,9,10],[5,6,9],[5,7,10],[5,8,10],
         [6,7,8],[6,7,10],[8,9,10]]);
     assert(g2.isSurfaceOfGenus(2));
+
+    // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n12_o1_g6
+    // Surface #30 in the genus 6 list
+    auto g6 = SimplicialComplex!()([[1,2,3],[1,2,4],[1,3,5],[1,4,6],[1,5,7],
+        [1,6,8],[1,7,9],[1,8,10],[1,9,11],[1,10,12],[1,11,12],[2,3,6],[2,4,5],
+        [2,5,9],[2,6,11],[2,7,8],[2,7,12],[2,8,11],[2,9,10],[2,10,12],[3,4,7],
+        [3,4,9],[3,5,12],[3,6,10],[3,7,11],[3,8,11],[3,8,12],[3,9,10],[4,5,8],
+        [4,6,12],[4,7,10],[4,8,9],[4,10,11],[4,11,12],[5,6,9],[5,6,12],[5,7,11],
+        [5,8,10],[5,10,11],[6,7,8],[6,7,10],[6,9,11],[7,9,12],[8,9,12]]);
+    assert(g6.isSurfaceOfGenus(6));
 }
 
 /*******************************************************************************
@@ -525,7 +534,12 @@ unittest
         ~ [[1,6,7], [1,6,8], [1,7,8], [6,7,8]]);
     assert(!s2.is2Sphere);
 
-    // TO DO: Some more tests
+    // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n10_o1_g0
+    // Surface #168 in the genus 0 (sphere) list
+    auto g0 = SimplicialComplex!()([[1,2,3],[1,2,4],[1,3,4],[2,3,5],[2,4,6],
+        [2,5,6],[3,4,7],[3,5,6],[3,6,8],[3,7,9],[3,8,9],[4,6,10],[4,7,9],
+        [4,9,10],[6,8,10],[8,9,10]]);
+    assert(g0.is2Sphere);
 }
 
 /*******************************************************************************
@@ -538,11 +552,12 @@ bool is2Torus(Vertex)(SimplicialComplex!Vertex sc)
 ///
 unittest
 {
-    // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n10_o1_g1  
-    auto torus = SimplicialComplex!()([[1,2,3],[1,2,4],[1,3,4],[2,3,5],[2,4,5],
-      [3,4,6],[3,5,7],[3,6,8],[3,7,8],[4,5,8],[4,6,7],[4,7,9],[4,8,9], [5,7,9],
-      [5,8,10],[5,9,10],[6,7,10],[6,8,9],[6,9,10],[7,8,10]]);
-    assert(torus.is2Torus);
+    // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n10_o1_g1
+    // Surface #2105 on genus 1 list
+    auto g1 = SimplicialComplex!()([[1,2,3],[1,2,4],[1,3,5],[1,4,6],[1,5,6],
+        [2,3,7],[2,4,8],[2,5,8],[2,5,9],[2,7,9],[3,5,10],[3,7,10],[4,6,9],
+        [4,8,10],[4,9,10],[5,6,8],[5,9,10],[6,7,8],[6,7,9],[7,8,10]]);
+    assert(g1.is2Torus);
 }
 
 ///
