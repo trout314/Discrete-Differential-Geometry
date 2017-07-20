@@ -521,6 +521,20 @@ unittest
     // TO DO: Some more tests
 }
 
+/*******************************************************************************
+Decide if a simplicial complex is homeomorphic to a 2-torus
+*/
+bool is2Torus(Vertex)(SimplicialComplex!Vertex sc)
+{
+    return sc.isSurfaceOfGenus(1);
+}
+///
+unittest
+{
+    // TO DO: Some tests
+}
+
+
 ///
 unittest
 {
