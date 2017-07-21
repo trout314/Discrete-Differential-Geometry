@@ -19,7 +19,13 @@ auto test(alias Manifold)()
     assert(octahedron.fVector == [6,12,8]);
     assert(octahedron.eulerCharacteristic == 2);
 
-    auto pMoves = octahedron.pachnerMoves;
+    auto tetrahedron = Manifold!2([[1,2,3], [1,2,4], [1,3,4], [2,3,4]]);
+
+    // octahedron.pachnerMoves.writeln;
+    // tetrahedron.pachnerMoves.writeln;
+
+    // tetrahedron.doPachner([1,2,3]);
+    // tetrahedron.writeln;
 
     alias s = simplex;
 
@@ -31,8 +37,8 @@ auto test(alias Manifold)()
     static assert(is(m1.Vertex == string));
     static assert(is(m1.Facet == Simplex!(1, string)));
 
-    throwsWithMsg(Manifold!2([[1,2,3,4]]), "expected facets of dimension 2 but "
-        ~ "got the facet [1, 2, 3, 4]");
+    throwsWithMsg(Manifold!2([[1,2,3,4]]), "expected all facets to have "
+        ~ "dimension 2 but got the facet [1, 2, 3, 4]");
 
     throwsWithMsg(Manifold!2([[1,2,3]]), "manifold constructor expected ridges "
         ~ "of degree 2, but found a ridge [1,2] with degree 1");

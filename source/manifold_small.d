@@ -1,11 +1,13 @@
-import std.algorithm : all, each, find, map, sort;
+import std.algorithm : all, canFind, each, find, joiner, map, sort, uniq;
 import std.conv : to;
 import std.exception : enforce;
 import std.range : array, front, isInputRange, ElementType, walkLength;
 import std.traits : isArray;
 import simplex : Simplex, simplex;
-import simplicial_complex : SimplicialComplex, isCircle, is2Sphere;
+import simplicial_complex : SimplicialComplex, isCircle, isPureOfDim, is2Sphere, join;
 import utility : staticIota, subsets;
+
+import std.stdio : writeln;
 
 struct SmallManifold(int dimension_, Vertex_ = int)
 {
@@ -24,13 +26,16 @@ struct SmallManifold(int dimension_, Vertex_ = int)
             ~ "constructed from a range or array of elements with type " 
             ~ Facet.stringof ~ " or " ~ Vertex[].stringof);
 
-        enforce(initialFacets.all!(f => f.walkLength == dimension + 1),
-            "expected facets of dimension " ~ dimension.to!string
-            ~ " but got the facet " 
-            ~ initialFacets.find!(f => f.walkLength != dimension + 1)
-                .front.to!string);
-
         initialFacets.each!(f => simpComp_.insertFacet(f));
+
+        enforce(this.isPureOfDim(dimension), "expected all facets to have " 
+            ~ "dimension " ~ dimension.to!string ~ " but got the facet " 
+            ~ facets.find!(f => f.walkLength != dimension + 1).front.to!string);
+
+        enforce(this.isConnected, "manifold constructor expected a connected "
+            ~ "simplicial complex but got one with "
+            ~ this.connectedComponents.walkLength.to!string 
+            ~ " connected components");
 
         static if(dimension >= 1)
         {{
@@ -63,11 +68,6 @@ struct SmallManifold(int dimension_, Vertex_ = int)
                 ~ "simplex " ~ badCodim3.front.to!string ~ " with link "
                 ~ this.link(badCodim3.front).to!string);
         }}
-
-        enforce(this.isConnected, "manifold constructor expected a connected "
-            ~ "simplicial complex but got one with "
-            ~ this.connectedComponents.walkLength.to!string 
-            ~ " connected components");
     }
 
     auto star(int dim)(const Simplex!(dim, Vertex) s) const
@@ -81,7 +81,7 @@ struct SmallManifold(int dimension_, Vertex_ = int)
         return simpComp_; 
     }
 
-    auto degree(int dim)(Simplex!(dim, Vertex) s) const
+    auto degree(int dim)(const Simplex!(dim, Vertex) s) const
     {
         return star(s).walkLength;
     }
@@ -96,18 +96,39 @@ struct SmallManifold(int dimension_, Vertex_ = int)
         Vertex[][] result;
         foreach(simp, deg; degreeMap)
         {
-
-            /* TO DO: IMPORTANT! Check that for the replacement ball of the 
-            form star(s) the simplex s is not already present. */
-
             if(deg == dimension + 2 - simp.walkLength)
             {
-                result ~= simp.dup;
+                auto newSimp = this.link(simp).joiner.array.sort().uniq;
+                if(newSimp.empty || !this.contains(newSimp))
+                {
+                    result ~= simp.dup;
+                }
             }           
         }
         result.sort!mySort;
-
         return result;
+    }
+
+    void doPachner(Vertex[] s)
+    {
+        // TO DO: Better error
+        enforce(this.pachnerMoves.canFind(s), "bad pachner move");
+
+        auto newSimp = this.link(s).array.joiner.array.sort().uniq.array;
+        foreach(f; simpComp_.star(s).array)
+        {
+            f.writeln;
+            simpComp_.removeFacet(f);
+        }
+
+        // auto sc = SimplicialComplex!Vertex([s]);
+        // auto sc2 = SimplicialComplex!Vertex([newSimp]);
+        // auto sc3 = join(sc, sc2);
+
+        // foreach(f; sc3.facets)
+        // {
+        //    simpComp_.insertFacet(f.dup);
+        // }
     }
 
 

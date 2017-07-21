@@ -1,7 +1,7 @@
 import simplex : facesOfDim, hasFace, simplex, Simplex;
 
-import std.algorithm : all, any, canFind, chunkBy, countUntil, each, filter, find, joiner, map, 
-    maxElement, remove, setDifference, sort, sum, uniq;
+import std.algorithm : all, any, canFind, chunkBy, copy, countUntil, each, filter, find, joiner, map, 
+    maxElement, remove, setDifference, setIntersection, sort, sum, uniq;
 import std.conv : to;
 import std.exception : assertThrown, enforce;
 import std.range : array, chunks, empty, enumerate, ElementType, front, iota, isInputRange, refRange, walkLength, zip;
@@ -141,9 +141,11 @@ public:
             ~ vertices.to!string ~ " not in the simplicial complex");
 
         int dim = vertices.walkLength.to!int - 1;
+
         auto indx = facetVertices[dim].chunks(dim + 1).countUntil(vertices);
-        facetVertices[dim][indx * (dim + 1) .. $ - (dim + 1)]
-            = facetVertices[dim][(indx + 1) * (dim + 1) .. $];
+        copy(facetVertices[dim][(indx + 1) * (dim + 1) .. $],
+            facetVertices[dim][indx * (dim + 1) .. $ - (dim + 1)]);
+        
         facetVertices[dim] = facetVertices[dim][0 .. $ - (dim + 1)];
     }
     ///
@@ -163,6 +165,15 @@ public:
 
         throwsWithMsg(sc.removeFacet([2,3]), "tried to remove a facet [2, 3] "
             ~ "not in the simplicial complex");
+
+
+        auto sc2 = SimplicialComplex!()([[1,2,3], [1,2,4], [1,3,4], [2,3,4]]);
+        sc2.removeFacet([1,2,3]);
+        assert(sc2.facets == [[1,2,4], [1,3,4], [2,3,4]]);
+        sc2.insertFacet([1,2,5]);
+        sc2.insertFacet([1,3,5]);
+        sc2.insertFacet([2,3,5]);
+        sc2.facets.writeln;
     }
 
     /***************************************************************************
@@ -228,7 +239,7 @@ public:
     */
     Vertex[][] link(V)(V vertices) const if (isInputRange!V)
     {
-        static assert(is(ElementType!V == Vertex));
+        static assert(is(Unqual!(ElementType!V) == Vertex));
         return this.star(vertices).map!(
             f => setDifference(f, vertices).array).array;
     }
@@ -304,10 +315,11 @@ public:
     Get the f-vector of the simplicial complex. The returned array lists the
     number of simplices in each dimension.
     */
-    auto fVector() const
+    int[] fVector() const
     {   
         immutable maxDim = facetVertices.keys.maxElement.to!int;
-        return iota(maxDim + 1).map!(dim => simplices(dim).walkLength).array; 
+        return iota(maxDim + 1).map!(dim => simplices(dim).walkLength.to!int)
+            .array; 
     }
     ///
     unittest
@@ -320,9 +332,9 @@ public:
     /***************************************************************************
     Returns the Euler characteristic of the simplicial complex
     */
-    auto eulerCharacteristic() const
+    int eulerCharacteristic() const
     {
-        return fVector.enumerate.map!(f => (-1)^^f.index * f.value).sum;
+        return fVector.enumerate.map!(f => (-1)^^f.index.to!int * f.value).sum;
     }
     ///
     unittest
@@ -447,6 +459,35 @@ public:
     }
 }
 
+auto join(Vertex)(SimplicialComplex!Vertex sc1, SimplicialComplex!Vertex sc2)
+{
+    Vertex[][] result;
+    foreach(f1; sc1.facets)
+    {
+        foreach(f2; sc2.facets)
+        {
+            assert(setIntersection(f1, f2).empty);
+            result ~= (f1 ~ f2).sort().array;
+        }
+    }
+
+    return SimplicialComplex!Vertex(result);
+}
+///
+unittest
+{
+    auto sc1 = SimplicialComplex!()([[1,2], [2,3,4], [5]]);
+    auto sc2 = SimplicialComplex!()([[6,7], [8]]);
+
+    assert(join(sc1, sc2).facets == [
+        [5, 8], [1, 2, 8], [5, 6, 7],
+        [1, 2, 6, 7], [2, 3, 4, 8], [2, 3, 4, 6, 7]]);
+
+    // TO DO: More tests
+}
+
+
+
 /*******************************************************************************
 Decide if a simplicial complex is homeomorphic to a 1-sphere (circle)
 */
@@ -481,7 +522,7 @@ unittest
 /*******************************************************************************
 Decide if a simplicial complex is pure of dimension `d`
 */
-bool isPureOfDim(Vertex)(SimplicialComplex!Vertex sc, int d)
+bool isPureOfDim(Vertex)(const SimplicialComplex!Vertex sc, int d)
 {
     enforce(d >= 0, "expected a non-negative dimension but got " ~ d.to!string);
     return sc.facets(d).walkLength == sc.numFacets;
@@ -516,7 +557,7 @@ bool isSurfaceOfGenus(Vertex)(SimplicialComplex!Vertex sc, int g)
     alias SimpComp = SimplicialComplex!Vertex;
 
     return sc.isConnected
-        && sc.facets.all!(f => f.walkLength == 3)
+        && sc.isPureOfDim(2)
         && sc.simplices!0.all!(v => sc.link(v).to!SimpComp.isCircle)
         && sc.eulerCharacteristic == 2 - 2 * g;    
 }
@@ -608,7 +649,7 @@ unittest
 }
 
 ///
-@safe pure unittest
+@safe /* pure */ unittest
 {
     // create an empty simplicial complex
     SimplicialComplex!() sc;
