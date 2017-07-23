@@ -11,6 +11,8 @@ import std.traits : CommonType, isArray, isImplicitlyConvertible, isInstanceOf,
 import utility : binarySequences, isConstructible, isEqualityComparable, 
     isLessThanComparable, isPrintable, isSubsetOf, subsetsOfSize, throwsWithMsg;
 
+version(unittest) { import unit_threaded; }
+
 /*******************************************************************************
 Represents a non-degenerate simplex represented as set of vertices of user
 specified type Vertex. Elements of type Vertex must be comparable with less-than
@@ -133,6 +135,7 @@ private:
 }
 
 /// Some basic examples
+@("Basic simplex tests")
 pure @safe unittest
 {
     // Create a simplex of dimension 1 with vertices [1,2]

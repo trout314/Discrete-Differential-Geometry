@@ -15,7 +15,10 @@ License:    $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0)
 import std.algorithm, std.bigint, std.conv, std.exception, std.format, std.math, std.stdio,
     std.traits;
 
+version(unittest) {import unit_threaded;}
+
  ///
+ @Name("pi approximation")
  unittest
  {
      enum maxTerm = 30;
@@ -80,6 +83,7 @@ template isIntegerLike(T)
             }));
 }
 ///
+@Name("isIntegerLike")
 @safe unittest
 {
     static assert(isIntegerLike!BigInt);
@@ -118,6 +122,7 @@ template CommonInteger(I1, I2) if (isIntegerLike!I1 && isIntegerLike!I2)
     alias CommonInteger = typeof(I1.init * I2.init);
 }
 ///
+@Name("CommonInteger")
 @safe unittest
 {
     static assert(is(CommonInteger!(BigInt, int) == BigInt));
@@ -151,6 +156,7 @@ Rational!(CommonInteger!(I1, I2)) rational(I1, I2)(const I1 i1, const I2 i2)
     return ret;
 }
 ///
+@Name("rational 2-arg")
 unittest
 {
     auto r1 = rational( BigInt("314159265"), BigInt("27182818"));
@@ -169,6 +175,7 @@ Rational!I rational(I)(const I val) if (isIntegerLike!I)
     return rational(val, 1);
 }
 ///
+@Name("rational 1-arg")
 unittest
 {
     assert(rational(5) == rational(5,1));
@@ -578,6 +585,7 @@ public:
         return this;
     }
     ///
+    @Name("invert")
     unittest
     {
         assert(rational(2,3).invert == rational(3,2));
@@ -669,6 +677,7 @@ public:
         }
     }
     ///
+    @Name("convert to floating point")
     unittest
     {
         assert(rational(10, 1).to!double == 10.0);
@@ -691,6 +700,7 @@ public:
         return numer;
     }
     ///
+    @Name("numerator")
     unittest
     {
         assert(rational(23, 44).numerator == 23);
@@ -705,6 +715,7 @@ public:
         return denom;
     }
     ///
+    @Name("denominator")
     unittest
     {
         assert(rational(17, 324).denominator == 324);
@@ -719,6 +730,7 @@ public:
         return numer / denom;
     }
     ///
+    @Name("integerPart")
     unittest
     {
         alias r = rational;
@@ -737,6 +749,7 @@ public:
         return this - integerPart;
     }
     ///
+    @Name("fractionPart")
     unittest
     {
         alias r = rational;
@@ -766,6 +779,7 @@ public:
         }
     }
     ///
+    @Name("toString")
     unittest
     {
         assert(rational(3,4).toString == "3/4");
@@ -809,6 +823,8 @@ private:
     }
 }
 
+///
+@Name("toString")
 unittest
 {
     // All reference values from the Maxima computer algebra system.
@@ -1009,6 +1025,8 @@ private Rational!Int toRationalImpl(Int)(real floatNum, real epsilon)
     return ret + toRationalImpl!(Int)(actualEpsilon, epsilon);
 }
 
+///
+@Name("toRational")
 unittest
 {
     // Start with simple cases.
@@ -1065,6 +1083,8 @@ CommonInteger!(I1, I2) gcf(I1, I2)(const I1 num1, const I2 num2)
     assert(0);
 }
 
+///
+@Name("gcf")
 unittest
 {
     // Values from the Maxima computer algebra system.
@@ -1123,6 +1143,8 @@ Int floor(Int)(Rational!Int r)
     }
 }
 
+///
+@Name("floor")
 unittest
 {
     assert(floor(rational(1, 2)) == 0);
@@ -1149,6 +1171,7 @@ Int ceil(Int)(Rational!Int r)
     }
 }
 
+@Name("ceil")
 unittest
 {
     assert(ceil(rational(1, 2)) == 1);
@@ -1186,6 +1209,8 @@ Int round(Int)(Rational!Int r)
     return intPart;
 }
 
+///
+@Name("round")
 unittest
 {
     assert(round(rational(1, 3)) == 0);

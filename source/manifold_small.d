@@ -1,16 +1,30 @@
-import std.algorithm : all, canFind, each, find, joiner, map, sort, uniq;
+import std.algorithm : all, canFind, each, find, joiner, map, maxElement, sort, uniq;
 import std.conv : to;
 import std.exception : enforce;
-import std.range : array, front, isInputRange, ElementType, walkLength;
+import std.range : array, empty, front, isInputRange, ElementType, popFront, walkLength;
 import std.traits : isArray;
 import simplex : Simplex, simplex;
 import simplicial_complex : SimplicialComplex, isCircle, isPureOfDim, is2Sphere, join;
-import utility : staticIota, subsets;
+import utility : staticIota, subsets, subsetsOfSize;
 
 import std.stdio : writeln;
 
 struct SmallManifold(int dimension_, Vertex_ = int)
 {
+private:
+    SimplicialComplex!Vertex simpComp_;
+    Vertex[] verticesToReuse;
+    static if(is(Vertex_ == int))
+    {
+        alias getNewVertex =
+            sc => sc.simplices(0).map!(v => v[0]).maxElement + 1;
+    }
+
+    static if(is(Vertex_ == string))
+    {
+        alias getNewVertex = sc => "bubba!";
+    }
+public:
     static immutable dimension = dimension_;
     alias Vertex = Vertex_;
     alias Facet = Simplex!(dimension, Vertex);    
@@ -114,26 +128,32 @@ struct SmallManifold(int dimension_, Vertex_ = int)
         // TO DO: Better error
         enforce(this.pachnerMoves.canFind(s), "bad pachner move");
 
-        auto newSimp = this.link(s).array.joiner.array.sort().uniq.array;
-        foreach(f; simpComp_.star(s).array)
+        auto coSimp = this.link(s).joiner.array.sort().uniq.array;
+
+        if(coSimp.empty)
         {
-            f.writeln;
-            simpComp_.removeFacet(f);
+            if(!verticesToReuse.empty)
+            {
+                coSimp = [verticesToReuse.front];
+                verticesToReuse.popFront;
+            }
+            else
+            {
+                coSimp = [getNewVertex(this)];            
+            }
         }
 
-        // auto sc = SimplicialComplex!Vertex([s]);
-        // auto sc2 = SimplicialComplex!Vertex([newSimp]);
-        // auto sc3 = join(sc, sc2);
+        simpComp_.star(s).each!(f => simpComp_.removeFacet(f));
 
-        // foreach(f; sc3.facets)
-        // {
-        //    simpComp_.insertFacet(f.dup);
-        // }
+        alias SComp = SimplicialComplex!Vertex;
+        auto newPiece = join(
+            SComp(s.subsetsOfSize(s.walkLength.to!int - 1)),
+            SComp([coSimp])
+        );
+
+        assert(newPiece.isPureOfDim(this.dimension));
+        newPiece.facets.each!(f => simpComp_.insertFacet(f));
     }
-
-
-private:
-    SimplicialComplex!Vertex simpComp_;
 }
 
 bool mySort(A, B)(A a, B b)

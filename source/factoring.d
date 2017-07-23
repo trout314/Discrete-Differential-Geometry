@@ -3,6 +3,7 @@ import std.range : array, chain, isForwardRange, stride;
 import std.traits : ReturnType;
 import std.typecons : staticIota, tuple;
 
+version(unittest) {import unit_threaded;}
 /*******************************************************************************
 Returns a forward range that computes the prime factors of `num`` in increasing 
 order.
@@ -21,6 +22,7 @@ PrimeFactorsRange primeFactors(int num) pure nothrow @nogc @safe
 }
 
 ///
+@Name("primeFactors")
 pure nothrow @safe unittest
 {
     assert(primeFactors(1).array == []);
@@ -61,6 +63,7 @@ auto squareFreePrimeFactors(int num) pure nothrow @nogc @safe
 }
 
 ///
+@Name("squareFreePrimeFactors")
 pure nothrow @safe unittest
 {
     assert(squareFreePrimeFactors(1).array == []);
@@ -93,6 +96,7 @@ auto squarePrimeFactors(int num) pure nothrow @nogc @safe
 }
 
 ///
+@Name("squarePrimeFactors")
 pure nothrow @safe unittest
 {
     assert(squarePrimeFactors(1).array == []);
@@ -125,6 +129,7 @@ auto sqrtSquarePrimeFactors(int num) pure nothrow @nogc @safe
 }
 
 ///
+@Name("sqrtSquarePrimeFactors")
 pure nothrow @safe unittest
 {
     assert(sqrtSquarePrimeFactors(1).array == []);
@@ -155,6 +160,7 @@ assert(num > 0);
 }
 
 ///
+@Name("squareFreePart")
 pure nothrow @nogc @safe unittest
 {
     assert(squareFreePart(1) == 1);
@@ -182,6 +188,7 @@ int squarePart(int num) pure nothrow @nogc @safe
 }
 
 ///
+@Name("squarePart")
 pure nothrow @nogc @safe unittest
 {
     assert(squarePart(1) == 1);
@@ -209,6 +216,7 @@ int sqrtSquarePart(int num) pure nothrow @nogc @safe
 }
 
 ///
+@Name("sqrtSquarePart")
 pure nothrow @nogc @safe unittest
 {
     assert(sqrtSquarePart(1) == 1);
@@ -218,6 +226,7 @@ pure nothrow @nogc @safe unittest
 }
 
 // Some additional tests
+@Name("additional tests")
 pure nothrow @safe unittest
 {
     static assert(primeFactors(1).array == []);
@@ -309,6 +318,7 @@ int lowestFactor(int num) pure nothrow @nogc @safe
 }
 
 ///
+@Name("lowestFactor")
 pure nothrow @nogc @safe unittest
 {
     assert(lowestFactor(1) == 1);
@@ -369,6 +379,7 @@ struct PrimeFactorsRange
     }
 }
 
+@Name("save")
 pure nothrow @safe unittest
 {
     auto pf = primeFactors(6);

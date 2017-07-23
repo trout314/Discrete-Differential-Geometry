@@ -12,6 +12,8 @@ import utility : isSubsetOf, SmallMap, subsets, subsetsOfSize, throwsWithMsg;
 
 import std.stdio : writeln;
 
+version (unittest) {import unit_threaded;}
+
 /*******************************************************************************
 A simplicial complex type whose vertices are of type `Vertex`.
 */
@@ -173,7 +175,8 @@ public:
         sc2.insertFacet([1,2,5]);
         sc2.insertFacet([1,3,5]);
         sc2.insertFacet([2,3,5]);
-        sc2.facets.writeln;
+        assert(sc2.facets ==
+            [[1,2,4], [1,2,5], [1,3,4], [1,3,5], [2,3,4], [2,3,5]]);
     }
 
     /***************************************************************************

@@ -8,8 +8,8 @@ import utility : throwsWithMsg;
 auto test(alias Manifold)()
 {
     // The octahedral surface with eight triangular facets
-    auto octahedron = Manifold!2([[0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 1, 4],
-        [1, 2, 5], [2, 3, 5], [3, 4, 5], [1, 4, 5]]);
+    auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4],
+        [1,2,5], [2,3,5], [3,4,5], [1,4,5]]);
 
     static assert(octahedron.dimension == 2);
     static assert(is(octahedron.Vertex == int));
@@ -21,15 +21,29 @@ auto test(alias Manifold)()
 
     auto tetrahedron = Manifold!2([[1,2,3], [1,2,4], [1,3,4], [2,3,4]]);
 
-    // octahedron.pachnerMoves.writeln;
-    // tetrahedron.pachnerMoves.writeln;
-
-    // tetrahedron.doPachner([1,2,3]);
-    // tetrahedron.writeln;
-
     alias s = simplex;
 
     assert(octahedron.star(s(1,2)).equal([s(0,1,2), s(1,2,5)]));    
+
+    // octahedron.pachnerMoves.writeln;
+    // tetrahedron.pachnerMoves.writeln;
+
+    tetrahedron.writeln;
+    tetrahedron.doPachner([1,2,3]);
+    tetrahedron.writeln;
+
+    // octahedron.writeln;
+    // octahedron.doPachner([1,2]);
+    // octahedron.writeln;
+    // octahedron.doPachner([0,5]);
+    // octahedron.degree(s(0)).writeln;
+
+
+    return true;
+}
+
+auto extendedTest(alias Manifold)()
+{
     static assert(!__traits(compiles, Manifold!2([["a", "bubba", "gump"]])));
 
     auto m1 = Manifold!(1, string)([["a", "b"], ["b", "c"], ["a", "c"]]);
@@ -64,6 +78,4 @@ auto test(alias Manifold)()
         ~ "simplices to be 2-spheres but found simplex [1] with link "
         ~ "[[2, 3, 4], [2, 3, 5], [2, 4, 5], [3, 4, 5], [6, 7, 8], [6, 7, 9],"
         ~ " [6, 8, 9], [7, 8, 9]]");
-
-    return true;
 }

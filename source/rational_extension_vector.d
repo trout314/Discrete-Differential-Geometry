@@ -9,6 +9,8 @@ import std.range : array, drop, ElementType, enumerate, iota, isForwardRange,
 import std.traits : hasFunctionAttributes, isInstanceOf, ReturnType;
 import utility : staticIota, subsetsOfSize;
 
+version(unittest) {import unit_threaded;}
+
 import std.stdio : writeln;
 
 /*******************************************************************************
@@ -31,6 +33,7 @@ auto simplexPoints(int dim, RationalType = Rational!BigInt)()
 }
 
 ///
+@Name("simplexPoints")
 unittest // TO DO: BigInt won't let me put @safe here!
 {
     assert(simplexPoints!3.map!(pt => pt.toString).equal([
@@ -188,6 +191,7 @@ private:
 }
 
 ///
+@Name("vector operations")
 unittest // TO DO: BigInt won't allow @safe.
 {
     alias vec = reVector!(1, 3, 6);
@@ -230,6 +234,7 @@ template reVector(R...)
 }
 
 ///
+@Name("reVector")
 unittest
 {
     alias r = rational;
@@ -239,6 +244,7 @@ unittest
 }
 
 ///
+@Name("pure reVector")
 pure unittest
 {
     alias r = rational;
@@ -265,6 +271,8 @@ RationalType dotProduct(int[] roots, RationalType)(
     return total;
 }
 
+///
+@Name("dotProduct")
 pure @safe unittest
 {
     alias vec = reVector!(1,3);
@@ -290,6 +298,7 @@ RationalType distanceSquared(int[] roots, RationalType)(
 }
 
 ///
+@Name("distanceSquared")
 pure @safe unittest
 {
     alias r = rational;
@@ -300,6 +309,7 @@ pure @safe unittest
 }
 
 // Additional tests. NOTE: BigInt won't let us put @safe here
+@Name("additional tests")
 pure unittest
 {
     foreach(dim; staticIota!(1, 8))
@@ -323,6 +333,7 @@ auto simplexRoots(int dim)
     return iota(1, dim + 1).map!(k => squareFreePart(k * (k + 1) / 2));
 }
 
+@Name("simplexRoots")
 unittest
 {
     assert(simplexRoots(10).array == [1, 3, 6, 10, 15, 21, 7, 1, 5, 55]);
@@ -362,6 +373,7 @@ auto simplexCoefs(int dim)
 
 }
 
+@Name("toString")
 pure @safe unittest
 {
     alias r = rational;

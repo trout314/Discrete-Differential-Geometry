@@ -28,3 +28,6 @@ dub.selections.json
 
 # data files created by unittests
 /data/manifold_sampler_unittest_save.dat
+
+#unit_threaded test runner
+ut.d

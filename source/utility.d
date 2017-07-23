@@ -8,6 +8,8 @@ import std.traits : lvalueOf, rvalueOf;
 
 import std.stdio : writeln;
 
+version(unittest) {import unit_threaded;}
+
 /*******************************************************************************
 Checks if items of type T can be compared with the less-than operation. Note 
 that this means all other comparison operations are also valid, per dlang rules 
@@ -28,6 +30,7 @@ template isLessThanComparable(T)
 }
 
 /// Basic type tests
+@Name("isLessThanComparable (basic types)")
 @safe pure nothrow @nogc unittest
 {
     alias ComparableTypes = AliasSeq!(bool, byte, ubyte, short, ushort, int, 
@@ -40,6 +43,7 @@ template isLessThanComparable(T)
 }
 
 /// Struct tests
+@Name("isLessThanComparable (structs)")
 @safe pure nothrow @nogc unittest
 {
     struct A {}
@@ -106,6 +110,7 @@ template isLessThanComparable(T)
 }
 
 /// Class tests    
+@Name("isLessThanComparable (classes)")
 @safe pure nothrow @nogc unittest
 {
     class A {}
@@ -160,6 +165,7 @@ template isEqualityComparable(T)
 }
 
 /// Basic type tests
+@Name("isEqualityComparable (basic types)")
 pure nothrow @nogc @safe unittest
 {
     import std.meta : AliasSeq, allSatisfy, anySatisfy;
@@ -171,6 +177,7 @@ pure nothrow @nogc @safe unittest
 }
 
 /// Struct Tests
+@Name("isEqualityComparable (structs)")
 pure nothrow @nogc @safe unittest
 {
     struct A 
@@ -235,6 +242,7 @@ pure nothrow @nogc @safe unittest
 }
 
 /// Class tests
+@Name("isEqualityComparable (classes)")
 pure nothrow @nogc @safe unittest
 {
     class A {}
@@ -261,6 +269,7 @@ is(typeof({
     auto t = To(From());
 }));
 
+@Name("isConstructible")
 pure nothrow @nogc @safe unittest
 {
     // static assert(!isConstructible!(int, ubyte));
@@ -370,6 +379,7 @@ auto binarySequences(ulong length, ulong numOnes)
     ).array;
 }
 ///
+@Name("binarySequences")
 @safe pure unittest
 {
     assert(binarySequences(3, 0) == [[0,0,0]]);
@@ -445,6 +455,7 @@ private:
     Record[] data;
 }
 ///
+@Name("SmallMap")
 pure @safe unittest
 {
     SmallMap!(int, string) sm;
@@ -473,6 +484,7 @@ if (isForwardRange!A && isForwardRange!B && is(ElementType!A : ElementType!B))
     return setA.all!(element => setB.canFind(element));        
 }
 ///
+@Name("isSubsetOf")
 unittest
 {
     assert([1,3].isSubsetOf([1,3,4]));
@@ -510,6 +522,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
     ).array;
 }
 ///
+@Name("subsetsOfSize")
 unittest
 {
     assert([1,2,3].subsetsOfSize(0) == [[]]);
@@ -545,6 +558,7 @@ auto subsets(R)(R set) if (isForwardRange!R)
         s => set.subsetsOfSize(s)).joiner.drop(1);
 }
 ///
+@Name("subsets")
 unittest
 {
     int[] emptySet;
@@ -586,6 +600,7 @@ template staticIota(int begin, int end)
     }
 }
 ///
+@Name("staticIota")
 unittest
 {
     alias seq = staticIota!(3, 6);
