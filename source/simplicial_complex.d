@@ -705,3 +705,17 @@ unittest
         "insertFacet expects an inserted simplex not already in the simplicial "
         ~ "complex, but got [2] and already have facet [1, 2, 3]");
 }
+
+/*******************************************************************************
+Helper function template returning a newly constructed simplicial complex from
+an array of facets (given as arrays of vertices.)
+*/
+SimplicialComplex!Vertex simplicialComplex(Vertex)(Vertex[][] initialFacets)
+{
+    return SimplicialComplex!Vertex(initialFacets);
+}
+///
+unittest
+{
+    auto sc = simplicialComplex([[1,2], [2,3], [3,4,5], [6,7,8]]);
+}
