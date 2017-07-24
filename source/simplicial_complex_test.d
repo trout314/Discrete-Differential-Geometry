@@ -7,7 +7,7 @@ void testSimpComp(alias SimpComp)()
     import unit_threaded : shouldEqual, shouldBeEmpty;
     import std.range : array, empty, walkLength;
     import utility : throwsWithMsg;
-    import simplex : simplex;
+    import simplex : simplex, Simplex;
 
     ///
     alias s = simplex;
@@ -18,6 +18,12 @@ void testSimpComp(alias SimpComp)()
     static assert(is(sc.VertexType == int)); // Default vertex type is int
 
     assert(sc.facets.empty);
+
+    import fluent.asserts;
+
+    Simplex!(0, sc.VertexType)[] Empty;
+    sc.facets!0.should.equal(Empty);
+    // sc.facets!0.shouldBeEmpty;
 
     assert(sc.facets!0.empty);
     assert(sc.facets!1.empty);
