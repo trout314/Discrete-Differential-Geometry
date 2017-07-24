@@ -15,7 +15,7 @@ License:    $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0)
 import std.algorithm, std.bigint, std.conv, std.exception, std.format, std.math, std.stdio,
     std.traits;
 
-version(unittest) {import unit_threaded;}
+import unit_threaded : Name;
 
  ///
  @Name("pi approximation")

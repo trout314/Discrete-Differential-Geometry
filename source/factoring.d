@@ -3,7 +3,7 @@ import std.range : array, chain, isForwardRange, stride;
 import std.traits : ReturnType;
 import std.typecons : staticIota, tuple;
 
-version(unittest) {import unit_threaded;}
+import unit_threaded : Name;
 /*******************************************************************************
 Returns a forward range that computes the prime factors of `num`` in increasing 
 order.

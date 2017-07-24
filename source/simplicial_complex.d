@@ -12,7 +12,7 @@ import utility : isSubsetOf, SmallMap, subsets, subsetsOfSize, throwsWithMsg;
 
 import std.stdio : writeln;
 
-version (unittest) {import unit_threaded;}
+import unit_threaded : Name;
 
 /*******************************************************************************
 A simplicial complex type whose vertices are of type `Vertex`.
@@ -642,13 +642,6 @@ unittest
         [2,3,7],[2,4,8],[2,5,8],[2,5,9],[2,7,9],[3,5,10],[3,7,10],[4,6,9],
         [4,8,10],[4,9,10],[5,6,8],[5,9,10],[6,7,8],[6,7,9],[7,8,10]]);
     assert(g1.is2Torus);
-}
-
-///
-unittest
-{
-    import simplicial_complex_test : test;
-    assert(test!SimplicialComplex);
 }
 
 ///

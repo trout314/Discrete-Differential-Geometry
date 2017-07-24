@@ -11,7 +11,7 @@ import std.traits : CommonType, isArray, isImplicitlyConvertible, isInstanceOf,
 import utility : binarySequences, isConstructible, isEqualityComparable, 
     isLessThanComparable, isPrintable, isSubsetOf, subsetsOfSize, throwsWithMsg;
 
-version(unittest) { import unit_threaded; }
+import unit_threaded : Name;
 
 /*******************************************************************************
 Represents a non-degenerate simplex represented as set of vertices of user
@@ -55,7 +55,6 @@ struct Simplex(int dim, Vertex = int)
 
         // THIS WORKS! Why do I need this cast? is it acutally OK?
         // copy(vertices_.map!(to!Vertex), cast(Unqual!Vertex[])(verts_[]));
-
 
         // vertices_.map!(to!Vertex).enumerate.each!((i, v) => verts_[i] = v);
 
@@ -135,7 +134,7 @@ private:
 }
 
 /// Some basic examples
-@("Basic simplex tests")
+@("Basic Simplex tests")
 pure @safe unittest
 {
     // Create a simplex of dimension 1 with vertices [1,2]
@@ -211,6 +210,7 @@ pure @safe unittest
 }   
 
 // additional tests
+@Name("additional Simplex tests")
 pure @safe unittest
 {
     // Of course, constant or immutable simplices can't be modified
@@ -240,6 +240,7 @@ pure @safe unittest
 }
 
 /// Shorter way to construct simplices
+@Name("simplex")
 pure @safe unittest
 {
     /* For convenience we have a function template "simplex" which can be used
@@ -250,6 +251,7 @@ pure @safe unittest
 }
 
 /// Suitable Vertex types
+@Name("vertex types")
 unittest
 {
     /* A user specified vertex types must be comparable using < and == and also
@@ -352,6 +354,7 @@ auto simplex(size_t numVertices, V)(V[numVertices] vertices...)
 }
 
 ///
+@Name("simplex (additional)")
 pure @safe unittest
 {
     auto s1 = simplex(1, 2, 4, 7);
@@ -397,6 +400,27 @@ bool hasFace(S, F)(const S simplex, const F possibleFace)
         return possibleFaceVertices.isSubsetOf(simplexVertices);
     }
 }
+///
+@Name("hasFace")
+pure @safe unittest
+{
+    alias s = simplex; // For clarity
+
+    assert(s(1, 2, 3, 5).dimension == 3);
+    assert(s(3).dimension == 0);
+
+    assert(s(1, 2, 3, 5).hasFace(s(1, 2, 3, 5)));
+    assert(s(1, 2, 3, 5).hasFace(s(2, 3, 5)));
+    assert(s(1, 2, 3, 5).hasFace(s(1, 2, 3)));
+    assert(s(1, 2, 3, 5).hasFace(s(3, 5)));
+    assert(s(1, 2, 3, 5).hasFace(s(3)));
+    assert(s(2, 3, 5).hasFace(s(3, 5)));
+    assert(s(3, 5).hasFace(s(3)));
+    assert(!s(2, 3, 5).hasFace(s(1, 2, 3, 5)));
+    assert(!s(2, 3, 5).hasFace(s(1, 2, 3)));
+    assert(!s(1, 2, 3).hasFace(s(2, 3, 5)));
+    assert(!s(1, 2, 3, 5).hasFace(s(3,7)));
+}
 
 /******************************************************************************
 Returns the face opposite `face` in `simplex`.
@@ -411,8 +435,8 @@ auto oppositeFace(S, F)(const S simplex, const F face)
     return Simplex!(S.dimension - F.dimension - 1, S.VertexType)(
         setDifference(simplex.vertices, face.vertices));
 }
-
 ///
+@Name("oppositeFace")
 pure @safe unittest
 {
     alias s = simplex; // For clarity
@@ -443,6 +467,7 @@ auto facesOfDim(int dim, S)(const S s) if (isInstanceOf!(Simplex, S))
     return s.vertices.subsetsOfSize(dim + 1).map!(verts => SimplexType(verts));
 }
 ///
+@Name("facesOfDim")
 pure @safe unittest
 {
     alias s = simplex;   // For clarity
@@ -471,6 +496,7 @@ auto faces(S)(const S s) if (isInstanceOf!(Simplex, S))
     mixin("return chain(" ~ makeArgs() ~ ");");
 }
 ///
+@Name("faces")
 pure @safe unittest
 {
     assert(simplex(9).faces.array == [[9]]);
@@ -479,36 +505,16 @@ pure @safe unittest
         [1, 2, 3]]);
 }
 
-pure @safe unittest // NOTE: could have @nogc here if exceptions were @nogc
-{
-    auto pt = simplex(9);
+// pure @safe unittest // NOTE: could have @nogc here if exceptions were @nogc
+// {
+//     auto pt = simplex(9);
 
-    // TO DO: Can we make this @nogc?
-    // assert(simplex(9).faces.front.front == 9);
-}
-
-///
-pure @safe unittest
-{
-    alias s = simplex; // For clarity
-
-    assert(s(1, 2, 3, 5).dimension == 3);
-    assert(s(3).dimension == 0);
-
-    assert(s(1, 2, 3, 5).hasFace(s(1, 2, 3, 5)));
-    assert(s(1, 2, 3, 5).hasFace(s(2, 3, 5)));
-    assert(s(1, 2, 3, 5).hasFace(s(1, 2, 3)));
-    assert(s(1, 2, 3, 5).hasFace(s(3, 5)));
-    assert(s(1, 2, 3, 5).hasFace(s(3)));
-    assert(s(2, 3, 5).hasFace(s(3, 5)));
-    assert(s(3, 5).hasFace(s(3)));
-    assert(!s(2, 3, 5).hasFace(s(1, 2, 3, 5)));
-    assert(!s(2, 3, 5).hasFace(s(1, 2, 3)));
-    assert(!s(1, 2, 3).hasFace(s(2, 3, 5)));
-    assert(!s(1, 2, 3, 5).hasFace(s(3,7)));
-}
+//     // TO DO: Can we make this @nogc?
+//     // assert(simplex(9).faces.front.front == 9);
+// }
 
 ///
+@Name("hasFace (different Vertex types)")
 pure @safe unittest
 {
     auto s1 = Simplex!(2, ubyte)([ubyte(1), ubyte(2), ubyte(3)]);
@@ -529,6 +535,7 @@ auto hinges(S)(const S simplex) if (isInstanceOf!(Simplex, S))
     return simplex.facesOfDim!(simplex.dimension - 2);
 }
 ///
+@Name("hinges")
 pure @safe unittest
 {
     alias s = simplex;
@@ -551,6 +558,7 @@ auto ridges(S)(const S simplex) if (isInstanceOf!(Simplex, S))
     return simplex.facesOfDim!(simplex.dimension - 1);
 }
 ///
+@Name("ridges")
 pure @safe unittest
 {
     alias s = simplex;
@@ -562,6 +570,9 @@ pure @safe unittest
     static assert(s(2, 3, 5).ridges.array == s(2, 3, 5).facesOfDim!1.array);
 }
 
+/******************************************************************************
+Returns the join of two simplices
+*/
 auto join(S1, S2)(const S1 s1, const S2 s2)
     if (isInstanceOf!(Simplex, S1) && isInstanceOf!(Simplex, S2))
 {
@@ -573,6 +584,7 @@ auto join(S1, S2)(const S1 s1, const S2 s2)
     return Simplex!(s1.dimension + s2.dimension + 1)(commonVertices);
 }
 ///
+@Name("join")
 pure @safe unittest
 {
     alias s = simplex;
@@ -585,6 +597,7 @@ pure @safe unittest
 }
 
 /// BigInt tests
+@Name("BigInt vertices")
 unittest
 {
     import std.bigint : BigInt;
@@ -593,6 +606,7 @@ unittest
 }
 
 /// REVector Tests
+@Name("REVector vertices")
 unittest
 {
     import std.bigint : BigInt;

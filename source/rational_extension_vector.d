@@ -9,7 +9,7 @@ import std.range : array, drop, ElementType, enumerate, iota, isForwardRange,
 import std.traits : hasFunctionAttributes, isInstanceOf, ReturnType;
 import utility : staticIota, subsetsOfSize;
 
-version(unittest) {import unit_threaded;}
+import unit_threaded : Name;
 
 import std.stdio : writeln;
 

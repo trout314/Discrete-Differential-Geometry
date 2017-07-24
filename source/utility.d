@@ -8,7 +8,7 @@ import std.traits : lvalueOf, rvalueOf;
 
 import std.stdio : writeln;
 
-version(unittest) {import unit_threaded;}
+import unit_threaded;
 
 /*******************************************************************************
 Checks if items of type T can be compared with the less-than operation. Note 
