@@ -1,10 +1,13 @@
 import simplex : facesOfDim, hasFace, simplex, Simplex;
 
-import std.algorithm : all, any, canFind, chunkBy, copy, countUntil, each, filter, find, joiner, map, 
-    maxElement, remove, setDifference, setIntersection, sort, sum, uniq;
+import std.algorithm : all, any, canFind, chunkBy, copy, countUntil, each,
+    equal,
+    filter, find, joiner, map, maxElement, remove, setDifference,
+    setIntersection, sort, sum, uniq;
 import std.conv : to;
 import std.exception : assertThrown, enforce;
-import std.range : array, chunks, empty, enumerate, ElementType, front, iota, isInputRange, refRange, walkLength, zip;
+import std.range : array, chunks, empty, enumerate, ElementType, front, iota,
+    isInputRange, refRange, walkLength, zip;
 import std.traits : isArray, Unqual;
 import std.typecons : Tuple, tuple;
 
@@ -13,6 +16,112 @@ import utility : isSubsetOf, SmallMap, subsets, subsetsOfSize, throwsWithMsg;
 import std.stdio : writeln;
 
 import unit_threaded : Name;
+
+/// Basic Functionality
+@Name("doc tests")
+@safe pure unittest
+{
+    // create an empty simplicial complex with vertices of default type `int`
+    SimplicialComplex!() sc;
+    assert(sc.numFacets == 0);
+    assert(sc.facets.empty);
+
+    // get the type of vertex used
+    static assert(is(sc.VertexType == int));
+
+    /* while you can specify the vertex type used as a template parameter,
+    we will stick to `int` for now */
+    static assert(is(SimplicialComplex!int == typeof(sc)));
+    
+    // for clarity
+    alias s = simplex;
+
+    // insert some facets
+    sc.insertFacet(s(1,2,3));
+    sc.insertFacet(s(2,3,4));
+    sc.insertFacet(s(4,5));
+    sc.insertFacet(s(5,6));
+
+    /* can also create simplicial complexes directly from an array of arrays of
+    vertices which specify the facets */
+    auto sc2 = SimplicialComplex!()([[4,5], [5,6], [1,2,3], [2,3,4]]);
+    assert(sc == sc2);
+
+    // a helper function template that returns a newly constructed complex
+    auto sc3 = simplicialComplex([[4,5], [5,6], [1,2,3], [2,3,4]]);
+    assert(sc3 == sc);
+
+    // simplicial complexes are value types NOPE! TO DO: Fix this!
+    auto sc4 = sc3;
+    sc4.insertFacet(s(6,7));
+    assert(sc3 == sc);
+
+    /* get the vertices in the facets, returned in order of increasing dimension
+    and dictionary order within a dimension */ 
+    assert(sc.facets == [[4,5], [5,6], [1,2,3], [2,3,4]]);
+    assert(sc.numFacets == 4);
+
+    // Can get a sorted array of all the facet simplices of a given dimension
+    assert(sc.facets!0.empty);
+    assert(sc.facets!1.equal([s(4,5), s(5,6)]));
+    assert(sc.facets!2.equal([s(1,2,3), s(2,3,4)]));
+    assert(sc.facets!3.empty);
+
+    // Can get a sorted array of all the simplices of a given dimension
+    assert(sc.simplices!0.equal([s(1), s(2), s(3), s(4), s(5), s(6)]));
+    assert(sc.simplices!1.equal([s(1,2), s(1,3), s(2,3), s(2,4), s(3,4), 
+        s(4,5), s(5,6)]));
+    assert(sc.simplices!2.equal(sc.facets!2));
+    assert(sc.simplices!3.empty);
+
+    // get the f-vector of the simplicial complex
+    assert(sc.fVector == [6,7,2]);
+
+    // check for the presence of simplices
+    assert(sc.contains(s(4,5)));
+    assert(sc.contains(s(2,3,4)));
+    assert(sc.contains(s(6)));
+    assert(!sc.contains(s(1,2,5)));
+    assert(!sc.contains(s(4,6)));
+
+    // get the star of a simplex an array of facets
+    assert(sc.star(s(5)) == [[4,5], [5,6]]);
+    assert(sc.star(s(4)) == [[4,5], [2,3,4]]);
+    assert(sc.star(s(2,3)) == [[1,2,3], [2,3,4]]);
+
+    // get link of a simplex as list of facets
+    assert(sc.link(s(5)) == [[4], [6]]);
+    assert(sc.link(s(4)) == [[5], [2,3]]);
+    assert(sc.link(s(2,3)) == [[1], [4]]);
+
+    // can print out a simplicial complex
+    assert(sc.toString == "[[4, 5], [5, 6], [1, 2, 3], [2, 3, 4]]");
+
+    // -------------------------------------------------------------------------
+    // Restrictions
+    // -------------------------------------------------------------------------
+
+    // cannot insert a simplex if it is already the face of an existing facet
+    sc.insertFacet(s(4,5)).assertThrown;
+    sc.insertFacet(s(2)).throwsWithMsg(
+        "insertFacet expects an inserted simplex not already in the simplicial "
+        ~ "complex, but got [2] and already have facet [1, 2, 3]");
+}
+
+/*******************************************************************************
+Helper function template returning a newly constructed simplicial complex from
+an array of facets (given as arrays of vertices.)
+*/
+SimplicialComplex!Vertex simplicialComplex(Vertex)(Vertex[][] initialFacets)
+{
+    return SimplicialComplex!Vertex(initialFacets);
+}
+///
+unittest
+{
+    auto sc = simplicialComplex([[1,2], [2,3], [3,4,5], [6,7,8]]);
+}
+
 
 /*******************************************************************************
 A simplicial complex type whose vertices are of type `Vertex`.
@@ -42,12 +151,6 @@ public:
     {
         facets.each!(f => insertFacet(f));
     }
-    ///
-    unittest
-    {
-        auto sc = SimplicialComplex!int([[1,2], [2,3], [3,4,5]]);
-        assert(sc.facets == [[1,2], [2,3], [3,4,5]]);
-    }
 
     /***************************************************************************
     Inserts the simplex s as a facet in the simplicial complex.
@@ -55,15 +158,6 @@ public:
     void insertFacet(int dim)(const Simplex!(dim, Vertex) s)
     {
         insertFacet(s.vertices);
-    }
-    ///
-    unittest
-    {
-        alias s = simplex;
-
-        SimplicialComplex!int sc;
-        sc.insertFacet(s(1,2,3));
-        assert(sc.facets!2.array == [s(1,2,3)]);
     }
 
     /***************************************************************************
@@ -644,78 +738,3 @@ unittest
     assert(g1.is2Torus);
 }
 
-///
-@safe /* pure */ unittest
-{
-    // create an empty simplicial complex
-    SimplicialComplex!() sc;
-    assert(sc.numFacets == 0);
-    assert(sc.facets == []);
-
-    // for clarity
-    alias s = simplex;
-
-    // insert some facets
-    sc.insertFacet(s(1,2,3));
-    sc.insertFacet(s(2,3,4));
-    sc.insertFacet(s(4,5));
-    sc.insertFacet(s(5,6));
-
-    /* get the vertices in the facets, returned in order of increasing dimension
-    and dictionary order within a dimension */ 
-    assert(sc.facets == [[4,5], [5,6], [1,2,3], [2,3,4]]);
-    assert(sc.numFacets == 4);
-
-    // Can get a sorted array of all the facet simplices of a given dimension
-    assert(sc.facets!1.array == [s(4,5), s(5,6)]);
-
-    // Can get a sorted array of all the simplices of a given dimension
-    assert(sc.simplices!1.array == [s(1,2), s(1,3), s(2,3), s(2,4), s(3,4), 
-        s(4,5), s(5,6)]);
-
-    // get the f-vector of the simplicial complex
-    assert(sc.fVector == [6,7,2]);
-
-    // check for the presence of simplices
-    assert(sc.contains(s(4,5)));
-    assert(sc.contains(s(2,3,4)));
-    assert(sc.contains(s(6)));
-    assert(!sc.contains(s(1,2,5)));
-    assert(!sc.contains(s(4,6)));
-
-    // get the star of a simplex as list of facets
-    assert(sc.star(s(5)) == [[4,5], [5,6]]);
-    assert(sc.star(s(4)) == [[4,5], [2,3,4]]);
-    assert(sc.star(s(2,3)) == [[1,2,3], [2,3,4]]);
-
-    // get link of a simplex as list of facets
-    assert(sc.link(s(5)) == [[4], [6]]);
-    assert(sc.link(s(4)) == [[5], [2,3]]);
-    assert(sc.link(s(2,3)) == [[1], [4]]);
-
-    assert(sc.toString == "[[4, 5], [5, 6], [1, 2, 3], [2, 3, 4]]");
-
-    // -------------------------------------------------------------------------
-    // Restrictions
-    // -------------------------------------------------------------------------
-
-    // cannot insert a simplex if it is already the face of an existing facet
-    sc.insertFacet(s(4,5)).assertThrown;
-    sc.insertFacet(s(2)).throwsWithMsg(
-        "insertFacet expects an inserted simplex not already in the simplicial "
-        ~ "complex, but got [2] and already have facet [1, 2, 3]");
-}
-
-/*******************************************************************************
-Helper function template returning a newly constructed simplicial complex from
-an array of facets (given as arrays of vertices.)
-*/
-SimplicialComplex!Vertex simplicialComplex(Vertex)(Vertex[][] initialFacets)
-{
-    return SimplicialComplex!Vertex(initialFacets);
-}
-///
-unittest
-{
-    auto sc = simplicialComplex([[1,2], [2,3], [3,4,5], [6,7,8]]);
-}
