@@ -426,6 +426,12 @@ struct SmallMap(KeyType, ValueType)
         data.sort!((r1, r2) => r1.key < r2.key);
     }
 
+    /// Get a new copy of this map
+    auto dup()
+    {
+        return SmallMap!(KeyType, ValueType)(data.dup);
+    }
+
     /// We support the (key in smallMap) syntax 
     bool opBinaryRight(string op : "in")(const KeyType key) const
     {

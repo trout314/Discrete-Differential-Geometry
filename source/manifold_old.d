@@ -1253,7 +1253,6 @@ Simplex[] allFaces(in Simplex simplex)
 
 unittest
 {
-
     assert([].allFaces == []);
     assert([9].allFaces == [[9]]);
     assert([7, 5].allFaces == [[7], [5], [7, 5]]);

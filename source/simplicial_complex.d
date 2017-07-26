@@ -1,8 +1,6 @@
 import simplex : facesOfDim, hasFace, simplex, Simplex;
-
 import std.algorithm : all, any, canFind, chunkBy, copy, countUntil, each,
-    equal,
-    filter, find, joiner, map, maxElement, remove, setDifference,
+    equal, filter, find, joiner, map, maxElement, remove, setDifference,
     setIntersection, sort, sum, uniq;
 import std.conv : to;
 import std.exception : assertThrown, enforce;
@@ -10,12 +8,10 @@ import std.range : array, chunks, empty, enumerate, ElementType, front, iota,
     isInputRange, refRange, walkLength, zip;
 import std.traits : isArray, Unqual;
 import std.typecons : Tuple, tuple;
-
-import utility : isSubsetOf, SmallMap, subsets, subsetsOfSize, throwsWithMsg;
-
+import utility : isSubsetOf, SmallMap, subsets, staticIota, subsetsOfSize, throwsWithMsg;
 import std.stdio : writeln;
-
 import unit_threaded : Name;
+import fluent.asserts : should;
 
 /// Basic Functionality
 @Name("doc tests")
@@ -51,7 +47,7 @@ import unit_threaded : Name;
     auto sc3 = simplicialComplex([[4,5], [5,6], [1,2,3], [2,3,4]]);
     assert(sc3 == sc);
 
-    // simplicial complexes are value types NOPE! TO DO: Fix this!
+    // simplicial complexes are value types
     auto sc4 = sc3;
     sc4.insertFacet(s(6,7));
     assert(sc3 == sc);
@@ -103,25 +99,111 @@ import unit_threaded : Name;
 
     // cannot insert a simplex if it is already the face of an existing facet
     sc.insertFacet(s(4,5)).assertThrown;
-    sc.insertFacet(s(2)).throwsWithMsg(
-        "insertFacet expects an inserted simplex not already in the simplicial "
-        ~ "complex, but got [2] and already have facet [1, 2, 3]");
+    sc.insertFacet(s(2)).throwsWithMsg("expected a simplex not already in the "
+        ~ "simplicial complex, but got [2] and already have facet [1, 2, 3]");
+
+    throwsWithMsg(simplicialComplex([[3,4]]).removeFacet([2,3]), "tried to "
+        ~ "remove a facet [2, 3] not in the simplicial complex");
+
+    throwsWithMsg(simplicialComplex([[1,3,4], [2,3,4]]).link(s(1,2)),
+        "expected a simplex in the simplicial complex");
+
+    throwsWithMsg(sc.facets(-1),"expected a non-negative dimension but got "
+        ~ "dimension -1"); 
+
+
 }
 
-/*******************************************************************************
-Helper function template returning a newly constructed simplicial complex from
-an array of facets (given as arrays of vertices.)
-*/
-SimplicialComplex!Vertex simplicialComplex(Vertex)(Vertex[][] initialFacets)
-{
-    return SimplicialComplex!Vertex(initialFacets);
-}
-///
+@Name("additional tests")
 unittest
 {
-    auto sc = simplicialComplex([[1,2], [2,3], [3,4,5], [6,7,8]]);
+    alias s = simplex;
+    alias sComp = simplicialComplex;
+
+    // ---------------- TEST A DEFAULT INITIALIZED COMPLEX ---------------------
+    auto sc = SimplicialComplex!()();
+    static assert(is(sc.VertexType == int)); // Default vertex type is int
+
+    sc.facets.empty.should.equal(true);
+    sc.numFacets.should.equal(0);
+    foreach(d; staticIota!(0, 16))
+    {
+        sc.facets!d.empty.should.equal(true);
+        sc.simplices!d.empty.should.equal(true);
+    }
+   
+    // ---------------------------- ADD SOME FACETS ----------------------------
+    sc.insertFacet(s(1,2));
+    sc.insertFacet([2,3]);
+    sc.insertFacet([3, 4, 5]);
+    
+    sc.should.equal(sComp([[1,2], [2,3], [3,4,5]]));
+
+    // -------------------------- TEST FUNCTIONALITY ---------------------------
+    sc.facets.walkLength.should.equal(3);
+    sc.numFacets.should.equal(3);
+
+    sc.facets!0.empty.should.equal(true);
+    sc.facets!1.should.equal([s(1,2), s(2,3)]);
+    sc.facets!2.should.equal([s(3,4,5)]);
+
+    sc.simplices!0.should.containOnly([s(1), s(2), s(3), s(4), s(5)]);
+    sc.simplices!1.should.containOnly([s(1,2), s(2,3), s(3,4), s(3,5), s(4,5)]);
+    sc.simplices!2.should.containOnly([s(3,4,5)]);
+
+    foreach(d; staticIota!(3, 16))
+    {
+        sc.facets!d.empty.should.equal(true);
+        sc.facets(d).empty.should.equal(true);
+        sc.simplices!d.empty.should.equal(true);
+        sc.simplices(d).empty.should.equal(true);
+    }
 }
 
+@Name("insertFacet")
+unittest
+{
+    auto sc = SimplicialComplex!()();
+    sc.insertFacet([1,2]);
+    assert(sc.facets == [[1,2]]);
+    sc.insertFacet([2,3,4]);
+    assert(sc.facets == [[1,2], [2,3,4]]);
+    sc.insertFacet([1,5,6]);
+    assert(sc.facets == [[1,2], [1,5,6], [2,3,4]]);
+    sc.insertFacet([1,5,6,7]);
+    assert(sc.facets == [[1,2], [2,3,4], [1,5,6,7]]);
+}
+
+@Name("insertFacet/removeFacet")
+unittest
+{
+    auto sc = simplicialComplex([[1,2], [1,3], [1,4], [4,5,6]]);
+
+    assert(sc.facets == [[1,2], [1,3], [1,4], [4,5,6]]);
+    sc.removeFacet([1,3]);
+    assert(sc.facets == [[1,2], [1,4], [4,5,6]]);
+    sc.removeFacet([1,2]);
+    assert(sc.facets == [[1,4], [4,5,6]]);
+    sc.removeFacet([4,5,6]);
+    assert(sc.facets == [[1,4]]);
+    sc.removeFacet([1,4]);
+    assert(sc.facets == []);
+
+    auto sc2 = simplicialComplex([[1,2,3], [1,2,4], [1,3,4], [2,3,4]]);
+    sc2.removeFacet([1,2,3]);
+    assert(sc2.facets == [[1,2,4], [1,3,4], [2,3,4]]);
+    sc2.insertFacet([1,2,5]);
+    sc2.insertFacet([1,3,5]);
+    sc2.insertFacet([2,3,5]);
+    assert(sc2.facets ==
+        [[1,2,4], [1,2,5], [1,3,4], [1,3,5], [2,3,4], [2,3,5]]);
+
+    SimplicialComplex!int sc3;
+    sc3.insertFacet([1,2,3]);
+    assert(sc3.facets == [[1,2,3]]);
+    sc3.removeFacet(simplex(1,2,3));
+    assert(sc3.facets == []);
+}
 
 /*******************************************************************************
 A simplicial complex type whose vertices are of type `Vertex`.
@@ -135,13 +217,11 @@ private:
     the first simplex, [w1, w2, w3] the second, etc.
     */
     SmallMap!(int, Vertex[]) facetVertices;
-
 public:
     /***************************************************************************
     The type of the vertices in this simplicial complex.
     */
     alias VertexType = Vertex;
-
 
     /***************************************************************************
     Construct a simplicial complex from an array of vertex arrays, specifying
@@ -149,7 +229,14 @@ public:
     */
     this(Vertex[][] facets)
     {
+        // TO DO: Maybe check that no facets are faces of any others?
         facets.each!(f => insertFacet(f));
+    }
+
+    // Postblit makes sure copy doesn't share data
+    this(this)
+    {
+        facetVertices = facetVertices.dup;
     }
 
     /***************************************************************************
@@ -170,9 +257,9 @@ public:
         functionality from simplex.d */
 
         static assert(is(Unqual!(ElementType!V) == Vertex));
-        enforce(!contains(vertices), "insertFacet expects an inserted simplex "
-            ~ "not already in the simplicial complex, but got " 
-            ~ vertices.to!string ~ " and already have facet " 
+        enforce(!contains(vertices), "expected a simplex not already in the "
+            ~ "simplicial complex, but got " ~ vertices.to!string 
+            ~ " and already have facet " 
             ~ facets.find!(f => vertices.isSubsetOf(f)).front.to!string);
 
         // First we remove any existing facets which are faces of inserted facet
@@ -196,19 +283,6 @@ public:
         facetVertices[dim][] = facetVertices[dim].chunks(dim + 1)
             .array.sort().joiner.array[];
     }
-    ///
-    unittest
-    {
-        auto sc = SimplicialComplex!()();
-        sc.insertFacet([1,2]);
-        assert(sc.facets == [[1,2]]);
-        sc.insertFacet([2,3,4]);
-        assert(sc.facets == [[1,2], [2,3,4]]);
-        sc.insertFacet([1,5,6]);
-        assert(sc.facets == [[1,2], [1,5,6], [2,3,4]]);
-        sc.insertFacet([1,5,6,7]);
-        assert(sc.facets == [[1,2], [2,3,4], [1,5,6,7]]);
-    }
 
     /***************************************************************************
     Removes the simplex `s` as a facet in the simplicial complex.
@@ -216,15 +290,6 @@ public:
     void removeFacet(int dim)(const Simplex!(dim, Vertex) s)
     {
         removeFacet(s.vertices);
-    }
-    ///
-    unittest
-    {
-        SimplicialComplex!int sc;
-        sc.insertFacet([1,2,3]);
-        assert(sc.facets == [[1,2,3]]);
-        sc.removeFacet(simplex(1,2,3));
-        assert(sc.facets == []);
     }
 
     /***************************************************************************
@@ -244,42 +309,14 @@ public:
         
         facetVertices[dim] = facetVertices[dim][0 .. $ - (dim + 1)];
     }
-    ///
-    unittest
-    {
-        auto sc = SimplicialComplex!()([[1,2], [1,3], [1,4], [4,5,6]]);
-
-        assert(sc.facets == [[1,2], [1,3], [1,4], [4,5,6]]);
-        sc.removeFacet([1,3]);
-        assert(sc.facets == [[1,2], [1,4], [4,5,6]]);
-        sc.removeFacet([1,2]);
-        assert(sc.facets == [[1,4], [4,5,6]]);
-        sc.removeFacet([4,5,6]);
-        assert(sc.facets == [[1,4]]);
-        sc.removeFacet([1,4]);
-        assert(sc.facets == []);
-
-        throwsWithMsg(sc.removeFacet([2,3]), "tried to remove a facet [2, 3] "
-            ~ "not in the simplicial complex");
-
-
-        auto sc2 = SimplicialComplex!()([[1,2,3], [1,2,4], [1,3,4], [2,3,4]]);
-        sc2.removeFacet([1,2,3]);
-        assert(sc2.facets == [[1,2,4], [1,3,4], [2,3,4]]);
-        sc2.insertFacet([1,2,5]);
-        sc2.insertFacet([1,3,5]);
-        sc2.insertFacet([2,3,5]);
-        assert(sc2.facets ==
-            [[1,2,4], [1,2,5], [1,3,4], [1,3,5], [2,3,4], [2,3,5]]);
-    }
 
     /***************************************************************************
     Returns the facets of the simplicial complex of a particular dimension.
     */
     auto facets(int dim)() const
     {
-        static assert(dim >= 0, "facets expected a non-negative dimension but "
-            ~ "got dimension " ~ dim.to!string);
+        static assert(dim >= 0, "expected a non-negative dimension but got "
+            ~ "dimension " ~ dim.to!string);
         return facets(dim).map!(verts => Simplex!(dim, Vertex)(verts));
     }
 
@@ -289,8 +326,8 @@ public:
     */
     auto facets(int dim) const
     {
-        enforce(dim >= 0, "facets expected a non-negative dimension but "
-            ~ "got dimension " ~ dim.to!string);
+        enforce(dim >= 0, "expected a non-negative dimension but got dimension "
+            ~ dim.to!string);
         if (dim !in facetVertices)
         {
             Vertex[][] empty;
@@ -407,155 +444,163 @@ public:
         }
         return simplicesSeen.sort().uniq;
     }
-
-    /***************************************************************************
-    Get the f-vector of the simplicial complex. The returned array lists the
-    number of simplices in each dimension.
-    */
-    int[] fVector() const
-    {   
-        immutable maxDim = facetVertices.keys.maxElement.to!int;
-        return iota(maxDim + 1).map!(dim => simplices(dim).walkLength.to!int)
-            .array; 
-    }
-    ///
-    unittest
-    {
-        SimplicialComplex!() sc;
-        sc.insertFacet([1,2]);
-        assert(sc.fVector == [2,1]);        
-    }
-
-    /***************************************************************************
-    Returns the Euler characteristic of the simplicial complex
-    */
-    int eulerCharacteristic() const
-    {
-        return fVector.enumerate.map!(f => (-1)^^f.index.to!int * f.value).sum;
-    }
-    ///
-    unittest
-    {
-        SimplicialComplex!() sc;
-        sc.insertFacet([1,2]);
-        assert(sc.eulerCharacteristic == 1);
-        sc.insertFacet([2,3]);
-        sc.insertFacet([2,4]);
-        assert(sc.eulerCharacteristic == 1);
-        sc.insertFacet([3,4]);
-        assert(sc.eulerCharacteristic == 0);
-        sc.insertFacet([1,3]);
-        assert(sc.eulerCharacteristic == -1);        
-    }
-
-    /***************************************************************************
-    Returns a range containing this simplicial complex's connected components
-    (returned as simplicial complexes of the same vertex type.)
-    */
-    auto connectedComponents() const
-    {
-        static struct FacetRecord
-        {
-            Vertex[] facet;
-            int label;      // labels which connected component facet is in
-            bool seenNear;  // looked at facets in the star of the vertices?
-        }
-
-        /* We will label each facet with an integer 1, 2, 3 ... etc, marking its
-        connected component */
-        // auto labels = new int[numFacets];
-        // auto allFacets = facets.array;
-
-
-        /* We keep track of the facets we've yet to examine, the facets we've 
-        labeled (but are not yet done with) and those that are completed (which
-        means both labeled and all the facets in the star of its vertices are
-        also labeled. */
-        FacetRecord[] records = facets.map!(f => FacetRecord(f)).array;
-
-        int currentLabel = 1;
-
-        // Deal with the facets that are (necessarily isolated) vertices
-        auto nVertFac = facets!0.walkLength;
-        auto vertexFacets = records[0 .. nVertFac];
-
-        foreach(indx, ref f; vertexFacets)
-        {
-            f.label = currentLabel;
-            f.seenNear = true;
-            ++currentLabel;
-        }
-
-        while(!records.find!(r => r.label == 0).empty)
-        {
-            records.find!(r => r.label == 0).front.label = currentLabel;
-
-            // Now we propagate the current label as far as we can
-            while(records.canFind!(r => r.label != 0 && !r.seenNear))
-            {
-                auto toDo = records.find!(r => r.label != 0 && !r.seenNear);
-
-                foreach(f; toDo.front.facet.map!(v => star(simplex(v))).joiner)
-                {
-                    auto findIt = records.find!(r => r.facet == f);
-                    assert(!findIt.empty);
-                    findIt.front.label = currentLabel;
-                }
-
-                toDo.front.seenNear = true;           
-            }
-            currentLabel += 1;
-        }
-
-        return records.chunkBy!((r1, r2) => r1.label == r2.label)
-            .map!(rList => SimplicialComplex(rList.map!(r => r.facet).array));           
-    }
-    ///
-    unittest
-    {
-        auto sc = SimplicialComplex!()([[1],[9], [2,3],[3,4],[5,6],[6,7,8]]);
-
-        auto c1 = SimplicialComplex!()([[1]]);
-        auto c2 = SimplicialComplex!()([[9]]);
-        auto c3 = SimplicialComplex!()([[2,3], [3,4]]);
-        auto c4 = SimplicialComplex!()([[5,6], [6,7,8]]);
-
-        assert(sc.connectedComponents.array == [c1, c2, c3, c4]);       
-    }
-
-    /***************************************************************************
-    Returns true if the simplicial complex is connected and false otherwise.
-    Note that an empty complex counts as connected.
-    */
-    auto isConnected() const
-    {
-        return connectedComponents.walkLength <= 1;
-    }
-    ///
-    unittest
-    {
-        auto disjointCircles = SimplicialComplex!()([
-            [1,2], [2,3], [1,3],
-            [4,5], [5,6], [4,6]]);
-        
-        assert(!disjointCircles.isConnected);
-
-        auto barbell = SimplicialComplex!()(disjointCircles.facets ~ [[3,4]]);
-        assert(barbell.isConnected);
-
-        auto nada = SimplicialComplex!()();
-        assert(nada.isConnected);
-    }
-
-    /***************************************************************************
-    Returns a nice looking representation of the simplicial complex as a string.
-    */
-    auto toString() const
-    {
-        return this.facets.to!string;
-    }
 }
 
+/*******************************************************************************
+Returns a nice looking representation of the simplicial complex as a string.
+*/
+string toString(Vertex)(const SimplicialComplex!Vertex sc)
+{
+    return sc.facets.to!string;
+}
+
+/*******************************************************************************
+Get the f-vector of the simplicial complex. The returned array lists the
+number of simplices in each dimension.
+*/
+int[] fVector(Vertex)(const SimplicialComplex!Vertex sc)
+{   
+    immutable maxDim = sc.facetVertices.keys.maxElement.to!int;
+    return iota(maxDim + 1).map!(dim => sc.simplices(dim).walkLength.to!int)
+        .array; 
+}
+///
+@Name("fVector")
+unittest
+{
+    SimplicialComplex!() sc;
+    sc.insertFacet([1,2]);
+    assert(sc.fVector == [2,1]);        
+}
+
+/*******************************************************************************
+Returns the Euler characteristic of the simplicial complex
+*/
+int eulerCharacteristic(Vertex)(const SimplicialComplex!Vertex sc)
+{
+    return sc.fVector.enumerate.map!(f => (-1)^^f.index.to!int * f.value).sum;
+}
+///
+@Name("eulerCharacteristic")
+unittest
+{
+    SimplicialComplex!() sc;
+    sc.insertFacet([1,2]);
+    assert(sc.eulerCharacteristic == 1);
+    sc.insertFacet([2,3]);
+    sc.insertFacet([2,4]);
+    assert(sc.eulerCharacteristic == 1);
+    sc.insertFacet([3,4]);
+    assert(sc.eulerCharacteristic == 0);
+    sc.insertFacet([1,3]);
+    assert(sc.eulerCharacteristic == -1);        
+}
+
+
+/*******************************************************************************
+Returns a range containing this simplicial complex's connected components
+(returned as simplicial complexes of the same vertex type.)
+*/
+auto connectedComponents(Vertex)(const SimplicialComplex!Vertex sc)
+{
+    static struct FacetRecord
+    {
+        Vertex[] facet;
+        int label;      // labels which connected component facet is in
+        bool seenNear;  // looked at facets in the star of the vertices?
+    }
+
+    /* We will label each facet with an integer 1, 2, 3 ... etc, marking its
+    connected component */
+    // auto labels = new int[numFacets];
+    // auto allFacets = facets.array;
+
+    /* We keep track of the facets we've yet to examine, the facets we've 
+    labeled (but are not yet done with) and those that are completed (which
+    means both labeled and all the facets in the star of its vertices are
+    also labeled. */
+    FacetRecord[] records = sc.facets.map!(f => FacetRecord(f)).array;
+
+    int currentLabel = 1;
+
+    // Deal with the facets that are (necessarily isolated) vertices
+    auto nVertFac = sc.facets!0.walkLength;
+    auto vertexFacets = records[0 .. nVertFac];
+
+    foreach(indx, ref f; vertexFacets)
+    {
+        f.label = currentLabel;
+        f.seenNear = true;
+        ++currentLabel;
+    }
+
+    while(!records.find!(r => r.label == 0).empty)
+    {
+        records.find!(r => r.label == 0).front.label = currentLabel;
+
+        // Now we propagate the current label as far as we can
+        while(records.canFind!(r => r.label != 0 && !r.seenNear))
+        {
+            auto toDo = records.find!(r => r.label != 0 && !r.seenNear);
+
+            foreach(f; toDo.front.facet.map!(v => sc.star(simplex(v))).joiner)
+            {
+                auto findIt = records.find!(r => r.facet == f);
+                assert(!findIt.empty);
+                findIt.front.label = currentLabel;
+            }
+
+            toDo.front.seenNear = true;           
+        }
+        currentLabel += 1;
+    }
+
+    return records.chunkBy!((r1, r2) => r1.label == r2.label)
+        .map!(rList => SimplicialComplex!Vertex(rList.map!(r => r.facet).array));           
+}
+///
+@Name("connectedComponents")
+unittest
+{
+    auto sc = SimplicialComplex!()([[1],[9], [2,3],[3,4],[5,6],[6,7,8]]);
+
+    auto c1 = SimplicialComplex!()([[1]]);
+    auto c2 = SimplicialComplex!()([[9]]);
+    auto c3 = SimplicialComplex!()([[2,3], [3,4]]);
+    auto c4 = SimplicialComplex!()([[5,6], [6,7,8]]);
+
+    assert(sc.connectedComponents.array == [c1, c2, c3, c4]);       
+}
+
+
+/***************************************************************************
+Returns true if the simplicial complex is connected and false otherwise.
+Note that an empty complex counts as connected.
+*/
+bool isConnected(Vertex)(const SimplicialComplex!Vertex sc)
+{
+    return sc.connectedComponents.walkLength <= 1;
+}
+///
+@Name("isConnected")
+unittest
+{
+    auto disjointCircles = SimplicialComplex!()([
+        [1,2], [2,3], [1,3],
+        [4,5], [5,6], [4,6]]);
+        
+    assert(!disjointCircles.isConnected);
+
+    auto barbell = SimplicialComplex!()(disjointCircles.facets ~ [[3,4]]);
+    assert(barbell.isConnected);
+
+    auto nada = SimplicialComplex!()();
+    assert(nada.isConnected);
+}
+
+/***************************************************************************
+Returns the join of two simplicial complexes
+*/
 auto join(Vertex)(SimplicialComplex!Vertex sc1, SimplicialComplex!Vertex sc2)
 {
     Vertex[][] result;
@@ -571,6 +616,7 @@ auto join(Vertex)(SimplicialComplex!Vertex sc1, SimplicialComplex!Vertex sc2)
     return SimplicialComplex!Vertex(result);
 }
 ///
+@Name("join")
 unittest
 {
     auto sc1 = SimplicialComplex!()([[1,2], [2,3,4], [5]]);
@@ -583,8 +629,6 @@ unittest
     // TO DO: More tests
 }
 
-
-
 /*******************************************************************************
 Decide if a simplicial complex is homeomorphic to a 1-sphere (circle)
 */
@@ -595,6 +639,7 @@ bool isCircle(Vertex)(SimplicialComplex!Vertex sc)
         && sc.isConnected;
 }
 ///
+@Name("isCircle")
 unittest
 {
     // Start with a circle with 4 edges
@@ -625,6 +670,7 @@ bool isPureOfDim(Vertex)(const SimplicialComplex!Vertex sc, int d)
     return sc.facets(d).walkLength == sc.numFacets;
 }
 ///
+@Name("isPureOfDim")
 unittest
 {
     auto sc = SimplicialComplex!()();
@@ -645,7 +691,6 @@ unittest
         "expected a non-negative dimension but got -2");
 }
 
-
 /*******************************************************************************
 Decide if a simplicial complex is homeomorphic to a surface of genus `g`
 */
@@ -659,6 +704,7 @@ bool isSurfaceOfGenus(Vertex)(SimplicialComplex!Vertex sc, int g)
         && sc.eulerCharacteristic == 2 - 2 * g;    
 }
 ///
+@Name("isSurfaceOfGenus")
 unittest
 {
     // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n10_o1_g2
@@ -699,6 +745,7 @@ bool is2Sphere(Vertex)(SimplicialComplex!Vertex sc)
     return sc.isSurfaceOfGenus(0);
 }
 ///
+@Name("is2Sphere")
 unittest
 {
     auto s1 = SimplicialComplex!()([[1,2,3], [1,2,4], [1,3,4], [2,3,4]]);
@@ -728,6 +775,7 @@ bool is2Torus(Vertex)(SimplicialComplex!Vertex sc)
     return sc.isSurfaceOfGenus(1);
 }
 ///
+@Name("is2Torus")
 unittest
 {
     // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n10_o1_g1
@@ -738,3 +786,21 @@ unittest
     assert(g1.is2Torus);
 }
 
+/*******************************************************************************
+Helper function template returning a newly constructed simplicial complex from
+an array of facets (given as arrays of vertices.)
+*/
+SimplicialComplex!Vertex simplicialComplex(Vertex)(Vertex[][] initialFacets)
+{
+    return SimplicialComplex!Vertex(initialFacets);
+}
+///
+@Name("simplicialComplex")
+unittest
+{
+    auto sc = simplicialComplex([[1,2], [2,3], [3,4,5], [6,7,8]]);
+    assert(sc.facets == [[1,2], [2,3], [3,4,5], [6,7,8]]);
+    assert(sc == SimplicialComplex!()(sc.facets));
+}
+
+// TO DO: Orientability tester! Fix genus stuff once that's done...
