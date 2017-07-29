@@ -11,7 +11,7 @@ import std.typecons : Tuple, tuple;
 import utility : isSubsetOf, SmallMap, subsets, staticIota, subsetsOfSize, throwsWithMsg;
 import std.stdio : writeln;
 import unit_threaded : Name;
-import fluent.asserts : should;
+import fluent.asserts : should, Assert;
 
 /// Basic Functionality
 @Name("doc tests")
@@ -195,8 +195,8 @@ unittest
     sc2.insertFacet([1,2,5]);
     sc2.insertFacet([1,3,5]);
     sc2.insertFacet([2,3,5]);
-    assert(sc2.facets ==
-        [[1,2,4], [1,2,5], [1,3,4], [1,3,5], [2,3,4], [2,3,5]]);
+    assert(sc2.facets == [[1,2,4], [1,2,5], [1,3,4], [1,3,5], [2,3,4],
+        [2,3,5]]);
 
     SimplicialComplex!int sc3;
     sc3.insertFacet([1,2,3]);
@@ -304,8 +304,8 @@ public:
         int dim = vertices.walkLength.to!int - 1;
 
         auto indx = facetVertices[dim].chunks(dim + 1).countUntil(vertices);
-        copy(facetVertices[dim][(indx + 1) * (dim + 1) .. $],
-            facetVertices[dim][indx * (dim + 1) .. $ - (dim + 1)]);
+        copy(facetVertices[dim][(dim + 1) * (indx + 1)  .. $],
+             facetVertices[dim][(dim + 1) * indx .. $ - (dim + 1)]);
         
         facetVertices[dim] = facetVertices[dim][0 .. $ - (dim + 1)];
     }
@@ -562,16 +562,20 @@ auto connectedComponents(Vertex)(const SimplicialComplex!Vertex sc)
 @Name("connectedComponents")
 unittest
 {
-    auto sc = SimplicialComplex!()([[1],[9], [2,3],[3,4],[5,6],[6,7,8]]);
+    alias sComp = simplicialComplex;
 
-    auto c1 = SimplicialComplex!()([[1]]);
-    auto c2 = SimplicialComplex!()([[9]]);
-    auto c3 = SimplicialComplex!()([[2,3], [3,4]]);
-    auto c4 = SimplicialComplex!()([[5,6], [6,7,8]]);
+    auto sc = sComp([[1], [9], [2,3], [3,4], [5,6], [6,7,8]]);
 
-    assert(sc.connectedComponents.array == [c1, c2, c3, c4]);       
+    auto c1 = sComp([[1]]);
+    auto c2 = sComp([[9]]);
+    auto c3 = sComp([[2,3], [3,4]]);
+    auto c4 = sComp([[5,6], [6,7,8]]);
+
+    assert(sc.connectedComponents.array == [c1, c2, c3, c4]);
+
+    auto emptyComplex = SimplicialComplex!int();
+    assert(emptyComplex.connectedComponents.empty); 
 }
-
 
 /***************************************************************************
 Returns true if the simplicial complex is connected and false otherwise.
@@ -585,7 +589,7 @@ bool isConnected(Vertex)(const SimplicialComplex!Vertex sc)
 @Name("isConnected")
 unittest
 {
-    auto disjointCircles = SimplicialComplex!()([
+    auto disjointCircles = simplicialComplex([
         [1,2], [2,3], [1,3],
         [4,5], [5,6], [4,6]]);
         
@@ -594,8 +598,8 @@ unittest
     auto barbell = SimplicialComplex!()(disjointCircles.facets ~ [[3,4]]);
     assert(barbell.isConnected);
 
-    auto nada = SimplicialComplex!()();
-    assert(nada.isConnected);
+    auto emptyComplex = SimplicialComplex!()();
+    assert(emptyComplex.isConnected);
 }
 
 /***************************************************************************
@@ -619,14 +623,15 @@ auto join(Vertex)(SimplicialComplex!Vertex sc1, SimplicialComplex!Vertex sc2)
 @Name("join")
 unittest
 {
-    auto sc1 = SimplicialComplex!()([[1,2], [2,3,4], [5]]);
-    auto sc2 = SimplicialComplex!()([[6,7], [8]]);
+    auto sc1 = simplicialComplex([[1,2], [2,3,4], [5]]);
+    auto sc2 = simplicialComplex([[6,7], [8]]);
 
     assert(join(sc1, sc2).facets == [
         [5, 8], [1, 2, 8], [5, 6, 7],
         [1, 2, 6, 7], [2, 3, 4, 8], [2, 3, 4, 6, 7]]);
 
-    // TO DO: More tests
+    auto emptyComplex = SimplicialComplex!()();
+    assert(join(sc1, emptyComplex).facets.empty);
 }
 
 /*******************************************************************************
@@ -634,7 +639,8 @@ Decide if a simplicial complex is homeomorphic to a 1-sphere (circle)
 */
 bool isCircle(Vertex)(SimplicialComplex!Vertex sc)
 {
-    return sc.facets.all!(f => f.walkLength == 2)
+    return !sc.facets.empty
+        && sc.facets.all!(f => f.walkLength == 2)
         && sc.simplices!0.all!(v => sc.star(v).walkLength == 2)
         && sc.isConnected;
 }
@@ -643,7 +649,7 @@ bool isCircle(Vertex)(SimplicialComplex!Vertex sc)
 unittest
 {
     // Start with a circle with 4 edges
-    auto s = SimplicialComplex!()([[1,2], [2,3], [3,4], [1,4]]);
+    auto s = simplicialComplex([[1,2], [2,3], [3,4], [1,4]]);
     assert(s.isCircle);
 
     s.removeFacet([2,3]);
@@ -654,11 +660,14 @@ unittest
     assert(!s.isCircle);
 
     // Must be a connected simplicial complex
-    auto disjointCircles = SimplicialComplex!()([
+    auto disjointCircles = simplicialComplex([
         [1,2], [2,3], [1,3],
         [4,5], [5,6], [4,6]]);
 
     assert(!disjointCircles.isCircle);
+
+    auto emptyComplex = SimplicialComplex!()();
+    assert(!emptyComplex.isCircle);
 }
 
 /*******************************************************************************
@@ -689,6 +698,9 @@ unittest
     
     throwsWithMsg(sc.isPureOfDim(-2),
         "expected a non-negative dimension but got -2");
+    
+    auto emptyComplex = SimplicialComplex!()();
+    assert(iota(16).all!(d => emptyComplex.isPureOfDim(d)));
 }
 
 /*******************************************************************************
@@ -698,7 +710,8 @@ bool isSurfaceOfGenus(Vertex)(SimplicialComplex!Vertex sc, int g)
 {
     alias SimpComp = SimplicialComplex!Vertex;
 
-    return sc.isConnected
+    return !sc.facets.empty
+        && sc.isConnected
         && sc.isPureOfDim(2)
         && sc.simplices!0.all!(v => sc.link(v).to!SimpComp.isCircle)
         && sc.eulerCharacteristic == 2 - 2 * g;    
@@ -709,7 +722,7 @@ unittest
 {
     // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n10_o1_g2
     // Surface #514 in the genus 2 list 
-    auto g2 = SimplicialComplex!()([[1,2,3],[1,2,4],[1,3,5],[1,4,6],[1,5,6],
+    auto g2 = simplicialComplex([[1,2,3],[1,2,4],[1,3,5],[1,4,6],[1,5,6],
         [2,3,6],[2,4,7],[2,6,8],[2,7,9],[2,8,9],[3,5,8],[3,6,9],[3,7,8],
         [3,7,9],[4,5,7],[4,5,9],[4,6,10],[4,9,10],[5,6,9],[5,7,10],[5,8,10],
         [6,7,8],[6,7,10],[8,9,10]]);
@@ -717,7 +730,7 @@ unittest
 
     // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n12_o1_g6
     // Surface #30 in the genus 6 list
-    auto g6 = SimplicialComplex!()([[1,2,3],[1,2,4],[1,3,5],[1,4,6],[1,5,7],
+    auto g6 = simplicialComplex([[1,2,3],[1,2,4],[1,3,5],[1,4,6],[1,5,7],
         [1,6,8],[1,7,9],[1,8,10],[1,9,11],[1,10,12],[1,11,12],[2,3,6],[2,4,5],
         [2,5,9],[2,6,11],[2,7,8],[2,7,12],[2,8,11],[2,9,10],[2,10,12],[3,4,7],
         [3,4,9],[3,5,12],[3,6,10],[3,7,11],[3,8,11],[3,8,12],[3,9,10],[4,5,8],
@@ -725,15 +738,8 @@ unittest
         [5,8,10],[5,10,11],[6,7,8],[6,7,10],[6,9,11],[7,9,12],[8,9,12]]);
     assert(g6.isSurfaceOfGenus(6));
 
-    // Non orientable?
-    // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n10_o0_g5
-    // Surface #4941 on non-orientable genus 5 list
-    auto g5 = SimplicialComplex!()([[1,2,3],[1,2,4],[1,3,5],[1,4,6],[1,5,7],
-        [1,6,7],[2,3,6],[2,4,8],[2,5,7],[2,5,9],[2,6,10],[2,7,8],[2,9,10],
-        [3,4,6],[3,4,10],[3,5,8],[3,7,8],[3,7,10],[4,5,9],[4,5,10],[4,8,9],
-        [5,8,10],[6,7,9],[6,8,9],[6,8,10],[7,9,10]]);
-    (g5.eulerCharacteristic == -3).writeln;
-
+    auto emptyComplex = SimplicialComplex!()();
+    assert(iota(0, 10).all!(g => !emptyComplex.isSurfaceOfGenus(g)));
 }
 
 /*******************************************************************************
@@ -765,6 +771,9 @@ unittest
         [2,5,6],[3,4,7],[3,5,6],[3,6,8],[3,7,9],[3,8,9],[4,6,10],[4,7,9],
         [4,9,10],[6,8,10],[8,9,10]]);
     assert(g0.is2Sphere);
+
+    auto emptyComplex = SimplicialComplex!()();
+    assert(!emptyComplex.is2Sphere);
 }
 
 /*******************************************************************************
@@ -784,6 +793,9 @@ unittest
         [2,3,7],[2,4,8],[2,5,8],[2,5,9],[2,7,9],[3,5,10],[3,7,10],[4,6,9],
         [4,8,10],[4,9,10],[5,6,8],[5,9,10],[6,7,8],[6,7,9],[7,8,10]]);
     assert(g1.is2Torus);
+
+    auto emptyComplex = SimplicialComplex!()();
+    assert(!emptyComplex.is2Torus);
 }
 
 /*******************************************************************************
@@ -800,7 +812,11 @@ unittest
 {
     auto sc = simplicialComplex([[1,2], [2,3], [3,4,5], [6,7,8]]);
     assert(sc.facets == [[1,2], [2,3], [3,4,5], [6,7,8]]);
-    assert(sc == SimplicialComplex!()(sc.facets));
+
+    Assert.equal(sc, simplicialComplex(sc.facets));
+
+    int[][] noFacets;
+    Assert.equal(simplicialComplex(noFacets).facets.empty, true);
 }
 
 // TO DO: Orientability tester! Fix genus stuff once that's done...

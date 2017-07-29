@@ -6,7 +6,6 @@
 	"license": "GPL-2.0",
     "targetType": "executable",
 	"targetPath": "bin",
-    "preBuildCommands": ["clear"],
     "dependencies": {
         "unit-threaded": "~>0.7.11",
         "fluent-asserts": "~>0.6.1"

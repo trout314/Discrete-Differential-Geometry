@@ -1,8 +1,8 @@
-import std.algorithm : all, canFind, each, equal, find, joiner, map, maxElement,
+import std.algorithm : all, any, canFind, each, equal, filter, find, joiner, map, maxElement,
     sort, uniq;
 import std.conv : to;
 import std.exception : enforce;
-import std.range : array, empty, front, isInputRange, ElementType, popFront,
+import std.range : array, empty, enumerate, front, isInputRange, ElementType, popFront,
     walkLength;
 import std.traits : isArray;
 import simplex : Simplex, simplex;
@@ -15,6 +15,7 @@ import fluent.asserts;
 import unit_threaded : Name;
 
 ///
+@Name("SmallManifold doc tests")
 unittest
 {
     alias Manifold = SmallManifold;
@@ -60,6 +61,7 @@ unittest
 }
 
 // More tests
+@Name("SmallManifold (additional)")
 unittest
 {
     alias Manifold = SmallManifold;
@@ -181,6 +183,9 @@ public:
     alias asSimplicialComplex this;
 }
 
+/*******************************************************************************
+Returns a list of all the possible pachner moves for the given manifold
+*/
 Vertex[][] pachnerMoves(Vertex, int dim)(const SmallManifold!(dim, Vertex) m)
 {
     int[Vertex[]] degreeMap;
@@ -220,6 +225,10 @@ Vertex[][] pachnerMoves(Vertex, int dim)(const SmallManifold!(dim, Vertex) m)
     return result;
 }
 
+/*******************************************************************************
+Does a pachner move of type 1 -> (dim + 1) with the new vertex given by
+the user.
+*/
 void doPachner(Vertex, int dim)(
     SmallManifold!(dim, Vertex) manifold,
     Vertex[] centerFacet,
@@ -229,6 +238,10 @@ void doPachner(Vertex, int dim)(
     manifold.doPachnerImpl(centerFacet, [newVertex]);
 }
 
+/*******************************************************************************
+Does a pachner move which replaces the star of the given simplex. This is a
+move of type (dim + 2 - center.length) -> center.length
+*/
 void doPachner(Vertex, int dim)(
     SmallManifold!(dim, Vertex) manifold,
     Vertex[] center)
@@ -238,6 +251,7 @@ void doPachner(Vertex, int dim)(
     manifold.doPachnerImpl(center, coCenter);
 }
 
+// Factor out the common code for the two types of doPachner
 private void doPachnerImpl(Vertex, int dim)(
     SmallManifold!(dim, Vertex) manifold,
     Vertex[] center,
@@ -257,4 +271,124 @@ private void doPachnerImpl(Vertex, int dim)(
     newPiece.facets.each!(f => manifold.simpComp_.insertFacet(f));
 
     // TO DO: Do sanity checking for manifold
+}
+
+/*******************************************************************************
+Returns true if the given manifold is orientable and false otherwise.
+*/
+bool isOrientable(Vertex, int dim)(SmallManifold!(dim, Vertex) manifold)
+{
+    /* We must choose a compatible orientation for each facet. Since the facets
+    already come equipped with an ordering for the vertices, we need only
+    indicate whether this orientation is the one we want (UseVertexOrder)
+    or not (UseOppositeOrder). We let Unexamined indicate that the facet has
+    not yet been processed. */
+    enum Orientation
+    {
+        NotSet,
+        GivenOrder,
+        OppositeOrder
+    }
+
+    static struct FacetRecord
+    {
+        Vertex[] facet;
+        Orientation label;
+        bool done;
+    }
+
+    // An empty manifold is orientable
+    if(manifold.numFacets == 0)
+    {
+        return true;
+    }
+
+    auto records = manifold.facets.map!(f => FacetRecord(f)).array;
+
+    // We (arbitrarily) use the given vertex order to orient the first simplex
+    assert(records.walkLength > 0);
+    records.front.label = Orientation.GivenOrder;
+
+    while(records.any!(r => !r.done))
+    {
+        /* If we're not done there must be some oriented facet that hasn't had
+        its neighbors orientations set (or checked OK if already set) */
+        auto toDo = records.find!(
+            r => !r.done && r.label != Orientation.NotSet);
+        assert(toDo.walkLength > 0);
+
+        foreach(i, ridge; toDo.front.facet.subsetsOfSize(dim).enumerate)
+        {
+            // records.map!(r => r.facet).writeln;
+            // records.map!(r => r.label).writeln;
+            // records.map!(r => r.done).writeln;
+
+
+            auto oppFacet = manifold.star(ridge)
+                .filter!(f => f != toDo.front.facet);
+            assert(!oppFacet.empty);
+
+            auto j = oppFacet.front.subsetsOfSize(dim).enumerate.find!(
+                p => p.value == ridge
+            ).front.index;
+
+            Orientation oppFacetLabel;
+            if(i % 2 != j % 2)
+            {
+                oppFacetLabel = toDo.front.label;
+            }
+            else
+            {
+                if(toDo.front.label == Orientation.GivenOrder)
+                {
+                    oppFacetLabel = Orientation.OppositeOrder;
+                }
+                else
+                {
+                    oppFacetLabel = Orientation.GivenOrder;
+                }
+            }
+
+            auto oppRecord = records.find!(r => r.facet == oppFacet.front);
+            if(oppRecord.front.label != Orientation.NotSet)
+            {
+                if (oppRecord.front.label != oppFacetLabel)
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                oppRecord.front.label = oppFacetLabel;
+            }           
+        }
+        toDo.front.done = true;
+    }
+    // records.map!(r => r.facet).writeln;
+    // records.map!(r => r.label).writeln;
+    // records.map!(r => r.done).writeln;
+
+    return true;
+}
+///
+@Name("isOrientable") unittest
+{
+    assert(SmallManifold!2().isOrientable);
+
+    // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n10_o0_g5
+    // Surface #4941 on non-orientable genus 5 list
+    auto g5 = SmallManifold!2([[1,2,3],[1,2,4],[1,3,5],[1,4,6],[1,5,7],
+        [1,6,7],[2,3,6],[2,4,8],[2,5,7],[2,5,9],[2,6,10],[2,7,8],[2,9,10],
+        [3,4,6],[3,4,10],[3,5,8],[3,7,8],[3,7,10],[4,5,9],[4,5,10],[4,8,9],
+        [5,8,10],[6,7,9],[6,8,9],[6,8,10],[7,9,10]]);
+    assert(!g5.isOrientable);
+
+
+    // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n9_o1_g0
+    // Surface #15 on orientable genus 0 list
+    auto g0 = SmallManifold!2([[1,2,3],[1,2,4],[1,3,4],[2,3,5],[2,4,5],[3,4,6],
+        [3,5,7],[3,6,7],[4,5,8],[4,6,7],[4,7,9],[4,8,9],[5,7,8],[7,8,9]]);
+    assert(g0.isOrientable);
+
+    // TO DO: More tests
 }
