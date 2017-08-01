@@ -2,7 +2,7 @@ import std.algorithm : all, any, canFind, each, equal, filter, find, joiner,
     map, maxElement, sort, uniq;
 import std.conv : to;
 import std.exception : enforce;
-import std.range : array, empty, enumerate, front, isInputRange, ElementType,
+import std.range : array, empty, enumerate, front, iota, isInputRange, ElementType,
     popFront, walkLength;
 import std.traits : isArray;
 import simplex : Simplex, simplex;
@@ -14,7 +14,7 @@ import simplicial_complex_algorithms : connectedComponents, is2Sphere, isCircle,
     isConnected, join, eulerCharacteristic, isPureOfDim;
 
 import fluent.asserts;
-import unit_threaded : Name;
+import unit_threaded : Name, writelnUt;
 
 //dfmt off
 ///
@@ -228,20 +228,33 @@ Does a pachner move of type 1 -> (dim + 1) with the new vertex given by
 the user.
 */
 void doPachner(Vertex, int dim)(
-    SmallManifold!(dim, Vertex) manifold,
+    ref SmallManifold!(dim, Vertex) manifold,
     Vertex[] centerFacet,
     Vertex newVertex)
 {
     assert(centerFacet.walkLength == manifold.dimension + 1);
     manifold.doPachnerImpl(centerFacet, [newVertex]);
 }
+///
+@Name("doPachner 1 -> (dim + 1)")
+unittest
+{
+    auto m = SmallManifold!2(4.iota.subsetsOfSize(3));
+    m.doPachner([1,2,3], 4);
+    assert(m.facets == [[0,1,2],[0,1,3], [0,2,3], [1,2,4], [1,3,4], [2,3,4]]);
+
+    m.doPachner([0,2,3], 7);
+    m.facets.writelnUt;
+    assert(m.facets == [[0,1,2], [0,1,3], [0,2,7], [0,3,7], [1,2,4], [1,3,4],
+        [2,3,4], [2,3,7]]);
+    }
 
 /*******************************************************************************
 Does a pachner move which replaces the star of the given simplex. This is a
 move of type (dim + 2 - center.length) -> center.length
 */
 void doPachner(Vertex, int dim)(
-    SmallManifold!(dim, Vertex) manifold,
+    ref SmallManifold!(dim, Vertex) manifold,
     Vertex[] center)
 {
     auto coCenter = manifold.link(center).joiner.array.sort().uniq.array;
@@ -251,14 +264,13 @@ void doPachner(Vertex, int dim)(
 
 // Factor out the common code for the two types of doPachner
 private void doPachnerImpl(Vertex, int dim)(
-    SmallManifold!(dim, Vertex) manifold,
+    ref SmallManifold!(dim, Vertex) manifold,
     Vertex[] center,
     Vertex[] coCenter
 )
 {
     // TO DO: Better error
     enforce(manifold.pachnerMoves.canFind(center), "bad pachner move");
-
     manifold.star(center).each!(f => manifold.simpComp_.removeFacet(f));
 
     alias SComp = SimplicialComplex!Vertex;
@@ -270,3 +282,4 @@ private void doPachnerImpl(Vertex, int dim)(
 
     // TO DO: Do sanity checking for manifold
 }
+

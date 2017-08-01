@@ -14,7 +14,7 @@ import simplex : simplex;
 Returns a range containing this simplicial complex's connected components
 (returned as simplicial complexes of the same vertex type.)
 */
-auto connectedComponents(Vertex)(const SimplicialComplex!Vertex sc)
+auto connectedComponents(Vertex)(const ref SimplicialComplex!Vertex sc)
 {
     static struct FacetRecord
     {
@@ -93,7 +93,7 @@ unittest
 /*******************************************************************************
 Returns the Euler characteristic of the simplicial complex
 */
-int eulerCharacteristic(Vertex)(const SimplicialComplex!Vertex sc)
+int eulerCharacteristic(Vertex)(const ref SimplicialComplex!Vertex sc)
 {
     return sc.fVector.enumerate.map!(f => (-1)^^f.index.to!int * f.value).sum;
 }
@@ -172,7 +172,7 @@ unittest
 /*******************************************************************************
 Decide if a simplicial complex is homeomorphic to a 1-sphere (circle)
 */
-bool isCircle(Vertex)(SimplicialComplex!Vertex sc)
+bool isCircle(Vertex)(const SimplicialComplex!Vertex sc)
 {
     return !sc.facets.empty
         && sc.facets.all!(f => f.walkLength == 2)
@@ -209,7 +209,7 @@ unittest
 Returns true if the simplicial complex is connected and false otherwise.
 Note that an empty complex counts as connected.
 */
-bool isConnected(Vertex)(const SimplicialComplex!Vertex sc)
+bool isConnected(Vertex)(const ref SimplicialComplex!Vertex sc)
 {
     return sc.connectedComponents.walkLength <= 1;
 }
@@ -233,7 +233,7 @@ unittest
 /*******************************************************************************
 Decide if a simplicial complex is pure of dimension `d`
 */
-bool isPureOfDim(Vertex)(const SimplicialComplex!Vertex sc, int d)
+bool isPureOfDim(Vertex)(const ref SimplicialComplex!Vertex sc, int d)
 {
     enforce(d >= 0, "expected a non-negative dimension but got " ~ d.to!string);
     return sc.facets(d).walkLength == sc.numFacets;
@@ -266,7 +266,7 @@ unittest
 /*******************************************************************************
 Decide if a simplicial complex is homeomorphic to a surface of genus `g`
 */
-bool isSurfaceOfGenus(Vertex)(SimplicialComplex!Vertex sc, int g)
+bool isSurfaceOfGenus(Vertex)(const ref SimplicialComplex!Vertex sc, int g)
 {
     alias SimpComp = SimplicialComplex!Vertex;
 
@@ -305,7 +305,8 @@ unittest
 /***************************************************************************
 Returns the join of two simplicial complexes
 */
-auto join(Vertex)(SimplicialComplex!Vertex sc1, SimplicialComplex!Vertex sc2)
+auto join(Vertex)(const SimplicialComplex!Vertex sc1, 
+                  const SimplicialComplex!Vertex sc2)
 {
     Vertex[][] result;
     foreach(f1; sc1.facets)

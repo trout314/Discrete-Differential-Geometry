@@ -50,7 +50,8 @@ bool isOrientable(Vertex, int dim)(SmallManifold!(dim, Vertex) manifold)
 
         foreach(i, ridge; toDo.front.facet.subsetsOfSize(dim).enumerate)
         {
-            auto oppFacet = manifold.star(ridge).filter!(f => f != toDo.front.facet);
+            auto oppFacet = manifold.star(ridge).filter!(
+                f => f != toDo.front.facet);
             assert(!oppFacet.empty);
 
             auto j = oppFacet.front.subsetsOfSize(dim).enumerate
