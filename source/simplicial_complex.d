@@ -14,7 +14,7 @@ import unit_threaded : Name;
 import fluent.asserts : should, Assert;
 
 import simplicial_complex_algorithms : connectedComponents, eulerCharacteristic,
-    isCircle, isConnected, isPureOfDim, isSurfaceOfGenus, join;
+    isCircle, isConnected, isPureOfDim, isOrientableSurfaceOfGenus, join;
 
 /// Basic Functionality
 @Name("doc tests")

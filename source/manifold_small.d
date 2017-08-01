@@ -244,7 +244,6 @@ unittest
     assert(m.facets == [[0,1,2],[0,1,3], [0,2,3], [1,2,4], [1,3,4], [2,3,4]]);
 
     m.doPachner([0,2,3], 7);
-    m.facets.writelnUt;
     assert(m.facets == [[0,1,2], [0,1,3], [0,2,7], [0,3,7], [1,2,4], [1,3,4],
         [2,3,4], [2,3,7]]);
     }
@@ -260,6 +259,23 @@ void doPachner(Vertex, int dim)(
     auto coCenter = manifold.link(center).joiner.array.sort().uniq.array;
     assert(!coCenter.empty);
     manifold.doPachnerImpl(center, coCenter);
+}
+///
+@Name("doPachner n -> (dim + 2 - n), n > 1")
+unittest
+{
+    auto octahedron = SmallManifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
+        [2,3,5], [3,4,5], [1,4,5]]);
+    octahedron.doPachner([1,2]);
+    assert(octahedron.degree(simplex(0)) == 5);
+
+    // We can undo the 2->2 move
+    octahedron.doPachner([0,5]);
+    octahedron.simplices!0.all!(s => octahedron.degree(s) == 4);
+
+    // Can't do 2->2 move on the boundary of a 3-simplex
+    auto m = SmallManifold!2(4.iota.subsetsOfSize(3));
+    m.doPachner([1,2]).throwsWithMsg("bad pachner move");
 }
 
 // Factor out the common code for the two types of doPachner

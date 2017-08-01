@@ -119,7 +119,7 @@ Decide if a simplicial complex is homeomorphic to a 2-sphere
 bool is2Sphere(Vertex)(SimplicialComplex!Vertex sc)
 {
 
-    return sc.isSurfaceOfGenus(0);
+    return sc.isOrientableSurfaceOfGenus(0);
 }
 ///
 @Name("is2Sphere")
@@ -152,7 +152,7 @@ Decide if a simplicial complex is homeomorphic to a 2-torus
 */
 bool is2Torus(Vertex)(SimplicialComplex!Vertex sc)
 {
-    return sc.isSurfaceOfGenus(1);
+    return sc.isOrientableSurfaceOfGenus(1);
 }
 ///
 @Name("is2Torus")
@@ -266,15 +266,20 @@ unittest
 /*******************************************************************************
 Decide if a simplicial complex is homeomorphic to a surface of genus `g`
 */
-bool isSurfaceOfGenus(Vertex)(const ref SimplicialComplex!Vertex sc, int g)
+bool isOrientableSurfaceOfGenus(Vertex)(const ref SimplicialComplex!Vertex sc, int g)
 {
     alias SimpComp = SimplicialComplex!Vertex;
+
+    // TO DO: Find a better way to do orientability check
+    import manifold_small : SmallManifold;
+    import manifold_algorithms : isOrientable;
 
     return !sc.facets.empty
         && sc.isConnected
         && sc.isPureOfDim(2)
         && sc.simplices!0.all!(v => sc.link(v).to!SimpComp.isCircle)
-        && sc.eulerCharacteristic == 2 - 2 * g;    
+        && sc.eulerCharacteristic == 2 - 2 * g
+        && SmallManifold!2(sc.facets).isOrientable;
 }
 ///
 @Name("isSurfaceOfGenus")
@@ -286,7 +291,7 @@ unittest
         [2,3,6],[2,4,7],[2,6,8],[2,7,9],[2,8,9],[3,5,8],[3,6,9],[3,7,8],
         [3,7,9],[4,5,7],[4,5,9],[4,6,10],[4,9,10],[5,6,9],[5,7,10],[5,8,10],
         [6,7,8],[6,7,10],[8,9,10]]);
-    assert(g2.isSurfaceOfGenus(2));
+    assert(g2.isOrientableSurfaceOfGenus(2));
 
     // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n12_o1_g6
     // Surface #30 in the genus 6 list
@@ -296,10 +301,10 @@ unittest
         [3,4,9],[3,5,12],[3,6,10],[3,7,11],[3,8,11],[3,8,12],[3,9,10],[4,5,8],
         [4,6,12],[4,7,10],[4,8,9],[4,10,11],[4,11,12],[5,6,9],[5,6,12],[5,7,11],
         [5,8,10],[5,10,11],[6,7,8],[6,7,10],[6,9,11],[7,9,12],[8,9,12]]);
-    assert(g6.isSurfaceOfGenus(6));
+    assert(g6.isOrientableSurfaceOfGenus(6));
 
     auto emptyComplex = SimplicialComplex!()();
-    assert(iota(0, 10).all!(g => !emptyComplex.isSurfaceOfGenus(g)));
+    assert(iota(0, 10).all!(g => !emptyComplex.isOrientableSurfaceOfGenus(g)));
 }
 
 /***************************************************************************
