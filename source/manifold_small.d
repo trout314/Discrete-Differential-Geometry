@@ -10,7 +10,8 @@ import simplicial_complex : SimplicialComplex, fVector;
 import utility : staticIota, subsets, subsetsOfSize, throwsWithMsg;
 import std.stdio : writeln;
 
-import simplicial_complex_algorithms : connectedComponents, is2Sphere, isCircle, isConnected, join, eulerCharacteristic, isPureOfDim;
+import simplicial_complex_algorithms : connectedComponents, is2Sphere, isCircle,
+    isConnected, join, eulerCharacteristic, isPureOfDim;
 
 import fluent.asserts;
 import unit_threaded : Name;
@@ -277,9 +278,9 @@ bool isOrientable(Vertex, int dim)(SmallManifold!(dim, Vertex) manifold)
 {
     /* We must choose a compatible orientation for each facet. Since the facets
     already come equipped with an ordering for the vertices, we need only
-    indicate whether this orientation is the one we want (UseVertexOrder)
-    or not (UseOppositeOrder). We let Unexamined indicate that the facet has
-    not yet been processed. */
+    indicate whether this orientation is the one we want (GivenOrder) or not
+    (OppositeOrder). We let NotSet indicate that the facet has not yet been
+    processed. */
     enum Orientation
     {
         NotSet,
@@ -310,8 +311,7 @@ bool isOrientable(Vertex, int dim)(SmallManifold!(dim, Vertex) manifold)
     {
         /* If we're not done there must be some oriented facet that hasn't had
         its neighbors orientations set (or checked OK if already set) */
-        auto toDo = records.find!(
-            r => !r.done && r.label != Orientation.NotSet);
+        auto toDo = records.find!(r => !r.done && r.label != Orientation.NotSet);
         assert(toDo.walkLength > 0);
 
         foreach(i, ridge; toDo.front.facet.subsetsOfSize(dim).enumerate)
@@ -319,9 +319,8 @@ bool isOrientable(Vertex, int dim)(SmallManifold!(dim, Vertex) manifold)
             auto oppFacet = manifold.star(ridge).filter!(f => f != toDo.front.facet);
             assert(!oppFacet.empty);
 
-            auto j = oppFacet.front.subsetsOfSize(dim).enumerate.find!(
-                p => p.value == ridge
-            ).front.index;
+            auto j = oppFacet.front.subsetsOfSize(dim).enumerate
+                .find!(p => p.value == ridge).front.index;
 
             Orientation oppFacetLabel;
             if(i % 2 != j % 2)
