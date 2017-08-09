@@ -13,6 +13,8 @@ import utility : binarySequences, isConstructible, isEqualityComparable,
 
 import unit_threaded : Name;
 
+import std.range : assumeSorted;
+
 /*******************************************************************************
 Represents a non-degenerate simplex represented as set of vertices of user
 specified type Vertex. Elements of type Vertex must be comparable with less-than
@@ -63,17 +65,7 @@ struct Simplex(int dim, Vertex = int)
         //     verts_[indx] = v;
         // }
 
-        static if (is(Vertex == class))
-        {
-            enforce(vertices.all!(v => v !is null), "null class references "
-                ~ "cannot be vertices, but got vertices: " ~ this.toString);
-        }
-
-        enforce(verts_[].isSorted, "vertices must occur in increasing order, "
-            ~ "but got vertices: " ~ this.toString);
-
-        enforce(verts_[].findAdjacent.length == 0, "vertices must be distinct, "
-            ~ "but got vertices: " ~ this.toString);
+        vertices_.enforceValidSimplex(dim);
     }
 
     /***************************************************************************
@@ -146,11 +138,11 @@ pure @safe unittest
 
     // Vertices must be in increasing order
     throwsWithMsg(Simplex!3([5,2,3,4]),
-        "vertices must occur in increasing order, but got vertices: [5,2,3,4]");
+        "vertices must occur in increasing order, but got vertices: [5, 2, 3, 4]");
 
     // Vertices must be distinct
     throwsWithMsg(Simplex!2([1,2,2]),
-        "vertices must be distinct, but got vertices: [1,2,2]");
+        "vertices must be distinct, but got vertices: [1, 2, 2]");
 
     /* The type used to store the vertices is accessible through the symbol
     VertexType. This type defaults to an int. */
@@ -341,7 +333,7 @@ unittest
 
     // null class references are not allowed as vertices
     simplex(new D(3), null).throwsWithMsg(
-        "null class references cannot be vertices, but got vertices: [3,null]");
+        "null class references cannot be vertices, but got vertices: [3, null]");
 }
 
 /******************************************************************************
@@ -594,6 +586,30 @@ pure @safe unittest
 
     throwsWithMsg(join(s(1, 2), s(1, 3)), "join expected two simplices without "
         ~ "any common vertices, but got: [1,2] and [1,3]");
+}
+
+/*******************************************************************************
+Throws if the given range or array does not represents a valid simplex. Vertices
+must be sorted and contain no duplicates.
+*/
+void enforceValidSimplex(V)(V vertices_, int dim) if (isInputRange!V || isArray!V)
+{
+    enforce(vertices_.walkLength == dim + 1,
+        "a dimension " ~ dim.to!string ~ " simplex needs "
+        ~ (dim+1).to!string ~ " vertices, but got vertices: " 
+        ~ vertices_.to!string);
+
+    static if (is(ElementType!V == class))
+    {
+        enforce(vertices_.all!(v => v !is null), "null class references "
+            ~ "cannot be vertices, but got vertices: " ~ vertices_.to!string);
+    }
+
+    enforce(vertices_.isSorted, "vertices must occur in increasing order, "
+        ~ "but got vertices: " ~ vertices_.to!string);
+
+    enforce(vertices_.findAdjacent.walkLength == 0, "vertices must be "
+        ~ "distinct, but got vertices: " ~ vertices_.to!string);
 }
 
 /// BigInt tests

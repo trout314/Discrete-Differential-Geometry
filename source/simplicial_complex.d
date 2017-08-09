@@ -1,4 +1,4 @@
-import simplex : facesOfDim, hasFace, simplex, Simplex;
+import simplex : facesOfDim, hasFace, simplex, Simplex, enforceValidSimplex;
 import std.algorithm : all, any, canFind, chunkBy, copy, countUntil, each,
     equal, filter, find, joiner, map, maxElement, remove, setDifference,
     setIntersection, sort, sum, uniq;
@@ -17,8 +17,7 @@ import simplicial_complex_algorithms : connectedComponents, eulerCharacteristic,
     isCircle, isConnected, isPureOfDim, isOrientableSurfaceOfGenus, join;
 
 /// Basic Functionality
-@Name("doc tests")
-@safe pure unittest
+@Name("doc tests") /* @safe */ pure unittest
 {
     // create an empty simplicial complex with vertices of default type `int`
     SimplicialComplex!() sc;
@@ -232,6 +231,9 @@ public:
     */
     this(Vertex[][] facets)
     {
+        // Check that none of the arrays reference the same memory
+        assert(facets.map!(f => f.ptr).array.sort().uniq.walkLength == facets.length);
+
         // TO DO: Maybe check that no facets are faces of any others?
         facets.each!(f => insertFacet(f));
     }
@@ -240,6 +242,7 @@ public:
     this(this)
     {
         facetVertices = facetVertices.dup;
+        facetVertices.keys.map!(k => facetVertices[k] = facetVertices[k].dup);
     }
 
     /***************************************************************************
@@ -247,6 +250,7 @@ public:
     */
     void insertFacet(int dim)(const Simplex!(dim, Vertex) s)
     {
+        s.vertices.enforceValidSimplex(dim);
         insertFacet(s.vertices);
     }
 
@@ -256,8 +260,9 @@ public:
     */
     void insertFacet(V)(V vertices) if (isInputRange!V)
     {
-        /* TO DO: Validate vertex lists. How can we do this without duplicating
-        functionality from simplex.d */
+        int dim = vertices.walkLength.to!int - 1;
+        assert(dim >= 0);
+        vertices.enforceValidSimplex(dim);
 
         static assert(is(Unqual!(ElementType!V) == Vertex));
         enforce(!contains(vertices), "expected a simplex not already in the "
@@ -271,7 +276,6 @@ public:
             .filter!(vSet => this.facets.canFind(vSet))
             .each!(vSet => this.removeFacet(vSet));
 
-        int dim = vertices.walkLength.to!int - 1;
 
         if (dim in facetVertices)
         {
@@ -414,7 +418,7 @@ public:
     */
     bool contains(V)(V vertices) const if (isInputRange!V)
     {
-        static assert(is(Unqual!(ElementType!V) == Vertex));
+        static assert(is(Unqual!(ElementType!V) == Vertex));       
         return this.facets.any!(f => vertices.isSubsetOf(f));
     }
 

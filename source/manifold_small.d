@@ -184,7 +184,7 @@ public:
 /*******************************************************************************
 Returns a list of all the possible pachner moves for the given manifold
 */
-Vertex[][] pachnerMoves(Vertex, int dim)(const SmallManifold!(dim, Vertex) m)
+Vertex[][] pachnerMoves(Vertex, int dim)(const ref SmallManifold!(dim, Vertex) m)
 {
     int[Vertex[]] degreeMap;
 
@@ -196,30 +196,13 @@ Vertex[][] pachnerMoves(Vertex, int dim)(const SmallManifold!(dim, Vertex) m)
     {
         if(deg == m.dimension + 2 - simp.walkLength)
         {
-            auto newSimp = m.asSimplicialComplex.link(simp)
-                .joiner.uniq.array.sort();            
-            if(newSimp.empty || !m.contains(newSimp))
+            auto coCenter = m.getCoCenter(simp);
+            if(coCenter.empty || (!m.contains(coCenter)))
             {
                 result ~= simp.dup;
             }
         }           
     }
-
-    // TO DO: Should we even bother sorting?
-    bool mySort(Vertex[] a, Vertex[] b)
-    {
-        if (a.length < b.length)
-        {
-            return true;
-        }
-        else if (a.length == b.length)
-        {
-            return a < b;
-        }
-        return false;
-    }
-    result.sort!mySort;
-
     return result;
 }
 
@@ -246,7 +229,9 @@ unittest
     m.doPachner([0,2,3], 7);
     assert(m.facets == [[0,1,2], [0,1,3], [0,2,7], [0,3,7], [1,2,4], [1,3,4],
         [2,3,4], [2,3,7]]);
-    }
+
+    // TO DO: More pachner move tests
+}
 
 /*******************************************************************************
 Does a pachner move which replaces the star of the given simplex. This is a
@@ -256,12 +241,12 @@ void doPachner(Vertex, int dim)(
     ref SmallManifold!(dim, Vertex) manifold,
     Vertex[] center)
 {
-    auto coCenter = manifold.link(center).joiner.array.sort().uniq.array;
+    auto coCenter = manifold.getCoCenter(center);
     assert(!coCenter.empty);
     manifold.doPachnerImpl(center, coCenter);
 }
 ///
-@Name("doPachner n -> (dim + 2 - n), n > 1")
+@Name("doPachner n -> (dim + 2 - n), 1 < n < dim + 2")
 unittest
 {
     auto octahedron = SmallManifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
@@ -271,11 +256,16 @@ unittest
 
     // We can undo the 2->2 move
     octahedron.doPachner([0,5]);
-    octahedron.simplices!0.all!(s => octahedron.degree(s) == 4);
+    assert(octahedron.simplices!0.all!(s => octahedron.degree(s) == 4));
+
+    octahedron.doPachner([0,1,2], 99);
+    octahedron.doPachner([99]);
 
     // Can't do 2->2 move on the boundary of a 3-simplex
     auto m = SmallManifold!2(4.iota.subsetsOfSize(3));
     m.doPachner([1,2]).throwsWithMsg("bad pachner move");
+
+    // TO DO: More pachner move tests
 }
 
 // Factor out the common code for the two types of doPachner
@@ -291,11 +281,29 @@ private void doPachnerImpl(Vertex, int dim)(
 
     alias SComp = SimplicialComplex!Vertex;
     immutable cDim = center.walkLength.to!int - 1;
-    auto newPiece = join(SComp(center.subsetsOfSize(cDim)), SComp([coCenter]));
+   
+    SComp newPiece;
+    if(cDim == 0)
+    {
+        newPiece = SComp([coCenter]);
+    }
+    else
+    {
+        newPiece = join(SComp(center.subsetsOfSize(cDim)), SComp([coCenter]));
+    }
 
     assert(newPiece.isPureOfDim(manifold.dimension));
     newPiece.facets.each!(f => manifold.simpComp_.insertFacet(f));
 
     // TO DO: Do sanity checking for manifold
+}
+
+private auto getCoCenter(Vertex, int dim)(
+    const ref SmallManifold!(dim, Vertex) manifold,
+    const(Vertex)[] center
+)
+{
+    assert(manifold.contains(center));
+    return manifold.link(center).joiner.array.sort().uniq.array;
 }
 

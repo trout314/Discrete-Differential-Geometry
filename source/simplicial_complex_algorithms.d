@@ -239,8 +239,7 @@ bool isPureOfDim(Vertex)(const ref SimplicialComplex!Vertex sc, int d)
     return sc.facets(d).walkLength == sc.numFacets;
 }
 ///
-@Name("isPureOfDim")
-unittest
+@Name("isPureOfDim") unittest
 {
     auto sc = SimplicialComplex!()();
 

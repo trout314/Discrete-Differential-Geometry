@@ -461,8 +461,7 @@ private:
     Record[] data;
 }
 ///
-@Name("SmallMap")
-pure @safe unittest
+@Name("SmallMap") pure @safe unittest
 {
     SmallMap!(int, string) sm;
     sm.insert(5, "hello");
