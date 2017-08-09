@@ -20,7 +20,7 @@ import simplicial_complex : fVector;
 void sample()
 {
     enum dim = 2;
-    enum triesPerReport = 1;
+    enum triesPerReport = 10;
     immutable numFacetsTarget = 100;
     real nFacetCoef = 0.1;
     immutable maxVertices = 100;
@@ -33,7 +33,8 @@ void sample()
     auto oldManifold = SmallManifold!dim(manifold.facets);
 
     auto unusedVertices = iota(dim + 2,maxVertices).array;
-    auto objectiveBefore = nFacetCoef * (manifold.numFacets - real(numFacetsTarget))^^2;
+    auto oldObjective =
+            nFacetCoef * (manifold.numFacets  - real(numFacetsTarget))^^2;
 
     assert(unusedVertices.all!(v => !manifold.contains([v])));
   
@@ -41,7 +42,9 @@ void sample()
     {
         assert(unusedVertices.all!(v => !manifold.contains([v])));
 
-        objectiveBefore = nFacetCoef * (manifold.numFacets - real(numFacetsTarget))^^2;
+        oldObjective =
+            nFacetCoef * (manifold.numFacets - real(numFacetsTarget))^^2;
+
         auto moves = manifold.pachnerMoves;
         auto chosenMove = moves.choice;
 
@@ -63,16 +66,17 @@ void sample()
         }
         ++tryCount[dim + 1 - chosenMove.length];
 
-        auto objectiveAfter = nFacetCoef * (manifold.numFacets - real(numFacetsTarget))^^2;
-        
-        if(objectiveAfter < objectiveBefore)
+        auto objective =
+            nFacetCoef * (manifold.numFacets  - real(numFacetsTarget))^^2;
+
+        if(objective < oldObjective)
         {
             oldManifold = SmallManifold!dim(manifold.facets);
             ++acceptCount[dim + 1 - chosenMove.length];
         }
         else
         {
-            auto acceptProb = exp(objectiveBefore - objectiveAfter);
+            auto acceptProb = exp(oldObjective - objective);
             assert(acceptProb >= 0.0);
             assert(acceptProb <= 1.0);
 
@@ -84,6 +88,7 @@ void sample()
             else
             {
                 manifold = SmallManifold!dim(oldManifold.facets);
+                objective = oldObjective;
 
                 // Make sure to undo any changes to list of unused vertices
                 if(chosenMove.length == 1)
@@ -128,6 +133,10 @@ void sample()
                 2*indxWidth + 4, "total",
                 acceptWidth, acceptCount[].sum,
                 tryWidth, tryCount[].sum);       
+            
+            writeln("objective : ", objective);
+            writeln("fVector   : ", manifold.fVector);
+
         }
     }
 }
