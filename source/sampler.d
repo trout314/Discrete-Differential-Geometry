@@ -1,14 +1,14 @@
-import std.algorithm : all, sum;
+import std.algorithm : all, each, map, sum, max, maxElement, joiner;
 import std.range : array, iota;
 import std.conv : to;
 import std.random : choice, back, uniform01, rndGen;
-import std.range : array, empty, front, popBack;
+import std.range : array, empty, front, popBack, repeat;
 import manifold_small : SmallManifold, pachnerMoves, doPachner;
 import utility : subsetsOfSize;
 
 import std.math : exp;
-
-import std.stdio : writeln;
+import std.format : format;
+import std.stdio : writeln, writefln;
 
 import simplicial_complex : fVector;
 
@@ -19,8 +19,8 @@ import simplicial_complex : fVector;
 
 void sample()
 {
-    enum dim = 3;
-    enum triesPerReport = 10;
+    enum dim = 2;
+    enum triesPerReport = 1;
     immutable numFacetsTarget = 100;
     real nFacetCoef = 0.1;
     immutable maxVertices = 100;
@@ -97,15 +97,37 @@ void sample()
             }
         }
         
-        // --------------------------- MAKE REPORT ----------------------------        
+        // --------------------------- MAKE REPORT ----------------------------
         if(tryCount[].sum % triesPerReport == 0)
         {
+            auto indxWidth = "%,s".format(dim + 1).length;
+
+            auto acceptWidth = "%,s".format(acceptCount[].sum).length;
+            auto tryWidth = "%,s".format(tryCount[].sum).length;
+            auto totalMoveWidth = max(
+                2*indxWidth + acceptWidth + tryWidth + 10, 21);
+
+            writeln;            
+            "-".repeat(totalMoveWidth).joiner.writeln;
+            "%*s : %*s / %*s".writefln(
+                2*indxWidth + 4, "MOVES",
+                acceptWidth, "DONE",
+                tryWidth, "TRIED");
+            "-".repeat(totalMoveWidth).joiner.writeln;
+
             foreach(indx; 0 .. dim + 1)
             {
-                writeln(indx + 1, "->", dim + 1 - indx, " ", acceptCount[indx], " / ", tryCount[indx]);
+                  "%*s -> %*s : %*s / %*s".writefln(
+                    indxWidth, indx + 1,
+                    indxWidth, dim + 1 - indx,
+                    acceptWidth, "%,s".format(acceptCount[indx]),
+                    tryWidth, "%,s".format(tryCount[indx]));
             }
-
-            writeln("moves: ", acceptCount[].sum, " / ", tryCount[].sum, " fVector: ", manifold.fVector);
+          
+            "%*s : %*,s / %*,s".writefln(
+                2*indxWidth + 4, "total",
+                acceptWidth, acceptCount[].sum,
+                tryWidth, tryCount[].sum);       
         }
     }
 }
