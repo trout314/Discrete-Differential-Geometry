@@ -139,7 +139,7 @@ void sample()
             writeln("avg h-deg : ", real(fVec[$-1])/fVec[$-3]*((dim+1)*dim)/2);
             "----------------------------------".writeln;   
             writeln("msec/move : ", timer.peek.msecs / real(tryCount[].sum));
-
+            "----------------------------------".writeln;   
         }
     }
 }
