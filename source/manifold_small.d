@@ -282,15 +282,9 @@ private void doPachnerImpl(Vertex, int dim)(
     alias SComp = SimplicialComplex!Vertex;
     immutable cDim = center.walkLength.to!int - 1;
    
-    SComp newPiece;
-    if(cDim == 0)
-    {
-        newPiece = SComp([coCenter]);
-    }
-    else
-    {
-        newPiece = join(SComp(center.subsetsOfSize(cDim)), SComp([coCenter]));
-    }
+    auto newPiece = (cDim == 0)
+        ? SComp([coCenter])
+        : join(SComp(center.subsetsOfSize(cDim)), SComp([coCenter]));
 
     assert(newPiece.isPureOfDim(manifold.dimension));
     newPiece.facets.each!(f => manifold.simpComp_.insertFacet(f));

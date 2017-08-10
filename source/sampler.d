@@ -2,7 +2,7 @@ import std.algorithm : all, each, map, sum, max, maxElement, joiner;
 import std.range : array, iota;
 import std.conv : to;
 import std.random : choice, back, uniform01, rndGen;
-import std.range : array, empty, front, popBack, repeat;
+import std.range : array, chain, empty, front, popBack, repeat;
 import manifold_small : SmallManifold, pachnerMoves, doPachner;
 import utility : subsetsOfSize;
 
@@ -11,6 +11,9 @@ import std.format : format;
 import std.stdio : writeln, writefln;
 
 import simplicial_complex : fVector;
+import simplicial_complex_algorithms : eulerCharacteristic;
+
+import std.datetime : StopWatch, AutoStart, Duration, msecs;
 
 // static this()
 // {
@@ -19,10 +22,17 @@ import simplicial_complex : fVector;
 
 void sample()
 {
-    enum dim = 2;
+    auto timer = StopWatch(AutoStart.yes);
+
+    enum dim = 3;
     enum triesPerReport = 10;
+
     immutable numFacetsTarget = 100;
-    real nFacetCoef = 0.1;
+    real numFacetsCoef = 0.1;
+
+    real meanHingeDegreeTarget = 4.8;
+    real numHingesCoef = 0.1; 
+
     immutable maxVertices = 100;
 
      // attemptCount[j] counts j + 1 -> dim + 1 - j moves
@@ -33,8 +43,11 @@ void sample()
     auto oldManifold = SmallManifold!dim(manifold.facets);
 
     auto unusedVertices = iota(dim + 2,maxVertices).array;
+
+    auto fVec = manifold.fVector;
     auto oldObjective =
-            nFacetCoef * (manifold.numFacets  - real(numFacetsTarget))^^2;
+            numFacetsCoef * (fVec[dim] - real(numFacetsTarget))^^2
+            + numHingesCoef * (fVec[dim-2] - dim*(dim + 1)*fVec[dim] / (2 * meanHingeDegreeTarget))^^2;
 
     assert(unusedVertices.all!(v => !manifold.contains([v])));
   
@@ -42,8 +55,10 @@ void sample()
     {
         assert(unusedVertices.all!(v => !manifold.contains([v])));
 
+        fVec = manifold.fVector;
         oldObjective =
-            nFacetCoef * (manifold.numFacets - real(numFacetsTarget))^^2;
+            numFacetsCoef * (fVec[dim] - real(numFacetsTarget))^^2
+            + numHingesCoef * (fVec[dim-2] - dim*(dim + 1)*fVec[dim] / (2 * meanHingeDegreeTarget))^^2;
 
         auto moves = manifold.pachnerMoves;
         auto chosenMove = moves.choice;
@@ -66,8 +81,10 @@ void sample()
         }
         ++tryCount[dim + 1 - chosenMove.length];
 
+        fVec = manifold.fVector;
         auto objective =
-            nFacetCoef * (manifold.numFacets  - real(numFacetsTarget))^^2;
+            numFacetsCoef * (fVec[dim] - real(numFacetsTarget))^^2
+            + numHingesCoef * (fVec[dim-2] - dim*(dim + 1)*fVec[dim] / (2 * meanHingeDegreeTarget))^^2;
 
         if(objective < oldObjective)
         {
@@ -105,37 +122,23 @@ void sample()
         // --------------------------- MAKE REPORT ----------------------------
         if(tryCount[].sum % triesPerReport == 0)
         {
-            auto indxWidth = "%,s".format(dim + 1).length;
+            fVec = manifold.fVector;
 
-            auto acceptWidth = "%,s".format(acceptCount[].sum).length;
-            auto tryWidth = "%,s".format(tryCount[].sum).length;
-            auto totalMoveWidth = max(
-                2*indxWidth + acceptWidth + tryWidth + 10, 21);
-
-            writeln;            
-            "-".repeat(totalMoveWidth).joiner.writeln;
-            "%*s : %*s / %*s".writefln(
-                2*indxWidth + 4, "MOVES",
-                acceptWidth, "DONE",
-                tryWidth, "TRIED");
-            "-".repeat(totalMoveWidth).joiner.writeln;
-
-            foreach(indx; 0 .. dim + 1)
-            {
-                  "%*s -> %*s : %*s / %*s".writefln(
-                    indxWidth, indx + 1,
-                    indxWidth, dim + 1 - indx,
-                    acceptWidth, "%,s".format(acceptCount[indx]),
-                    tryWidth, "%,s".format(tryCount[indx]));
-            }
-          
-            "%*s : %*,s / %*,s".writefln(
-                2*indxWidth + 4, "total",
-                acceptWidth, acceptCount[].sum,
-                tryWidth, tryCount[].sum);       
+            writeln;
+            "----------------------------------".writeln;   
+            " MOVE  :  DONE  /  TRIED".writeln;
+            "----------------------------------".writeln;   
+            iota(dim + 1).each!(indx => writeln(
+                indx + 1, " -> ", dim + 1 - indx, " : ", 
+                acceptCount[indx], " / ", tryCount[indx]));
             
+            writeln("totals : ", acceptCount[].sum, " / ", tryCount[].sum);
+            "----------------------------------".writeln;   
             writeln("objective : ", objective);
-            writeln("fVector   : ", manifold.fVector);
+            writeln("fVector   : ", fVec);
+            writeln("avg h-deg : ", real(fVec[$-1])/fVec[$-3]*((dim+1)*dim)/2);
+            "----------------------------------".writeln;   
+            writeln("msec/move : ", timer.peek.msecs / real(tryCount[].sum));
 
         }
     }
