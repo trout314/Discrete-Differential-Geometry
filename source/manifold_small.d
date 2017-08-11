@@ -7,7 +7,7 @@ import std.range : array, empty, enumerate, front, iota, isInputRange, ElementTy
 import std.traits : isArray;
 import simplex : Simplex, simplex;
 import simplicial_complex : SimplicialComplex, fVector;
-import utility : staticIota, subsets, subsetsOfSize, throwsWithMsg;
+import utility : SmallMap, staticIota, subsets, subsetsOfSize, throwsWithMsg;
 import std.stdio : writeln;
 
 import simplicial_complex_algorithms : connectedComponents, is2Sphere, isCircle,
@@ -18,8 +18,7 @@ import unit_threaded : Name, writelnUt;
 
 //dfmt off
 ///
-@Name("SmallManifold doc tests")
-unittest
+@Name("SmallManifold doc tests") unittest
 {
     alias Manifold = SmallManifold;
 
@@ -59,8 +58,7 @@ unittest
 }
 
 // More tests
-@Name("SmallManifold (additional)")
-unittest
+@Name("SmallManifold (additional)") unittest
 {
     alias Manifold = SmallManifold;
 
@@ -219,8 +217,7 @@ void doPachner(Vertex, int dim)(
     manifold.doPachnerImpl(centerFacet, [newVertex]);
 }
 ///
-@Name("doPachner 1 -> (dim + 1)")
-unittest
+@Name("doPachner 1 -> (dim + 1)") unittest
 {
     auto m = SmallManifold!2(4.iota.subsetsOfSize(3));
     m.doPachner([1,2,3], 4);
@@ -246,8 +243,7 @@ void doPachner(Vertex, int dim)(
     manifold.doPachnerImpl(center, coCenter);
 }
 ///
-@Name("doPachner n -> (dim + 2 - n), 1 < n < dim + 2")
-unittest
+@Name("doPachner n -> (dim + 2 - n), 1 < n < dim + 2") unittest
 {
     auto octahedron = SmallManifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
         [2,3,5], [3,4,5], [1,4,5]]);
@@ -266,6 +262,34 @@ unittest
     m.doPachner([1,2]).throwsWithMsg("bad pachner move");
 
     // TO DO: More pachner move tests
+}
+
+int[int] degreeHistogram(Vertex, int dim)(
+    const ref SmallManifold!(dim, Vertex) manifold,
+    int histogramDim)
+{
+    assert(histogramDim >= 0);
+    assert(histogramDim <= dim);
+
+    int[int] result;
+    int[Vertex[]] degreeMap;
+
+    // TO DO: Why do I need idup here?
+    manifold.facets.each!(
+        f => f.subsetsOfSize(histogramDim + 1).each!(s => ++degreeMap[s.idup]));
+
+    degreeMap.byValue.each!(deg => ++result[deg]);  
+    return result;
+}
+///
+@Name("degreeHistogram") unittest
+{
+    auto m = SmallManifold!2([[1,2,3], [1,2,4], [1,3,4], [2,3,5], [2,4,5], [3,4,5]]);
+    assert(m.degreeHistogram(0) == [4:3, 3:2]);
+    assert(m.degreeHistogram(1) == [2:9]);
+    assert(m.degreeHistogram(2) == [1:6]);
+
+    // TO DO: Some more tests
 }
 
 // Factor out the common code for the two types of doPachner

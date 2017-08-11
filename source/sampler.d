@@ -15,10 +15,34 @@ import simplicial_complex_algorithms : eulerCharacteristic;
 
 import std.datetime : StopWatch, AutoStart, Duration, msecs;
 
-// static this()
-// {
-//     rndGen.seed(8379);
-// }
+real objective(Vertex, int dim)(const ref SmallManifold!(dim, Vertex) manifold)
+{
+    immutable numFacetsTarget = 200;
+    immutable real numFacetsCoef = 0.1;
+
+    immutable meanHingeDegreeTarget = 5.1;
+    immutable real numHingesCoef = 0.5; 
+
+    immutable numHinges = manifold.fVector[dim - 2];
+    immutable numFacets = manifold.fVector[dim];
+
+    /* The target mean hinge-degree and current number of facets imply a target
+    number of hinges. See Eq. 7, p. 5 of https://arxiv.org/pdf/1208.1514.pdf */
+    immutable numHingesTarget = dim*(dim + 1) * numFacets 
+        / (2 * meanHingeDegreeTarget);
+
+    return numFacetsCoef * (numFacets - numFacetsTarget)^^2
+        + numHingesCoef * (numHinges - numHingesTarget)^^2;
+}
+
+real meanHingeDegree(Vertex, int dim)(const ref SmallManifold!(dim, Vertex) manifold)
+{
+    immutable real numHinges = manifold.fVector[dim - 2];
+    immutable real numFacets = manifold.fVector[dim];
+
+    // See Eq. 7, p. 5 of https://arxiv.org/pdf/1208.1514.pdf
+    return numFacets * (dim + 1) * dim / (2 *  numHinges);
+}
 
 void sample()
 {
@@ -26,40 +50,27 @@ void sample()
 
     enum dim = 3;
     enum triesPerReport = 10;
+    immutable maxVertices = 500;
+    immutable maxTries = 20;
 
-    immutable numFacetsTarget = 100;
-    real numFacetsCoef = 0.1;
-
-    real meanHingeDegreeTarget = 4.8;
-    real numHingesCoef = 0.1; 
-
-    immutable maxVertices = 100;
-
-     // attemptCount[j] counts j + 1 -> dim + 1 - j moves
+     // tryCount[j] counts j + 1 -> dim + 1 - j moves tried
      ulong[dim + 1] tryCount;
      ulong[dim + 1] acceptCount;
 
     auto manifold = SmallManifold!dim((dim + 2).iota.subsetsOfSize(dim + 1));
-    auto oldManifold = SmallManifold!dim(manifold.facets);
+    auto oldManifold = manifold;
 
-    auto unusedVertices = iota(dim + 2,maxVertices).array;
+    auto unusedVertices = iota(dim + 2, maxVertices).array;
 
-    auto fVec = manifold.fVector;
-    auto oldObjective =
-            numFacetsCoef * (fVec[dim] - real(numFacetsTarget))^^2
-            + numHingesCoef * (fVec[dim-2] - dim*(dim + 1)*fVec[dim] / (2 * meanHingeDegreeTarget))^^2;
+    auto oldObjective = manifold.objective;
 
     assert(unusedVertices.all!(v => !manifold.contains([v])));
   
-    while(!unusedVertices.empty)
+    while(!unusedVertices.empty && tryCount[].sum < maxTries)
     {
         assert(unusedVertices.all!(v => !manifold.contains([v])));
 
-        fVec = manifold.fVector;
-        oldObjective =
-            numFacetsCoef * (fVec[dim] - real(numFacetsTarget))^^2
-            + numHingesCoef * (fVec[dim-2] - dim*(dim + 1)*fVec[dim] / (2 * meanHingeDegreeTarget))^^2;
-
+        oldObjective = manifold.objective;
         auto moves = manifold.pachnerMoves;
         auto chosenMove = moves.choice;
 
@@ -81,32 +92,26 @@ void sample()
         }
         ++tryCount[dim + 1 - chosenMove.length];
 
-        fVec = manifold.fVector;
-        auto objective =
-            numFacetsCoef * (fVec[dim] - real(numFacetsTarget))^^2
-            + numHingesCoef * (fVec[dim-2] - dim*(dim + 1)*fVec[dim] / (2 * meanHingeDegreeTarget))^^2;
-
-        if(objective < oldObjective)
+        if(manifold.objective < oldObjective)
         {
-            oldManifold = SmallManifold!dim(manifold.facets);
+            oldManifold = manifold;
             ++acceptCount[dim + 1 - chosenMove.length];
         }
         else
         {
-            auto acceptProb = exp(oldObjective - objective);
+            auto acceptProb = exp(oldObjective - manifold.objective);
             assert(acceptProb >= 0.0);
             assert(acceptProb <= 1.0);
 
             if(uniform01 <= acceptProb)
             {
-                oldManifold = SmallManifold!dim(manifold.facets);
+                oldManifold = manifold;
                 ++acceptCount[dim + 1 - chosenMove.length];
             }
             else
             {
-                manifold = SmallManifold!dim(oldManifold.facets);
-                objective = oldObjective;
-
+                manifold = oldManifold;
+                
                 // Make sure to undo any changes to list of unused vertices
                 if(chosenMove.length == 1)
                 {
@@ -122,8 +127,6 @@ void sample()
         // --------------------------- MAKE REPORT ----------------------------
         if(tryCount[].sum % triesPerReport == 0)
         {
-            fVec = manifold.fVector;
-
             writeln;
             "----------------------------------".writeln;   
             " MOVE  :  DONE  /  TRIED".writeln;
@@ -134,9 +137,9 @@ void sample()
             
             writeln("totals : ", acceptCount[].sum, " / ", tryCount[].sum);
             "----------------------------------".writeln;   
-            writeln("objective : ", objective);
-            writeln("fVector   : ", fVec);
-            writeln("avg h-deg : ", real(fVec[$-1])/fVec[$-3]*((dim+1)*dim)/2);
+            writeln("objective : ", manifold.objective);
+            writeln("fVector   : ", manifold.fVector);
+            writeln("avg h-deg : ", manifold.meanHingeDegree);
             "----------------------------------".writeln;   
             writeln("msec/move : ", timer.peek.msecs / real(tryCount[].sum));
             "----------------------------------".writeln;   

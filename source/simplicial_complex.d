@@ -242,7 +242,7 @@ public:
     this(this)
     {
         facetVertices = facetVertices.dup;
-        facetVertices.keys.map!(k => facetVertices[k] = facetVertices[k].dup);
+        facetVertices.keys.each!(k => facetVertices[k] = facetVertices[k].dup);
     }
 
     /***************************************************************************

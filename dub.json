@@ -8,7 +8,8 @@
 	"targetPath": "bin",
     "dependencies": {
         "unit-threaded": "~>0.7.11",
-        "fluent-asserts": "~>0.6.1"
+        "fluent-asserts": "~>0.6.1",
+        "gperftools_d": "~>0.1.0"
     },
     "configurations": [
         { "name": "executable" },
