@@ -406,3 +406,5 @@ private auto getCoCenter(Vertex, int dim)(
     return manifold.link(center).joiner.array.sort().uniq.array;
 }
 
+// TO DO: Separate unittesting for getCoCenter
+

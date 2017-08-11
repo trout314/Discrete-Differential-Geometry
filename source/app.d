@@ -5,9 +5,9 @@ else
     {
         import sampler : sample;
         import gperftools_d.profiler;
-        ProfilerStart();
+        // ProfilerStart();
         sample;
-        ProfilerStop();
+        // ProfilerStop();
     }
 }
 
