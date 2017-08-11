@@ -203,6 +203,14 @@ Vertex[][] pachnerMoves(Vertex, int dim)(const ref SmallManifold!(dim, Vertex) m
     }
     return result;
 }
+///
+@Name("pachnerMoves") unittest
+{
+    auto m = SmallManifold!2(
+        [[1,2,3], [1,2,4], [1,3,4], [2,3,5], [2,4,5],[3,4,5]]);
+
+    m.pachnerMoves.map!(m => m.idup).should.containOnly([[1], [2, 3], [2, 3, 5], [1, 3, 4], [1, 2, 3], [5], [2, 4, 5], [3, 4, 5], [1, 2, 4], [2, 4], [3, 4]]);
+}
 
 /*******************************************************************************
 Does a pachner move of type 1 -> (dim + 1) with the new vertex given by
@@ -284,13 +292,86 @@ int[int] degreeHistogram(Vertex, int dim)(
 ///
 @Name("degreeHistogram") unittest
 {
-    auto m = SmallManifold!2([[1,2,3], [1,2,4], [1,3,4], [2,3,5], [2,4,5], [3,4,5]]);
+    auto m = SmallManifold!2(
+        [[1,2,3], [1,2,4], [1,3,4], [2,3,5], [2,4,5],[3,4,5]]);
     assert(m.degreeHistogram(0) == [4:3, 3:2]);
     assert(m.degreeHistogram(1) == [2:9]);
     assert(m.degreeHistogram(2) == [1:6]);
 
     // TO DO: Some more tests
 }
+
+auto pachnerMovesAndDegreeHistogram(Vertex, int dim)(
+    const ref SmallManifold!(dim, Vertex) manifold,
+    int histogramDim)
+{
+    assert(histogramDim >= 0);
+    assert(histogramDim <= dim);
+
+    int[Vertex[]] degreeMap;    // Stores degree of each simplex
+
+    // TO DO: Why do I need idup here?
+    manifold.facets.each!(f => f.subsets.each!(s => ++degreeMap[s.idup]));
+
+    Vertex[][] moves_;
+    int[int] histogram_;
+    foreach(simp, deg; degreeMap)
+    {
+        // Add Pachner move with center `simp` if appropriate 
+        if(deg == manifold.dimension + 2 - simp.walkLength)
+        {
+            auto coCenter = manifold.getCoCenter(simp);
+            if(coCenter.empty || (!manifold.contains(coCenter)))
+            {
+                moves_ ~= simp.dup;
+            }
+        }
+
+        // Increment histogram if needed
+        if(simp.walkLength == histogramDim + 1)
+        {
+            ++histogram_[deg];
+        }
+    }
+    
+    static struct Result
+    {
+        Vertex[][] moves;
+        int[int] histogram;
+    }
+
+    return Result(moves_, histogram_);
+}
+///
+@Name("pachnerMovesAndDegreeHistogram") unittest
+{
+    auto m = SmallManifold!2(
+        [[1,2,3], [1,2,4], [1,3,4], [2,3,5], [2,4,5],[3,4,5]]);
+
+    auto r0 = m.pachnerMovesAndDegreeHistogram(0);
+    auto r1 = m.pachnerMovesAndDegreeHistogram(1);
+    auto r2 = m.pachnerMovesAndDegreeHistogram(2);
+
+    foreach(r; [r0, r1, r2])
+    {
+        r.moves.map!(m => m.idup).should.containOnly([
+            [1], [5],
+            [2, 3], [2, 4], [3, 4],
+            [2, 3, 5], [1, 3, 4], [1, 2, 3], [2, 4, 5], [3, 4, 5], [1, 2, 4]
+        ]);
+    }
+
+    assert(r0.histogram == [4:3, 3:2]);
+    assert(r1.histogram == [2:9]);
+    assert(r2.histogram == [1:6]);
+
+    // TO DO: More tests
+
+    /* TO DO: Is this actually faster than two separate calls to pachnerMoves
+    and degreeHistogram? */
+}
+
+
 
 // Factor out the common code for the two types of doPachner
 private void doPachnerImpl(Vertex, int dim)(
