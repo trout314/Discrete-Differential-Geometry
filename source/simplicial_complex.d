@@ -55,8 +55,8 @@ import simplicial_complex_algorithms : connectedComponents, eulerCharacteristic,
     assert(sc3 == sc);
 
     /* get the vertices in the facets, returned in order of increasing dimension
-    and dictionary order within a dimension */ 
-    assert(sc.facets == [[4,5], [5,6], [1,2,3], [2,3,4]]);
+    and dictionary order within a dimension */
+    assert(sc.facets.equal([[4,5], [5,6], [1,2,3], [2,3,4]]));
     assert(sc.numFacets == 4);
 
     // Can get a sorted array of all the facet simplices of a given dimension
@@ -167,13 +167,13 @@ unittest
 {
     auto sc = SimplicialComplex!()();
     sc.insertFacet([1,2]);
-    assert(sc.facets == [[1,2]]);
+    assert(sc.facets.equal([[1,2]]));
     sc.insertFacet([2,3,4]);
-    assert(sc.facets == [[1,2], [2,3,4]]);
+    assert(sc.facets.equal([[1,2], [2,3,4]]));
     sc.insertFacet([1,5,6]);
-    assert(sc.facets == [[1,2], [1,5,6], [2,3,4]]);
+    assert(sc.facets.equal([[1,2], [1,5,6], [2,3,4]]));
     sc.insertFacet([1,5,6,7]);
-    assert(sc.facets == [[1,2], [2,3,4], [1,5,6,7]]);
+    assert(sc.facets.equal([[1,2], [2,3,4], [1,5,6,7]]));
 }
 
 @Name("insertFacet/removeFacet")
@@ -181,30 +181,30 @@ unittest
 {
     auto sc = simplicialComplex([[1,2], [1,3], [1,4], [4,5,6]]);
 
-    assert(sc.facets == [[1,2], [1,3], [1,4], [4,5,6]]);
+    assert(sc.facets.equal([[1,2], [1,3], [1,4], [4,5,6]]));
     sc.removeFacet([1,3]);
-    assert(sc.facets == [[1,2], [1,4], [4,5,6]]);
+    assert(sc.facets.equal([[1,2], [1,4], [4,5,6]]));
     sc.removeFacet([1,2]);
-    assert(sc.facets == [[1,4], [4,5,6]]);
+    assert(sc.facets.equal([[1,4], [4,5,6]]));
     sc.removeFacet([4,5,6]);
-    assert(sc.facets == [[1,4]]);
+    assert(sc.facets.equal([[1,4]]));
     sc.removeFacet([1,4]);
-    assert(sc.facets == []);
+    assert(sc.facets.empty);
 
     auto sc2 = simplicialComplex([[1,2,3], [1,2,4], [1,3,4], [2,3,4]]);
     sc2.removeFacet([1,2,3]);
-    assert(sc2.facets == [[1,2,4], [1,3,4], [2,3,4]]);
+    assert(sc2.facets.equal([[1,2,4], [1,3,4], [2,3,4]]));
     sc2.insertFacet([1,2,5]);
     sc2.insertFacet([1,3,5]);
     sc2.insertFacet([2,3,5]);
-    assert(sc2.facets == [[1,2,4], [1,2,5], [1,3,4], [1,3,5], [2,3,4],
-        [2,3,5]]);
+    assert(sc2.facets.equal([[1,2,4], [1,2,5], [1,3,4], [1,3,5], [2,3,4],
+        [2,3,5]]));
 
     SimplicialComplex!int sc3;
     sc3.insertFacet([1,2,3]);
-    assert(sc3.facets == [[1,2,3]]);
+    assert(sc3.facets.equal([[1,2,3]]));
     sc3.removeFacet(simplex(1,2,3));
-    assert(sc3.facets == []);
+    assert(sc3.facets.empty);
 }
 
 /*******************************************************************************
@@ -351,10 +351,10 @@ public:
     are not the face of another simplex. They are returned in increasing order 
     of dimension and in lexicographic order within dimensions.
     */
-    VertexType[][] facets() const pure @safe
+    auto facets() const
     {
         auto dims = facetVertices.keys.array;
-        return dims.map!(d => facets(d)).joiner.array;
+        return dims.map!(d => facets(d)).joiner;
     }
 
     /***************************************************************************
@@ -493,9 +493,9 @@ SimplicialComplex!Vertex simplicialComplex(Vertex)(Vertex[][] initialFacets)
 unittest
 {
     auto sc = simplicialComplex([[1,2], [2,3], [3,4,5], [6,7,8]]);
-    assert(sc.facets == [[1,2], [2,3], [3,4,5], [6,7,8]]);
+    assert(sc.facets.equal([[1,2], [2,3], [3,4,5], [6,7,8]]));
 
-    Assert.equal(sc, simplicialComplex(sc.facets));
+    Assert.equal(sc, simplicialComplex(sc.facets.array));
 
     int[][] noFacets;
     Assert.equal(simplicialComplex(noFacets).facets.empty, true);

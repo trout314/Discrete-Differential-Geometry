@@ -2,7 +2,7 @@ import std.algorithm : all, any, canFind, each, equal, filter, find, joiner,
     map, maxElement, sort, uniq;
 import std.conv : to;
 import std.exception : enforce;
-import std.range : array, empty, enumerate, front, iota, isInputRange, ElementType,
+import std.range : array, chain, empty, enumerate, front, iota, isInputRange, ElementType,
     popFront, walkLength;
 import std.traits : isArray;
 import simplex : Simplex, simplex;
@@ -83,7 +83,7 @@ import unit_threaded : Name, writelnUt;
     auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
         [2,3,5], [3,4,5], [1,4,5]]);
     auto sphere = [[6,7,8], [6,7,9], [6,8,9], [7,8,9]];
-    throwsWithMsg(Manifold!2(octahedron.facets ~ sphere), "manifold constructor"
+    throwsWithMsg(Manifold!2(chain(octahedron.facets, sphere)), "manifold constructor"
         ~ " expected a connected simplicial complex but got one with"
         ~ " 2 connected components");
 
@@ -93,7 +93,7 @@ import unit_threaded : Name, writelnUt;
     auto sphere3A = Manifold!3(
         [[1,6,7,8], [1,6,7,9], [1,6,8,9], [1,7,8,9], [6,7,8,9]]);
 
-    throwsWithMsg(Manifold!3(sphere3.facets ~ sphere3A.facets),
+    throwsWithMsg(Manifold!3(chain(sphere3.facets, sphere3A.facets)),
         "manifold constructor expected the links of all codimension-3 "
         ~ "simplices to be 2-spheres but found simplex [1] with link "
         ~ "[[2, 3, 4], [2, 3, 5], [2, 4, 5], [3, 4, 5], [6, 7, 8], [6, 7, 9],"
@@ -229,11 +229,12 @@ void doPachner(Vertex, int dim)(
 {
     auto m = SmallManifold!2(4.iota.subsetsOfSize(3));
     m.doPachner([1,2,3], 4);
-    assert(m.facets == [[0,1,2],[0,1,3], [0,2,3], [1,2,4], [1,3,4], [2,3,4]]);
+    m.facets.map!(f => f.idup).should.containOnly(
+        [[0,1,2],[0,1,3], [0,2,3], [1,2,4], [1,3,4], [2,3,4]]);
 
     m.doPachner([0,2,3], 7);
-    assert(m.facets == [[0,1,2], [0,1,3], [0,2,7], [0,3,7], [1,2,4], [1,3,4],
-        [2,3,4], [2,3,7]]);
+    m.facets.map!(f => f.idup).should.containOnly([[0,1,2], [0,1,3], [0,2,7],
+        [0,3,7], [1,2,4], [1,3,4], [2,3,4], [2,3,7]]);
 
     // TO DO: More pachner move tests
 }

@@ -1,7 +1,7 @@
 import unit_threaded : Name;
 import simplicial_complex : SimplicialComplex, simplicialComplex, fVector;
 
-import std.algorithm : all, canFind, chunkBy, find, joiner, map,
+import std.algorithm : all, canFind, chunkBy, equal, find, joiner, map,
     setIntersection, sort, sum;
 import std.exception : enforce;
 import std.conv : to;
@@ -128,11 +128,11 @@ unittest
     auto s1 = simplicialComplex([[1,2,3], [1,2,4], [1,3,4], [2,3,4]]);
     assert(s1.is2Sphere);
 
-    auto disjoint2Spheres = SimplicialComplex!()(s1.facets
+    auto disjoint2Spheres = SimplicialComplex!()(s1.facets.array
         ~ [[5,6,7], [5,6,8], [5,7,8], [6,7,8]]);
     assert(!disjoint2Spheres.is2Sphere);
 
-    auto s2 = simplicialComplex(s1.facets
+    auto s2 = simplicialComplex(s1.facets.array
         ~ [[1,6,7], [1,6,8], [1,7,8], [6,7,8]]);
     assert(!s2.is2Sphere);
 
@@ -223,7 +223,7 @@ unittest
         
     assert(!disjointCircles.isConnected);
 
-    auto barbell = SimplicialComplex!()(disjointCircles.facets ~ [[3,4]]);
+    auto barbell = SimplicialComplex!()(disjointCircles.facets.array ~ [[3,4]]);
     assert(barbell.isConnected);
 
     auto emptyComplex = SimplicialComplex!()();
@@ -331,9 +331,9 @@ unittest
     auto sc1 = simplicialComplex([[1,2], [2,3,4], [5]]);
     auto sc2 = simplicialComplex([[6,7], [8]]);
 
-    assert(join(sc1, sc2).facets == [
+    assert(join(sc1, sc2).facets.equal([
         [5, 8], [1, 2, 8], [5, 6, 7],
-        [1, 2, 6, 7], [2, 3, 4, 8], [2, 3, 4, 6, 7]]);
+        [1, 2, 6, 7], [2, 3, 4, 8], [2, 3, 4, 6, 7]]));
 
     auto emptyComplex = SimplicialComplex!()();
     assert(join(sc1, emptyComplex).facets.empty);

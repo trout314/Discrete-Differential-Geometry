@@ -17,7 +17,7 @@ import std.datetime : StopWatch, AutoStart, Duration, msecs;
 
 //-------------------------------- SETTINGS ------------------------------------
     
-immutable numFacetsTarget = 1600;
+immutable numFacetsTarget = 200;
 immutable real numFacetsCoef = 0.1;
 
 immutable real meanHingeDegreeTarget = 5.1;
@@ -64,9 +64,9 @@ void sample()
     auto timer = StopWatch(AutoStart.yes);
 
     enum dim = 3;
-    enum triesPerReport = 100;
+    enum triesPerReport = 200;
     immutable maxVertices = 500;
-    immutable maxTries = 10000;
+    immutable maxTries = 2000;
 
      // tryCount[j] counts j + 1 -> dim + 1 - j moves tried
      ulong[dim + 1] tryCount;
