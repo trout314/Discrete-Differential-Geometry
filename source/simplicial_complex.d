@@ -353,8 +353,7 @@ public:
     */
     auto facets() const
     {
-        auto dims = facetVertices.keys.array;
-        return dims.map!(d => facets(d)).joiner;
+        return facetVertices.keys.map!(d => facets(d)).joiner;
     }
 
     /***************************************************************************
