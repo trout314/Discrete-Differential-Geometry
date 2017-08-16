@@ -24,7 +24,7 @@ bool isOrientable(Vertex, int dim)(SmallManifold!(dim, Vertex) manifold)
 
     static struct FacetRecord
     {
-        Vertex[] facet;
+        const(Vertex)[] facet;
         Orientation label;
         bool done;
     }

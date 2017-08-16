@@ -83,14 +83,14 @@ import simplicial_complex_algorithms : connectedComponents, eulerCharacteristic,
     assert(!sc.contains(s(4,6)));
 
     // get the star of a simplex an array of facets
-    assert(sc.star(s(5)) == [[4,5], [5,6]]);
-    assert(sc.star(s(4)) == [[4,5], [2,3,4]]);
-    assert(sc.star(s(2,3)) == [[1,2,3], [2,3,4]]);
+    assert(sc.star(s(5)).equal([[4,5], [5,6]]));
+    assert(sc.star(s(4)).equal([[4,5], [2,3,4]]));
+    assert(sc.star(s(2,3)).equal([[1,2,3], [2,3,4]]));
 
     // get link of a simplex as list of facets
-    assert(sc.link(s(5)) == [[4], [6]]);
-    assert(sc.link(s(4)) == [[5], [2,3]]);
-    assert(sc.link(s(2,3)) == [[1], [4]]);
+    assert(sc.link(s(5)).equal([[4], [6]]));
+    assert(sc.link(s(4)).equal([[5], [2,3]]));
+    assert(sc.link(s(2,3)).equal([[1], [4]]));
 
     // can print out a simplicial complex
     assert(sc.toString == "[[4, 5], [5, 6], [1, 2, 3], [2, 3, 4]]");
@@ -229,7 +229,7 @@ public:
     Construct a simplicial complex from an array of vertex arrays, specifying
     the facets.
     */
-    this(Vertex[][] facets)
+    this(const(Vertex)[][] facets)
     {
         // Check that none of the arrays reference the same memory
         assert(facets.map!(f => f.ptr).array.sort().uniq.walkLength == facets.length);
@@ -335,14 +335,15 @@ public:
     {
         enforce(dim >= 0, "expected a non-negative dimension but got dimension "
             ~ dim.to!string);
+
         if (dim !in facetVertices)
         {
-            Vertex[][] empty;
-            return empty;
+            typeof(facetVertices[dim]) empty;
+            return empty.chunks(dim + 1);
         }
         else
         {
-            return facetVertices[dim].chunks(dim + 1).array.to!(Vertex[][]);
+            return facetVertices[dim].chunks(dim + 1);
         }
     }
 
@@ -368,7 +369,7 @@ public:
     Returns the facets in the link of the simplex `s` as an array of arrays of 
     vertices, given in same order as they appear in `facets()`
     */
-    Vertex[][] link(int dim)(const Simplex!(dim, Vertex) s) const
+    const(Vertex)[][] link(int dim, V)(const Simplex!(dim, V) s) const
     {
         enforce(contains(s), "expected a simplex in the simplicial complex");
         return this.star(s).map!(f => setDifference(f, s.vertices).array).array;
@@ -377,7 +378,7 @@ public:
     Returns the facets in the link of the simplex `s` as an array of arrays of 
     vertices, given in same order as they appear in `facets()`
     */
-    Vertex[][] link(V)(V vertices) const if (isInputRange!V)
+    const(Vertex)[][] link(V)(V vertices) const if (isInputRange!V)
     {
         static assert(is(Unqual!(ElementType!V) == Vertex));
         return this.star(vertices).map!(
@@ -388,7 +389,7 @@ public:
     Returns the star of the given simplex as an array of arrays of vertices of 
     the facets. These are given in the same order as specified facets()
     */ 
-    VertexType[][] star(int dim)(const Simplex!(dim, Vertex) simplex) const
+    const(VertexType)[][] star(int dim, V)(const Simplex!(dim, V) simplex) const
     {
         return star(simplex.vertices);
     }
@@ -397,7 +398,7 @@ public:
     Returns the star of the given simplex as an array of arrays of vertices of 
     the facets. These are given in the same order as specified facets()
     */ 
-    VertexType[][] star(V)(V vertices) const if (isInputRange!V || isArray!V)
+    const(VertexType)[][] star(V)(V vertices) const if (isInputRange!V || isArray!V)
     {
         return this.facets.filter!(f => vertices.isSubsetOf(f)).array;
     }
@@ -406,7 +407,7 @@ public:
     Returns true if the simplex `s` is in this simplicial complex and false 
     otherwise
     */
-    bool contains(int dim)(const Simplex!(dim, Vertex) s) const
+    bool contains(int dim, V)(const Simplex!(dim, V) s) const
     {
         return this.contains(s.vertices);
     }
@@ -483,7 +484,7 @@ unittest
 Helper function template returning a newly constructed simplicial complex from
 an array of facets (given as arrays of vertices.)
 */
-SimplicialComplex!Vertex simplicialComplex(Vertex)(Vertex[][] initialFacets)
+SimplicialComplex!Vertex simplicialComplex(Vertex)(const(Vertex)[][] initialFacets)
 {
     return SimplicialComplex!Vertex(initialFacets);
 }
@@ -496,7 +497,7 @@ unittest
 
     Assert.equal(sc, simplicialComplex(sc.facets.array));
 
-    int[][] noFacets;
+    const(int)[][] noFacets;
     Assert.equal(simplicialComplex(noFacets).facets.empty, true);
 }
 

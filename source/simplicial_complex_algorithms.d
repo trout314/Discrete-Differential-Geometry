@@ -18,7 +18,7 @@ auto connectedComponents(Vertex)(const ref SimplicialComplex!Vertex sc)
 {
     static struct FacetRecord
     {
-        Vertex[] facet;
+        const(Vertex)[] facet;
         int label;      // labels which connected component facet is in
         bool seenNear;  // looked at facets in the star of the vertices?
     }
@@ -129,11 +129,11 @@ unittest
     assert(s1.is2Sphere);
 
     auto disjoint2Spheres = SimplicialComplex!()(s1.facets.array
-        ~ [[5,6,7], [5,6,8], [5,7,8], [6,7,8]]);
+        ~ [[5,6,7], [5,6,8], [5,7,8], [6,7,8]].to!(const(int)[][]));
     assert(!disjoint2Spheres.is2Sphere);
 
     auto s2 = simplicialComplex(s1.facets.array
-        ~ [[1,6,7], [1,6,8], [1,7,8], [6,7,8]]);
+        ~ [[1,6,7], [1,6,8], [1,7,8], [6,7,8]].to!(const(int)[][]));
     assert(!s2.is2Sphere);
 
     // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n10_o1_g0
@@ -223,7 +223,7 @@ unittest
         
     assert(!disjointCircles.isConnected);
 
-    auto barbell = SimplicialComplex!()(disjointCircles.facets.array ~ [[3,4]]);
+    auto barbell = SimplicialComplex!()(disjointCircles.facets.array ~ [[3,4]].to!(const(int)[][]));
     assert(barbell.isConnected);
 
     auto emptyComplex = SimplicialComplex!()();
@@ -312,13 +312,13 @@ Returns the join of two simplicial complexes
 auto join(Vertex)(const SimplicialComplex!Vertex sc1, 
                   const SimplicialComplex!Vertex sc2)
 {
-    Vertex[][] result;
+    const(Vertex)[][] result;
     foreach(f1; sc1.facets)
     {
         foreach(f2; sc2.facets)
         {
             assert(setIntersection(f1, f2).empty);
-            result ~= (f1 ~ f2).sort().array;
+            result ~= (f1 ~ f2).array.dup.sort().array;
         }
     }
 
