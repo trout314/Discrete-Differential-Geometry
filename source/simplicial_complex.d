@@ -391,16 +391,16 @@ public:
     */ 
     const(VertexType)[][] star(int dim, V)(const Simplex!(dim, V) simplex) const
     {
-        return star(simplex.vertices);
+        return star(simplex.vertices).array;
     }
 
     /***************************************************************************
     Returns the star of the given simplex as an array of arrays of vertices of 
     the facets. These are given in the same order as specified facets()
     */ 
-    const(VertexType)[][] star(V)(V vertices) const if (isInputRange!V || isArray!V)
+    auto star(V)(V vertices) const if (isInputRange!V)
     {
-        return this.facets.filter!(f => vertices.isSubsetOf(f)).array;
+        return this.facets.filter!(f => vertices.isSubsetOf(f));
     }
 
     /***************************************************************************

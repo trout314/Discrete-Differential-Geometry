@@ -399,19 +399,12 @@ private void doPachnerImpl(Vertex, int dim)(
     const(Vertex)[] coCenter
 )
 {
-    writelnUt("center   : ", center);
-    writelnUt("coCenter : ", coCenter);
-
     // TO DO: Better error
     enforce(manifold.pachnerMoves.canFind(center), "bad pachner move");
-
-    writelnUt(manifold.star(center));
 
     // need to make sure we have independent copies of the facets in the star   
     auto toRemove = manifold.star(center).map!(f => f.dup).array;
     toRemove.each!(f => manifold.simpComp_.removeFacet(f));
-
-    writelnUt("after removal : ", manifold.facets);
 
     alias SComp = SimplicialComplex!Vertex;
     immutable cDim = center.walkLength.to!int - 1;
@@ -419,8 +412,6 @@ private void doPachnerImpl(Vertex, int dim)(
     auto newPiece = (cDim == 0)
         ? SComp([coCenter])
         : join(SComp(center.subsetsOfSize(cDim)), SComp([coCenter]));
-
-    writelnUt("new piece : ", newPiece.facets);
 
 
     assert(newPiece.isPureOfDim(manifold.dimension));
