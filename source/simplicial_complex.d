@@ -17,7 +17,7 @@ import simplicial_complex_algorithms : connectedComponents, eulerCharacteristic,
     isCircle, isConnected, isPureOfDim, isOrientableSurfaceOfGenus, join;
 
 /// Basic Functionality
-@Name("doc tests") /* @safe */ pure unittest
+@Name("doc tests") /* @safe pure */ unittest
 {
     // create an empty simplicial complex with vertices of default type `int`
     SimplicialComplex!() sc;
@@ -88,12 +88,16 @@ import simplicial_complex_algorithms : connectedComponents, eulerCharacteristic,
     assert(sc.star(s(2,3)).equal([[1,2,3], [2,3,4]]));
 
     // get link of a simplex as list of facets
-    assert(sc.link(s(5)).equal([[4], [6]]));
-    assert(sc.link(s(4)).equal([[5], [2,3]]));
-    assert(sc.link(s(2,3)).equal([[1], [4]]));
+    assert(sc.link(s(5)).equal!equal([[4], [6]]));
+    assert(sc.link(s(4)).equal!equal([[5], [2,3]]));
+    assert(sc.link(s(2,3)).equal!equal([[1], [4]]));
 
     // can print out a simplicial complex
     assert(sc.toString == "[[4, 5], [5, 6], [1, 2, 3], [2, 3, 4]]");
+
+    // can construct from a range of ranges of vertices
+    auto sc5 = SimplicialComplex!()(iota(3).map!(i => iota(3*i, 3*i + 3)));
+    assert(sc5.facets.equal([[0, 1, 2], [3, 4, 5], [6, 7, 8]]));
 
     // -------------------------------------------------------------------------
     // Restrictions
@@ -238,6 +242,13 @@ public:
         facets.each!(f => insertFacet(f));
     }
 
+    this(R)(R facets) if (isInputRange!R 
+        && isInputRange!(ElementType!R) 
+        && is(ElementType!(ElementType!R) : VertexType))
+    {
+        facets.each!(f => insertFacet(f.array));
+    }
+
     // Postblit makes sure copy doesn't share data
     this(this)
     {
@@ -251,7 +262,7 @@ public:
     void insertFacet(int dim)(const Simplex!(dim, Vertex) s)
     {
         s.vertices.enforceValidSimplex(dim);
-        insertFacet(s.vertices);
+        insertFacet(s.vertices.dup);
     }
 
     /***************************************************************************
@@ -296,7 +307,7 @@ public:
     */
     void removeFacet(int dim)(const Simplex!(dim, Vertex) s)
     {
-        removeFacet(s.vertices);
+        removeFacet(s.vertices.dup);
     }
 
     /***************************************************************************
@@ -369,38 +380,37 @@ public:
     Returns the facets in the link of the simplex `s` as an array of arrays of 
     vertices, given in same order as they appear in `facets()`
     */
-    const(Vertex)[][] link(int dim, V)(const Simplex!(dim, V) s) const
+    auto link(int dim, V)(const Simplex!(dim, V) s) const
     {
         enforce(contains(s), "expected a simplex in the simplicial complex");
-        return this.star(s).map!(f => setDifference(f, s.vertices).array).array;
+        return this.star(s).map!(f => setDifference(f, s.vertices));
     }
     /***************************************************************************
     Returns the facets in the link of the simplex `s` as an array of arrays of 
     vertices, given in same order as they appear in `facets()`
     */
-    const(Vertex)[][] link(V)(V vertices) const if (isInputRange!V)
+    auto link(V)(V vertices) const if (isInputRange!V)
     {
         static assert(is(Unqual!(ElementType!V) == Vertex));
-        return this.star(vertices).map!(
-            f => setDifference(f, vertices).array).array;
+        return this.star(vertices).map!(f => setDifference(f, vertices));
     }
 
     /***************************************************************************
     Returns the star of the given simplex as an array of arrays of vertices of 
     the facets. These are given in the same order as specified facets()
     */ 
-    const(VertexType)[][] star(int dim, V)(const Simplex!(dim, V) simplex) const
+    auto star(int dim, V)(const Simplex!(dim, V) s) const
     {
-        return star(simplex.vertices).array;
+        return this.facets.filter!(f => s.vertices.isSubsetOf(f));
     }
 
     /***************************************************************************
     Returns the star of the given simplex as an array of arrays of vertices of 
     the facets. These are given in the same order as specified facets()
     */ 
-    auto star(V)(V vertices) const if (isInputRange!V)
+    auto star(V)(V v) const if (isInputRange!V)
     {
-        return this.facets.filter!(f => vertices.isSubsetOf(f));
+        return this.facets.filter!(f => v.isSubsetOf(f));
     }
 
     /***************************************************************************
