@@ -7,7 +7,7 @@ import std.range : array, chain, empty, enumerate, front, iota, isInputRange, El
 import std.traits : isArray;
 import simplex : Simplex, simplex;
 import simplicial_complex : SimplicialComplex, fVector;
-import utility : SmallMap, staticIota, subsets, subsetsOfSize, throwsWithMsg;
+import utility : SmallMap, staticIota, subsets, subsetsRange, throwsWithMsg;
 import std.stdio : writeln;
 
 import simplicial_complex_algorithms : connectedComponents, is2Sphere, isCircle,
@@ -39,16 +39,14 @@ import unit_threaded : Name, writelnUt;
 
     assert(octahedron.star(s(1,2)).equal([[0,1,2], [1,2,5]]));    
 
-    octahedron.pachnerMoves.map!(s => s.idup).should.containOnly(
+    octahedron.pachnerMoves.should.containOnly(
         [[0,1], [0,2], [0,3], [0,4], [1,2], [1,4],
          [1,5], [2,3], [2,5], [3,4], [3,5], [4,5],  // 1-simplices
          [0,1,2], [0,1,4], [0,2,3], [0,3,4],
          [1,2,5], [1,4,5], [2,3,5], [3,4,5]]);      // 2-simplices
 
-    tetrahedron.pachnerMoves.map!(s => s.idup).should.containOnly(
+    tetrahedron.pachnerMoves.should.containOnly(
         [[1, 2, 3], [1, 2, 4], [1, 3, 4], [2, 3, 4]]);
-
-    // TO DO: Why do I need the map!(s => s.idup) part above?!
 
     tetrahedron.doPachner([1,2,3], 5);
 
@@ -185,8 +183,7 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(const ref SmallManifold!(dim, Ve
 {
     int[const(Vertex)[]] degreeMap;
 
-    // TO DO: Why do I need idup here?
-    m.facets.each!(f => f.subsets.each!(s => ++degreeMap[s.idup]));
+    m.facets.each!(f => f.subsets.each!(s => ++degreeMap[s]));
 
     const(Vertex)[][] result;
     foreach(simp, deg; degreeMap)
@@ -208,7 +205,7 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(const ref SmallManifold!(dim, Ve
     auto m = SmallManifold!2(
         [[1,2,3], [1,2,4], [1,3,4], [2,3,5], [2,4,5],[3,4,5]]);
 
-    m.pachnerMoves.map!(m => m.idup).should.containOnly([[1], [2, 3], [2, 3, 5],
+    m.pachnerMoves.should.containOnly([[1], [2, 3], [2, 3, 5],
         [1, 3, 4], [1, 2, 3], [5], [2, 4, 5], [3, 4, 5], [1, 2, 4], [2, 4],
         [3, 4]]);
 
@@ -217,7 +214,7 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(const ref SmallManifold!(dim, Ve
     
     assert(octahedron.simplices!0.all!(s => octahedron.degree(s) == 4));
 
-    octahedron.pachnerMoves.map!(m => m.idup).should.containOnly(
+    octahedron.pachnerMoves.should.containOnly(
         [[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5], [2,3,5], [3,4,5], [1,4,5],
         [2, 3], [0, 1], [1, 5], [4, 5], [0, 3], [1, 4],
         [1, 2], [0, 4], [0, 2], [2, 5], [3, 5], [3, 4]]);
@@ -239,13 +236,13 @@ void doPachner(Vertex, int dim)(
 ///
 @Name("doPachner 1 -> (dim + 1)") unittest
 {
-    auto m = SmallManifold!2(4.iota.subsetsOfSize(3));
+    auto m = SmallManifold!2(4.iota.subsetsRange(3).map!(s => s.array.dup));
     m.doPachner([1,2,3], 4);
-    m.facets.map!(f => f.idup).should.containOnly(
+    m.facets.should.containOnly(
         [[0,1,2],[0,1,3], [0,2,3], [1,2,4], [1,3,4], [2,3,4]]);
 
     m.doPachner([0,2,3], 7);
-    m.facets.map!(f => f.idup).should.containOnly([[0,1,2], [0,1,3], [0,2,7],
+    m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,7],
         [0,3,7], [1,2,4], [1,3,4], [2,3,4], [2,3,7]]);
 
     // TO DO: More pachner move tests
@@ -259,9 +256,12 @@ void doPachner(Vertex, int dim)(
     ref SmallManifold!(dim, Vertex) manifold,
     const(Vertex)[] center)
 {
+    // TO DO: Better error
+    enforce(manifold.pachnerMoves.canFind(center), "bad pachner move");
+
     auto coCenter = manifold.getCoCenter(center);
     assert(!coCenter.empty);
-    assert(!manifold.contains(coCenter));
+
     manifold.doPachnerImpl(center, coCenter);
 }
 ///
@@ -284,9 +284,8 @@ void doPachner(Vertex, int dim)(
     octahedron.doPachner([99]);
 
     // Can't do 2->2 move on the boundary of a 3-simplex
-    // auto m = SmallManifold!2(4.iota.subsetsOfSize(3));
-    // SmallManifold!2([[1,2,3],[1,2,4], [1,3,4], [2,3,4]])
-    //     .doPachner([1,2]).throwsWithMsg("bad pachner move");
+    auto m = SmallManifold!2([[1,2,3],[1,2,4], [1,3,4], [2,3,4]]);
+    m.doPachner([1,2]).throwsWithMsg("bad pachner move");
 
     // TO DO: More pachner move tests
 }
@@ -301,9 +300,8 @@ int[int] degreeHistogram(Vertex, int dim)(
     int[int] result;
     int[Vertex[]] degreeMap;
 
-    // TO DO: Why do I need idup here?
     manifold.facets.each!(
-        f => f.subsetsOfSize(histogramDim + 1).each!(s => ++degreeMap[s.idup]));
+        f => f.subsetsRange(histogramDim + 1).each!(s => ++degreeMap[s.array]));
 
     degreeMap.byValue.each!(deg => ++result[deg]);  
     return result;
@@ -329,8 +327,7 @@ auto pachnerMovesAndDegreeHistogram(Vertex, int dim)(
 
     int[Vertex[]] degreeMap;    // Stores degree of each simplex
 
-    // TO DO: Why do I need idup here?
-    manifold.facets.each!(f => f.subsets.each!(s => ++degreeMap[s.idup]));
+    manifold.facets.each!(f => f.subsets.each!(s => ++degreeMap[s]));
 
     Vertex[][] moves_;
     int[int] histogram_;
@@ -373,7 +370,7 @@ auto pachnerMovesAndDegreeHistogram(Vertex, int dim)(
 
     foreach(r; [r0, r1, r2])
     {
-        r.moves.map!(m => m.idup).should.containOnly([
+        r.moves.should.containOnly([
             [1], [5],
             [2, 3], [2, 4], [3, 4],
             [2, 3, 5], [1, 3, 4], [1, 2, 3], [2, 4, 5], [3, 4, 5], [1, 2, 4]
@@ -409,9 +406,10 @@ private void doPachnerImpl(Vertex, int dim)(
     alias SComp = SimplicialComplex!Vertex;
     immutable cDim = center.walkLength.to!int - 1;
    
+    //  TO DO: Create SimplicialComplex constructor that can directly take subsetsRange
     auto newPiece = (cDim == 0)
         ? SComp([coCenter])
-        : join(SComp(center.subsetsOfSize(cDim)), SComp([coCenter]));
+        : join(SComp(center.subsetsRange(cDim).map!(s => s.array.dup)), SComp([coCenter]));
 
 
     assert(newPiece.isPureOfDim(manifold.dimension));

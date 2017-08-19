@@ -8,7 +8,7 @@ import std.range : array, chunks, empty, enumerate, ElementType, front, iota,
     isInputRange, refRange, walkLength, zip;
 import std.traits : isArray, Unqual;
 import std.typecons : Tuple, tuple;
-import utility : isSubsetOf, SmallMap, subsets, staticIota, subsetsOfSize, throwsWithMsg;
+import utility : isSubsetOf, SmallMap, subsets, staticIota, throwsWithMsg, subsetsRange;
 import std.stdio : writeln;
 import unit_threaded : Name;
 import fluent.asserts : should, Assert;
@@ -449,14 +449,15 @@ public:
     {
         assert(dim >= 0, "dimension must be non-negative, but got "
             ~ dim.to!string);
+
         Vertex[][] simplicesSeen;
-        auto dims = facetVertices.keys.array;
-        foreach(key; dims.filter!(d => d >= dim))
+        auto dims = facetVertices.keys;
+        foreach(d; dims.filter!(d => d >= dim))
         {
-            foreach(facet; facetVertices[key].chunks(key + 1))
+            foreach(f; this.facets(d))
             {
-                simplicesSeen ~= facet.subsetsOfSize(dim + 1)
-                    .map!(f => f.dup).array;
+                simplicesSeen ~= f.subsetsRange(dim + 1)
+                    .map!(s => s.array.dup).array;
             }
         }
         return simplicesSeen.sort().uniq;
@@ -466,7 +467,7 @@ public:
 /*******************************************************************************
 Returns a nice looking representation of the simplicial complex as a string.
 */
-string toString(Vertex)(const SimplicialComplex!Vertex sc)
+string toString(Vertex)(const ref SimplicialComplex!Vertex sc)
 {
     return sc.facets.to!string;
 }
@@ -475,7 +476,7 @@ string toString(Vertex)(const SimplicialComplex!Vertex sc)
 Get the f-vector of the simplicial complex. The returned array lists the
 number of simplices in each dimension.
 */
-int[] fVector(Vertex)(const SimplicialComplex!Vertex sc)
+int[] fVector(Vertex)(const ref SimplicialComplex!Vertex sc)
 {   
     immutable maxDim = sc.facetVertices.keys.maxElement.to!int;
     return iota(maxDim + 1).map!(dim => sc.simplices(dim).walkLength.to!int)

@@ -1,12 +1,14 @@
-import std.algorithm : all, canFind, equal, filter, find, joiner, map, sort;
+import std.algorithm : all, canFind, copy, each, equal, filter, find, joiner, map, sort, sum;
 import std.conv : to;
 import std.exception : enforce;
 import std.meta : AliasSeq, allSatisfy, anySatisfy;
-import std.range : array, chain, drop, ElementType, enumerate, front, iota, 
-    isForwardRange, only, repeat, take, walkLength;
+import std.range : array, chain, drop, ElementType, empty, enumerate, front, iota, 
+    isForwardRange, only, popFront, repeat, take, walkLength;
 import std.traits : lvalueOf, rvalueOf;
 
-import std.stdio : writeln;
+import std.stdio : writeln, writefln;
+
+import core.bitop : popcnt;
 
 import unit_threaded;
 
@@ -530,16 +532,16 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
 @Name("subsetsOfSize")
 unittest
 {
-    assert([1,2,3].subsetsOfSize(0) == [[]]);
-    assert([1,2,3].subsetsOfSize(1) == [[1], [2], [3]]);
-    assert([1,2,3].subsetsOfSize(2) == [[1,2], [1,3], [2,3]]);
-    assert([1,2,3].subsetsOfSize(3) == [[1,2,3]]);
+    assert([1,2,3].subsetsOfSize(0).equal([[]]));
+    assert([1,2,3].subsetsOfSize(1).equal([[1], [2], [3]]));
+    assert([1,2,3].subsetsOfSize(2).equal([[1,2], [1,3], [2,3]]));
+    assert([1,2,3].subsetsOfSize(3).equal([[1,2,3]]));
 
-    assert([1,2,3,4,5].subsetsOfSize(2) == [[1, 2], [1, 3], [1, 4], [1, 5],
-        [2, 3], [2, 4], [2, 5], [3, 4], [3, 5], [4, 5]]);
+    assert([1,2,3,4,5].subsetsOfSize(2).equal([[1, 2], [1, 3], [1, 4], [1, 5],
+        [2, 3], [2, 4], [2, 5], [3, 4], [3, 5], [4, 5]]));
 
     int[] empty;
-    assert(empty.subsetsOfSize(0) == [[]]);
+    assert(empty.subsetsOfSize(0).equal([[]]));
 
     /* Note that using an empty string literal in the above example will not
     work since [] has type void[] */
@@ -554,13 +556,125 @@ unittest
 }
 
 /*******************************************************************************
+Returns all the sub-ranges of length `sizeOfSubset` from the ordered range `set`
+TO DO: Replace this with a lazy @nogc version.
+*/
+auto subsetsRange(R)(R set, int subsetSize) if (isForwardRange!R)
+{
+    auto setSize = set.walkLength;
+    enforce(subsetSize > 0, "subsetsOfSize expects a positive subset size but "
+        ~ "got subset size " ~ subsetSize.to!string);
+ 
+    enforce(subsetSize <= setSize, "subsetsOfSize expects a subset size not "
+        ~ "larger than the size of the set, but got subset size " 
+        ~ subsetSize.to!string ~ " and a set of size " ~ setSize.to!string);
+
+    enforce(setSize <= 31, "subsetsOfSize expects a set of size at most 31 "
+        ~ "but got a set of size " ~ setSize.to!string);
+
+    static struct SubsetsRange
+    {
+        /* We will think of the bits in whichToKeep as indexed starting with
+        zero for the least significant bit. Highest bit is empty flag. */
+        uint whichToKeep;
+        R set_;            // Underlying set from which to draw elements
+
+        auto front()
+        {
+            return set_.enumerate.filter!(pair => ((1 << pair.index) & whichToKeep))
+                .map!(pair => pair.value);
+        }
+
+        auto popFront()
+        {
+            assert(!this.empty);
+
+            int len = set_.walkLength.to!int;
+            int subLen = whichToKeep.popcnt;
+
+            // Check for emptiness
+            if(iota(len - subLen, len).map!(p => 1 << p).sum == whichToKeep)
+            {
+                whichToKeep |= (1 << 31);
+                return;
+            }
+
+            int currentPos = len - 1;
+            if((1 << currentPos) & whichToKeep) // One at current position
+            {
+                // Skip over additional ones
+                while(((1 << currentPos) & whichToKeep) && (currentPos >= 0))
+                {
+                    --currentPos;
+                }
+                assert(currentPos > 0);
+                assert(currentPos < len);
+                assert(!((1 << currentPos) & whichToKeep));
+
+                int numOnesSeen = len - currentPos - 1;
+
+                // Find another one to move
+                while(!((1 << currentPos) & whichToKeep) && (currentPos >= 0))
+                {
+                    --currentPos;
+                }
+                assert(currentPos >= 0);
+                assert(currentPos < len);
+                assert((1 << currentPos) & whichToKeep);
+
+
+                whichToKeep &= ~(1 << currentPos);
+
+                iota(currentPos + 1, currentPos + 2 + numOnesSeen).
+                    each!(pos => whichToKeep |= (1 << pos));
+                
+                iota(currentPos + 2 + numOnesSeen, len).
+                    each!(pos => whichToKeep &= ~(1 << pos));  
+            }
+            else // Zero at current position
+            {
+                assert(!((1 << currentPos) & whichToKeep));
+
+                // Find a one to move
+                while((!((1 << currentPos) & whichToKeep)) && (currentPos >= 0))
+                {
+                    --currentPos;
+                }
+                assert(currentPos >= 0);
+                assert(currentPos < len);
+                assert((1 << currentPos) & whichToKeep);
+
+                whichToKeep &= ~(1 << currentPos);
+                whichToKeep |= (1 << (currentPos + 1));
+            }
+        }
+
+        auto empty()
+        {
+            // Use last bit to indicate empty
+            return ((1 << 31) & whichToKeep) > 0;
+        }
+    }
+
+    uint initToKeep = (1 << subsetSize) - 1;
+    return SubsetsRange(initToKeep, set);
+}
+///
+@Name("subsetsRange") unittest
+{
+    [1,2,3,4].subsetsRange(1).equal!equal([[1], [2], [3], [4]]);
+
+    [1,2,3,4].subsetsRange(2).equal!equal(
+        [[1,2], [1,3], [1,4], [2,3], [2,4], [3,4]]);
+}
+
+/*******************************************************************************
 Returns a list of all non-empty subsets of the given set
 */
 auto subsets(R)(R set) if (isForwardRange!R)
 {
     auto setSize = set.walkLength.to!int;
-    return iota(setSize + 1).map!(
-        s => set.subsetsOfSize(s)).joiner.drop(1);
+    return iota(setSize + 1).map!(s => set.subsetsOfSize(s)).joiner.drop(1);
 }
 ///
 @Name("subsets")

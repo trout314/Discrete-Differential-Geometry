@@ -9,7 +9,7 @@ import std.range : array, chain, ElementType, empty, enumerate, front, iota,
 import std.traits : CommonType, isArray, isImplicitlyConvertible, isInstanceOf, 
     isPointer, PointerTarget;
 import utility : binarySequences, isConstructible, isEqualityComparable, 
-    isLessThanComparable, isPrintable, isSubsetOf, subsetsOfSize, throwsWithMsg;
+    isLessThanComparable, isPrintable, isSubsetOf, subsetsRange, subsetsOfSize, throwsWithMsg;
 
 import unit_threaded : Name;
 
@@ -536,7 +536,7 @@ pure @safe unittest
     assert(s(1,3,5,7).hinges.array
         == [s(1,3), s(1,5), s(1,7), s(3,5), s(3,7), s(5,7)]);
 
-    static assert(s(1,2,3).hinges.array == [s(1), s(2), s(3)]);
+    static assert(s(1,2,3).hinges.equal([s(1), s(2), s(3)]));
     static assert(s(1,3,5,7).hinges.array 
         == [s(1,3), s(1,5), s(1,7), s(3,5), s(3,7), s(5,7)]);
 }
