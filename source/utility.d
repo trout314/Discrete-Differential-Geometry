@@ -619,12 +619,12 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
             return set_.subsetFromUint(whichToKeep);
         }
 
-        auto popFront()
+        auto popFront() @nogc
         {
             assert(!this.empty);
 
-            int len = set_.walkLength.to!int;
-            int subLen = whichToKeep.popcnt;
+            auto len = set_.walkLength;
+            auto subLen = whichToKeep.popcnt;
             uint lastToKeep = ((1 << subLen) - 1) << (len - subLen);
             // writefln("lastToKeep : %b", lastToKeep);
 
@@ -635,7 +635,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
                 return;
             }
 
-            int currentPos = len - 1;
+            auto currentPos = len - 1;
             if((1 << currentPos) & whichToKeep) // One at current position
             {
                 // Skip over additional ones
@@ -647,7 +647,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
                 assert(currentPos < len);
                 assert(!((1 << currentPos) & whichToKeep));
 
-                int numOnesSeen = len - currentPos - 1;
+                auto numOnesSeen = len - currentPos - 1;
 
                 // Find another one to move
                 while(!((1 << currentPos) & whichToKeep) && (currentPos >= 0))
@@ -723,10 +723,22 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
 ///
 @Name("subsetsOfSize @nogc") @nogc unittest
 {
+    // TO DO: Improve this test! Ugly...
+
     int[4] s = [1,2,3,4];
 
     auto r = s[].subsetsOfSize(2);
     assert(r.front.front == 1);
+    assert(!r.empty);
+    r.popFront;
+    r.popFront;
+    r.popFront;
+    assert(r.front.front == 2);
+    auto r1 = r.save;
+    r.popFront;
+    r.popFront;
+    assert(r.front.front == 3);
+    assert(r1.front.front == 2);
 }
 
 auto subsets(R)(R set) if (isForwardRange!R)
