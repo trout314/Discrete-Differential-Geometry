@@ -195,6 +195,15 @@ private:
 }
 
 ///
+@Name("coefficients")
+unittest
+{
+    alias r = rational;
+    auto v = reVector!(3,5,11)(r(1), r(2, 3), r(6));
+    assert(v.coefficients == [r(1), r(2, 3), r(6)]);
+}
+
+///
 @Name("vector operations")
 unittest // TO DO: BigInt won't allow @safe.
 {
