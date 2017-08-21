@@ -1,17 +1,13 @@
-import std.algorithm : all, canFind, copy, each, equal, filter, find, joiner, map, sort, sum;
+import std.algorithm : all, canFind, copy, each, equal, filter, find, joiner,
+    map, sort, sum;
 import std.conv : to;
 import std.exception : enforce;
 import std.meta : AliasSeq, allSatisfy, anySatisfy;
-import std.range : array, chain, drop, ElementType, empty, enumerate, front, iota, save,
-    isForwardRange, only, popFront, repeat, take, walkLength;
+import std.range : array, chain, drop, ElementType, empty, enumerate, front,
+    iota, save, isForwardRange, only, popFront, repeat, take, walkLength;
 import std.traits : lvalueOf, rvalueOf;
-
-import std.stdio : writeln, writefln;
-
 import core.bitop : popcnt;
-
 import unit_threaded;
-
 import fluent.asserts;
 
 /*******************************************************************************
@@ -507,6 +503,14 @@ unittest
     work since [] has type void[] */
     static assert(!__traits(compiles, [].isSubsetOf([6, 8])));
 }
+/*******************************************************************************
+Returns true if the uint `x` has a 1 at position `pos` and 0 otherwise (where
+position 0 is the lesat significant bit and position 31 the highest.)
+*/
+auto hasOneAtBit(uint x, size_t pos)
+{
+    return  (1 << pos) & x;
+}
 
 auto subsetFromUint(R)(R set, uint whichToKeep) if (isForwardRange!R)
 {
@@ -521,7 +525,7 @@ auto subsetFromUint(R)(R set, uint whichToKeep) if (isForwardRange!R)
         auto front()
         {
             assert(!set_.empty);
-            while(!(whichToKeep_ & 1))
+            while(!whichToKeep_.hasOneAtBit(0))
             {
                 set_.popFront;
                 whichToKeep_ >>= 1;
@@ -533,21 +537,18 @@ auto subsetFromUint(R)(R set, uint whichToKeep) if (isForwardRange!R)
 
         auto popFront()
         {
-            // writefln("from popFront ... whichToKeep_ : %b", whichToKeep_);
-            // writefln("from popFront ...         set_ : %s", set_);
-
             assert(!set_.empty, 
                 "tried to popFront an empty SubsetFromUintRange");
 
             set_.popFront;
             whichToKeep_ >>= 1;       
 
-            while(!(whichToKeep_ & 1) && !empty)
+            while(!whichToKeep_.hasOneAtBit(0) && !empty)
             {
                 set_.popFront;
                 whichToKeep_ >>= 1;
             }
-            assert((whichToKeep_ & 1) || empty);
+            assert(whichToKeep_.hasOneAtBit(0) || empty);
         }
 
         auto empty()
@@ -605,7 +606,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
     assert(subsetSize <= setSize);
     assert(setSize <= 32);
 
-    static struct SubsetsRange
+    static struct SubsetsOfSizeRange
     {
         /* We will think of the bits in whichToKeep as indexed starting with
         zero for the least significant bit. Highest bit is empty flag. */
@@ -623,10 +624,9 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
         {
             assert(!this.empty);
 
-            auto len = set_.walkLength;
-            auto subLen = whichToKeep.popcnt;
-            uint lastToKeep = ((1 << subLen) - 1) << (len - subLen);
-            // writefln("lastToKeep : %b", lastToKeep);
+            immutable len = set_.walkLength;
+            immutable subLen = whichToKeep.popcnt;
+            immutable uint lastToKeep = ((1 << subLen) - 1) << (len - subLen);
 
             // Check for impending emptiness
             if(whichToKeep == lastToKeep)
@@ -636,18 +636,18 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
             }
 
             auto currentPos = len - 1;
-            if((1 << currentPos) & whichToKeep) // One at current position
+            if(whichToKeep.hasOneAtBit(currentPos))
             {
                 // Skip over additional ones
-                while(((1 << currentPos) & whichToKeep) && (currentPos >= 0))
+                while(whichToKeep.hasOneAtBit(currentPos) && (currentPos >= 0))
                 {
                     --currentPos;
                 }
                 assert(currentPos > 0);
                 assert(currentPos < len);
-                assert(!((1 << currentPos) & whichToKeep));
+                assert(!whichToKeep.hasOneAtBit(currentPos));
 
-                auto numOnesSeen = len - currentPos - 1;
+                immutable numOnesSeen = len - currentPos - 1;
 
                 // Find another one to move
                 while(!((1 << currentPos) & whichToKeep) && (currentPos >= 0))
@@ -656,7 +656,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
                 }
                 assert(currentPos >= 0);
                 assert(currentPos < len);
-                assert((1 << currentPos) & whichToKeep);
+                assert(whichToKeep.hasOneAtBit(currentPos));
 
                 whichToKeep &= ~(1 << currentPos);
 
@@ -668,16 +668,16 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
             }
             else // Zero at current position
             {
-                assert(!((1 << currentPos) & whichToKeep));
+                assert(!whichToKeep.hasOneAtBit(currentPos));
 
                 // Find a one to move
-                while((!((1 << currentPos) & whichToKeep)) && (currentPos >= 0))
+                while(!whichToKeep.hasOneAtBit(currentPos) && (currentPos >= 0))
                 {
                     --currentPos;
                 }
                 assert(currentPos >= 0);
                 assert(currentPos < len);
-                assert((1 << currentPos) & whichToKeep);
+                assert(whichToKeep.hasOneAtBit(currentPos));
 
                 whichToKeep &= ~(1 << currentPos);
                 whichToKeep |= (1 << (currentPos + 1));
@@ -691,12 +691,12 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
 
         auto save()
         {
-            return SubsetsRange(whichToKeep, set_, empty_);
+            return SubsetsOfSizeRange(whichToKeep, set_, empty_);
         }
     }
 
     uint initToKeep = (1 << subsetSize) - 1;
-    return SubsetsRange(initToKeep, set);
+    return SubsetsOfSizeRange(initToKeep, set);
 }
 ///
 @Name("subsetsOfSize") unittest 
