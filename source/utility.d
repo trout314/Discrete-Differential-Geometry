@@ -2,7 +2,7 @@ import std.algorithm : all, canFind, copy, each, equal, filter, find, joiner, ma
 import std.conv : to;
 import std.exception : enforce;
 import std.meta : AliasSeq, allSatisfy, anySatisfy;
-import std.range : array, chain, drop, ElementType, empty, enumerate, front, iota, 
+import std.range : array, chain, drop, ElementType, empty, enumerate, front, iota, save,
     isForwardRange, only, popFront, repeat, take, walkLength;
 import std.traits : lvalueOf, rvalueOf;
 
@@ -11,6 +11,8 @@ import std.stdio : writeln, writefln;
 import core.bitop : popcnt;
 
 import unit_threaded;
+
+import fluent.asserts;
 
 /*******************************************************************************
 Checks if items of type T can be compared with the less-than operation. Note 
@@ -506,71 +508,102 @@ unittest
     static assert(!__traits(compiles, [].isSubsetOf([6, 8])));
 }
 
+auto subsetFromUint(R)(R set, uint whichToKeep) if (isForwardRange!R)
+{
+    assert(whichToKeep < (1 << set.walkLength),
+        "1 bits found in positions not corresponsing to elements in set");
+
+    static struct SubsetFromUintRange
+    {
+        uint whichToKeep_;
+        R set_;
+
+        auto front()
+        {
+            assert(!set_.empty);
+            while(!(whichToKeep_ & 1))
+            {
+                set_.popFront;
+                whichToKeep_ >>= 1;
+            }
+
+            assert(!set_.empty);
+            return set_.front;
+        }
+
+        auto popFront()
+        {
+            // writefln("from popFront ... whichToKeep_ : %b", whichToKeep_);
+            // writefln("from popFront ...         set_ : %s", set_);
+
+            assert(!set_.empty, 
+                "tried to popFront an empty SubsetFromUintRange");
+
+            set_.popFront;
+            whichToKeep_ >>= 1;       
+
+            while(!(whichToKeep_ & 1) && !empty)
+            {
+                set_.popFront;
+                whichToKeep_ >>= 1;
+            }
+            assert((whichToKeep_ & 1) || empty);
+        }
+
+        auto empty()
+        {
+            return whichToKeep_ == 0;
+        }
+
+        auto save()
+        {
+            return SubsetFromUintRange(whichToKeep_, set_);
+        }
+    }
+
+    return SubsetFromUintRange(whichToKeep, set);
+}
+///
+@Name("subsetsFromUint") unittest
+{
+    assert([3,4,5].subsetFromUint(0).empty);
+    assert([3,4,5].subsetFromUint(1).array == [3]);
+    assert([3,4,5].subsetFromUint(2).array == [4]);
+    assert([3,4,5].subsetFromUint(3).array == [3,4]);
+    assert([3,4,5].subsetFromUint(4).array == [5]);
+    assert([3,4,5].subsetFromUint(5).array == [3,5]);
+    assert([3,4,5].subsetFromUint(6).array == [4,5]);
+    assert([3,4,5].subsetFromUint(7).array == [3,4,5]);
+
+    // This will throw errors
+    // assert([3,4,5].subsetFromUint(1 << 31).array == [3,4,5]);
+
+    // TO DO: More tests
+}
+
+///
+@Name("subsetsFromUint (pure nothrow @nogc @safe)") pure nothrow @nogc @safe
+unittest
+{
+    auto r = iota(1,5).subsetFromUint(7);
+    assert(r.front == 1);
+    r.popFront;
+    assert(r.front == 2);
+    r.popFront;
+    assert(r.front == 3);
+    r.popFront;
+    assert(r.empty);
+}
+
 /*******************************************************************************
-Returns all the sub-ranges of length `sizeOfSubset` from the ordered range `set`
-TO DO: Replace this with a lazy @nogc version.
 */
 auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
 {
     auto setSize = set.walkLength;
 
-    enforce(subsetSize >= 0, "subsetsOfSize expects a positive subset size but "
-        ~ "got subset size " ~ subsetSize.to!string);
-    enforce(subsetSize <= setSize, "subsetsOfSize expects a subset size not "
-        ~ "larger than the size of the set, but got subset size " 
-        ~ subsetSize.to!string ~ " and a set of size " ~ setSize.to!string);
-
-    auto elementChoices = binarySequences(setSize, setSize - subsetSize);
-    return elementChoices.map!(
-        choice => enumerate(choice)
-                  .filter!(c => c.value == 0)
-                  .map!(c => set[c.index])
-                  .array
-    ).array;
-}
-///
-@Name("subsetsOfSize")
-unittest
-{
-    assert([1,2,3].subsetsOfSize(0).equal([[]]));
-    assert([1,2,3].subsetsOfSize(1).equal([[1], [2], [3]]));
-    assert([1,2,3].subsetsOfSize(2).equal([[1,2], [1,3], [2,3]]));
-    assert([1,2,3].subsetsOfSize(3).equal([[1,2,3]]));
-
-    assert([1,2,3,4,5].subsetsOfSize(2).equal([[1, 2], [1, 3], [1, 4], [1, 5],
-        [2, 3], [2, 4], [2, 5], [3, 4], [3, 5], [4, 5]]));
-
-    int[] empty;
-    assert(empty.subsetsOfSize(0).equal([[]]));
-
-    /* Note that using an empty string literal in the above example will not
-    work since [] has type void[] */
-    static assert(!__traits(compiles, [].subsetsOfSize(0) == [[]]));
-
-    throwsWithMsg([6,8].subsetsOfSize(3),
-        "subsetsOfSize expects a subset size not larger than the size of the "
-        ~ "set, but got subset size 3 and a set of size 2");
-
-    throwsWithMsg([1,2,3].subsetsOfSize(-2),
-        "subsetsOfSize expects a positive subset size but got subset size -2");
-}
-
-/*******************************************************************************
-Returns all the sub-ranges of length `sizeOfSubset` from the ordered range `set`
-TO DO: Replace this with a lazy @nogc version.
-*/
-auto subsetsRange(R)(R set, int subsetSize) if (isForwardRange!R)
-{
-    auto setSize = set.walkLength;
-    enforce(subsetSize > 0, "subsetsOfSize expects a positive subset size but "
-        ~ "got subset size " ~ subsetSize.to!string);
- 
-    enforce(subsetSize <= setSize, "subsetsOfSize expects a subset size not "
-        ~ "larger than the size of the set, but got subset size " 
-        ~ subsetSize.to!string ~ " and a set of size " ~ setSize.to!string);
-
-    enforce(setSize <= 31, "subsetsOfSize expects a set of size at most 31 "
-        ~ "but got a set of size " ~ setSize.to!string);
+    assert(subsetSize > 0);
+    assert(subsetSize <= setSize);
+    assert(setSize <= 32);
 
     static struct SubsetsRange
     {
@@ -578,11 +611,12 @@ auto subsetsRange(R)(R set, int subsetSize) if (isForwardRange!R)
         zero for the least significant bit. Highest bit is empty flag. */
         uint whichToKeep;
         R set_;            // Underlying set from which to draw elements
+        bool empty_;
 
         auto front()
         {
-            return set_.enumerate.filter!(pair => ((1 << pair.index) & whichToKeep))
-                .map!(pair => pair.value);
+            assert(!this.empty);
+            return set_.subsetFromUint(whichToKeep);
         }
 
         auto popFront()
@@ -591,11 +625,13 @@ auto subsetsRange(R)(R set, int subsetSize) if (isForwardRange!R)
 
             int len = set_.walkLength.to!int;
             int subLen = whichToKeep.popcnt;
+            uint lastToKeep = ((1 << subLen) - 1) << (len - subLen);
+            // writefln("lastToKeep : %b", lastToKeep);
 
-            // Check for emptiness
-            if(iota(len - subLen, len).map!(p => 1 << p).sum == whichToKeep)
+            // Check for impending emptiness
+            if(whichToKeep == lastToKeep)
             {
-                whichToKeep |= (1 << 31);
+                empty_ = true;
                 return;
             }
 
@@ -621,7 +657,6 @@ auto subsetsRange(R)(R set, int subsetSize) if (isForwardRange!R)
                 assert(currentPos >= 0);
                 assert(currentPos < len);
                 assert((1 << currentPos) & whichToKeep);
-
 
                 whichToKeep &= ~(1 << currentPos);
 
@@ -651,8 +686,12 @@ auto subsetsRange(R)(R set, int subsetSize) if (isForwardRange!R)
 
         auto empty()
         {
-            // Use last bit to indicate empty
-            return ((1 << 31) & whichToKeep) > 0;
+            return empty_;
+        }
+
+        auto save()
+        {
+            return SubsetsRange(whichToKeep, set_, empty_);
         }
     }
 
@@ -660,39 +699,60 @@ auto subsetsRange(R)(R set, int subsetSize) if (isForwardRange!R)
     return SubsetsRange(initToKeep, set);
 }
 ///
-@Name("subsetsRange") unittest
+@Name("subsetsOfSize") unittest 
 {
-    [1,2,3,4].subsetsRange(1).equal!equal([[1], [2], [3], [4]]);
+    [1,2,3,4].subsetsOfSize(1).map!array.should.containOnly(
+        [[1], [2], [3], [4]]);
 
-    [1,2,3,4].subsetsRange(2).equal!equal(
+    [1,2,3,4].subsetsOfSize(2).map!array.should.containOnly(
         [[1,2], [1,3], [1,4], [2,3], [2,4], [3,4]]);
+
+    [1,2,3,4].subsetsOfSize(3).map!array.should.containOnly(
+        [[1, 2, 3], [1, 2, 4], [1, 3, 4], [2, 3, 4]]);
+        
+    [1,2,3,4].subsetsOfSize(4).map!array.should.containOnly(
+        [[1, 2, 3, 4]]);
+
+    [1].subsetsOfSize(1).map!array.should.containOnly([[1]]);
+
+    3.iota.subsetsOfSize(1).map!array.should.containOnly([[0], [1], [2]]);
+    3.iota.subsetsOfSize(2).map!array.should.containOnly([[0, 1], [0, 2], [1, 2]]);
+    3.iota.subsetsOfSize(3).map!array.should.containOnly([[0,1,2]]);
 }
 
-/*******************************************************************************
-Returns a list of all non-empty subsets of the given set
-*/
+///
+@Name("subsetsOfSize @nogc") @nogc unittest
+{
+    int[4] s = [1,2,3,4];
+
+    auto r = s[].subsetsOfSize(2);
+    assert(r.front.front == 1);
+}
+
 auto subsets(R)(R set) if (isForwardRange!R)
 {
-    auto setSize = set.walkLength.to!int;
-    return iota(setSize + 1).map!(s => set.subsetsOfSize(s)).joiner.drop(1);
+    return iota(1, set.walkLength.to!int + 1)
+        .map!(s => set.subsetsOfSize(s)).joiner;
 }
 ///
-@Name("subsets")
-unittest
+@Name("subsets") unittest
 {
-    int[] emptySet;
-    int[][] emptySet2;
-    assert(emptySet.subsets.equal(emptySet2));
+    [1,2,3].subsets.map!array.should.containOnly([
+        [1], [2], [3],
+        [1, 2], [1, 3], [2, 3],
+        [1, 2, 3]
+    ]);
 
-    auto set = [1,2,3];
-    assert(set.subsets.equal([[1],[2],[3],[1,2],[1,3],[2,3],[1,2,3]]));
-
-    assert([1,2,3,4].subsets.equal([
+    iota(1,5).subsets.map!array.should.containOnly([
         [1], [2], [3], [4],
         [1,2], [1,3], [1,4], [2,3], [2,4], [3,4],
         [1,2,3], [1,2,4], [1,3,4], [2,3,4],
         [1,2,3,4]
-    ]));
+    ]);
+
+    int[] emptySet;
+    assert(emptySet.subsets.empty);
+
 }
 
 /*******************************************************************************

@@ -48,13 +48,13 @@ bool isOrientable(Vertex, int dim)(SmallManifold!(dim, Vertex) manifold)
         auto toDo = records.find!(r => !r.done && r.label != Orientation.NotSet);
         assert(toDo.walkLength > 0);
 
-        foreach(i, ridge; toDo.front.facet.subsetsOfSize(dim).enumerate)
+        foreach(i, ridge; toDo.front.facet.subsetsOfSize(dim).map!array.enumerate)
         {
             auto oppFacet = manifold.star(ridge).filter!(
                 f => f != toDo.front.facet);
             assert(!oppFacet.empty);
 
-            auto j = oppFacet.front.subsetsOfSize(dim).enumerate
+            auto j = oppFacet.front.subsetsOfSize(dim).map!array.enumerate
                 .find!(p => p.value == ridge).front.index;
 
             Orientation oppFacetLabel;

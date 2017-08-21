@@ -8,7 +8,7 @@ import std.range : array, chunks, empty, enumerate, ElementType, front, iota,
     isInputRange, refRange, walkLength, zip;
 import std.traits : isArray, Unqual;
 import std.typecons : Tuple, tuple;
-import utility : isSubsetOf, SmallMap, subsets, staticIota, throwsWithMsg, subsetsRange;
+import utility : isSubsetOf, SmallMap, staticIota, throwsWithMsg, subsetsOfSize, subsets;
 import std.stdio : writeln;
 import unit_threaded : Name;
 import fluent.asserts : should, Assert;
@@ -284,17 +284,17 @@ public:
         // First we remove any existing facets which are faces of inserted facet
         // TO DO: Improve this?
         vertices.subsets
-            .filter!(vSet => this.facets.canFind(vSet))
-            .each!(vSet => this.removeFacet(vSet));
+            .filter!(vSet => this.facets.canFind(vSet.array))
+            .each!(vSet => this.removeFacet(vSet.array));
 
 
         if (dim in facetVertices)
         {
-            facetVertices[dim] ~= vertices.dup;            
+            facetVertices[dim] ~= vertices.array.dup;            
         }
         else
         {
-            facetVertices.insert(dim, vertices.dup);
+            facetVertices.insert(dim, vertices.array.dup);
         }
         
         // TO DO: Improve this sorting function? Seems yucky!
@@ -456,7 +456,7 @@ public:
         {
             foreach(f; this.facets(d))
             {
-                simplicesSeen ~= f.subsetsRange(dim + 1)
+                simplicesSeen ~= f.subsetsOfSize(dim + 1)
                     .map!(s => s.array.dup).array;
             }
         }

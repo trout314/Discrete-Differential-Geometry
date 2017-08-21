@@ -60,8 +60,12 @@ unittest // TO DO: BigInt won't let me put @safe here!
 
         foreach(pair; sPts.subsetsOfSize(2))
         {
-            assert(distanceSquared(pair[0], pair[1]) == 1);
-            assert(distanceSquared(pair[1], pair[0]) == 1);
+            auto p0 = pair.front;
+            pair.popFront;
+            auto p1 = pair.front;
+
+            assert(distanceSquared(p0, p1) == 1);
+            assert(distanceSquared(p1, p0) == 1);
         }
     }
 
@@ -310,16 +314,20 @@ pure @safe unittest
 
 // Additional tests. NOTE: BigInt won't let us put @safe here
 @Name("additional tests")
-pure unittest
+/* pure */ unittest
 {
     foreach(dim; staticIota!(1, 8))
     {
         foreach(pair; simplexPoints!dim.subsetsOfSize(2))
         {
-            assert(distanceSquared(pair[0], pair[0]) == 0);
-            assert(distanceSquared(pair[1], pair[1]) == 0);       
-            assert(distanceSquared(pair[0], pair[1]) == 1);
-            assert(distanceSquared(pair[1], pair[0]) == 1);       
+            auto p0 = pair.front;
+            pair.popFront;
+            auto p1 = pair.front;
+
+            assert(distanceSquared(p0, p0) == 0);
+            assert(distanceSquared(p1, p1) == 0);       
+            assert(distanceSquared(p0, p1) == 1);
+            assert(distanceSquared(p1, p0) == 1);       
         }
     }
 }

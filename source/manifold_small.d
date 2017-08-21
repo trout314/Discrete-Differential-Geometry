@@ -7,7 +7,7 @@ import std.range : array, chain, empty, enumerate, front, iota, isInputRange, El
 import std.traits : isArray;
 import simplex : Simplex, simplex;
 import simplicial_complex : SimplicialComplex, fVector;
-import utility : SmallMap, staticIota, subsets, subsetsRange, throwsWithMsg;
+import utility : SmallMap, staticIota, subsets, subsetsOfSize, throwsWithMsg;
 import std.stdio : writeln;
 
 import simplicial_complex_algorithms : connectedComponents, is2Sphere, isCircle,
@@ -112,13 +112,20 @@ public:
 
     this(F)(F initialFacets)
     {
+        // TO DO: Put some nice constraints on F
+
         // static assert((isInputRange!F || isArray!F)
         //     && is(ElementType!F : Facet) || is(ElementType!F : Vertex[]),
         //     "a " ~ SmallManifold!(dimension, Vertex).stringof ~ " must be "
         //     ~ "constructed from a range or array of elements with type " 
         //     ~ Facet.stringof ~ " or " ~ Vertex[].stringof ~ " not " ~ F.stringof);
 
-        initialFacets.each!(f => simpComp_.insertFacet(f));
+        // TO DO: Why need .array parts here?
+        foreach(f; initialFacets.array)
+        {
+            simpComp_.insertFacet(f.array);
+        }
+        // initialFacets.each!(f => simpComp_.insertFacet(f));
 
         enforce(this.isPureOfDim(dimension), "expected all facets to have " 
             ~ "dimension " ~ dimension.to!string ~ " but got the facet " 
@@ -183,7 +190,7 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(const ref SmallManifold!(dim, Ve
 {
     int[const(Vertex)[]] degreeMap;
 
-    m.facets.each!(f => f.subsets.each!(s => ++degreeMap[s]));
+    m.facets.each!(f => f.subsets.each!(s => ++degreeMap[s.array]));
 
     const(Vertex)[][] result;
     foreach(simp, deg; degreeMap)
@@ -236,7 +243,7 @@ void doPachner(Vertex, int dim)(
 ///
 @Name("doPachner 1 -> (dim + 1)") unittest
 {
-    auto m = SmallManifold!2(4.iota.subsetsRange(3).map!(s => s.array.dup));
+    auto m = SmallManifold!2(4.iota.subsetsOfSize(3).map!(s => s.array.dup));
     m.doPachner([1,2,3], 4);
     m.facets.should.containOnly(
         [[0,1,2],[0,1,3], [0,2,3], [1,2,4], [1,3,4], [2,3,4]]);
@@ -301,7 +308,7 @@ int[int] degreeHistogram(Vertex, int dim)(
     int[Vertex[]] degreeMap;
 
     manifold.facets.each!(
-        f => f.subsetsRange(histogramDim + 1).each!(s => ++degreeMap[s.array]));
+        f => f.subsetsOfSize(histogramDim + 1).each!(s => ++degreeMap[s.array]));
 
     degreeMap.byValue.each!(deg => ++result[deg]);  
     return result;
@@ -327,7 +334,8 @@ auto pachnerMovesAndDegreeHistogram(Vertex, int dim)(
 
     int[Vertex[]] degreeMap;    // Stores degree of each simplex
 
-    manifold.facets.each!(f => f.subsets.each!(s => ++degreeMap[s]));
+    manifold.facets.each!(
+        f => f.subsets.each!(s => ++degreeMap[s.array]));
 
     Vertex[][] moves_;
     int[int] histogram_;
@@ -406,10 +414,10 @@ private void doPachnerImpl(Vertex, int dim)(
     alias SComp = SimplicialComplex!Vertex;
     immutable cDim = center.walkLength.to!int - 1;
    
-    //  TO DO: Create SimplicialComplex constructor that can directly take subsetsRange
+    //  TO DO: Create SimplicialComplex constructor that can directly take subsetsOfSize
     auto newPiece = (cDim == 0)
         ? SComp([coCenter])
-        : join(SComp(center.subsetsRange(cDim).map!(s => s.array.dup)), SComp([coCenter]));
+        : join(SComp(center.subsetsOfSize(cDim).map!(s => s.array.dup)), SComp([coCenter]));
 
 
     assert(newPiece.isPureOfDim(manifold.dimension));
