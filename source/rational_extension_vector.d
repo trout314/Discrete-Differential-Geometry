@@ -365,6 +365,7 @@ unittest
         "pure", "nothrow", "@nogc", "@safe"));   
 }
 
+// TO DO: This allocates closure. @nogc version?
 auto simplexCoefs(int dim)
 {
     auto computeCoef(int pointIndex, int basisIndex)

@@ -31,6 +31,8 @@ immutable degreeStdDevCoef = 0.2;
 
 real[3] objectiveParts(Vertex, int dim)(const ref SmallManifold!(dim, Vertex) manifold)
 {
+    // TO DO: Why does this allocate a closure? Fix it?
+
     immutable numHinges = manifold.fVector[dim - 2];
     immutable numFacets = manifold.fVector[dim];
 

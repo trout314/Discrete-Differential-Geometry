@@ -271,6 +271,8 @@ public:
     */
     void insertFacet(V)(V vertices) if (isInputRange!V)
     {
+        // TO DO: Improve this!
+
         int dim = vertices.walkLength.to!int - 1;
         assert(dim >= 0);
         vertices.enforceValidSimplex(dim);
@@ -365,6 +367,7 @@ public:
     */
     auto facets() const
     {
+        // TO DO: This allocates closure, make it @nogc
         return facetVertices.keys.map!(d => facets(d)).joiner;
     }
 
@@ -382,6 +385,8 @@ public:
     */
     auto link(int dim, V)(const Simplex!(dim, V) s) const
     {
+        // TO DO: This allocates closure with gc, fix it
+
         enforce(contains(s), "expected a simplex in the simplicial complex");
         return this.star(s).map!(f => setDifference(f, s.vertices));
     }
@@ -401,6 +406,8 @@ public:
     */ 
     auto star(int dim, V)(const Simplex!(dim, V) s) const
     {
+        // TO DO: This allocates closure with gc, create starRange to fix it
+
         return this.facets.filter!(f => s.vertices.isSubsetOf(f));
     }
 
@@ -437,6 +444,8 @@ public:
     */
     auto simplices(int dim)() const
     {
+        // TO DO: Reduce gc presure here. (Can't make @nogc I think.)
+
         static assert(dim >= 0, "dimension must be non-negative, but got "
             ~ dim.to!string);
         return simplices(dim).map!(verts => Simplex!(dim, Vertex)(verts));
@@ -447,6 +456,8 @@ public:
     */
     auto simplices(int dim) const
     {
+        // TO DO: Reduce gc presure here. (Can't make @nogc I think.)
+
         assert(dim >= 0, "dimension must be non-negative, but got "
             ~ dim.to!string);
 

@@ -741,6 +741,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
     assert(r1.front.front == 2);
 }
 
+// TO DO: Understand why this allocates a closure! Can we fix it?    
 auto subsets(R)(R set) if (isForwardRange!R)
 {
     return iota(1, set.walkLength.to!int + 1)

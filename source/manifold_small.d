@@ -301,6 +301,8 @@ int[int] degreeHistogram(Vertex, int dim)(
     const ref SmallManifold!(dim, Vertex) manifold,
     int histogramDim)
 {
+    // TO DO: Improve this
+
     assert(histogramDim >= 0);
     assert(histogramDim <= dim);
 
