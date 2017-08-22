@@ -716,7 +716,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
     [1].subsetsOfSize(1).map!array.should.containOnly([[1]]);
 
     3.iota.subsetsOfSize(1).map!array.should.containOnly([[0], [1], [2]]);
-    3.iota.subsetsOfSize(2).map!array.should.containOnly([[0, 1], [0, 2], [1, 2]]);
+    3.iota.subsetsOfSize(2).map!array.should.containOnly([[0,1], [0,2], [1,2]]);
     3.iota.subsetsOfSize(3).map!array.should.containOnly([[0,1,2]]);
 }
 
@@ -744,8 +744,48 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
 // TO DO: Understand why this allocates a closure! Can we fix it?    
 auto subsets(R)(R set) if (isForwardRange!R)
 {
-    return iota(1, set.walkLength.to!int + 1)
-        .map!(s => set.subsetsOfSize(s)).joiner;
+    static struct SubsetsRange
+    {
+        R set_;
+        uint whichToKeep;
+        bool empty_;
+
+        auto front()
+        {
+            assert(!empty);
+            return subsetFromUint(set_, whichToKeep);
+        }
+
+        auto popFront()
+        {
+            assert(!empty);
+            if(whichToKeep == (1 << set_.walkLength) - 1)
+            {
+                empty_ = true;
+            }
+            ++whichToKeep;
+
+        }
+
+        auto empty()
+        {
+            return empty_;
+        }
+
+        auto save()
+        {
+            return SubsetsRange(set_, whichToKeep, empty_);
+        }
+    }
+
+    if(set.empty)
+    {
+        return SubsetsRange(set, 0, true);
+    }
+    else
+    {
+        return SubsetsRange(set, 1, false);
+    }    
 }
 ///
 @Name("subsets") unittest
@@ -765,7 +805,17 @@ auto subsets(R)(R set) if (isForwardRange!R)
 
     int[] emptySet;
     assert(emptySet.subsets.empty);
-
+}
+///
+@Name("subsets pure nothrow @nogc @safe") pure nothrow @nogc @safe unittest
+{
+    auto r = 3.iota.subsets;
+    auto s = r.save;
+    assert(r.front.front == 0);    
+    r.popFront;
+    assert(r.front.front == 1);    
+    assert(s.front.front == 0);
+    assert(!r.empty);
 }
 
 /*******************************************************************************
