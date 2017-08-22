@@ -800,6 +800,8 @@ auto subsets(R)(R set) if (isForwardRange!R)
 
     int[] emptySet;
     assert(emptySet.subsets.empty);
+
+    assert(iota(6).subsets.walkLength == 63);
 }
 ///
 @Name("subsets pure nothrow @nogc @safe") pure nothrow @nogc @safe unittest
