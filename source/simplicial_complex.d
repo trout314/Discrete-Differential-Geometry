@@ -522,5 +522,3 @@ unittest
     const(int)[][] noFacets;
     Assert.equal(simplicialComplex(noFacets).facets.empty, true);
 }
-
-// TO DO: Orientability tester! Fix genus stuff once that's done...
