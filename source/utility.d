@@ -926,4 +926,6 @@ auto capture(Range, Data...)(Range range, Data data) if (isInputRange!Range)
     // Access captured data from each element of the range
     assert(r.front.d0 == 1);
     assert(r.front.d1 == "hello");
+
+    // TO DO: More tests! This function will probably get lots of use!
 }
