@@ -671,7 +671,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
                 assert(!whichToKeep.hasOneAtBit(currentPos));
 
                 // Find a one to move
-                while(!whichToKeep.hasOneAtBit(currentPos) && (currentPos >= 0))
+                while(!whichToKeep.hasOneAtBit(currentPos))
                 {
                     --currentPos;
                 }
@@ -741,7 +741,6 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
     assert(r1.front.front == 2);
 }
 
-// TO DO: Understand why this allocates a closure! Can we fix it?    
 auto subsets(R)(R set) if (isForwardRange!R)
 {
     static struct SubsetsRange
@@ -764,7 +763,6 @@ auto subsets(R)(R set) if (isForwardRange!R)
                 empty_ = true;
             }
             ++whichToKeep;
-
         }
 
         auto empty()
