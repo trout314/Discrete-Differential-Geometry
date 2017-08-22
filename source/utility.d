@@ -4,13 +4,16 @@ import std.conv : to;
 import std.exception : enforce;
 import std.meta : AliasSeq, allSatisfy, anySatisfy;
 import std.range : array, chain, drop, ElementType, empty, enumerate, front,
-    iota, save, isForwardRange, only, popFront, repeat, take, walkLength;
+    iota, save, isInputRange, isForwardRange, only, popFront, repeat, take, walkLength;
 import std.traits : lvalueOf, rvalueOf;
 import core.bitop : popcnt;
 import unit_threaded;
 import fluent.asserts;
 
-import std.stdio : writeln;
+import std.format : format;
+import std.stdio : writeln, writefln;
+
+import std.traits : ParameterIdentifierTuple;
 
 /*******************************************************************************
 Checks if items of type T can be compared with the less-than operation. Note 
@@ -482,6 +485,8 @@ private:
     assert(sm.values.array == ["bubba", "hello"]);
 }
 
+// TO DO: How can we verify that keys, value ranges returned are @nogc?
+
 /*******************************************************************************
 Returns true if set A is contained in set B
 */
@@ -804,7 +809,7 @@ auto subsets(R)(R set) if (isForwardRange!R)
     assert(iota(6).subsets.walkLength == 63);
 }
 ///
-@Name("subsets pure nothrow @nogc @safe") pure nothrow @nogc @safe unittest
+@Name("subsets (pure nothrow @nogc @safe)") pure nothrow @nogc @safe unittest
 {
     auto r = 3.iota.subsets;
     auto s = r.save;
@@ -852,4 +857,73 @@ unittest
     alias seq2 = staticIota!(1, 5);
     alias func = (a,b,c,d) => a+b+c+d;
     static assert(func(seq2) == 10);
+}
+
+/*******************************************************************************
+*/
+auto capture(Range, Data...)(Range range, Data data) if (isInputRange!Range)
+{
+    alias dataDeclarations = (len) => len.iota.map!(
+        indx => "Data[%s] d%s;".format(indx, indx)).joiner("\n").array;
+
+    alias dataArgs = (len) => len.iota.map!(
+        indx => "d%s".format(indx)).joiner(",").array;
+
+    static struct CaptureRange
+    {
+        Range range_;
+        mixin(dataDeclarations(data.length));
+
+
+
+        auto front()
+        {
+            static struct CaptureFront
+            {
+                typeof(range_.front) result;
+                alias result this;
+                mixin(dataDeclarations(data.length));
+            }
+
+            mixin("return CaptureFront(range_.front, " 
+                ~ dataArgs(data.length) ~ ");");
+        }
+
+        auto popFront()
+        {
+            range_.popFront;
+        }
+
+        auto empty()
+        {
+            return range_.empty;
+        }
+
+        static if(isForwardRange!Range)
+        {
+            auto save()
+            {
+                mixin("return CaptureRange(range_, " 
+                    ~ dataArgs(data.length) ~ ");");
+            }
+        }
+
+        // TO DO: Support random access ranges, and bi-directional ranges
+    }
+
+    return CaptureRange(range, data);
+}
+///
+@Name("capture (pure nothrow @nogc @safe)") pure nothrow @nogc @safe unittest
+{
+    auto r = 10.iota.capture(1, "hello");
+    assert(r.front == 0);
+    auto s = r.save;
+    r.popFront;
+    assert(r.front == 1);
+    assert(s.front == 0);
+
+    // Access captured data from each element of the range
+    assert(r.front.d0 == 1);
+    assert(r.front.d1 == "hello");
 }
