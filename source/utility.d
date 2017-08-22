@@ -650,7 +650,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
                 immutable numOnesSeen = len - currentPos - 1;
 
                 // Find another one to move
-                while(!((1 << currentPos) & whichToKeep) && (currentPos >= 0))
+                while(!whichToKeep.hasOneAtBit(currentPos) && (currentPos >= 0))
                 {
                     --currentPos;
                 }
