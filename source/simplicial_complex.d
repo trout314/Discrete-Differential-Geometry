@@ -16,6 +16,8 @@ import fluent.asserts : should, Assert;
 import simplicial_complex_algorithms : connectedComponents, eulerCharacteristic,
     isCircle, isConnected, isPureOfDim, isOrientableSurfaceOfGenus, join;
 
+import utility : capture;
+
 /// Basic Functionality
 @Name("doc tests") /* @safe pure */ unittest
 {
@@ -104,18 +106,23 @@ import simplicial_complex_algorithms : connectedComponents, eulerCharacteristic,
     // -------------------------------------------------------------------------
 
     // cannot insert a simplex if it is already the face of an existing facet
-    sc.insertFacet(s(4,5)).assertThrown;
-    sc.insertFacet(s(2)).throwsWithMsg("expected a simplex not already in the "
-        ~ "simplicial complex, but got [2] and already have facet [1, 2, 3]");
+    sc.insertFacet(s(4,5)).assertThrown!Error;
 
-    throwsWithMsg(simplicialComplex([[3,4]]).removeFacet([2,3]), "tried to "
-        ~ "remove a facet [2, 3] not in the simplicial complex");
+    // sc.insertFacet(s(2)).throwsWithMsg("expected a simplex not already in the "
+    //     ~ "simplicial complex, but got [2] and already have facet [1, 2, 3]");
+    sc.insertFacet(s(2)).assertThrown!Error;
 
-    throwsWithMsg(simplicialComplex([[1,3,4], [2,3,4]]).link(s(1,2)),
-        "expected a simplex in the simplicial complex");
+    // throwsWithMsg(simplicialComplex([[3,4]]).removeFacet([2,3]), "tried to "
+    //     ~ "remove a facet [2, 3] not in the simplicial complex");
+    simplicialComplex([[3,4]]).removeFacet([2,3]).assertThrown!Error;
 
-    throwsWithMsg(sc.facets(-1),"expected a non-negative dimension but got "
-        ~ "dimension -1"); 
+    // throwsWithMsg(simplicialComplex([[1,3,4], [2,3,4]]).link(s(1,2)),
+    //     "expected a simplex in the simplicial complex");
+    simplicialComplex([[1,3,4], [2,3,4]]).link(s(1,2)).assertThrown!Error;
+
+    // throwsWithMsg(sc.facets(-1),"expected a non-negative dimension but got "
+    //     ~ "dimension -1");
+    sc.facets(-1).assertThrown!Error;
 
 
 }
@@ -278,10 +285,12 @@ public:
         vertices.enforceValidSimplex(dim);
 
         static assert(is(Unqual!(ElementType!V) == Vertex));
-        enforce(!contains(vertices), "expected a simplex not already in the "
-            ~ "simplicial complex, but got " ~ vertices.to!string 
-            ~ " and already have facet " 
-            ~ facets.find!(f => vertices.isSubsetOf(f)).front.to!string);
+        assert(!contains(vertices), "expected a simplex not already in the simplicial complex");
+
+        // enforce(!contains(vertices), "expected a simplex not already in the "
+        //     ~ "simplicial complex, but got " ~ vertices.to!string 
+        //     ~ " and already have facet " 
+        //     ~ facets.find!(f => vertices.isSubsetOf(f)).front.to!string);
 
         // First we remove any existing facets which are faces of inserted facet
         // TO DO: Improve this?
@@ -318,9 +327,11 @@ public:
     */
     void removeFacet(V)(V vertices) if (isInputRange!V)
     {
-        enforce(this.contains(vertices), "tried to remove a facet "
-            ~ vertices.to!string ~ " not in the simplicial complex");
+        // enforce(this.contains(vertices), "tried to remove a facet "
+        //     ~ vertices.to!string ~ " not in the simplicial complex");
 
+        assert(this.contains(vertices), "tried to remove a facet not in the simplicial complex");
+        
         int dim = vertices.walkLength.to!int - 1;
 
         auto indx = facetVertices[dim].chunks(dim + 1).countUntil(vertices);
@@ -346,8 +357,7 @@ public:
     */
     auto facets(int dim) const
     {
-        enforce(dim >= 0, "expected a non-negative dimension but got dimension "
-            ~ dim.to!string);
+        assert(dim >= 0, "expected a non-negative dimension");
 
         if (dim !in facetVertices)
         {
@@ -367,8 +377,9 @@ public:
     */
     auto facets() const
     {
-        // TO DO: This allocates closure, make it @nogc
-        return facetVertices.keys.map!(d => facets(d)).joiner;
+        // TO DO: Needed capture here to make this @nogc. Clean up capture!
+        return facetVertices.keys.capture(&this)
+            .map!(d => d.d0.facets(d)).joiner;
     }
 
     /***************************************************************************
@@ -387,7 +398,7 @@ public:
     {
         // TO DO: This allocates closure with gc, fix it
 
-        enforce(contains(s), "expected a simplex in the simplicial complex");
+        assert(contains(s), "expected a simplex in the simplicial complex");
         return this.star(s).map!(f => setDifference(f, s.vertices));
     }
     /***************************************************************************
@@ -406,9 +417,7 @@ public:
     */ 
     auto star(int dim, V)(const Simplex!(dim, V) s) const
     {
-        // TO DO: This allocates closure with gc, create starRange to fix it
-
-        return this.facets.filter!(f => s.vertices.isSubsetOf(f));
+        return this.facets.capture(s).filter!(f => (f.d0).vertices.isSubsetOf(f));
     }
 
     /***************************************************************************
@@ -417,7 +426,7 @@ public:
     */ 
     auto star(V)(V v) const if (isInputRange!V)
     {
-        return this.facets.filter!(f => v.isSubsetOf(f));
+        return this.facets.capture(v).filter!(f => (f.d0).isSubsetOf(f));
     }
 
     /***************************************************************************
@@ -521,4 +530,54 @@ unittest
 
     const(int)[][] noFacets;
     Assert.equal(simplicialComplex(noFacets).facets.empty, true);
+}
+
+///
+@Name("facets(dim) (pure nothrow @nogc @safe)") unittest
+{
+    auto sc = simplicialComplex([[1,2], [2,4,5]]);
+
+    assert(
+        () pure nothrow @nogc @safe {return sc.facets(1).front.front == 1;}()
+    );
+
+    assert(
+        () pure nothrow @nogc @safe {return sc.facets(2).front.front == 2;}()
+    );
+}
+
+///
+@Name("facets (pure nothrow @nogc @safe)") unittest
+{
+    auto sc = simplicialComplex([[1,2], [2,4,5]]);
+
+    assert(
+        () pure nothrow @nogc @safe {return sc.facets.front.front == 1;}()
+    );
+
+    sc.removeFacet([1,2]);
+
+    assert(
+        () pure nothrow @nogc @safe {return sc.facets.front.front == 2;}()
+    );
+}
+
+///
+@Name("star(range) (pure nothrow @nogc @safe)") unittest
+{
+    auto sc = simplicialComplex([[1,2], [2,4,5]]);
+    int[2] f = [1,2];
+
+    assert(
+        () pure nothrow @nogc @safe {return sc.star(f[]).front.front == 1;}()
+    );
+}
+
+///
+@Name("star(simplex) (pure nothrow @nogc @safe)") unittest
+{
+    auto sc = simplicialComplex([[1,2], [2,4,5]]);
+    assert(() pure nothrow @nogc @safe 
+        { return sc.star(simplex(1,2)).front.front == 1; }()
+    );
 }

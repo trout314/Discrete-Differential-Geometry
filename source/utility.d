@@ -459,7 +459,7 @@ struct SmallMap(KeyType, ValueType)
     ref inout(ValueType) opIndex(const KeyType key_) inout
     {
         auto found = data.find!(r => r.key == key_);
-        enforce(found.length > 0, "SmallMap access error");
+        assert(found.length > 0, "SmallMap access error");
         return found.front.value;
     }
 private:
@@ -505,11 +505,21 @@ private:
     assert(() pure nothrow @nogc @safe {return sm.values.front == "hello";} ());
 }
 
+///
+@Name("SmallMap.opIndex (pure nothrow @nogc @safe)") unittest
+{    
+    SmallMap!(int, string) sm;
+    sm.insert(1, "hello");
+    sm.insert(2, "goodbye");
+
+    assert(() pure nothrow @nogc @safe {return sm[1] == "hello";} ());
+}
+
 /*******************************************************************************
 Returns true if set A is contained in set B
 */
 auto isSubsetOf(A, B)(A setA, B setB)
-if (isForwardRange!A && isForwardRange!B && is(ElementType!A : ElementType!B))
+if (isInputRange!A && isInputRange!B && is(ElementType!A : ElementType!B))
 {
     return setA.all!(element => setB.canFind(element));        
 }
@@ -537,7 +547,7 @@ bool hasOneAtBit(uint x, size_t pos) pure nothrow @nogc @safe
     return  ((1 << pos) & x) > 0;
 }
 
-auto subsetFromUint(R)(R set, uint whichToKeep) if (isForwardRange!R)
+auto subsetFromUint(R)(R set, uint whichToKeep) if (isInputRange!R)
 {
     assert(whichToKeep < (1 << set.walkLength),
         "1 bits found in positions not corresponsing to elements in set");
@@ -581,9 +591,12 @@ auto subsetFromUint(R)(R set, uint whichToKeep) if (isForwardRange!R)
             return whichToKeep_ == 0;
         }
 
-        auto save()
+        static if(isForwardRange!R)
         {
-            return SubsetFromUintRange(whichToKeep_, set_);
+            auto save()
+            {
+                return SubsetFromUintRange(whichToKeep_, set_);
+            }
         }
     }
 
@@ -623,7 +636,7 @@ unittest
 
 /*******************************************************************************
 */
-auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
+auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
 {
     immutable setSize = set.walkLength;
 
@@ -713,9 +726,12 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
             return whichToKeep.hasOneAtBit(31);
         }
 
-        auto save()
+        static if(isForwardRange!R)
         {
-            return SubsetsOfSizeRange(whichToKeep, set_);
+            auto save()
+            {
+                return SubsetsOfSizeRange(whichToKeep, set_.save);
+            }
         }
     }
 

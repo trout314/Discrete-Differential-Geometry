@@ -56,7 +56,7 @@ auto connectedComponents(Vertex)(const ref SimplicialComplex!Vertex sc)
         {
             auto toDo = records.find!(r => r.label != 0 && !r.seenNear);
 
-            foreach(f; toDo.front.facet.map!(v => sc.star(simplex(v))).joiner)
+            foreach(f; toDo.front.facet.map!(v => sc.star(simplex(v))).map!array.joiner)
             {
                 auto findIt = records.find!(r => r.facet == f);
                 assert(!findIt.empty);

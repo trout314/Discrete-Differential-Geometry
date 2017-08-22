@@ -48,17 +48,19 @@ struct Simplex(int dim, Vertex = int)
             ~ "from the element type: " ~ ElementType!R.stringof ~ " of the "
             ~ "range or array used to construct a simplex");
         
-        enforce(vertices_.walkLength == dim + 1,
-            "a dimension " ~ dim.to!string ~ " simplex needs "
-            ~ (dim+1).to!string ~ " vertices, but got vertices: " 
-            ~ vertices_.to!string);
+        // enforce(vertices_.walkLength == dim + 1,
+        //     "a dimension " ~ dim.to!string ~ " simplex needs "
+        //     ~ (dim+1).to!string ~ " vertices, but got vertices: " 
+        //     ~ vertices_.to!string);
+
+        assert(vertices_.walkLength == dim + 1, "wrong number of vertices");
 
 
         // TO DO: Figure out how to do this without allocating!
-        verts_[] = vertices_.map!(to!Vertex).array[];
+        // verts_[] = vertices_.map!(to!Vertex).array[];
 
         // THIS WORKS! Why do I need this cast? is it acutally OK?
-        // copy(vertices_.map!(to!Vertex), cast(Unqual!Vertex[])(verts_[]));
+        copy(vertices_.map!(to!Vertex), cast(Unqual!Vertex[])(verts_[]));
 
         // vertices_.map!(to!Vertex).enumerate.each!((i, v) => verts_[i] = v);
 
@@ -129,22 +131,22 @@ private:
 
 /// Some basic examples
 @("Basic Simplex tests")
-pure @safe unittest
+pure /* @safe */ unittest
 {
     // Create a simplex of dimension 1 with vertices [1,2]
     auto s1 = Simplex!1([1, 2]);
 
     // Need the proper number of vertices
-    throwsWithMsg(Simplex!1([1,2,3]),
-        "a dimension 1 simplex needs 2 vertices, but got vertices: [1, 2, 3]");
+    // throwsWithMsg!Error(Simplex!1([1,2,3]),
+    //     "a dimension 1 simplex needs 2 vertices, but got vertices: [1, 2, 3]");
 
     // Vertices must be in increasing order
-    throwsWithMsg(Simplex!3([5,2,3,4]),
-        "vertices must occur in increasing order, but got vertices: [5, 2, 3, 4]");
+    // throwsWithMsg!Error(Simplex!3([5,2,3,4]),
+    //     "vertices must occur in increasing order, but got vertices: [5, 2, 3, 4]");
 
     // Vertices must be distinct
-    throwsWithMsg(Simplex!2([1,2,2]),
-        "vertices must be distinct, but got vertices: [1, 2, 2]");
+    // throwsWithMsg!Error(Simplex!2([1,2,2]),
+    //     "vertices must be distinct, but got vertices: [1, 2, 2]");
 
     /* The type used to store the vertices is accessible through the symbol
     VertexType. This type defaults to an int. */
@@ -205,7 +207,7 @@ pure @safe unittest
 
 // additional tests
 @Name("additional Simplex tests")
-pure @safe unittest
+pure /* @safe */ unittest
 {
     // Of course, constant or immutable simplices can't be modified
     const sCon = simplex(1,2,3);
@@ -230,7 +232,7 @@ pure @safe unittest
     sMut = sStr.vertices.to!(int[]).to!(Simplex!2);
     sMut2 = Simplex!(2, int)(sByte);
 
-    assertThrown(Simplex!1([7]));
+    assertThrown!Error(Simplex!1([7]));
 }
 
 /// Shorter way to construct simplices
@@ -304,8 +306,8 @@ unittest
 
     auto s4 = simplex(C(2), C(3));
     static assert(is(s4.VertexType == C));
-    assertThrown(simplex(C(1), C(0)));
-    assertThrown(simplex(C(2), C(2)));
+    assertThrown!Error(simplex(C(1), C(0)));
+    assertThrown!Error(simplex(C(2), C(2)));
 
     /* To make a class work as a vertex type we must define suitable overrides
     for opCmp, opEquals and toString. */ 
@@ -330,12 +332,14 @@ unittest
 
     auto s5 = simplex(new D(2), new D(3));
     static assert(is(s5.VertexType == D));
-    simplex(new D(1), new D(0)).assertThrown;
-    simplex(new D(2), new D(2)).assertThrown;
+    simplex(new D(1), new D(0)).assertThrown!Error;
+    simplex(new D(2), new D(2)).assertThrown!Error;
 
     // null class references are not allowed as vertices
-    simplex(new D(3), null).throwsWithMsg(
-        "null class references cannot be vertices, but got vertices: [3, null]");
+    // simplex(new D(3), null).throwsWithMsg!Error(
+    //     "null class references cannot be vertices, but got vertices: [3, null]");
+
+    simplex(new D(2), null).assertThrown!Error;
 }
 
 /******************************************************************************
@@ -349,7 +353,7 @@ auto simplex(size_t numVertices, V)(V[numVertices] vertices...)
 
 ///
 @Name("simplex (additional)")
-pure @safe unittest
+pure /* @safe */ unittest
 {
     auto s1 = simplex(1, 2, 4, 7);
     static assert(is(s1.VertexType == int));
@@ -364,8 +368,8 @@ pure @safe unittest
     auto s4 = simplex("alice", "bob", "carol");
     static assert(is(s4.VertexType == string));
 
-    simplex("bob", "alice", "carol").assertThrown;
-    simplex(1, 3, 3, 5).assertThrown;
+    simplex("bob", "alice", "carol").assertThrown!Error;
+    simplex(1, 3, 3, 5).assertThrown!Error;
 
     static assert(!__traits(compiles, s4.hasFace(simplex(1,2,4,7))));
 }
@@ -592,22 +596,30 @@ must be sorted and contain no duplicates.
 */
 void enforceValidSimplex(V)(V vertices_, int dim) if (isInputRange!V || isArray!V)
 {
-    enforce(vertices_.walkLength == dim + 1,
-        "a dimension " ~ dim.to!string ~ " simplex needs "
-        ~ (dim+1).to!string ~ " vertices, but got vertices: " 
-        ~ vertices_.to!string);
+    // enforce(vertices_.walkLength == dim + 1,
+    //     "a dimension " ~ dim.to!string ~ " simplex needs "
+    //     ~ (dim+1).to!string ~ " vertices, but got vertices: " 
+    //     ~ vertices_.to!string);
+
+    assert(vertices_.walkLength == dim + 1, "wrong number of vertices");
 
     static if (is(ElementType!V == class))
     {
-        enforce(vertices_.all!(v => v !is null), "null class references "
-            ~ "cannot be vertices, but got vertices: " ~ vertices_.to!string);
+        // enforce(vertices_.all!(v => v !is null), "null class references "
+        //     ~ "cannot be vertices, but got vertices: " ~ vertices_.to!string);
+
+        assert(vertices_.all!(v => v !is null), "null class references not allowed");
     }
 
-    enforce(vertices_.isSorted, "vertices must occur in increasing order, "
-        ~ "but got vertices: " ~ vertices_.to!string);
+    // enforce(vertices_.isSorted, "vertices must occur in increasing order, "
+    //     ~ "but got vertices: " ~ vertices_.to!string);
 
-    enforce(vertices_.findAdjacent.walkLength == 0, "vertices must be "
-        ~ "distinct, but got vertices: " ~ vertices_.to!string);
+    assert(vertices_.isSorted, "vertices must occur in increasing order");
+
+    // enforce(vertices_.findAdjacent.walkLength == 0, "vertices must be "
+    //     ~ "distinct, but got vertices: " ~ vertices_.to!string);
+
+    assert(vertices_.findAdjacent.walkLength == 0, "vertices must be distinct");
 }
 
 /// BigInt tests
