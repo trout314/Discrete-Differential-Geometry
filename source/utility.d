@@ -485,7 +485,25 @@ private:
     assert(sm.values.array == ["bubba", "hello"]);
 }
 
-// TO DO: How can we verify that keys, value ranges returned are @nogc?
+///
+@Name("SmallMap.keys (pure nothrow @nogc @safe)") unittest
+{    
+    SmallMap!(int, string) sm;
+    sm.insert(1, "hello");
+    sm.insert(2, "goodbye");
+
+    assert(() pure nothrow @nogc @safe {return sm.keys.front == 1;} ());
+}
+
+///
+@Name("SmallMap.values (pure nothrow @nogc @safe)") unittest
+{    
+    SmallMap!(int, string) sm;
+    sm.insert(1, "hello");
+    sm.insert(2, "goodbye");
+
+    assert(() pure nothrow @nogc @safe {return sm.values.front == "hello";} ());
+}
 
 /*******************************************************************************
 Returns true if set A is contained in set B
