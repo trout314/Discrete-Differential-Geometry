@@ -10,6 +10,8 @@ import core.bitop : popcnt;
 import unit_threaded;
 import fluent.asserts;
 
+import std.stdio : writeln;
+
 /*******************************************************************************
 Checks if items of type T can be compared with the less-than operation. Note 
 that this means all other comparison operations are also valid, per dlang rules 
@@ -507,9 +509,9 @@ unittest
 Returns true if the uint `x` has a 1 at position `pos` and 0 otherwise (where
 position 0 is the lesat significant bit and position 31 the highest.)
 */
-auto hasOneAtBit(uint x, size_t pos)
+bool hasOneAtBit(uint x, size_t pos) pure nothrow @nogc @safe
 {
-    return  (1 << pos) & x;
+    return  ((1 << pos) & x) > 0;
 }
 
 auto subsetFromUint(R)(R set, uint whichToKeep) if (isForwardRange!R)
@@ -600,11 +602,11 @@ unittest
 */
 auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
 {
-    auto setSize = set.walkLength;
+    immutable setSize = set.walkLength;
 
     assert(subsetSize > 0);
     assert(subsetSize <= setSize);
-    assert(setSize <= 32);
+    assert(setSize <= 31);
 
     static struct SubsetsOfSizeRange
     {
@@ -612,7 +614,6 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
         zero for the least significant bit. Highest bit is empty flag. */
         uint whichToKeep;
         R set_;            // Underlying set from which to draw elements
-        bool empty_;
 
         auto front()
         {
@@ -620,7 +621,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
             return set_.subsetFromUint(whichToKeep);
         }
 
-        auto popFront() @nogc
+        auto popFront()
         {
             assert(!this.empty);
 
@@ -631,7 +632,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
             // Check for impending emptiness
             if(whichToKeep == lastToKeep)
             {
-                empty_ = true;
+                whichToKeep = 1 << 31;
                 return;
             }
 
@@ -639,7 +640,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
             if(whichToKeep.hasOneAtBit(currentPos))
             {
                 // Skip over additional ones
-                while(whichToKeep.hasOneAtBit(currentPos) && (currentPos >= 0))
+                while(whichToKeep.hasOneAtBit(currentPos))
                 {
                     --currentPos;
                 }
@@ -650,7 +651,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
                 immutable numOnesSeen = len - currentPos - 1;
 
                 // Find another one to move
-                while(!whichToKeep.hasOneAtBit(currentPos) && (currentPos >= 0))
+                while(!whichToKeep.hasOneAtBit(currentPos))
                 {
                     --currentPos;
                 }
@@ -686,17 +687,16 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
 
         auto empty()
         {
-            return empty_;
+            return whichToKeep.hasOneAtBit(31);
         }
 
         auto save()
         {
-            return SubsetsOfSizeRange(whichToKeep, set_, empty_);
+            return SubsetsOfSizeRange(whichToKeep, set_);
         }
     }
 
-    uint initToKeep = (1 << subsetSize) - 1;
-    return SubsetsOfSizeRange(initToKeep, set);
+    return SubsetsOfSizeRange((1 << subsetSize) - 1, set);
 }
 ///
 @Name("subsetsOfSize") unittest 
@@ -718,10 +718,13 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
     3.iota.subsetsOfSize(1).map!array.should.containOnly([[0], [1], [2]]);
     3.iota.subsetsOfSize(2).map!array.should.containOnly([[0,1], [0,2], [1,2]]);
     3.iota.subsetsOfSize(3).map!array.should.containOnly([[0,1,2]]);
+
+    iota(31).subsetsOfSize(1).walkLength.should.equal(31);
+    iota(10).subsetsOfSize(2).walkLength.should.equal(45);
 }
 
 ///
-@Name("subsetsOfSize @nogc") @nogc unittest
+@Name("subsetsOfSize (pure nothrow @nogc @safe)") pure nothrow @nogc @safe unittest
 {
     // TO DO: Improve this test! Ugly...
 
@@ -739,10 +742,15 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isForwardRange!R)
     r.popFront;
     assert(r.front.front == 3);
     assert(r1.front.front == 2);
+
+    assert(iota(31).subsetsOfSize(1).walkLength == 31);
+    assert(iota(10).subsetsOfSize(2).walkLength == 45);
 }
 
 auto subsets(R)(R set) if (isForwardRange!R)
 {
+    assert(set.walkLength <= 31);
+
     static struct SubsetsRange
     {
         R set_;
@@ -758,32 +766,21 @@ auto subsets(R)(R set) if (isForwardRange!R)
         auto popFront()
         {
             assert(!empty);
-            if(whichToKeep == (1 << set_.walkLength) - 1)
-            {
-                empty_ = true;
-            }
             ++whichToKeep;
         }
 
         auto empty()
         {
-            return empty_;
+            return whichToKeep == 1 << set_.walkLength;
         }
 
         auto save()
         {
-            return SubsetsRange(set_, whichToKeep, empty_);
+            return SubsetsRange(set_, whichToKeep);
         }
     }
 
-    if(set.empty)
-    {
-        return SubsetsRange(set, 0, true);
-    }
-    else
-    {
-        return SubsetsRange(set, 1, false);
-    }    
+    return SubsetsRange(set, 1);
 }
 ///
 @Name("subsets") unittest
@@ -814,6 +811,8 @@ auto subsets(R)(R set) if (isForwardRange!R)
     assert(r.front.front == 1);    
     assert(s.front.front == 0);
     assert(!r.empty);
+
+    // TO DO: Improve this test. Ugly...
 }
 
 /*******************************************************************************
