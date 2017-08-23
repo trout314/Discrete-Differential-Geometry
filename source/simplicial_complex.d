@@ -278,7 +278,7 @@ public:
     */
     void insertFacet(V)(V vertices) if (isInputRange!V)
     {
-        // TO DO: Improve this!
+        // TO DO: Improve this! Why does this allocate a closure?
 
         int dim = vertices.walkLength.to!int - 1;
         assert(dim >= 0);
