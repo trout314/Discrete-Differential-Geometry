@@ -24,7 +24,7 @@ immutable real meanHingeDegreeTarget = 5.1;
 immutable real numHingesCoef = 0.5;
 
 // TO DO: make setting this to 0.0 disable tracking of hinge degrees
-immutable degreeStdDevCoef = 0.2;
+immutable degreeStdDevCoef = 0.02;
 
 //------------------------------------------------------------------------------
 
