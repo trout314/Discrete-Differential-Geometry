@@ -19,7 +19,7 @@ import simplicial_complex_algorithms : connectedComponents, eulerCharacteristic,
 import utility : capture;
 
 /// Basic Functionality
-@Name("doc tests") /* @safe pure */ unittest
+@Name("doc tests") /* @safe */ pure unittest
 {
     // create an empty simplicial complex with vertices of default type `int`
     SimplicialComplex!() sc;
@@ -100,35 +100,36 @@ import utility : capture;
     // can construct from a range of ranges of vertices
     auto sc5 = SimplicialComplex!()(iota(3).map!(i => iota(3*i, 3*i + 3)));
     assert(sc5.facets.equal([[0, 1, 2], [3, 4, 5], [6, 7, 8]]));
+}
 
+/// Some restrictions
+@Name("doc tests (errors)") pure @system unittest
+{
     // -------------------------------------------------------------------------
     // Restrictions
     // -------------------------------------------------------------------------
 
+    auto sc = simplicialComplex([[4,5], [5,6], [1,2,3], [2,3,4]]);
+
     // cannot insert a simplex if it is already the face of an existing facet
-    sc.insertFacet(s(4,5)).assertThrown!Error;
+    sc.insertFacet([4,5]).throwsWithMsg!Error(
+        "expected a simplex not already in the simplicial complex");
 
-    // sc.insertFacet(s(2)).throwsWithMsg("expected a simplex not already in the "
-    //     ~ "simplicial complex, but got [2] and already have facet [1, 2, 3]");
-    sc.insertFacet(s(2)).assertThrown!Error;
+    sc.insertFacet([2]).throwsWithMsg!Error(
+        "expected a simplex not already in the simplicial complex");
 
-    // throwsWithMsg(simplicialComplex([[3,4]]).removeFacet([2,3]), "tried to "
-    //     ~ "remove a facet [2, 3] not in the simplicial complex");
-    simplicialComplex([[3,4]]).removeFacet([2,3]).assertThrown!Error;
+    // cannot remove a facet that isn't part of the simplicial complex
+    simplicialComplex([[3,4]]).removeFacet([2,3]).throwsWithMsg!Error(
+        "tried to remove a facet not in the simplicial complex");
 
-    // throwsWithMsg(simplicialComplex([[1,3,4], [2,3,4]]).link(s(1,2)),
-    //     "expected a simplex in the simplicial complex");
-    simplicialComplex([[1,3,4], [2,3,4]]).link(s(1,2)).assertThrown!Error;
+    // not allowed to ask for link of a simplex not in the simplicial complex
+    simplicialComplex([[1,3,4], [2,3,4]]).link([1,2]).throwsWithMsg!Error(
+        "expected a simplex in the simplicial complex");
 
-    // throwsWithMsg(sc.facets(-1),"expected a non-negative dimension but got "
-    //     ~ "dimension -1");
-    sc.facets(-1).assertThrown!Error;
-
-
+    sc.facets(-1).throwsWithMsg!Error("expected a non-negative dimension");
 }
 
-@Name("additional tests")
-unittest
+@Name("additional tests") unittest
 {
     alias s = simplex;
     alias sComp = simplicialComplex;
@@ -173,8 +174,7 @@ unittest
     }
 }
 
-@Name("insertFacet")
-unittest
+@Name("insertFacet") unittest
 {
     auto sc = SimplicialComplex!()();
     sc.insertFacet([1,2]);
@@ -187,8 +187,7 @@ unittest
     assert(sc.facets.equal([[1,2], [2,3,4], [1,5,6,7]]));
 }
 
-@Name("insertFacet/removeFacet")
-unittest
+@Name("insertFacet/removeFacet") unittest
 {
     auto sc = simplicialComplex([[1,2], [1,3], [1,4], [4,5,6]]);
 
@@ -407,6 +406,8 @@ public:
     */
     auto link(V)(V vertices) const if (isInputRange!V)
     {
+        assert(contains(vertices), "expected a simplex in the simplicial complex");
+
         // Here f.d0 is vertices since star has captured it. TO DO: Clean this up!
         return this.star(vertices).map!(f => setDifference(f, f.d0));
     }
