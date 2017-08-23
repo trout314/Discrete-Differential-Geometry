@@ -898,17 +898,18 @@ unittest
 auto capture(Range, Data...)(Range range, Data data) if (isInputRange!Range)
 {
     alias dataDeclarations = (len) => len.iota.map!(
-        indx => "Data[%s] d%s;".format(indx, indx)).joiner("\n").array;
+        indx => "Data[%s] d%s_;".format(indx, indx)).joiner("\n").array;
 
     alias dataArgs = (len) => len.iota.map!(
-        indx => "d%s".format(indx)).joiner(",").array;
+        indx => "d%s_".format(indx)).joiner(",").array;
+
+    alias dataAccessors = (len) => len.iota.map!(
+        indx => "ref auto d%s() { return d%s_; }".format(indx, indx)).joiner("\n").array;
 
     static struct CaptureRange
     {
         Range range_;
         mixin(dataDeclarations(data.length));
-
-
 
         auto front()
         {
@@ -917,6 +918,7 @@ auto capture(Range, Data...)(Range range, Data data) if (isInputRange!Range)
                 typeof(range_.front) result;
                 alias result this;
                 mixin(dataDeclarations(data.length));
+                mixin(dataAccessors(data.length));
             }
 
             mixin("return CaptureFront(range_.front, " 

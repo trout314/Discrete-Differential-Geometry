@@ -3,9 +3,9 @@ import std.algorithm : all, any, canFind, chunkBy, copy, countUntil, each,
     equal, filter, find, joiner, map, maxElement, remove, setDifference,
     setIntersection, sort, sum, uniq;
 import std.conv : to;
-import std.exception : assertThrown, enforce;
+import std.exception : assertThrown;
 import std.range : array, chunks, empty, enumerate, ElementType, front, iota,
-    isInputRange, refRange, walkLength, zip;
+    isInputRange, popFront, refRange, walkLength, zip;
 import std.traits : isArray, Unqual;
 import std.typecons : Tuple, tuple;
 import utility : isSubsetOf, SmallMap, staticIota, throwsWithMsg, subsetsOfSize, subsets;
@@ -385,7 +385,7 @@ public:
     /***************************************************************************
     Returns the number of facets
     */
-    size_t numFacets() const pure @safe
+    size_t numFacets() const pure nothrow @nogc @safe
     {
         return this.facets.walkLength;
     }
@@ -396,10 +396,17 @@ public:
     */
     auto link(int dim, V)(const Simplex!(dim, V) s) const
     {
-        // TO DO: This allocates closure with gc, fix it
-
         assert(contains(s), "expected a simplex in the simplicial complex");
-        return this.star(s).map!(f => setDifference(f, s.vertices));
+
+        // TO DO: Make this @nogc
+        // Why can't I use f.d0 in place of the simplex captured by star?
+
+        // These work...
+        // return this.star(s).map!(f => setDifference(f, f.d0.vertices.array));
+        return this.star(s).map!(f => setDifference(f, s.vertices.array));
+
+        // But this one causes lots of unittest failtures (aliasing?)
+        // return this.star(s).map!(f => setDifference(f, f.d0.vertices));
     }
     /***************************************************************************
     Returns the facets in the link of the simplex `s` as an array of arrays of 
@@ -407,8 +414,8 @@ public:
     */
     auto link(V)(V vertices) const if (isInputRange!V)
     {
-        static assert(is(Unqual!(ElementType!V) == Vertex));
-        return this.star(vertices).map!(f => setDifference(f, vertices));
+        // Here f.d0 is vertices since star has captured it. TO DO: Clean this up!
+        return this.star(vertices).map!(f => setDifference(f, f.d0));
     }
 
     /***************************************************************************
@@ -417,7 +424,7 @@ public:
     */ 
     auto star(int dim, V)(const Simplex!(dim, V) s) const
     {
-        return this.facets.capture(s).filter!(f => (f.d0).vertices.isSubsetOf(f));
+        return this.facets.capture(s).filter!(f => f.d0.vertices.isSubsetOf(f));
     }
 
     /***************************************************************************
@@ -426,7 +433,7 @@ public:
     */ 
     auto star(V)(V v) const if (isInputRange!V)
     {
-        return this.facets.capture(v).filter!(f => (f.d0).isSubsetOf(f));
+        return this.facets.capture(v).filter!(f => f.d0.isSubsetOf(f));
     }
 
     /***************************************************************************
@@ -536,48 +543,115 @@ unittest
 @Name("facets(dim) (pure nothrow @nogc @safe)") unittest
 {
     auto sc = simplicialComplex([[1,2], [2,4,5]]);
+    int[2] edge = [1,2];
+    int[3] triangle = [2,4,5];
 
-    assert(
-        () pure nothrow @nogc @safe {return sc.facets(1).front.front == 1;}()
-    );
+    () pure nothrow @nogc @safe {
+        auto facs1 = sc.facets(1);
+        auto saved1 = facs1.save;
 
-    assert(
-        () pure nothrow @nogc @safe {return sc.facets(2).front.front == 2;}()
-    );
+        auto facs2 = sc.facets(2);
+        auto saved2 = facs2.save;
+
+        assert(facs1.front == edge[]);
+        facs1.popFront;
+        assert(facs1.empty);    
+        assert(!saved1.empty);    
+        
+        assert(facs2.front == triangle[]);
+        facs2.popFront;
+        assert(facs2.empty);    
+        assert(!saved2.empty);    
+    }();
 }
 
 ///
 @Name("facets (pure nothrow @nogc @safe)") unittest
 {
     auto sc = simplicialComplex([[1,2], [2,4,5]]);
+    int[2] edge = [1,2];
+    int[3] triangle = [2,4,5];
 
-    assert(
-        () pure nothrow @nogc @safe {return sc.facets.front.front == 1;}()
-    );
-
-    sc.removeFacet([1,2]);
-
-    assert(
-        () pure nothrow @nogc @safe {return sc.facets.front.front == 2;}()
-    );
+    () pure nothrow @nogc @safe {
+        auto facs = sc.facets;
+        auto saved = facs.save;
+        assert(facs.front == edge[]);
+        facs.popFront;
+        assert(facs.front == triangle[]);
+        facs.popFront;
+        assert(facs.empty);    
+        assert(!saved.empty);    
+    }();
 }
 
 ///
 @Name("star(range) (pure nothrow @nogc @safe)") unittest
 {
     auto sc = simplicialComplex([[1,2], [2,4,5]]);
-    int[2] f = [1,2];
+    int[2] edge = [1,2];
 
-    assert(
-        () pure nothrow @nogc @safe {return sc.star(f[]).front.front == 1;}()
-    );
+    () pure nothrow @nogc @safe {
+        auto starRange = sc.star(edge[]);
+        auto saved = starRange.save;
+
+        assert(starRange.front == edge[]);
+
+        // Can still access the captured simplex
+        assert(starRange.front.d0 == edge[]);
+
+        starRange.popFront;
+        assert(starRange.empty);
+        assert(!saved.empty);
+    }();
 }
 
 ///
 @Name("star(simplex) (pure nothrow @nogc @safe)") unittest
 {
     auto sc = simplicialComplex([[1,2], [2,4,5]]);
-    assert(() pure nothrow @nogc @safe 
-        { return sc.star(simplex(1,2)).front.front == 1; }()
-    );
+    int[2] facetAns = [1,2];
+
+    () pure nothrow @nogc @safe {
+        auto starRange = sc.star(simplex(1,2));
+        auto saved = starRange.save;
+
+        assert(starRange.front == facetAns[]);
+
+        // Can still access the captured simplex
+        assert(starRange.front.d0 == simplex(1,2));
+
+        starRange.popFront;
+        assert(starRange.empty);
+        assert(!saved.empty);
+    }();
+}
+
+///
+@Name("link(range) (pure nothrow @nogc @safe)") unittest
+{
+    auto sc = simplicialComplex([[1,2], [2,4,5]]);
+    int[1] vertex = [1];
+
+    () pure nothrow @nogc @safe {
+        auto linkRange = sc.link(vertex[]);
+        auto saved = linkRange.save;
+
+        assert(linkRange.front.front == 2);
+
+        // Can still access the captured simplex
+        // assert(linkRange.front.d0 == vertex[]);
+
+        linkRange.popFront;
+        assert(linkRange.empty);
+        assert(!saved.empty);
+    }();  
+}
+
+///
+@Name("link(simplex) (pure nothrow @safe)") unittest
+{
+    auto sc = simplicialComplex([[1,2], [2,4,5]]);
+    () pure nothrow /* @nogc */ @safe {
+        assert(sc.link(simplex(1)).front.front == 2);
+    }();
 }
