@@ -356,6 +356,8 @@ void throwsWithMsg(ThrownType : Throwable = Exception, E)
         file, line);
 }
 
+// TO DO: Tests for throwsWithMsg
+
 /*******************************************************************************
 Returns all sequences of length `length` which contain `numOnes` ones and all 
 other elements zero. Sequences given in increasing dictionary order. (This is 
@@ -550,7 +552,22 @@ position 0 is the lesat significant bit and position 31 the highest.)
 */
 bool hasOneAtBit(uint x, size_t pos) pure nothrow @nogc @safe
 {
+    assert(pos < uint.sizeof * 8, "bad bit position");
     return  ((1 << pos) & x) > 0;
+}
+///
+@Name("hasOneAtBit") unittest
+{
+    assert(1.hasOneAtBit(0));
+    assert(iota(1,32).all!(pos => !1.hasOneAtBit(pos)));
+
+    assert(iota(32).all!(pos => uint.max.hasOneAtBit(pos)));
+
+    assert(!12.hasOneAtBit(0));
+    assert(!12.hasOneAtBit(1));
+    assert(12.hasOneAtBit(2));
+    assert(12.hasOneAtBit(3));
+    assert(iota(4,32).all!(pos => !12.hasOneAtBit(pos)));
 }
 
 auto subsetFromUint(R)(R set, uint whichToKeep) if (isInputRange!R)
@@ -621,7 +638,9 @@ auto subsetFromUint(R)(R set, uint whichToKeep) if (isInputRange!R)
     assert([3,4,5].subsetFromUint(7).array == [3,4,5]);
 
     // This will throw errors
-    // assert([3,4,5].subsetFromUint(1 << 31).array == [3,4,5]);
+    [3,4,5].subsetFromUint(1 << 3).throwsWithMsg!Error(
+        "1 bits found in positions not corresponsing to elements in set"
+    );
 
     // TO DO: More tests
 }
