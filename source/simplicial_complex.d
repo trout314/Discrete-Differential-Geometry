@@ -285,7 +285,8 @@ public:
         vertices.assertValidSimplex(dim);
 
         static assert(is(Unqual!(ElementType!V) == Vertex));
-        assert(!contains(vertices), "expected a simplex not already in the simplicial complex");
+        assert(!this.contains(vertices),
+            "expected a simplex not already in the simplicial complex");
 
         // First we remove any existing facets which are faces of inserted facet
         // TO DO: Improve this?
