@@ -1,7 +1,6 @@
 import std.algorithm : all, canFind, copy, each, equal, filter, find, joiner,
     map, sort, sum;
 import std.conv : to;
-import std.exception : enforce;
 import std.meta : AliasSeq, allSatisfy, anySatisfy;
 import std.range : array, chain, drop, ElementType, empty, enumerate, front,
     iota, save, isInputRange, isForwardRange, only, popFront, repeat, take, walkLength;
@@ -333,7 +332,7 @@ void throwsWithMsg(ThrownType : Throwable = Exception, E)
     {
         expression();
     }
-    catch(Exception exception)
+    catch(Throwable exception)
     {
         auto thrown = cast(ThrownType) exception;
         if(thrown is null)
@@ -426,7 +425,7 @@ struct SmallMap(KeyType, ValueType)
     /// insert a (key, value) pair into the map
     void insert(const KeyType key, /* const */ ValueType value)
     {
-        enforce(key !in this, "key already present");
+        assert(key !in this, "key already present");
         data ~= Record(key, value);
         data.sort!((r1, r2) => r1.key < r2.key);
     }
@@ -479,10 +478,17 @@ private:
     sm[2] = "bubba";
     assert(sm[2] == "bubba");
 
-    sm.insert(5, "nope").throwsWithMsg("key already present");
 
     assert(sm.keys.array == [2, 5]);
     assert(sm.values.array == ["bubba", "hello"]);
+}
+
+///
+@Name("SmallMap (errors)") pure @system unittest
+{
+    SmallMap!(int, string) sm;
+    sm.insert(5, "hello");
+    sm.insert(5, "nope").throwsWithMsg!Error("key already present");
 }
 
 ///

@@ -2,7 +2,7 @@
 import std.algorithm : all, canFind, copy, each, equal, filter, findAdjacent, isSorted, 
     joiner, map, setDifference, sort;
 import std.conv : to, Unqual;
-import std.exception : assertThrown, assumeUnique, enforce;
+import std.exception : assertThrown, assumeUnique;
 import std.meta : staticMap;
 import std.range : array, chain, ElementType, empty, enumerate, front, iota, 
     isInputRange, popFront, walkLength;
@@ -48,13 +48,7 @@ struct Simplex(int dim, Vertex = int)
             ~ "from the element type: " ~ ElementType!R.stringof ~ " of the "
             ~ "range or array used to construct a simplex");
         
-        // enforce(vertices_.walkLength == dim + 1,
-        //     "a dimension " ~ dim.to!string ~ " simplex needs "
-        //     ~ (dim+1).to!string ~ " vertices, but got vertices: " 
-        //     ~ vertices_.to!string);
-
         assert(vertices_.walkLength == dim + 1, "wrong number of vertices");
-
 
         // TO DO: Figure out how to do this without allocating!
         // verts_[] = vertices_.map!(to!Vertex).array[];
@@ -62,14 +56,7 @@ struct Simplex(int dim, Vertex = int)
         // THIS WORKS! Why do I need this cast? is it acutally OK?
         copy(vertices_.map!(to!Vertex), cast(Unqual!Vertex[])(verts_[]));
 
-        // vertices_.map!(to!Vertex).enumerate.each!((i, v) => verts_[i] = v);
-
-        // foreach(indx, v;vertices_.map!(to!Vertex).enumerate)
-        // {
-        //     verts_[indx] = v;
-        // }
-
-        vertices_.enforceValidSimplex(dim);
+        vertices_.assertValidSimplex(dim);
     }
 
     /***************************************************************************
@@ -130,23 +117,10 @@ private:
 }
 
 /// Some basic examples
-@("Basic Simplex tests")
-pure /* @safe */ unittest
+@("Basic Simplex tests") pure @safe unittest
 {
     // Create a simplex of dimension 1 with vertices [1,2]
     auto s1 = Simplex!1([1, 2]);
-
-    // Need the proper number of vertices
-    // throwsWithMsg!Error(Simplex!1([1,2,3]),
-    //     "a dimension 1 simplex needs 2 vertices, but got vertices: [1, 2, 3]");
-
-    // Vertices must be in increasing order
-    // throwsWithMsg!Error(Simplex!3([5,2,3,4]),
-    //     "vertices must occur in increasing order, but got vertices: [5, 2, 3, 4]");
-
-    // Vertices must be distinct
-    // throwsWithMsg!Error(Simplex!2([1,2,2]),
-    //     "vertices must be distinct, but got vertices: [1, 2, 2]");
 
     /* The type used to store the vertices is accessible through the symbol
     VertexType. This type defaults to an int. */
@@ -203,11 +177,25 @@ pure /* @safe */ unittest
 
     // NOT OK, int doesn't implicitly convert to byte
     static assert(!__traits(compiles, s8 = s9));
-}   
+}
+
+@("Basic Simplex tests (errors)") pure nothrow @system unittest
+{
+    // Need the proper number of vertices
+    Simplex!1([1,2,3]).throwsWithMsg!Error(
+        "wrong number of vertices");
+
+    // Vertices must be in increasing order
+    Simplex!3([5,2,3,4]).throwsWithMsg!Error(
+        "vertices must occur in increasing order");
+
+    // Vertices must be distinct
+    Simplex!2([1,2,2]).throwsWithMsg!Error(
+        "vertices must be distinct");
+}
 
 // additional tests
-@Name("additional Simplex tests")
-pure /* @safe */ unittest
+@Name("additional Simplex tests") pure @safe unittest
 {
     // Of course, constant or immutable simplices can't be modified
     const sCon = simplex(1,2,3);
@@ -231,13 +219,10 @@ pure /* @safe */ unittest
     auto sMut2 = simplex(13, 14, 15);
     sMut = sStr.vertices.to!(int[]).to!(Simplex!2);
     sMut2 = Simplex!(2, int)(sByte);
-
-    assertThrown!Error(Simplex!1([7]));
 }
 
 /// Shorter way to construct simplices
-@Name("simplex")
-pure @safe unittest
+@Name("simplex") pure @safe unittest
 {
     /* For convenience we have a function template "simplex" which can be used
     to costruct Simplex types. */
@@ -247,8 +232,7 @@ pure @safe unittest
 }
 
 /// Suitable Vertex types
-@Name("vertex types")
-unittest
+@Name("vertex types") @system unittest
 {
     /* A user specified vertex types must be comparable using < and == and also
     be printable with writeln. Many types work already. */
@@ -336,10 +320,8 @@ unittest
     simplex(new D(2), new D(2)).assertThrown!Error;
 
     // null class references are not allowed as vertices
-    // simplex(new D(3), null).throwsWithMsg!Error(
-    //     "null class references cannot be vertices, but got vertices: [3, null]");
-
-    simplex(new D(2), null).assertThrown!Error;
+    simplex(new D(3), null).throwsWithMsg!Error(
+        "null class references not allowed");
 }
 
 /******************************************************************************
@@ -352,8 +334,7 @@ auto simplex(size_t numVertices, V)(V[numVertices] vertices...)
 }
 
 ///
-@Name("simplex (additional)")
-pure /* @safe */ unittest
+@Name("simplex (additional)") @system unittest
 {
     auto s1 = simplex(1, 2, 4, 7);
     static assert(is(s1.VertexType == int));
@@ -427,15 +408,14 @@ auto oppositeFace(S, F)(const S simplex, const F face)
         if (isInstanceOf!(Simplex, S) && isInstanceOf!(Simplex, F))
 {
     static assert(F.dimension < S.dimension);
-    enforce(simplex.hasFace(face), "oppositeFace expected a face of " ~ 
+    assert(simplex.hasFace(face), "oppositeFace expected a face of " ~ 
         simplex.toString ~ " but got " ~ face.toString);
 
     return Simplex!(S.dimension - F.dimension - 1, S.VertexType)(
         setDifference(simplex.vertices, face.vertices));
 }
 ///
-@Name("oppositeFace")
-pure @safe unittest
+@Name("oppositeFace") pure @safe unittest
 {
     alias s = simplex; // For clarity
 
@@ -449,9 +429,16 @@ pure @safe unittest
     static assert(s(1,2,4,7).oppositeFace(s(1,4)) == s(2,7));
 
     static assert(!__traits(compiles, s(2).oppositeFace(s(1))));
-    s(1,2,4,7).oppositeFace(s(1,2,3)).throwsWithMsg(
+}
+
+///
+@Name("oppositeFace (errors)") @system unittest
+{
+    alias s = simplex; // For clarity
+    s(1,2,4,7).oppositeFace(s(1,2,3)).throwsWithMsg!Error(
         "oppositeFace expected a face of [1,2,4,7] but got [1,2,3]");
 }
+
 
 /******************************************************************************
 Returns array containing all faces of simplex `s` with dimension `dim`. Faces
@@ -475,10 +462,9 @@ pure @safe unittest
     assert(s(1,2,3).facesOfDim!1.array == [s(1,2), s(1,3), s(2,3)]);
     assert(s(1,2,3).facesOfDim!2.array == [s(1,2,3)]);
 
-    // TO DO: Why won't this work?
-    // static assert(s(1,2,3).facesOfDim!0.array == [s(1), s(2), s(3)]);
-    // static assert(s(1,2,3).facesOfDim!1.array == [s(1,2), s(1,3), s(2,3)]);
-    // static assert(s(1,2,3).facesOfDim!2.array == [s(1,2,3)]);
+    static assert(s(1,2,3).facesOfDim!0.array == [s(1), s(2), s(3)]);
+    static assert(s(1,2,3).facesOfDim!1.array == [s(1,2), s(1,3), s(2,3)]);
+    static assert(s(1,2,3).facesOfDim!2.array == [s(1,2,3)]);
 }
 
 /******************************************************************************
@@ -536,10 +522,9 @@ pure @safe unittest
     assert(s(1,3,5,7).hinges.array
         == [s(1,3), s(1,5), s(1,7), s(3,5), s(3,7), s(5,7)]);
 
-    // TO DO: Why won't this work?
-    // static assert(s(1,2,3).hinges.equal([s(1), s(2), s(3)]));
-    // static assert(s(1,3,5,7).hinges.array 
-    //     == [s(1,3), s(1,5), s(1,7), s(3,5), s(3,7), s(5,7)]);
+    static assert(s(1,2,3).hinges.equal([s(1), s(2), s(3)]));
+    static assert(s(1,3,5,7).hinges.array 
+        == [s(1,3), s(1,5), s(1,7), s(3,5), s(3,7), s(5,7)]);
 }
 
 /******************************************************************************
@@ -559,9 +544,8 @@ pure @safe unittest
     assert(s(1, 2, 3).ridges.array == [s(1, 2), s(1, 3), s(2, 3)]);
     assert(s(2, 3, 5, 7).ridges.array == s(2, 3, 5, 7).facesOfDim!2.array);
 
-    // TO DO: Why won't this work?
-    // static assert(s(1,2 ).ridges.array == [s(1), s(2)]);
-    // static assert(s(2, 3, 5).ridges.array == s(2, 3, 5).facesOfDim!1.array);
+    static assert(s(1,2 ).ridges.array == [s(1), s(2)]);
+    static assert(s(2, 3, 5).ridges.array == s(2, 3, 5).facesOfDim!1.array);
 }
 
 /******************************************************************************
@@ -571,22 +555,23 @@ auto join(S1, S2)(const S1 s1, const S2 s2)
     if (isInstanceOf!(Simplex, S1) && isInstanceOf!(Simplex, S2))
 {
     auto commonVertices = chain(s1.vertices, s2.vertices).array.dup.sort();
-    enforce(commonVertices.findAdjacent.empty, "join expected two simplices "
+    assert(commonVertices.findAdjacent.empty, "join expected two simplices "
         ~ "without any common vertices, but got: " ~ s1.toString ~ " and " 
         ~ s2.toString);
 
     return Simplex!(s1.dimension + s2.dimension + 1)(commonVertices);
 }
 ///
-@Name("join")
-pure @safe unittest
+@Name("join") pure @safe unittest
 {
     alias s = simplex;
-
     assert(join(s(1, 3), s(2, 4)) == s(1,2,3,4));
-    assert(join(s(1, 3), s(2)) == s(1,2,3));
+}
 
-    throwsWithMsg(join(s(1, 2), s(1, 3)), "join expected two simplices without "
+@Name("join (errors)") pure @system unittest
+{
+    alias s = simplex;
+    throwsWithMsg!Error(join(s(1, 2), s(1, 3)), "join expected two simplices without "
         ~ "any common vertices, but got: [1,2] and [1,3]");
 }
 
@@ -594,37 +579,20 @@ pure @safe unittest
 Throws if the given range or array does not represents a valid simplex. Vertices
 must be sorted and contain no duplicates.
 */
-void enforceValidSimplex(V)(V vertices_, int dim) if (isInputRange!V || isArray!V)
+void assertValidSimplex(V)(V vertices_, int dim) if (isInputRange!V || isArray!V)
 {
-    // enforce(vertices_.walkLength == dim + 1,
-    //     "a dimension " ~ dim.to!string ~ " simplex needs "
-    //     ~ (dim+1).to!string ~ " vertices, but got vertices: " 
-    //     ~ vertices_.to!string);
-
     assert(vertices_.walkLength == dim + 1, "wrong number of vertices");
-
     static if (is(ElementType!V == class))
     {
-        // enforce(vertices_.all!(v => v !is null), "null class references "
-        //     ~ "cannot be vertices, but got vertices: " ~ vertices_.to!string);
-
-        assert(vertices_.all!(v => v !is null), "null class references not allowed");
+        assert(vertices_.all!(v => v !is null),
+            "null class references not allowed");
     }
-
-    // enforce(vertices_.isSorted, "vertices must occur in increasing order, "
-    //     ~ "but got vertices: " ~ vertices_.to!string);
-
     assert(vertices_.isSorted, "vertices must occur in increasing order");
-
-    // enforce(vertices_.findAdjacent.walkLength == 0, "vertices must be "
-    //     ~ "distinct, but got vertices: " ~ vertices_.to!string);
-
     assert(vertices_.findAdjacent.walkLength == 0, "vertices must be distinct");
 }
 
-/// BigInt tests
-@Name("BigInt vertices")
-unittest
+/// BigInt tests 
+@Name("BigInt vertices") pure nothrow @system unittest
 {
     import std.bigint : BigInt;
     auto s = simplex(BigInt(1), BigInt(2), BigInt(3));
@@ -632,8 +600,7 @@ unittest
 }
 
 /// REVector Tests
-@Name("REVector vertices")
-unittest
+@Name("REVector vertices") pure nothrow @system unittest
 {
     import std.bigint : BigInt;
     import rational : rational, Rational;

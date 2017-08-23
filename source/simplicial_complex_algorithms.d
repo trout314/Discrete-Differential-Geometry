@@ -3,7 +3,6 @@ import simplicial_complex : SimplicialComplex, simplicialComplex, fVector;
 
 import std.algorithm : all, canFind, chunkBy, equal, find, joiner, map,
     setIntersection, sort, sum;
-import std.exception : enforce;
 import std.conv : to;
 import std.range : array, empty, front, enumerate, iota, walkLength;
 import utility : throwsWithMsg;
@@ -235,7 +234,7 @@ Decide if a simplicial complex is pure of dimension `d`
 */
 bool isPureOfDim(Vertex)(const ref SimplicialComplex!Vertex sc, int d)
 {
-    enforce(d >= 0, "expected a non-negative dimension but got " ~ d.to!string);
+    assert(d >= 0, "expected a non-negative dimension");
     return sc.facets(d).walkLength == sc.numFacets;
 }
 ///
@@ -255,8 +254,8 @@ bool isPureOfDim(Vertex)(const ref SimplicialComplex!Vertex sc, int d)
     sc.insertFacet([4,5,6]);
     assert(iota(10).all!(d => !sc.isPureOfDim(d)));
     
-    throwsWithMsg(sc.isPureOfDim(-2),
-        "expected a non-negative dimension but got -2");
+    throwsWithMsg!Error(sc.isPureOfDim(-2),
+        "expected a non-negative dimension");
     
     auto emptyComplex = SimplicialComplex!()();
     assert(iota(16).all!(d => emptyComplex.isPureOfDim(d)));

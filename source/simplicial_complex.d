@@ -1,4 +1,4 @@
-import simplex : facesOfDim, hasFace, simplex, Simplex, enforceValidSimplex;
+import simplex : facesOfDim, hasFace, simplex, Simplex, assertValidSimplex;
 import std.algorithm : all, any, canFind, chunkBy, copy, countUntil, each,
     equal, filter, find, joiner, map, maxElement, remove, setDifference,
     setIntersection, sort, sum, uniq;
@@ -268,7 +268,7 @@ public:
     */
     void insertFacet(int dim)(const Simplex!(dim, Vertex) s)
     {
-        s.vertices.enforceValidSimplex(dim);
+        s.vertices.assertValidSimplex(dim);
         insertFacet(s.vertices.dup);
     }
 
@@ -282,15 +282,10 @@ public:
 
         int dim = vertices.walkLength.to!int - 1;
         assert(dim >= 0);
-        vertices.enforceValidSimplex(dim);
+        vertices.assertValidSimplex(dim);
 
         static assert(is(Unqual!(ElementType!V) == Vertex));
         assert(!contains(vertices), "expected a simplex not already in the simplicial complex");
-
-        // enforce(!contains(vertices), "expected a simplex not already in the "
-        //     ~ "simplicial complex, but got " ~ vertices.to!string 
-        //     ~ " and already have facet " 
-        //     ~ facets.find!(f => vertices.isSubsetOf(f)).front.to!string);
 
         // First we remove any existing facets which are faces of inserted facet
         // TO DO: Improve this?
@@ -327,9 +322,6 @@ public:
     */
     void removeFacet(V)(V vertices) if (isInputRange!V)
     {
-        // enforce(this.contains(vertices), "tried to remove a facet "
-        //     ~ vertices.to!string ~ " not in the simplicial complex");
-
         assert(this.contains(vertices), "tried to remove a facet not in the simplicial complex");
         
         int dim = vertices.walkLength.to!int - 1;

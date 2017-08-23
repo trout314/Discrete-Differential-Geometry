@@ -642,7 +642,7 @@ public:
 
                     // This checks for overflow in case we're working with a
                     // user-defined fixed-precision integer.
-                    enforce(temp.numer > 0, text("Overflow while ",
+                    assert(temp.numer > 0, text("Overflow while ",
                         "converting ", Rational!Int.stringof, " to ",
                         F.stringof, "."));
 
@@ -957,11 +957,11 @@ writeln( toRational!int( PI, 1e-1));
  */
 Rational!(Int) toRational(Int)(real floatNum, real epsilon = 1e-8)
 {
-    enforce(floatNum != real.infinity && floatNum != -real.infinity
+    assert(floatNum != real.infinity && floatNum != -real.infinity
         && !isNaN(floatNum), "Can't convert NaNs and infinities to rational.");
-    enforce(floatNum < long.max && floatNum > -long.max,
+    assert(floatNum < long.max && floatNum > -long.max,
         "Rational conversions of very large numbers not yet implemented.");
-    enforce(1.0L / epsilon < long.max,
+    assert(1.0L / epsilon < long.max,
         "Can't handle very small epsilons < long.max in toRational.");
 
     // Handle this as a special case to make the rest of the code less
