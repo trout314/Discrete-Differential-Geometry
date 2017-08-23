@@ -368,7 +368,7 @@ unittest
 // TO DO: This allocates closure. @nogc version?
 auto simplexCoefs(int dim)
 {
-    auto computeCoef(int pointIndex, int basisIndex)
+    static auto computeCoef(int pointIndex, int basisIndex)
     {
         auto n = basisIndex * (basisIndex + 1) / 2;
         auto m = sqrtSquarePart(n);
