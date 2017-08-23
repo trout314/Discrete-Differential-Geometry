@@ -568,6 +568,9 @@ bool hasOneAtBit(uint x, size_t pos) pure nothrow @nogc @safe
     assert(12.hasOneAtBit(2));
     assert(12.hasOneAtBit(3));
     assert(iota(4,32).all!(pos => !12.hasOneAtBit(pos)));
+
+    // An error is thrown if the bit position is outside the uint
+    7.hasOneAtBit(32).throwsWithMsg!Error("bad bit position");
 }
 
 auto subsetFromUint(R)(R set, uint whichToKeep) if (isInputRange!R)
@@ -637,10 +640,8 @@ auto subsetFromUint(R)(R set, uint whichToKeep) if (isInputRange!R)
     assert([3,4,5].subsetFromUint(6).array == [4,5]);
     assert([3,4,5].subsetFromUint(7).array == [3,4,5]);
 
-    // This will throw errors
     [3,4,5].subsetFromUint(1 << 3).throwsWithMsg!Error(
-        "1 bits found in positions not corresponsing to elements in set"
-    );
+        "1 bits found in positions not corresponsing to elements in set");
 
     // TO DO: More tests
 }
@@ -665,9 +666,9 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
 {
     immutable setSize = set.walkLength;
 
-    assert(subsetSize > 0);
-    assert(subsetSize <= setSize);
-    assert(setSize <= 31);
+    assert(subsetSize > 0, "subsetSize must be positive");
+    assert(subsetSize <= setSize, "subsetSize must be at most the size of the set");
+    assert(setSize <= 31, "subsetSize must be at most 31");
 
     static struct SubsetsOfSizeRange
     {
