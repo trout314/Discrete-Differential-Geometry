@@ -1,6 +1,5 @@
-import simplex : facesOfDim, hasFace, simplex, Simplex, assertValidSimplex;
 import std.algorithm : all, any, canFind, chunkBy, copy, countUntil, each,
-    equal, filter, find, joiner, map, maxElement, remove, setDifference,
+    equal, isSorted, filter, find, findAdjacent, joiner, map, maxElement, remove, setDifference,
     setIntersection, sort, sum, uniq;
 import std.conv : to;
 import std.exception : assertThrown;
@@ -33,14 +32,11 @@ import utility : capture;
     we will stick to `int` for now */
     static assert(is(SimplicialComplex!int == typeof(sc)));
     
-    // for clarity
-    alias s = simplex;
-
     // insert some facets
-    sc.insertFacet(s(1,2,3));
-    sc.insertFacet(s(2,3,4));
-    sc.insertFacet(s(4,5));
-    sc.insertFacet(s(5,6));
+    sc.insertFacet([1,2,3]);
+    sc.insertFacet([2,3,4]);
+    sc.insertFacet([4,5]);
+    sc.insertFacet([5,6]);
 
     /* can also create simplicial complexes directly from an array of arrays of
     vertices which specify the facets */
@@ -53,7 +49,7 @@ import utility : capture;
 
     // simplicial complexes are value types
     auto sc4 = sc3;
-    sc4.insertFacet(s(6,7));
+    sc4.insertFacet([6,7]);
     assert(sc3 == sc);
 
     /* get the vertices in the facets, returned in order of increasing dimension
@@ -62,37 +58,37 @@ import utility : capture;
     assert(sc.numFacets == 4);
 
     // Can get a sorted array of all the facet simplices of a given dimension
-    assert(sc.facets!0.empty);
-    assert(sc.facets!1.equal([s(4,5), s(5,6)]));
-    assert(sc.facets!2.equal([s(1,2,3), s(2,3,4)]));
-    assert(sc.facets!3.empty);
+    assert(sc.facets(0).empty);
+    assert(sc.facets(1).equal([[4,5], [5,6]]));
+    assert(sc.facets(2).equal([[1,2,3], [2,3,4]]));
+    assert(sc.facets(3).empty);
 
     // Can get a sorted array of all the simplices of a given dimension
-    assert(sc.simplices!0.equal([s(1), s(2), s(3), s(4), s(5), s(6)]));
-    assert(sc.simplices!1.equal([s(1,2), s(1,3), s(2,3), s(2,4), s(3,4), 
-        s(4,5), s(5,6)]));
-    assert(sc.simplices!2.equal(sc.facets!2));
-    assert(sc.simplices!3.empty);
+    assert(sc.simplices(0).equal([[1], [2], [3], [4], [5], [6]]));
+    assert(sc.simplices(1).equal([[1,2], [1,3], [2,3], [2,4], [3,4], 
+        [4,5], [5,6]]));
+    assert(sc.simplices(2).equal(sc.facets(2)));
+    assert(sc.simplices(3).empty);
 
     // get the f-vector of the simplicial complex
     assert(sc.fVector == [6,7,2]);
 
     // check for the presence of simplices
-    assert(sc.contains(s(4,5)));
-    assert(sc.contains(s(2,3,4)));
-    assert(sc.contains(s(6)));
-    assert(!sc.contains(s(1,2,5)));
-    assert(!sc.contains(s(4,6)));
+    assert(sc.contains([4,5]));
+    assert(sc.contains([2,3,4]));
+    assert(sc.contains([6]));
+    assert(!sc.contains([1,2,5]));
+    assert(!sc.contains([4,6]));
 
     // get the star of a simplex an array of facets
-    assert(sc.star(s(5)).equal([[4,5], [5,6]]));
-    assert(sc.star(s(4)).equal([[4,5], [2,3,4]]));
-    assert(sc.star(s(2,3)).equal([[1,2,3], [2,3,4]]));
+    assert(sc.star([5]).equal([[4,5], [5,6]]));
+    assert(sc.star([4]).equal([[4,5], [2,3,4]]));
+    assert(sc.star([2,3]).equal([[1,2,3], [2,3,4]]));
 
     // get link of a simplex as list of facets
-    assert(sc.link(s(5)).equal!equal([[4], [6]]));
-    assert(sc.link(s(4)).equal!equal([[5], [2,3]]));
-    assert(sc.link(s(2,3)).equal!equal([[1], [4]]));
+    assert(sc.link([5]).equal!equal([[4], [6]]));
+    assert(sc.link([4]).equal!equal([[5], [2,3]]));
+    assert(sc.link([2,3]).equal!equal([[1], [4]]));
 
     // can print out a simplicial complex
     assert(sc.toString == "[[4, 5], [5, 6], [1, 2, 3], [2, 3, 4]]");
@@ -105,10 +101,6 @@ import utility : capture;
 /// Some restrictions
 @Name("doc tests (errors)") pure @system unittest
 {
-    // -------------------------------------------------------------------------
-    // Restrictions
-    // -------------------------------------------------------------------------
-
     auto sc = simplicialComplex([[4,5], [5,6], [1,2,3], [2,3,4]]);
 
     // cannot insert a simplex if it is already the face of an existing facet
@@ -131,7 +123,6 @@ import utility : capture;
 
 @Name("additional tests") unittest
 {
-    alias s = simplex;
     alias sComp = simplicialComplex;
 
     // ---------------- TEST A DEFAULT INITIALIZED COMPLEX ---------------------
@@ -140,15 +131,10 @@ import utility : capture;
 
     sc.facets.empty.should.equal(true);
     sc.numFacets.should.equal(0);
-    foreach(d; staticIota!(0, 16))
-    {
-        sc.facets!d.empty.should.equal(true);
-        sc.simplices!d.empty.should.equal(true);
-    }
-   
+  
     // ---------------------------- ADD SOME FACETS ----------------------------
-    sc.insertFacet(s(1,2));
-    sc.insertFacet([2,3]);
+    sc.insertFacet([1, 2]);
+    sc.insertFacet([2, 3]);
     sc.insertFacet([3, 4, 5]);
     
     sc.should.equal(sComp([[1,2], [2,3], [3,4,5]]));
@@ -157,19 +143,17 @@ import utility : capture;
     sc.facets.walkLength.should.equal(3);
     sc.numFacets.should.equal(3);
 
-    sc.facets!0.empty.should.equal(true);
-    sc.facets!1.should.equal([s(1,2), s(2,3)]);
-    sc.facets!2.should.equal([s(3,4,5)]);
+    sc.facets(0).empty.should.equal(true);
+    sc.facets(1).should.containOnly([[1, 2], [2, 3]]);
+    sc.facets(2).should.containOnly([[3, 4, 5]]);
 
-    sc.simplices!0.should.containOnly([s(1), s(2), s(3), s(4), s(5)]);
-    sc.simplices!1.should.containOnly([s(1,2), s(2,3), s(3,4), s(3,5), s(4,5)]);
-    sc.simplices!2.should.containOnly([s(3,4,5)]);
+    sc.simplices(0).should.containOnly([[1], [2], [3], [4], [5]]);
+    sc.simplices(1).should.containOnly([[1, 2], [2, 3], [3, 4], [3, 5], [4, 5]]);
+    sc.simplices(2).should.containOnly([[3, 4, 5]]);
 
-    foreach(d; staticIota!(3, 16))
+    foreach(d; iota(3, 16))
     {
-        sc.facets!d.empty.should.equal(true);
         sc.facets(d).empty.should.equal(true);
-        sc.simplices!d.empty.should.equal(true);
         sc.simplices(d).empty.should.equal(true);
     }
 }
@@ -213,9 +197,26 @@ import utility : capture;
     SimplicialComplex!int sc3;
     sc3.insertFacet([1,2,3]);
     assert(sc3.facets.equal([[1,2,3]]));
-    sc3.removeFacet(simplex(1,2,3));
+    sc3.removeFacet([1,2,3]);
     assert(sc3.facets.empty);
 }
+
+/*******************************************************************************
+Checks if a range or array of vertices represents a valid simplex or not.
+Throws error if anything is wrong.
+*/
+void assertValidSimplex(V)(V vertices_, int dim) if (isInputRange!V)
+{
+    assert(vertices_.walkLength == dim + 1, "wrong number of vertices");
+    static if (is(ElementType!V == class))
+    {
+        assert(vertices_.all!(v => v !is null),
+            "null class references not allowed");
+    }
+    assert(vertices_.isSorted, "vertices must occur in increasing order");
+    assert(vertices_.findAdjacent.walkLength == 0, "vertices must be distinct");
+}
+
 
 /*******************************************************************************
 A simplicial complex type whose vertices are of type `Vertex`.
@@ -235,24 +236,11 @@ public:
     */
     alias VertexType = Vertex;
 
-    /***************************************************************************
-    Construct a simplicial complex from an array of vertex arrays, specifying
-    the facets.
-    */
-    this(const(Vertex)[][] facets)
-    {
-        // Check that none of the arrays reference the same memory
-        assert(facets.map!(f => f.ptr).array.sort().uniq.walkLength == facets.length);
-
-        // TO DO: Maybe check that no facets are faces of any others?
-        facets.each!(f => insertFacet(f));
-    }
-
     this(R)(R facets) if (isInputRange!R 
         && isInputRange!(ElementType!R) 
         && is(ElementType!(ElementType!R) : VertexType))
     {
-        facets.each!(f => insertFacet(f.array));
+        facets.each!(f => this.insertFacet(f));
     }
 
     // Postblit makes sure copy doesn't share data
@@ -263,57 +251,39 @@ public:
     }
 
     /***************************************************************************
-    Inserts the simplex s as a facet in the simplicial complex.
-    */
-    void insertFacet(int dim)(const Simplex!(dim, Vertex) s)
-    {
-        s.vertices.assertValidSimplex(dim);
-        insertFacet(s.vertices.dup);
-    }
-
-    /***************************************************************************
     Inserts a facet (given as an input range of vertices) into the simplicial
     complex.
     */
     void insertFacet(V)(V vertices) if (isInputRange!V)
     {
         // TO DO: Improve this! Why does this allocate a closure?
+        auto vertices_ = vertices.array;
 
-        int dim = vertices.walkLength.to!int - 1;
+        int dim = vertices_.walkLength.to!int - 1;
         assert(dim >= 0);
-        vertices.assertValidSimplex(dim);
+        vertices_.assertValidSimplex(dim);
 
-        static assert(is(Unqual!(ElementType!V) == Vertex));
         assert(!this.contains(vertices),
             "expected a simplex not already in the simplicial complex");
 
         // First we remove any existing facets which are faces of inserted facet
-        // TO DO: Improve this?
-        vertices.subsets
+        // TO DO: Create rawInsertFacet that skips this?
+        vertices_.subsets
             .filter!(vSet => this.facets.canFind(vSet.array))
             .each!(vSet => this.removeFacet(vSet.array));
 
-
         if (dim in facetVertices)
         {
-            facetVertices[dim] ~= vertices.array.dup;            
+            facetVertices[dim] ~= vertices_.dup;            
         }
         else
         {
-            facetVertices.insert(dim, vertices.array.dup);
+            facetVertices.insert(dim, vertices_.dup);
         }
         
         // TO DO: Improve this sorting function? Seems yucky!
         facetVertices[dim][] = facetVertices[dim].chunks(dim + 1)
             .array.sort().joiner.array[];
-    }
-
-    /***************************************************************************
-    Removes the simplex `s` as a facet in the simplicial complex.
-    */
-    void removeFacet(int dim)(const Simplex!(dim, Vertex) s)
-    {
-        removeFacet(s.vertices.dup);
     }
 
     /***************************************************************************
@@ -324,23 +294,16 @@ public:
     {
         assert(this.contains(vertices), "tried to remove a facet not in the simplicial complex");
         
-        int dim = vertices.walkLength.to!int - 1;
-
+        assert(vertices.walkLength <= int.max);
+        auto dim = cast(int) vertices.walkLength - 1;
+        vertices.assertValidSimplex(dim);
+     
         auto indx = facetVertices[dim].chunks(dim + 1).countUntil(vertices);
+        
         copy(facetVertices[dim][(dim + 1) * (indx + 1)  .. $],
              facetVertices[dim][(dim + 1) * indx .. $ - (dim + 1)]);
         
         facetVertices[dim] = facetVertices[dim][0 .. $ - (dim + 1)];
-    }
-
-    /***************************************************************************
-    Returns the facets of the simplicial complex of a particular dimension.
-    */
-    auto facets(int dim)() const
-    {
-        static assert(dim >= 0, "expected a non-negative dimension but got "
-            ~ "dimension " ~ dim.to!string);
-        return facets(dim).map!(verts => Simplex!(dim, Vertex)(verts));
     }
 
     /***************************************************************************
@@ -386,28 +349,6 @@ public:
     Returns the facets in the link of the simplex `s` as an array of arrays of 
     vertices, given in same order as they appear in `facets()`
     */
-    auto link(int dim, V)(const Simplex!(dim, V) s) const
-    {
-        assert(contains(s), "expected a simplex in the simplicial complex");
-
-        // TO DO: Make this @nogc
-        // Why can't I use f.d0 in place of the simplex captured by star?
-
-        // These work...
-        // return this.star(s).map!(f => setDifference(f, f.d0.vertices.array));
-        return this.star(s).map!(f => setDifference(f, s.vertices.array));
-
-        // But this one causes lots of unittest failtures (aliasing?)
-        // return this.star(s).map!(f => setDifference(f, f.d0.vertices));
-
-        // return this.facets.capture(s)
-        //     .filter!(f => f.d0.vertices.isSubsetOf(f))
-        //     .map!(f => setDifference(f, f.d0.vertices));
-    }
-    /***************************************************************************
-    Returns the facets in the link of the simplex `s` as an array of arrays of 
-    vertices, given in same order as they appear in `facets()`
-    */
     auto link(V)(V vertices) const if (isInputRange!V)
     {
         assert(contains(vertices), "expected a simplex in the simplicial complex");
@@ -420,27 +361,10 @@ public:
     Returns the star of the given simplex as an array of arrays of vertices of 
     the facets. These are given in the same order as specified facets()
     */ 
-    auto star(int dim, V)(const Simplex!(dim, V) s) const
+    auto star(V)(V vertices) const if (isInputRange!V)
     {
-        return this.facets.capture(s).filter!(f => f.d0.vertices.isSubsetOf(f));
-    }
-
-    /***************************************************************************
-    Returns the star of the given simplex as an array of arrays of vertices of 
-    the facets. These are given in the same order as specified facets()
-    */ 
-    auto star(V)(V v) const if (isInputRange!V)
-    {
-        return this.facets.capture(v).filter!(f => f.d0.isSubsetOf(f));
-    }
-
-    /***************************************************************************
-    Returns true if the simplex `s` is in this simplicial complex and false 
-    otherwise
-    */
-    bool contains(int dim, V)(const Simplex!(dim, V) s) const
-    {
-        return this.contains(s.vertices);
+        // Here f.d0 is vertices since star has captured it. TO DO: Clean this up!
+        return this.facets.capture(vertices).filter!(f => f.d0.isSubsetOf(f));
     }
 
     /***************************************************************************
@@ -449,20 +373,7 @@ public:
     */
     bool contains(V)(V vertices) const if (isInputRange!V)
     {
-        static assert(is(Unqual!(ElementType!V) == Vertex));       
         return this.facets.any!(f => vertices.isSubsetOf(f));
-    }
-
-    /***************************************************************************
-    Get simplices of dimension `dim`
-    */
-    auto simplices(int dim)() const
-    {
-        // TO DO: Reduce gc presure here. (Can't make @nogc I think.)
-
-        static assert(dim >= 0, "dimension must be non-negative, but got "
-            ~ dim.to!string);
-        return simplices(dim).map!(verts => Simplex!(dim, Vertex)(verts));
     }
 
     /***************************************************************************
@@ -604,27 +515,6 @@ unittest
 }
 
 ///
-@Name("star(simplex) (pure nothrow @nogc @safe)") unittest
-{
-    auto sc = simplicialComplex([[1,2], [2,4,5]]);
-    int[2] facetAns = [1,2];
-
-    () pure nothrow @nogc @safe {
-        auto starRange = sc.star(simplex(1,2));
-        auto saved = starRange.save;
-
-        assert(starRange.front == facetAns[]);
-
-        // Can still access the captured simplex
-        assert(starRange.front.d0 == simplex(1,2));
-
-        starRange.popFront;
-        assert(starRange.empty);
-        assert(!saved.empty);
-    }();
-}
-
-///
 @Name("link(range) (pure nothrow @nogc @safe)") unittest
 {
     auto sc = simplicialComplex([[1,2], [2,4,5]]);
@@ -636,9 +526,6 @@ unittest
 
         assert(linkRange.front.front == 2);
 
-        // Can still access the captured simplex
-        // assert(linkRange.front.d0 == vertex[]);
-
         linkRange.popFront;
         assert(linkRange.empty);
         assert(!saved.empty);
@@ -646,10 +533,36 @@ unittest
 }
 
 ///
-@Name("link(simplex) (pure nothrow @safe)") unittest
+@Name("contains (pure nothrow @nogc @safe)") unittest
 {
     auto sc = simplicialComplex([[1,2], [2,4,5]]);
-    () pure nothrow /* @nogc */ @safe {
-        assert(sc.link(simplex(1)).front.front == 2);
-    }();
+    int[2] edge = [1,2];
+    int[3] triangle = [2,4,5];
+    int[4] tetrahedron = [1,4,5,7];
+
+    () pure nothrow @nogc @safe {
+        assert(sc.contains(edge[]));
+        assert(sc.contains(triangle[]));
+        assert(!sc.contains(tetrahedron[]));
+    }();  
+}
+
+///
+@Name("removeFacet (pure nothrow @nogc @safe)") unittest
+{
+    auto sc = simplicialComplex([[1,2], [2,4,5]]);
+    int[2] edge = [1,2];
+
+    () pure nothrow @nogc @safe {
+        sc.removeFacet(edge[]);
+    }();  
+}
+
+///
+@Name("numFacets (pure nothrow @nogc @safe)") unittest
+{
+    auto sc = simplicialComplex([[1,2], [2,4,5]]);
+    () pure nothrow @nogc @safe {
+        assert(sc.numFacets == 2);
+    }();  
 }

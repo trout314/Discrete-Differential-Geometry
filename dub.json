@@ -5,7 +5,8 @@
 	"homepage": "https://github.com/trout314/Discrete-Differential-Geometry",
 	"license": "GPL-2.0",
     "targetType": "executable",
-	"targetPath": "bin",
+    "targetPath": "bin",
+    "dflags": [""],
     "dependencies": {
         "unit-threaded": "~>0.7.11",
         "fluent-asserts": "~>0.6.1",

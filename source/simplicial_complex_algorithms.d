@@ -4,10 +4,8 @@ import simplicial_complex : SimplicialComplex, simplicialComplex, fVector;
 import std.algorithm : all, canFind, chunkBy, equal, find, joiner, map,
     setIntersection, sort, sum;
 import std.conv : to;
-import std.range : array, empty, front, enumerate, iota, walkLength;
+import std.range : array, empty, front, enumerate, iota, walkLength, popFront;
 import utility : throwsWithMsg;
-
-import simplex : simplex;
 
 /*******************************************************************************
 Returns a range containing this simplicial complex's connected components
@@ -36,7 +34,7 @@ auto connectedComponents(Vertex)(const ref SimplicialComplex!Vertex sc)
     int currentLabel = 1;
 
     // Deal with the facets that are (necessarily isolated) vertices
-    auto nVertFac = sc.facets!0.walkLength;
+    auto nVertFac = sc.facets(0).walkLength;
     auto vertexFacets = records[0 .. nVertFac];
 
     foreach(indx, ref f; vertexFacets)
@@ -55,7 +53,7 @@ auto connectedComponents(Vertex)(const ref SimplicialComplex!Vertex sc)
         {
             auto toDo = records.find!(r => r.label != 0 && !r.seenNear);
 
-            foreach(f; toDo.front.facet.map!(v => sc.star(simplex(v))).map!array.joiner)
+            foreach(f; toDo.front.facet.map!(v => sc.star([v])).map!array.joiner)
             {
                 auto findIt = records.find!(r => r.facet == f);
                 assert(!findIt.empty);
@@ -175,7 +173,7 @@ bool isCircle(Vertex)(const SimplicialComplex!Vertex sc)
 {
     return !sc.facets.empty
         && sc.facets.all!(f => f.walkLength == 2)
-        && sc.simplices!0.all!(v => sc.star(v).walkLength == 2)
+        && sc.simplices(0).all!(v => sc.star(v).walkLength == 2)
         && sc.isConnected;
 }
 ///
@@ -275,7 +273,7 @@ bool isOrientableSurfaceOfGenus(Vertex)(const ref SimplicialComplex!Vertex sc, i
     return !sc.facets.empty
         && sc.isConnected
         && sc.isPureOfDim(2)
-        && sc.simplices!0.all!(v => sc.link(v).to!SimpComp.isCircle)
+        && sc.simplices(0).all!(v => sc.link(v).to!SimpComp.isCircle)
         && sc.eulerCharacteristic == 2 - 2 * g
         && SmallManifold!2(sc.facets).isOrientable;
 }

@@ -17,7 +17,7 @@ import std.datetime : StopWatch, AutoStart, Duration, msecs;
 
 //-------------------------------- SETTINGS ------------------------------------
     
-immutable numFacetsTarget = 400;
+immutable numFacetsTarget = 350;
 immutable real numFacetsCoef = 0.1;
 
 immutable real meanHingeDegreeTarget = 5.1;

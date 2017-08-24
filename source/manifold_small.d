@@ -5,8 +5,7 @@ import std.exception : assertThrown;
 import std.range : array, chain, empty, enumerate, front, iota, isInputRange,
     ElementType, popFront, walkLength;
 import std.traits : isArray;
-import simplex : Simplex, simplex;
-import simplicial_complex : SimplicialComplex, fVector;
+import simplicial_complex : simplicialComplex, SimplicialComplex, fVector;
 import utility : SmallMap, staticIota, subsets, subsetsOfSize, throwsWithMsg;
 import std.stdio : writeln;
 
@@ -27,17 +26,13 @@ import unit_threaded : Name, writelnUt;
 
     static assert(octahedron.dimension == 2);
     static assert(is(octahedron.Vertex == int));
-    static assert(is(octahedron.Facet == Simplex!2));
-    static assert(is(octahedron.Facet == Simplex!(2, int)));
 
     assert(octahedron.fVector == [6,12,8]);
     assert(octahedron.eulerCharacteristic == 2);
 
     auto tetrahedron = Manifold!2([[1,2,3], [1,2,4], [1,3,4], [2,3,4]]);
 
-    alias s = simplex;
-
-    assert(octahedron.star(s(1,2)).equal([[0,1,2], [1,2,5]]));    
+    assert(octahedron.star([1,2]).equal([[0,1,2], [1,2,5]]));    
 
     octahedron.pachnerMoves.should.containOnly(
         [[0,1], [0,2], [0,3], [0,4], [1,2], [1,4],
@@ -95,7 +90,6 @@ import unit_threaded : Name, writelnUt;
     auto m1 = Manifold!(1, string)([["a", "b"], ["b", "c"], ["a", "c"]]);
     static assert(m1.dimension == 1);
     static assert(is(m1.Vertex == string));
-    static assert(is(m1.Facet == Simplex!(1, string)));
 }
 
 struct SmallManifold(int dimension_, Vertex_ = int)
@@ -105,7 +99,6 @@ private:
 public:
     static immutable dimension = dimension_;
     alias Vertex = Vertex_;
-    alias Facet = Simplex!(dimension, Vertex);    
 
     static assert(dimension >= 1, "dimension must be at least one, but got "
         ~ "dimension " ~ dimension.to!string);
@@ -120,12 +113,7 @@ public:
         //     ~ "constructed from a range or array of elements with type " 
         //     ~ Facet.stringof ~ " or " ~ Vertex[].stringof ~ " not " ~ F.stringof);
 
-        // TO DO: Why need .array parts here?
-        foreach(f; initialFacets.array)
-        {
-            simpComp_.insertFacet(f.array);
-        }
-        // initialFacets.each!(f => simpComp_.insertFacet(f));
+        initialFacets.each!(f => simpComp_.insertFacet(f));
 
         assert(this.isPureOfDim(dimension),
             "not all facets have the correct dimension");
@@ -135,33 +123,30 @@ public:
 
         static if(dimension >= 1)
         {{
-            auto badRidge = this.simplices!(dimension - 1).find!(
+            auto badRidge = this.simplices(dimension - 1).find!(
                 s => this.degree(s) != 2);
-
             assert(badRidge.empty, "found a ridge with degree not equal to 2");
         }}
 
         static if(dimension >= 2)
         {{
-            auto badHinge = this.simplices!(dimension - 2).find!(
-                s => !(this.link(s).to!(SimplicialComplex!Vertex).isCircle));
-
+            auto badHinge = this.simplices(dimension - 2).find!(
+                s => !this.link(s).to!(SimplicialComplex!Vertex).isCircle);
             assert(badHinge.empty, "found a hinge whose link is not a circle");
         }}
 
         static if(dimension >= 3)
         {{
-            auto badCodim3 = this.simplices!(dimension - 3).find!(
+            auto badCodim3 = this.simplices(dimension - 3).find!(
                 s => !this.link(s).to!(SimplicialComplex!Vertex).is2Sphere);
-
             assert(badCodim3.empty,
                 "found a codimension-3 simplex whose link is not a 2-sphere");
         }}
     }
 
-    auto degree(int dim)(const Simplex!(dim, Vertex) s) const
+    auto degree(V)(V vertices) const if (isInputRange!V)
     {
-        return star(s).walkLength;
+        return star(vertices).walkLength;
     }
 
     /// We provide access to the manifold as a simplicial complex
@@ -209,7 +194,7 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(const ref SmallManifold!(dim, Ve
     auto octahedron = SmallManifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4],
         [1,2,5], [2,3,5], [3,4,5], [1,4,5]]);
     
-    assert(octahedron.simplices!0.all!(s => octahedron.degree(s) == 4));
+    assert(octahedron.simplices(0).all!(s => octahedron.degree(s) == 4));
 
     octahedron.pachnerMoves.should.containOnly(
         [[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5], [2,3,5], [3,4,5], [1,4,5],
@@ -268,14 +253,14 @@ void doPachner(Vertex, int dim)(
         [1,2,5], [2,3,5], [3,4,5], [1,4,5]]);
 
     octahedron.doPachner([1,2]);
-    assert(octahedron.degree(simplex(0)) == 5);
-    assert(octahedron.degree(simplex(5)) == 5);
-    assert(octahedron.degree(simplex(1)) == 3);
-    assert(octahedron.degree(simplex(2)) == 3);
+    assert(octahedron.degree([0]) == 5);
+    assert(octahedron.degree([5]) == 5);
+    assert(octahedron.degree([1]) == 3);
+    assert(octahedron.degree([2]) == 3);
 
     // We can undo the 2->2 move
     octahedron.doPachner([0,5]);
-    assert(octahedron.simplices!0.all!(s => octahedron.degree(s) == 4));
+    assert(octahedron.simplices(0).all!(s => octahedron.degree(s) == 4));
 
     octahedron.doPachner([0,1,2], 99);
     octahedron.doPachner([99]);
