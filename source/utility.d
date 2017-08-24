@@ -1,18 +1,14 @@
-import std.algorithm : all, canFind, copy, each, equal, filter, find, joiner,
+import core.bitop : popcnt;
+import fluent.asserts;
+import std.algorithm : all, canFind, each, filter, find, joiner,
     map, sort, sum;
 import std.conv : to;
 import std.meta : AliasSeq, allSatisfy, anySatisfy;
 import std.range : array, chain, drop, ElementType, empty, enumerate, front,
-    iota, save, isInputRange, isForwardRange, only, popFront, repeat, take, walkLength;
+    iota, isForwardRange, isInputRange, popFront, repeat, save, take, walkLength;
 import std.traits : lvalueOf, rvalueOf;
-import core.bitop : popcnt;
-import unit_threaded;
-import fluent.asserts;
-
 import std.format : format;
-import std.stdio : writeln, writefln;
-
-import std.traits : ParameterIdentifierTuple;
+import unit_threaded : Name;
 
 /*******************************************************************************
 Checks if items of type T can be compared with the less-than operation. Note 
@@ -385,8 +381,7 @@ auto binarySequences(ulong length, ulong numOnes)
     ).array;
 }
 ///
-@Name("binarySequences")
-@safe pure unittest
+@Name("binarySequences") @safe pure unittest
 {
     assert(binarySequences(3, 0) == [[0,0,0]]);
     assert(binarySequences(3, 1) == [[0,0,1],[0,1,0],[1,0,0]]);
@@ -494,33 +489,39 @@ private:
 }
 
 ///
-@Name("SmallMap.keys (pure nothrow @nogc @safe)") unittest
+@Name("SmallMap.keys (pure nothrow @nogc @safe)") pure @safe unittest
 {    
     SmallMap!(int, string) sm;
     sm.insert(1, "hello");
     sm.insert(2, "goodbye");
 
-    assert(() pure nothrow @nogc @safe {return sm.keys.front == 1;} ());
+    () pure nothrow @nogc @safe {
+        assert(sm.keys.front == 1);
+    }();
 }
 
 ///
-@Name("SmallMap.values (pure nothrow @nogc @safe)") unittest
+@Name("SmallMap.values (pure nothrow @nogc @safe)") pure @safe unittest
 {    
     SmallMap!(int, string) sm;
     sm.insert(1, "hello");
     sm.insert(2, "goodbye");
 
-    assert(() pure nothrow @nogc @safe {return sm.values.front == "hello";} ());
+    () pure nothrow @nogc @safe {
+        assert(sm.values.front == "hello");
+    }();
 }
 
 ///
-@Name("SmallMap.opIndex (pure nothrow @nogc @safe)") unittest
+@Name("SmallMap.opIndex (pure nothrow @nogc @safe)")  pure @safe unittest
 {    
     SmallMap!(int, string) sm;
     sm.insert(1, "hello");
     sm.insert(2, "goodbye");
 
-    assert(() pure nothrow @nogc @safe {return sm[1] == "hello";} ());
+    () pure nothrow @nogc @safe {
+        assert(sm[1] == "hello");
+    }();
 }
 
 /*******************************************************************************
@@ -556,7 +557,7 @@ bool hasOneAtBit(uint x, size_t pos) pure nothrow @nogc @safe
     return  ((1 << pos) & x) > 0;
 }
 ///
-@Name("hasOneAtBit") unittest
+@Name("hasOneAtBit") pure nothrow @nogc @safe unittest
 {
     assert(1.hasOneAtBit(0));
     assert(iota(1,32).all!(pos => !1.hasOneAtBit(pos)));
@@ -568,7 +569,11 @@ bool hasOneAtBit(uint x, size_t pos) pure nothrow @nogc @safe
     assert(12.hasOneAtBit(2));
     assert(12.hasOneAtBit(3));
     assert(iota(4,32).all!(pos => !12.hasOneAtBit(pos)));
+}
 
+///
+@Name("hasOneAtBit (errors)") pure @system unittest
+{
     // An error is thrown if the bit position is outside the uint
     7.hasOneAtBit(32).throwsWithMsg!Error("bad bit position");
 }
@@ -848,7 +853,7 @@ auto subsets(R)(R set) if (isForwardRange!R)
     return SubsetsRange(set, 1);
 }
 ///
-@Name("subsets") unittest
+@Name("subsets") @system unittest
 {
     [1,2,3].subsets.map!array.should.containOnly([
         [1], [2], [3],
@@ -871,13 +876,13 @@ auto subsets(R)(R set) if (isForwardRange!R)
 ///
 @Name("subsets (pure nothrow @nogc @safe)") pure nothrow @nogc @safe unittest
 {
-    auto r = 3.iota.subsets;
-    auto s = r.save;
-    assert(r.front.front == 0);    
-    r.popFront;
-    assert(r.front.front == 1);    
-    assert(s.front.front == 0);
-    assert(!r.empty);
+    auto subsetRange = 3.iota.subsets;
+    auto saved = subsetRange.save;
+    assert(subsetRange.front.front == 0);    
+    subsetRange.popFront;
+    assert(subsetRange.front.front == 1);    
+    assert(saved.front.front == 0);
+    assert(!subsetRange.empty);
 
     // TO DO: Improve this test. Ugly...
 }
@@ -906,8 +911,7 @@ template staticIota(int begin, int end)
     }
 }
 ///
-@Name("staticIota")
-unittest
+@Name("staticIota") pure nothrow @nogc @safe unittest
 {
     alias seq = staticIota!(3, 6);
     static assert(seq[0] == 3);
@@ -924,13 +928,10 @@ unittest
 auto capture(Range, Data...)(Range range, Data data) if (isInputRange!Range)
 {
     alias dataDeclarations = (len) => len.iota.map!(
-        indx => "Data[%s] d%s_;".format(indx, indx)).joiner("\n").array;
+        indx => "Data[%s] d%s;".format(indx, indx)).joiner("\n").array;
 
     alias dataArgs = (len) => len.iota.map!(
-        indx => "d%s_".format(indx)).joiner(",").array;
-
-    alias dataAccessors = (len) => len.iota.map!(
-        indx => "ref auto d%s() { return d%s_; }".format(indx, indx)).joiner("\n").array;
+        indx => "d%s".format(indx)).joiner(",").array;
 
     static struct CaptureRange
     {
@@ -944,7 +945,6 @@ auto capture(Range, Data...)(Range range, Data data) if (isInputRange!Range)
                 typeof(range_.front) result;
                 alias result this;
                 mixin(dataDeclarations(data.length));
-                mixin(dataAccessors(data.length));
             }
 
             mixin("return CaptureFront(range_.front, " 

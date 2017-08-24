@@ -1,24 +1,19 @@
-import std.algorithm : all, any, canFind, chunkBy, copy, countUntil, each,
-    equal, isSorted, filter, find, findAdjacent, joiner, map, maxElement, remove, setDifference,
-    setIntersection, sort, sum, uniq;
-import std.conv : to;
-import std.exception : assertThrown;
-import std.range : array, chunks, empty, enumerate, ElementType, front, iota,
-    isInputRange, popFront, refRange, walkLength, zip;
-import std.traits : isArray, Unqual;
-import std.typecons : Tuple, tuple;
-import utility : isSubsetOf, SmallMap, staticIota, throwsWithMsg, subsetsOfSize, subsets;
-import std.stdio : writeln;
-import unit_threaded : Name;
-import fluent.asserts : should, Assert;
-
+import fluent.asserts : should;
 import simplicial_complex_algorithms : connectedComponents, eulerCharacteristic,
-    isCircle, isConnected, isPureOfDim, isOrientableSurfaceOfGenus, join;
-
-import utility : capture;
+    isCircle, isConnected, isOrientableSurfaceOfGenus, isPureOfDim, join;
+import std.algorithm : all, any, canFind, chunkBy, copy, countUntil, each,
+    equal, filter, find, findAdjacent, isSorted, joiner, map, maxElement,
+    setDifference, sort, sum, uniq;
+import std.conv : to;
+import std.range : array, chunks, ElementType, empty, enumerate, front, iota,
+    isInputRange, popFront, refRange, walkLength, zip;
+import std.typecons : Tuple, tuple;
+import unit_threaded : Name;
+import utility : capture, isSubsetOf, SmallMap, staticIota, subsets,
+    subsetsOfSize, throwsWithMsg;
 
 /// Basic Functionality
-@Name("doc tests") /* @safe */ pure unittest
+@Name("doc tests") pure @safe unittest
 {
     // create an empty simplicial complex with vertices of default type `int`
     SimplicialComplex!() sc;
@@ -121,7 +116,7 @@ import utility : capture;
     sc.facets(-1).throwsWithMsg!Error("expected a non-negative dimension");
 }
 
-@Name("additional tests") unittest
+@Name("additional tests") @system unittest
 {
     alias sComp = simplicialComplex;
 
@@ -158,7 +153,7 @@ import utility : capture;
     }
 }
 
-@Name("insertFacet") unittest
+@Name("insertFacet") pure @safe unittest
 {
     auto sc = SimplicialComplex!()();
     sc.insertFacet([1,2]);
@@ -171,7 +166,7 @@ import utility : capture;
     assert(sc.facets.equal([[1,2], [2,3,4], [1,5,6,7]]));
 }
 
-@Name("insertFacet/removeFacet") unittest
+@Name("insertFacet/removeFacet") pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [1,3], [1,4], [4,5,6]]);
 
@@ -236,6 +231,10 @@ public:
     */
     alias VertexType = Vertex;
 
+    /***************************************************************************
+    Construct a simplicial complex from a range of ranges with element type
+    implicitly convertible to VertexType
+    */
     this(R)(R facets) if (isInputRange!R 
         && isInputRange!(ElementType!R) 
         && is(ElementType!(ElementType!R) : VertexType))
@@ -419,8 +418,7 @@ int[] fVector(Vertex)(const ref SimplicialComplex!Vertex sc)
         .array; 
 }
 ///
-@Name("fVector")
-unittest
+@Name("fVector") pure @safe unittest
 {
     SimplicialComplex!() sc;
     sc.insertFacet([1,2]);
@@ -436,20 +434,19 @@ SimplicialComplex!Vertex simplicialComplex(Vertex)(const(Vertex)[][] initialFace
     return SimplicialComplex!Vertex(initialFacets);
 }
 ///
-@Name("simplicialComplex")
-unittest
+@Name("simplicialComplex") pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,3], [3,4,5], [6,7,8]]);
     assert(sc.facets.equal([[1,2], [2,3], [3,4,5], [6,7,8]]));
 
-    Assert.equal(sc, simplicialComplex(sc.facets.array));
+    assert(sc == simplicialComplex(sc.facets.array));
 
     const(int)[][] noFacets;
-    Assert.equal(simplicialComplex(noFacets).facets.empty, true);
+    assert(simplicialComplex(noFacets).facets.empty);
 }
 
 ///
-@Name("facets(dim) (pure nothrow @nogc @safe)") unittest
+@Name("facets(dim) (pure nothrow @nogc @safe)") pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,4,5]]);
     int[2] edge = [1,2];
@@ -475,7 +472,7 @@ unittest
 }
 
 ///
-@Name("facets (pure nothrow @nogc @safe)") unittest
+@Name("facets (pure nothrow @nogc @safe)") pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,4,5]]);
     int[2] edge = [1,2];
@@ -494,7 +491,7 @@ unittest
 }
 
 ///
-@Name("star(range) (pure nothrow @nogc @safe)") unittest
+@Name("star(range) (pure nothrow @nogc @safe)") pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,4,5]]);
     int[2] edge = [1,2];
@@ -515,7 +512,7 @@ unittest
 }
 
 ///
-@Name("link(range) (pure nothrow @nogc @safe)") unittest
+@Name("link(range) (pure nothrow @nogc @safe)") pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,4,5]]);
     int[1] vertex = [1];
@@ -533,7 +530,7 @@ unittest
 }
 
 ///
-@Name("contains (pure nothrow @nogc @safe)") unittest
+@Name("contains (pure nothrow @nogc @safe)") pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,4,5]]);
     int[2] edge = [1,2];
@@ -548,7 +545,7 @@ unittest
 }
 
 ///
-@Name("removeFacet (pure nothrow @nogc @safe)") unittest
+@Name("removeFacet (pure nothrow @nogc @safe)") pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,4,5]]);
     int[2] edge = [1,2];
@@ -559,7 +556,7 @@ unittest
 }
 
 ///
-@Name("numFacets (pure nothrow @nogc @safe)") unittest
+@Name("numFacets (pure nothrow @nogc @safe)") pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,4,5]]);
     () pure nothrow @nogc @safe {

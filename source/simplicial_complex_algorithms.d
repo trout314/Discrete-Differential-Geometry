@@ -1,10 +1,10 @@
-import unit_threaded : Name;
-import simplicial_complex : SimplicialComplex, simplicialComplex, fVector;
-
+import simplicial_complex : fVector, simplicialComplex, SimplicialComplex;
 import std.algorithm : all, canFind, chunkBy, equal, find, joiner, map,
     setIntersection, sort, sum;
 import std.conv : to;
-import std.range : array, empty, front, enumerate, iota, walkLength, popFront;
+import std.range : array, empty, enumerate, front, iota, popFront, save,
+    walkLength;
+import unit_threaded : Name;
 import utility : throwsWithMsg;
 
 /*******************************************************************************
@@ -68,10 +68,13 @@ auto connectedComponents(Vertex)(const ref SimplicialComplex!Vertex sc)
     return records.chunkBy!((r1, r2) => r1.label == r2.label)
         .map!(rList => SimplicialComplex!Vertex(rList.map!(r => r.facet).array));           
 }
+
 ///
-@Name("connectedComponents")
-unittest
+@Name("connectedComponents") /* pure */ @system unittest
 {
+    // TO DO: Why does this need to be @system? Make it @safe!
+    // TO DO: ldc doesn't like using "pure" above! Bugreport?
+
     alias sComp = simplicialComplex;
 
     auto sc = sComp([[1], [9], [2,3], [3,4], [5,6], [6,7,8]]);
@@ -95,8 +98,7 @@ int eulerCharacteristic(Vertex)(const ref SimplicialComplex!Vertex sc)
     return sc.fVector.enumerate.map!(f => (-1)^^f.index.to!int * f.value).sum;
 }
 ///
-@Name("eulerCharacteristic")
-unittest
+@Name("eulerCharacteristic") pure @safe unittest
 {
     SimplicialComplex!() sc;
     sc.insertFacet([1,2]);
@@ -119,9 +121,11 @@ bool is2Sphere(Vertex)(SimplicialComplex!Vertex sc)
     return sc.isOrientableSurfaceOfGenus(0);
 }
 ///
-@Name("is2Sphere")
-unittest
+@Name("is2Sphere") /* pure */ @system unittest
 {
+    // TO DO: Why does this need to be @system? Make it @safe!
+    // TO DO: ldc doesn't like using "pure" above! Bugreport?
+
     auto s1 = simplicialComplex([[1,2,3], [1,2,4], [1,3,4], [2,3,4]]);
     assert(s1.is2Sphere);
 
@@ -152,9 +156,11 @@ bool is2Torus(Vertex)(SimplicialComplex!Vertex sc)
     return sc.isOrientableSurfaceOfGenus(1);
 }
 ///
-@Name("is2Torus")
-unittest
+@Name("is2Torus") /* pure */ @system unittest
 {
+    // TO DO: Why does this need to be @system? Make it @safe!
+    // TO DO: ldc doesn't like using "pure" above! Bugreport?
+
     // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n10_o1_g1
     // Surface #2105 on genus 1 list
     auto g1 = simplicialComplex([[1,2,3],[1,2,4],[1,3,5],[1,4,6],[1,5,6],
@@ -177,9 +183,11 @@ bool isCircle(Vertex)(const SimplicialComplex!Vertex sc)
         && sc.isConnected;
 }
 ///
-@Name("isCircle")
-unittest
+@Name("isCircle") /* pure */ @system unittest
 {
+    // TO DO: Why does this need to be @system? Make it @safe!
+    // TO DO: ldc doesn't like using "pure" above! Bugreport?
+
     // Start with a circle with 4 edges
     auto s = simplicialComplex([[1,2], [2,3], [3,4], [1,4]]);
     assert(s.isCircle);
@@ -211,9 +219,11 @@ bool isConnected(Vertex)(const ref SimplicialComplex!Vertex sc)
     return sc.connectedComponents.walkLength <= 1;
 }
 ///
-@Name("isConnected")
-unittest
+@Name("isConnected") /* pure */ @system unittest
 {
+    // TO DO: Why does this need to be @system? Make it @safe!
+    // TO DO: ldc doesn't like using "pure" above! Bugreport?
+
     auto disjointCircles = simplicialComplex([
         [1,2], [2,3], [1,3],
         [4,5], [5,6], [4,6]]);
@@ -236,8 +246,10 @@ bool isPureOfDim(Vertex)(const ref SimplicialComplex!Vertex sc, int d)
     return sc.facets(d).walkLength == sc.numFacets;
 }
 ///
-@Name("isPureOfDim") unittest
+@Name("isPureOfDim") pure @system unittest
 {
+    // TO DO: Why does this need to be @system? Make it @safe!
+
     auto sc = SimplicialComplex!()();
 
     // An empty simplicial complex is pure of any dimension
@@ -267,8 +279,8 @@ bool isOrientableSurfaceOfGenus(Vertex)(const ref SimplicialComplex!Vertex sc, i
     alias SimpComp = SimplicialComplex!Vertex;
 
     // TO DO: Find a better way to do orientability check
-    import manifold_small : SmallManifold;
     import manifold_algorithms : isOrientable;
+    import manifold_small : SmallManifold;
 
     return !sc.facets.empty
         && sc.isConnected
@@ -278,9 +290,11 @@ bool isOrientableSurfaceOfGenus(Vertex)(const ref SimplicialComplex!Vertex sc, i
         && SmallManifold!2(sc.facets).isOrientable;
 }
 ///
-@Name("isSurfaceOfGenus")
-unittest
+@Name("isSurfaceOfGenus") /* pure */ @system unittest
 {
+    // TO DO: Why does this need to be @system? Make it @safe!
+    // TO DO: ldc doesn't like using "pure" above! Bugreport?
+
     // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n10_o1_g2
     // Surface #514 in the genus 2 list 
     auto g2 = simplicialComplex([[1,2,3],[1,2,4],[1,3,5],[1,4,6],[1,5,6],
@@ -322,8 +336,7 @@ auto join(Vertex)(const SimplicialComplex!Vertex sc1,
     return SimplicialComplex!Vertex(result);
 }
 ///
-@Name("join")
-unittest
+@Name("join") pure @safe unittest
 {
     auto sc1 = simplicialComplex([[1,2], [2,3,4], [5]]);
     auto sc2 = simplicialComplex([[6,7], [8]]);

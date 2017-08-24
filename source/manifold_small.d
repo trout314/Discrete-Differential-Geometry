@@ -1,23 +1,19 @@
-import std.algorithm : all, any, canFind, each, equal, filter, find, joiner,
+import fluent.asserts;
+import simplicial_complex_algorithms : eulerCharacteristic, is2Sphere, isCircle,
+    isConnected, isPureOfDim, join;
+import simplicial_complex : fVector, SimplicialComplex;
+import std.algorithm : all, canFind, each, equal, filter, find, joiner,
     map, maxElement, sort, uniq;
 import std.conv : to;
 import std.exception : assertThrown;
-import std.range : array, chain, empty, enumerate, front, iota, isInputRange,
-    ElementType, popFront, walkLength;
-import std.traits : isArray;
-import simplicial_complex : simplicialComplex, SimplicialComplex, fVector;
-import utility : SmallMap, staticIota, subsets, subsetsOfSize, throwsWithMsg;
-import std.stdio : writeln;
-
-import simplicial_complex_algorithms : connectedComponents, is2Sphere, isCircle,
-    isConnected, join, eulerCharacteristic, isPureOfDim;
-
-import fluent.asserts;
-import unit_threaded : Name, writelnUt;
+import std.range : array, chain, ElementType, empty, enumerate, front, iota,
+    isInputRange, popFront, save, walkLength;
+import unit_threaded : Name;
+import utility : SmallMap, subsets, subsetsOfSize, throwsWithMsg;
 
 //dfmt off
 ///
-@Name("SmallManifold doc tests") unittest
+@Name("SmallManifold doc tests") @system unittest
 {
     alias Manifold = SmallManifold;
 
@@ -51,8 +47,10 @@ import unit_threaded : Name, writelnUt;
 }
 
 ///
-@Name("SmallManifold (errors)") pure @system unittest
+@Name("SmallManifold (errors)") /* pure */ @system unittest
 {
+    // TO DO: ldc doesn't like using "pure" above! Bugreport?
+
     alias Manifold = SmallManifold;
 
     Manifold!2([[1,2,3,4]]).throwsWithMsg!Error(
@@ -81,8 +79,10 @@ import unit_threaded : Name, writelnUt;
 }
 
 // More tests
-@Name("SmallManifold (additional)") unittest
+@Name("SmallManifold (additional)") /* pure */ @system unittest
 {
+    // TO DO: Why does this need to be @system? Make it @safe!
+
     alias Manifold = SmallManifold;
 
     static assert(!__traits(compiles, Manifold!2([["a", "bubba", "gump"]])));
@@ -92,17 +92,24 @@ import unit_threaded : Name, writelnUt;
     static assert(is(m1.Vertex == string));
 }
 
+/*******************************************************************************
+Manifold type... TO DO: More info here
+*/
 struct SmallManifold(int dimension_, Vertex_ = int)
 {
 private:
     SimplicialComplex!Vertex simpComp_;
 public:
+    /// Dimension of the manifold
     static immutable dimension = dimension_;
+
+    /// Vertex type used in the manifold
     alias Vertex = Vertex_;
 
     static assert(dimension >= 1, "dimension must be at least one, but got "
         ~ "dimension " ~ dimension.to!string);
 
+    /// We can initialize the manifold from a range of ranges of vertices
     this(F)(F initialFacets)
     {
         // TO DO: Put some nice constraints on F
@@ -122,26 +129,26 @@ public:
             "facets do not define a connected simplicial complex");
 
         static if(dimension >= 1)
-        {{
-            auto badRidge = this.simplices(dimension - 1).find!(
-                s => this.degree(s) != 2);
-            assert(badRidge.empty, "found a ridge with degree not equal to 2");
-        }}
+        {
+            assert(simplices(dimension - 1).find!(s => degree(s) != 2).empty,
+                "found a ridge with degree not equal to 2");
+        }
 
         static if(dimension >= 2)
-        {{
-            auto badHinge = this.simplices(dimension - 2).find!(
-                s => !this.link(s).to!(SimplicialComplex!Vertex).isCircle);
-            assert(badHinge.empty, "found a hinge whose link is not a circle");
-        }}
+        {
+            // TO DO: Figure out why we need "this.link" below (low priority)
+            assert(simplices(dimension - 2)
+                .find!(s => !SimplicialComplex!Vertex(this.link(s)).isCircle)
+                .empty, "found a hinge whose link is not a circle");
+        }
 
         static if(dimension >= 3)
-        {{
-            auto badCodim3 = this.simplices(dimension - 3).find!(
-                s => !this.link(s).to!(SimplicialComplex!Vertex).is2Sphere);
-            assert(badCodim3.empty,
+        {
+            // TO DO: Figure out why we need "this.link" below (low priority)
+            assert(simplices(dimension - 3).find!(
+                s => !SimplicialComplex!Vertex(this.link(s)).is2Sphere).empty,
                 "found a codimension-3 simplex whose link is not a 2-sphere");
-        }}
+        }
     }
 
     auto degree(V)(V vertices) const if (isInputRange!V)
