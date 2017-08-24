@@ -277,8 +277,7 @@ RationalType dotProduct(int[] roots, RationalType)(
 }
 
 ///
-@Name("dotProduct")
-pure @safe unittest
+@Name("dotProduct") pure @safe unittest
 {
     alias vec = reVector!(1,3);
     alias r = rational;
@@ -303,8 +302,7 @@ RationalType distanceSquared(int[] roots, RationalType)(
 }
 
 ///
-@Name("distanceSquared")
-pure @safe unittest
+@Name("distanceSquared") pure @safe unittest
 {
     alias r = rational;
     alias vec = reVector!(1,2,3);
