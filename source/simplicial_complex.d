@@ -399,6 +399,10 @@ public:
 
         // But this one causes lots of unittest failtures (aliasing?)
         // return this.star(s).map!(f => setDifference(f, f.d0.vertices));
+
+        // return this.facets.capture(s)
+        //     .filter!(f => f.d0.vertices.isSubsetOf(f))
+        //     .map!(f => setDifference(f, f.d0.vertices));
     }
     /***************************************************************************
     Returns the facets in the link of the simplex `s` as an array of arrays of 

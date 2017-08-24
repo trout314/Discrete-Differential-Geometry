@@ -2,8 +2,8 @@ import std.algorithm : all, any, canFind, each, equal, filter, find, joiner,
     map, maxElement, sort, uniq;
 import std.conv : to;
 import std.exception : assertThrown;
-import std.range : array, chain, empty, enumerate, front, iota, isInputRange, ElementType,
-    popFront, walkLength;
+import std.range : array, chain, empty, enumerate, front, iota, isInputRange,
+    ElementType, popFront, walkLength;
 import std.traits : isArray;
 import simplex : Simplex, simplex;
 import simplicial_complex : SimplicialComplex, fVector;
@@ -55,6 +55,36 @@ import unit_threaded : Name, writelnUt;
     // octahedron.doPachner([0,5]);
 }
 
+///
+@Name("SmallManifold (errors)") pure @system unittest
+{
+    alias Manifold = SmallManifold;
+
+    Manifold!2([[1,2,3,4]]).throwsWithMsg!Error(
+        "not all facets have the correct dimension");
+
+    Manifold!2([[1,2,3]]).throwsWithMsg!Error(
+        "found a ridge with degree not equal to 2");
+
+    Manifold!2([[1,2,3], [1,2,4], [1,3,4], [2,3,4], [1,5,6], [1,5,7], [1,6,7],
+        [5,6,7]]).throwsWithMsg!Error("found a hinge whose link is not a circle");
+
+    auto octahedron = [[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5], [2,3,5],
+        [3,4,5], [1,4,5]];
+
+    auto sphere = [[6,7,8], [6,7,9], [6,8,9], [7,8,9]];
+
+    Manifold!2(chain(octahedron, sphere)).throwsWithMsg!Error(
+        "facets do not define a connected simplicial complex");
+
+    // These facets separately define 3-spheres, but share the vertex 1
+    auto sphere3 = [[1,2,3,4], [1,2,3,5], [1,2,4,5], [1,3,4,5], [2,3,4,5]];
+    auto sphere3A =[[1,6,7,8], [1,6,7,9], [1,6,8,9], [1,7,8,9], [6,7,8,9]];
+
+    Manifold!3(chain(sphere3, sphere3A)).throwsWithMsg!Error(
+        "found a codimension-3 simplex whose link is not a 2-sphere");
+}
+
 // More tests
 @Name("SmallManifold (additional)") unittest
 {
@@ -66,37 +96,6 @@ import unit_threaded : Name, writelnUt;
     static assert(m1.dimension == 1);
     static assert(is(m1.Vertex == string));
     static assert(is(m1.Facet == Simplex!(1, string)));
-
-    // throwsWithMsg!Error(Manifold!2([[1,2,3,4]]), "expected all facets to have "
-    //     ~ "dimension 2 but got the facet [1, 2, 3, 4]");
-
-    // throwsWithMsg(Manifold!2([[1,2,3]]), "manifold constructor expected ridges "
-    //     ~ "of degree 2, but found a ridge [1,2] with degree 1");
-
-    // throwsWithMsg(Manifold!2([[1,2,3], [1,2,4], [1,3,4], [2,3,4], [1,5,6], 
-    //     [1,5,7], [1,6,7], [5,6,7]]), "manifold constructor expected hinges"
-    //     ~ " whose links are circles but found a hinge [1] with link"
-    //     ~ " [[2, 3], [2, 4], [3, 4], [5, 6], [5, 7], [6, 7]]");
-
-    auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
-        [2,3,5], [3,4,5], [1,4,5]]);
-    auto sphere = [[6,7,8], [6,7,9], [6,8,9], [7,8,9]];
-
-    // throwsWithMsg(Manifold!2(chain(octahedron.facets, sphere)), "manifold constructor"
-    //     ~ " expected a connected simplicial complex but got one with"
-    //     ~ " 2 connected components");
-
-    auto sphere3 = Manifold!3(
-        [[1,2,3,4], [1,2,3,5], [1,2,4,5], [1,3,4,5], [2,3,4,5]]);
-
-    auto sphere3A = Manifold!3(
-        [[1,6,7,8], [1,6,7,9], [1,6,8,9], [1,7,8,9], [6,7,8,9]]);
-
-    // throwsWithMsg(Manifold!3(chain(sphere3.facets, sphere3A.facets)),
-    //     "manifold constructor expected the links of all codimension-3 "
-    //     ~ "simplices to be 2-spheres but found simplex [1] with link "
-    //     ~ "[[2, 3, 4], [2, 3, 5], [2, 4, 5], [3, 4, 5], [6, 7, 8], [6, 7, 9],"
-    //     ~ " [6, 8, 9], [7, 8, 9]]");
 }
 
 struct SmallManifold(int dimension_, Vertex_ = int)
@@ -129,7 +128,7 @@ public:
         // initialFacets.each!(f => simpComp_.insertFacet(f));
 
         assert(this.isPureOfDim(dimension),
-            "not all facets have the correct dimension ");
+            "not all facets have the correct dimension");
 
         assert(this.isConnected,
             "facets do not define a connected simplicial complex");
@@ -147,8 +146,7 @@ public:
             auto badHinge = this.simplices!(dimension - 2).find!(
                 s => !(this.link(s).to!(SimplicialComplex!Vertex).isCircle));
 
-            assert(badHinge.empty,
-                "found a hinge whose link is not a circle link");
+            assert(badHinge.empty, "found a hinge whose link is not a circle");
         }}
 
         static if(dimension >= 3)
@@ -433,4 +431,3 @@ private auto getCoCenter(Vertex, int dim)(
 }
 
 // TO DO: Separate unittesting for getCoCenter
-
