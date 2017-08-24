@@ -58,7 +58,7 @@ bool isOrientable(Vertex, int dim)(Manifold!(dim, Vertex) manifold)
                 f => f != toDo.front.facet);
             assert(!oppFacet.empty);
 
-            auto j = oppFacet.front.subsetsOfSize(dim).map!array.enumerate
+            immutable j = oppFacet.front.subsetsOfSize(dim).map!array.enumerate
                 .find!(p => p.value == ridge).front.index;
 
             Orientation oppFacetLabel;

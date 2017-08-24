@@ -1,23 +1,21 @@
 import algorithms : eulerCharacteristic;
-import std.algorithm : all, each, map, sum, max, maxElement, joiner;
-import std.range : array, iota;
-import std.conv : to;
-import std.random : choice, back, uniform01, rndGen;
-import std.range : array, chain, empty, front, popFront, popBack, repeat, save;
-import manifold : Manifold, pachnerMoves, doPachner, degreeHistogram;
-import utility : subsetsOfSize;
-
-import std.math : exp, sqrt;
-import std.format : format;
-import std.stdio : writeln, writefln;
-
+import manifold : degreeHistogram, doPachner, Manifold, pachnerMoves,
+    standardSphereFacets;
 import simplicial_complex : fVector;
-
-import std.datetime : StopWatch, AutoStart, Duration, msecs;
+import std.algorithm : all, each, joiner, map, max, maxElement, sum;
+import std.conv : to;
+import std.datetime : AutoStart, Duration, msecs, StopWatch;
+import std.format : format;
+import std.math : exp, sqrt;
+import std.random : back, choice, rndGen, uniform01;
+import std.range : array, chain, empty, front, iota, popBack, popFront, repeat,
+    save;
+import std.stdio : writefln, writeln;
+import utility : subsetsOfSize;
 
 //-------------------------------- SETTINGS ------------------------------------
     
-immutable numFacetsTarget = 350;
+immutable numFacetsTarget = 100;
 immutable real numFacetsCoef = 0.1;
 
 immutable real meanHingeDegreeTarget = 5.1;
@@ -41,11 +39,11 @@ real[3] objectiveParts(Vertex, int dim)(const ref Manifold!(dim, Vertex) manifol
     immutable numHingesTarget = dim*(dim + 1) * numFacets 
         / (2 * meanHingeDegreeTarget);
 
-    real degStdDev = manifold.degreeHistogram(dim - 2).byKeyValue.map!(
+    immutable real degStdDev = manifold.degreeHistogram(dim - 2).byKeyValue.map!(
         p => p.key * (p.value - manifold.meanHingeDegree)^^2).sum.sqrt;
 
     // TO DO: Put in a more realistic value here...
-    real minDegStdDev = 0.5 * numHinges;
+    immutable real minDegStdDev = 0.5 * numHinges;
 
     return [numFacetsCoef * (numFacets - numFacetsTarget)^^2,
         numHingesCoef * (numHinges - numHingesTarget)^^2,
@@ -71,16 +69,14 @@ void sample()
     immutable maxTries = 5000;
 
      // tryCount[j] counts j + 1 -> dim + 1 - j moves tried
-     ulong[dim + 1] tryCount;
-     ulong[dim + 1] acceptCount;
+    ulong[dim + 1] tryCount;
+    ulong[dim + 1] acceptCount;
 
-    auto manifold = Manifold!dim((dim + 2).iota.subsetsOfSize(dim + 1));
+    auto manifold = Manifold!dim(standardSphereFacets(dim));
     auto oldManifold = manifold;
-
-    auto unusedVertices = iota(dim + 2, maxVertices).array;
-
     auto oldObjective = manifold.objectiveParts[].sum;
 
+    auto unusedVertices = iota(dim + 2, maxVertices).array;
     assert(unusedVertices.all!(v => !manifold.contains([v])));
   
     while(!unusedVertices.empty && tryCount[].sum < maxTries)
@@ -116,9 +112,12 @@ void sample()
         }
         else
         {
-            auto acceptProb = exp(oldObjective - manifold.objectiveParts[].sum);
+            immutable acceptProb 
+                = exp(oldObjective - manifold.objectiveParts[].sum);
             assert(acceptProb >= 0.0);
             assert(acceptProb <= 1.0);
+
+            // TO DO: Put #pachner-moves effect into accept/reject (important!)
 
             if(uniform01 <= acceptProb)
             {

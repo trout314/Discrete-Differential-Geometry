@@ -18,8 +18,7 @@ import std.algorithm, std.bigint, std.conv, std.exception, std.format, std.math,
 import unit_threaded : Name;
 
  ///
- @Name("pi approximation")
- unittest
+ @Name("pi approximation") @system unittest
  {
      enum maxTerm = 30;
 
@@ -32,7 +31,7 @@ import unit_threaded : Name;
             return rational(BigInt(addFactor));
         }
     
-        auto termNumberSquared = BigInt(termNumber * termNumber);
+        immutable termNumberSquared = BigInt(termNumber * termNumber);
         auto continued = termNumberSquared / getTerm(termNumber + 1);
         continued += addFactor;
         return continued;
@@ -156,8 +155,7 @@ Rational!(CommonInteger!(I1, I2)) rational(I1, I2)(const I1 i1, const I2 i2)
     return ret;
 }
 ///
-@Name("rational 2-arg")
-unittest
+@Name("rational 2-arg") @system unittest
 {
     auto r1 = rational( BigInt("314159265"), BigInt("27182818"));
     auto r2 = rational( BigInt("8675309"), BigInt("362436"));
@@ -175,8 +173,7 @@ Rational!I rational(I)(const I val) if (isIntegerLike!I)
     return rational(val, 1);
 }
 ///
-@Name("rational 1-arg")
-unittest
+@Name("rational 1-arg") @system unittest
 {
     assert(rational(5) == rational(5,1));
     assert(rational(BigInt("94362349639838383827627")) ==
@@ -254,7 +251,7 @@ public:
     {
         Rhs rhs = rhs_;
 
-        auto divisor = gcf(this.denom, rhs);
+        immutable divisor = gcf(this.denom, rhs);
         assert(divisor != 0);
 
         this.denom /= divisor;
@@ -295,7 +292,7 @@ public:
     {
         Rhs rhs = rhs_;
 
-        auto divisor = gcf(this.numer, rhs);
+        immutable divisor = gcf(this.numer, rhs);
         assert(divisor != 0);
 
         this.numer /= divisor;
@@ -343,7 +340,7 @@ public:
             return this;
         }
 
-        Int commonDenom = lcm(this.denom, rhs.denom);
+        immutable Int commonDenom = lcm(this.denom, rhs.denom);
 
         assert(this.denom != 0);
         assert(rhs.denom != 0);
@@ -384,7 +381,7 @@ public:
             return this;
         }
 
-        auto commonDenom = lcm(this.denom, rhs.denom);
+        immutable commonDenom = lcm(this.denom, rhs.denom);
 
         assert(this.denom != 0);
         assert(rhs.denom != 0);
@@ -524,13 +521,13 @@ public:
         }
 
         // Can't do it without common denominator.  Argh.
-        auto commonDenom = lcm(this.denom, rhs.denom);
+        immutable commonDenom = lcm(this.denom, rhs.denom);
 
         assert(this.denom != 0);
         assert(rhs.denom != 0);
 
-        auto lhsNum = this.numer * (commonDenom / this.denom);
-        auto rhsNum = rhs.numer * (commonDenom / rhs.denom);
+        immutable lhsNum = this.numer * (commonDenom / this.denom);
+        immutable rhsNum = rhs.numer * (commonDenom / rhs.denom);
 
         if (lhsNum > rhsNum)
         {
@@ -585,8 +582,7 @@ public:
         return this;
     }
     ///
-    @Name("invert")
-    unittest
+    @Name("invert") pure nothrow @nogc @safe unittest
     {
         assert(rational(2,3).invert == rational(3,2));
     }
@@ -654,7 +650,7 @@ public:
                 {
                     // This should really be a cast, but BigInt still has a few
                     // issues.
-                    long lIntPart = intPart.toLong();
+                    immutable long lIntPart = intPart.toLong();
                 }
                 else
                 {
@@ -662,7 +658,7 @@ public:
                 }
 
                 // Test for changes.
-                real oldAns = ans;
+                immutable real oldAns = ans;
                 ans += lIntPart * expon;
                 if (ans == oldAns)
                 { // Smaller than epsilon.
@@ -677,8 +673,7 @@ public:
         }
     }
     ///
-    @Name("convert to floating point")
-    unittest
+    @Name("convert to floating point") pure nothrow @nogc @safe unittest
     {
         assert(rational(10, 1).to!double == 10.0);
     }
@@ -700,8 +695,7 @@ public:
         return numer;
     }
     ///
-    @Name("numerator")
-    unittest
+    @Name("numerator") pure @system unittest
     {
         assert(rational(23, 44).numerator == 23);
         assert(rational(BigInt("8"), BigInt("17")).numerator == BigInt("8"));
@@ -715,8 +709,7 @@ public:
         return denom;
     }
     ///
-    @Name("denominator")
-    unittest
+    @Name("denominator") pure @system unittest
     {
         assert(rational(17, 324).denominator == 324);
         assert(rational(BigInt("82"), BigInt("7")).denominator == BigInt("7"));        
@@ -730,8 +723,7 @@ public:
         return numer / denom;
     }
     ///
-    @Name("integerPart")
-    unittest
+    @Name("integerPart") pure @system unittest
     {
         alias r = rational;
 
@@ -749,8 +741,7 @@ public:
         return this - integerPart;
     }
     ///
-    @Name("fractionPart")
-    unittest
+    @Name("fractionPart") pure @system unittest
     {
         alias r = rational;
 
@@ -779,8 +770,7 @@ public:
         }
     }
     ///
-    @Name("toString")
-    unittest
+    @Name("toString") @system unittest
     {
         assert(rational(3,4).toString == "3/4");
         assert(rational(BigInt(3),BigInt(4)).toString == "3/4");
@@ -800,7 +790,7 @@ private:
             return;
         }
 
-        auto divisor = gcf(numer, denom);
+        immutable divisor = gcf(numer, denom);
         assert(divisor != 0);
 
         numer /= divisor;
@@ -824,8 +814,7 @@ private:
 }
 
 ///
-@Name("toString")
-unittest
+@Name("toString") @system unittest
 {
     // All reference values from the Maxima computer algebra system.
 
@@ -984,8 +973,8 @@ private Rational!Int toRationalImpl(Int)(real floatNum, real epsilon)
 
     if (abs(floatNum) < 1)
     {
-        real invFloatNum = 1.0L / floatNum;
-        long intPart = roundTo!long(invFloatNum);
+        immutable real invFloatNum = 1.0L / floatNum;
+        immutable long intPart = roundTo!long(invFloatNum);
         actualEpsilon = floatNum - 1.0L / intPart;
 
         static if (isIntegral!(Int))
@@ -1001,7 +990,7 @@ private Rational!Int toRationalImpl(Int)(real floatNum, real epsilon)
     }
     else
     {
-        long intPart = roundTo!long(floatNum);
+        immutable long intPart = roundTo!long(floatNum);
         actualEpsilon = floatNum - intPart;
 
         static if (isIntegral!(Int))
@@ -1026,8 +1015,7 @@ private Rational!Int toRationalImpl(Int)(real floatNum, real epsilon)
 }
 
 ///
-@Name("toRational")
-unittest
+@Name("toRational") @system unittest
 {
     // Start with simple cases.
     assert(toRational!int(0.5) == rational(1, 2));
@@ -1084,8 +1072,7 @@ CommonInteger!(I1, I2) gcf(I1, I2)(const I1 num1, const I2 num2)
 }
 
 ///
-@Name("gcf")
-unittest
+@Name("gcf") pure @system unittest
 {
     // Values from the Maxima computer algebra system.
     assert(gcf(BigInt(314_156_535UL), BigInt(27_182_818_284UL)) == BigInt(3));
@@ -1144,8 +1131,7 @@ Int floor(Int)(Rational!Int r)
 }
 
 ///
-@Name("floor")
-unittest
+@Name("floor") pure nothrow @nogc @safe unittest
 {
     assert(floor(rational(1, 2)) == 0);
     assert(floor(rational(-1, 2)) == -1);
@@ -1171,8 +1157,7 @@ Int ceil(Int)(Rational!Int r)
     }
 }
 
-@Name("ceil")
-unittest
+@Name("ceil") pure nothrow @nogc @safe unittest
 {
     assert(ceil(rational(1, 2)) == 1);
     assert(ceil(rational(0)) == 0);
@@ -1189,7 +1174,7 @@ rounding.
 Int round(Int)(Rational!Int r)
 {
     auto intPart = r.integerPart;
-    auto fractPart = r.fractionPart;
+    immutable fractPart = r.fractionPart;
 
     bool added;
     if (fractPart >= rational(1, 2))
@@ -1210,8 +1195,7 @@ Int round(Int)(Rational!Int r)
 }
 
 ///
-@Name("round")
-unittest
+@Name("round") @system unittest
 {
     assert(round(rational(1, 3)) == 0);
     assert(round(rational(7, 2)) == 4);

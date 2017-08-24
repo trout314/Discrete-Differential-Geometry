@@ -7,11 +7,8 @@ import std.meta : AliasSeq;
 import std.range : array, drop, ElementType, enumerate, iota, isForwardRange,
     walkLength, zip;
 import std.traits : hasFunctionAttributes, isInstanceOf, ReturnType;
-import utility : staticIota, subsetsOfSize;
-
 import unit_threaded : Name;
-
-import std.stdio : writeln;
+import utility : staticIota, subsetsOfSize;
 
 /*******************************************************************************
 Returns a forward range which lists the points in the regular unit-edge simplex
@@ -33,9 +30,11 @@ auto simplexPoints(int dim, RationalType = Rational!BigInt)()
 }
 
 ///
-@Name("simplexPoints")
-unittest // TO DO: BigInt won't let me put @safe here!
+@Name("simplexPoints") /* pure */ @system unittest
 {
+     // TO DO: ldc doesn't like using "pure" above! Bugreport?
+     // TO DO: BigInt won't let me put @safe here!
+
     assert(simplexPoints!3.map!(pt => pt.toString).equal([
         "(0, 0, 0)",
         "(1, 0, 0)",
@@ -195,8 +194,7 @@ private:
 }
 
 ///
-@Name("coefficients")
-unittest
+@Name("coefficients") pure nothrow @safe unittest
 {
     alias r = rational;
     auto v = reVector!(3,5,11)(r(1), r(2, 3), r(6));
@@ -204,9 +202,10 @@ unittest
 }
 
 ///
-@Name("vector operations")
-unittest // TO DO: BigInt won't allow @safe.
+@Name("vector operations") pure nothrow @system unittest
 {
+    // TO DO: BigInt won't allow @safe.
+
     alias vec = reVector!(1, 3, 6);
     alias r = (a, b) => rational(BigInt(a), BigInt(b));
 
@@ -247,22 +246,15 @@ template reVector(R...)
 }
 
 ///
-@Name("reVector")
-unittest
+@Name("reVector") pure @safe unittest
 {
     alias r = rational;
     auto v = reVector!(3,5,11)(r(1), r(2, 3), r(6));
     static assert(is(typeof(v.coefs[0]) == Rational!int));
     assert(v.toString == "(√3, (2/3)√5, 6√11)");
-}
 
-///
-@Name("pure reVector")
-pure unittest
-{
-    alias r = rational;
-    auto v = reVector!(1,3,6)(r(1), r(2), r(3));
-    assert(dotProduct(v,v) == 67);
+    auto w = reVector!(1,3,6)(r(1), r(2), r(3));
+    assert(dotProduct(w, w) == 67);
 }
 
 RationalType dotProduct(int[] roots, RationalType)(
@@ -322,9 +314,10 @@ pure @safe unittest
 }
 
 // Additional tests. NOTE: BigInt won't let us put @safe here
-@Name("additional tests")
-/* pure */ unittest
+@Name("additional tests") pure nothrow @system unittest
 {
+    // TO DO: BigInt won't allow @safe.
+
     foreach(dim; staticIota!(1, 8))
     {
         foreach(pair; simplexPoints!dim.subsetsOfSize(2))
@@ -350,8 +343,7 @@ auto simplexRoots(int dim)
     return iota(1, dim + 1).map!(k => squareFreePart(k * (k + 1) / 2));
 }
 
-@Name("simplexRoots")
-unittest
+@Name("simplexRoots") pure nothrow @safe unittest
 {
     assert(simplexRoots(10).array == [1, 3, 6, 10, 15, 21, 7, 1, 5, 55]);
     foreach (radicand; simplexRoots(50))

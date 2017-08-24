@@ -1,6 +1,6 @@
-import fluent.asserts;
 import algorithms : eulerCharacteristic, is2Sphere, isCircle,
     isConnected, isPureOfDim, join;
+import fluent.asserts;
 import simplicial_complex : fVector, SimplicialComplex;
 import std.algorithm : all, canFind, each, equal, filter, find, joiner,
     map, maxElement, sort, uniq;
@@ -9,7 +9,7 @@ import std.exception : assertThrown;
 import std.range : array, chain, ElementType, empty, enumerate, front, iota,
     isInputRange, popFront, save, walkLength;
 import unit_threaded : Name;
-import utility : SmallMap, subsets, subsetsOfSize, staticIota, throwsWithMsg;
+import utility : SmallMap, staticIota, subsets, subsetsOfSize, throwsWithMsg;
 
 //dfmt off
 ///
@@ -47,7 +47,6 @@ import utility : SmallMap, subsets, subsetsOfSize, staticIota, throwsWithMsg;
 ///
 @Name("Manifold (errors)") /* pure */ @system unittest
 {
-    // TO DO: Why does this need to be @system? Make it @safe!
     // TO DO: ldc doesn't like using "pure" above! Bugreport?
 
     Manifold!2([[1,2,3,4]]).throwsWithMsg!Error(
@@ -141,6 +140,9 @@ public:
         }
     }
 
+    /***************************************************************************
+    Returns the degree of a simplex in the simplicial complex.
+    */
     auto degree(V)(V vertices) const if (isInputRange!V)
     {
         return star(vertices).walkLength;
@@ -179,8 +181,10 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(const ref Manifold!(dim, Vertex)
     return result;
 }
 ///
-@Name("pachnerMoves") unittest
+@Name("pachnerMoves") @system unittest
 {
+    // TO DO: Why does this need to be @system? Make it @safe!
+
     auto m = Manifold!2(
         [[1,2,3], [1,2,4], [1,3,4], [2,3,5], [2,4,5],[3,4,5]]);
 
@@ -213,7 +217,7 @@ void doPachner(Vertex, int dim)(
     manifold.doPachnerImpl(centerFacet, [newVertex]);
 }
 ///
-@Name("doPachner 1 -> (dim + 1)") unittest
+@Name("doPachner 1 -> (dim + 1)") @system unittest
 {
     auto m = Manifold!2(4.iota.subsetsOfSize(3).map!(s => s.array.dup));
     m.doPachner([1,2,3], 4);
@@ -244,8 +248,10 @@ void doPachner(Vertex, int dim)(
     manifold.doPachnerImpl(center, coCenter);
 }
 ///
-@Name("doPachner n -> (dim + 2 - n), 1 < n < dim + 2") unittest
+@Name("doPachner n -> (dim + 2 - n), 1 < n < dim + 2") /* pure */ @system unittest
 {
+
+
     auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4],
         [1,2,5], [2,3,5], [3,4,5], [1,4,5]]);
 
@@ -272,6 +278,11 @@ void doPachner(Vertex, int dim)(
     // TO DO: More pachner move tests
 }
 
+/*******************************************************************************
+Provides a historgram of simplex degrees for simplices of dimension 'dim' by
+returning an associative array whose values are the number of simplices and 
+whose keys are the degrees.
+*/
 int[int] degreeHistogram(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) manifold,
     int histogramDim)
@@ -284,15 +295,18 @@ int[int] degreeHistogram(Vertex, int dim)(
     int[int] result;
     int[Vertex[]] degreeMap;
 
-    manifold.facets.each!(
-        f => f.subsetsOfSize(histogramDim + 1).each!(s => ++degreeMap[s.array]));
+    manifold.facets
+        .each!(f => f.subsetsOfSize(histogramDim + 1)
+        .each!(s => ++degreeMap[s.array]));
 
     degreeMap.byValue.each!(deg => ++result[deg]);  
     return result;
 }
 ///
-@Name("degreeHistogram") unittest
+@Name("degreeHistogram") /* pure */ @system unittest
 {
+    // TO DO: ldc doesn't like using "pure" above! Bugreport?
+
     auto m = Manifold!2(
         [[1,2,3], [1,2,4], [1,3,4], [2,3,5], [2,4,5],[3,4,5]]);
     assert(m.degreeHistogram(0) == [4:3, 3:2]);
@@ -302,6 +316,7 @@ int[int] degreeHistogram(Vertex, int dim)(
     // TO DO: Some more tests
 }
 
+///
 auto pachnerMovesAndDegreeHistogram(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) manifold,
     int histogramDim)
@@ -344,7 +359,7 @@ auto pachnerMovesAndDegreeHistogram(Vertex, int dim)(
     return Result(moves_, histogram_);
 }
 ///
-@Name("pachnerMovesAndDegreeHistogram") unittest
+@Name("pachnerMovesAndDegreeHistogram") @system unittest
 {
     auto m = Manifold!2(
         [[1,2,3], [1,2,4], [1,3,4], [2,3,5], [2,4,5],[3,4,5]]);
@@ -379,21 +394,19 @@ private void doPachnerImpl(Vertex, int dim)(
     const(Vertex)[] coCenter
 )
 {
-    // TO DO: Better error
     assert(manifold.pachnerMoves.canFind(center), "bad pachner move");
 
-    // need to make sure we have independent copies of the facets in the star   
-    auto toRemove = manifold.star(center).map!(f => f.dup).array;
+    /* Need to ensure independent copies of the facets in the star since once a
+    facet is removed, the range returned by star(center) becomes invalid! */   
+    immutable toRemove = manifold.star(center).map!(f => f.dup).array;
     toRemove.each!(f => manifold.simpComp_.removeFacet(f));
 
     alias SComp = SimplicialComplex!Vertex;
     immutable cDim = center.walkLength.to!int - 1;
    
-    //  TO DO: Create SimplicialComplex constructor that can directly take subsetsOfSize
     auto newPiece = (cDim == 0)
         ? SComp([coCenter])
-        : join(SComp(center.subsetsOfSize(cDim).map!(s => s.array.dup)), SComp([coCenter]));
-
+        : join(SComp(center.subsetsOfSize(cDim)), SComp([coCenter]));
 
     assert(newPiece.isPureOfDim(manifold.dimension));
     newPiece.facets.each!(f => manifold.simpComp_.insertFacet(f));
@@ -427,7 +440,7 @@ auto standardSphereFacets(int dim)
     return iota(dim + 2).subsetsOfSize(dim + 1);
 }
 ///
-@Name("standardSphereFacets") unittest
+@Name("standardSphereFacets") @system unittest
 {
     auto s = Manifold!2(standardSphereFacets(2));
     s.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);

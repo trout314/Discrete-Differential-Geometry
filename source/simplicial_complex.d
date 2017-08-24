@@ -1,6 +1,6 @@
-import fluent.asserts : should;
 import algorithms : connectedComponents, eulerCharacteristic,
     isCircle, isConnected, isOrientableSurfaceOfGenus, isPureOfDim, join;
+import fluent.asserts : should;
 import std.algorithm : all, any, canFind, chunkBy, copy, countUntil, each,
     equal, filter, find, findAdjacent, isSorted, joiner, map, maxElement,
     setDifference, sort, sum, uniq;

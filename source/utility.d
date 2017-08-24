@@ -3,11 +3,11 @@ import fluent.asserts;
 import std.algorithm : all, canFind, each, filter, find, joiner,
     map, sort, sum;
 import std.conv : to;
+import std.format : format;
 import std.meta : AliasSeq, allSatisfy, anySatisfy;
 import std.range : array, chain, drop, ElementType, empty, enumerate, front,
     iota, isForwardRange, isInputRange, popFront, repeat, save, take, walkLength;
 import std.traits : lvalueOf, rvalueOf;
-import std.format : format;
 import unit_threaded : Name;
 
 /*******************************************************************************
@@ -533,8 +533,7 @@ if (isInputRange!A && isInputRange!B && is(ElementType!A : ElementType!B))
     return setA.all!(element => setB.canFind(element));        
 }
 ///
-@Name("isSubsetOf")
-unittest
+@Name("isSubsetOf") pure nothrow @safe unittest
 {
     assert([1,3].isSubsetOf([1,3,4]));
     assert(![2,3].isSubsetOf([1,3,4]));
@@ -634,7 +633,7 @@ auto subsetFromUint(R)(R set, uint whichToKeep) if (isInputRange!R)
     return SubsetFromUintRange(whichToKeep, set);
 }
 ///
-@Name("subsetsFromUint") unittest
+@Name("subsetsFromUint") pure nothrow @safe unittest
 {
     assert([3,4,5].subsetFromUint(0).empty);
     assert([3,4,5].subsetFromUint(1).array == [3]);
@@ -644,7 +643,11 @@ auto subsetFromUint(R)(R set, uint whichToKeep) if (isInputRange!R)
     assert([3,4,5].subsetFromUint(5).array == [3,5]);
     assert([3,4,5].subsetFromUint(6).array == [4,5]);
     assert([3,4,5].subsetFromUint(7).array == [3,4,5]);
+}
 
+///
+@Name("subsetsFromUint (errors)") pure nothrow @system unittest
+{
     [3,4,5].subsetFromUint(1 << 3).throwsWithMsg!Error(
         "1 bits found in positions not corresponsing to elements in set");
 
@@ -769,7 +772,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
     return SubsetsOfSizeRange((1 << subsetSize) - 1, set);
 }
 ///
-@Name("subsetsOfSize") unittest 
+@Name("subsetsOfSize") @system unittest 
 {
     [1,2,3,4].subsetsOfSize(1).map!array.should.containOnly(
         [[1], [2], [3], [4]]);
