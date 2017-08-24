@@ -1,4 +1,4 @@
-import manifold : SmallManifold;
+import manifold : Manifold;
 import simplicial_complex : fVector, simplicialComplex, SimplicialComplex;
 import std.algorithm : all, any, canFind, chunkBy, equal, filter, find, joiner, map,
     setIntersection, sort, sum;
@@ -12,7 +12,7 @@ import utility : subsetsOfSize, throwsWithMsg;
 /*******************************************************************************
 Returns true if the given manifold is orientable and false otherwise.
 */
-bool isOrientable(Vertex, int dim)(SmallManifold!(dim, Vertex) manifold)
+bool isOrientable(Vertex, int dim)(Manifold!(dim, Vertex) manifold)
 {
     /* We must choose a compatible orientation for each facet. Since the facets
     already come equipped with an ordering for the vertices, we need only
@@ -101,11 +101,11 @@ bool isOrientable(Vertex, int dim)(SmallManifold!(dim, Vertex) manifold)
     // TO DO: Why does this need to be @system? Make it @safe!
     // TO DO: ldc doesn't like using "pure" above! Bugreport?
 
-    assert(SmallManifold!2().isOrientable);
+    assert(Manifold!2().isOrientable);
 
     // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n10_o0_g5
     // Surface #4941 on non-orientable genus 5 list
-    auto g5 = SmallManifold!2([[1, 2, 3], [1, 2, 4], [1, 3, 5], [1, 4, 6], [1,
+    auto g5 = Manifold!2([[1, 2, 3], [1, 2, 4], [1, 3, 5], [1, 4, 6], [1,
             5, 7], [1, 6, 7], [2, 3, 6], [2, 4, 8], [2, 5, 7], [2, 5, 9], [2,
             6, 10], [2, 7, 8], [2, 9, 10], [3, 4, 6], [3, 4, 10], [3, 5, 8],
             [3, 7, 8], [3, 7, 10], [4, 5, 9], [4, 5, 10], [4, 8, 9], [5, 8,
@@ -114,13 +114,13 @@ bool isOrientable(Vertex, int dim)(SmallManifold!(dim, Vertex) manifold)
 
     // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n9_o1_g0
     // Surface #15 on orientable genus 0 list
-    auto g0 = SmallManifold!2([[1, 2, 3], [1, 2, 4], [1, 3, 4], [2, 3, 5], [2,
+    auto g0 = Manifold!2([[1, 2, 3], [1, 2, 4], [1, 3, 4], [2, 3, 5], [2,
             4, 5], [3, 4, 6], [3, 5, 7], [3, 6, 7], [4, 5, 8], [4, 6, 7], [4,
             7, 9], [4, 8, 9], [5, 7, 8], [7, 8, 9]]);
     assert(g0.isOrientable);
 
     // http://page.math.tu-berlin.de/~lutz/stellar/library_of_triangulations/poincare
-    auto poincare = SmallManifold!3([[1, 2, 4, 9], [1, 2, 4, 15], [1, 2, 6,
+    auto poincare = Manifold!3([[1, 2, 4, 9], [1, 2, 4, 15], [1, 2, 6,
             14], [1, 2, 6, 15], [1, 2, 9, 14], [1, 3, 4, 12], [1, 3, 4, 15],
             [1, 3, 7, 10], [1, 3, 7, 12], [1, 3, 10, 15], [1, 4, 9, 12], [1, 5,
             6, 13], [1, 5, 6, 14], [1, 5, 8, 11], [1, 5, 8, 13], [1, 5, 11,
@@ -147,7 +147,7 @@ bool isOrientable(Vertex, int dim)(SmallManifold!(dim, Vertex) manifold)
     /* This should be an 5-sphere, hence orientable. See:
     http://page.math.tu-berlin.de/~lutz/stellar/5_manifolds
     http://page.math.tu-berlin.de/~lutz/stellar/5_manifolds.type */
-    auto manifold_5_10_3_1 = SmallManifold!5([[1, 2, 3, 4, 5, 6], [1, 2, 3, 4,
+    auto manifold_5_10_3_1 = Manifold!5([[1, 2, 3, 4, 5, 6], [1, 2, 3, 4,
             5, 10], [1, 2, 3, 4, 6, 7], [1, 2, 3, 4, 7, 8], [1, 2, 3, 4, 8, 9],
             [1, 2, 3, 4, 9, 10], [1, 2, 3, 5, 6, 10], [1, 2, 3, 6, 7, 10], [1,
             2, 3, 7, 8, 10], [1, 2, 3, 8, 9, 10], [1, 2, 4, 5, 6, 7], [1, 2, 4,
@@ -167,13 +167,13 @@ bool isOrientable(Vertex, int dim)(SmallManifold!(dim, Vertex) manifold)
 
     // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n9_o0_g1
     // surface #9 on the genus 1 non-orientable list
-    auto g1 = SmallManifold!2([[1, 2, 3], [1, 2, 4], [1, 3, 4], [2, 3, 5], [2,
+    auto g1 = Manifold!2([[1, 2, 3], [1, 2, 4], [1, 3, 4], [2, 3, 5], [2,
             4, 5], [3, 4, 6], [3, 5, 7], [3, 6, 8], [3, 7, 8], [4, 5, 8], [4,
             6, 9], [4, 7, 8], [4, 7, 9], [5, 6, 8], [5, 6, 9], [5, 7, 9]]);
     assert(!g1.isOrientable);
 
     // http://page.math.tu-berlin.de/~lutz/stellar/RP3
-    auto rp3 = SmallManifold!3([[1, 2, 3, 7], [1, 2, 3, 11], [1, 2, 6, 9], [1,
+    auto rp3 = Manifold!3([[1, 2, 3, 7], [1, 2, 3, 11], [1, 2, 6, 9], [1,
             2, 6, 11], [1, 2, 7, 9], [1, 3, 5, 10], [1, 3, 5, 11], [1, 3, 7,
             10], [1, 4, 7, 9], [1, 4, 7, 10], [1, 4, 8, 9], [1, 4, 8, 10], [1,
             5, 6, 8], [1, 5, 6, 11], [1, 5, 8, 10], [1, 6, 8, 9], [2, 3, 4, 8],
@@ -184,7 +184,7 @@ bool isOrientable(Vertex, int dim)(SmallManifold!(dim, Vertex) manifold)
             5, 6, 7], [4, 5, 6, 11], [4, 5, 7, 9], [4, 6, 7, 10], [5, 6, 7, 8]]);
     assert(rp3.isOrientable);
 
-    auto rp4 = SmallManifold!4([[1, 2, 4, 5, 11], [1, 2, 4, 5, 14], [1, 2, 4, 11,
+    auto rp4 = Manifold!4([[1, 2, 4, 5, 11], [1, 2, 4, 5, 14], [1, 2, 4, 11,
         13], [1, 2, 4, 13, 14], [1, 2, 5, 11, 15], [1, 2, 5, 14, 15], [1, 2,
         7, 8, 13], [1, 2, 7, 8, 15], [1, 2, 7, 13, 14], [1, 2, 7, 14, 15], [1,
         2, 8, 11, 13], [1, 2, 8, 11, 15], [1, 3, 4, 10, 13], [1, 3, 4, 10, 16],
@@ -506,7 +506,7 @@ bool isOrientableSurfaceOfGenus(Vertex)(const ref SimplicialComplex!Vertex sc, i
         && sc.isPureOfDim(2)
         && sc.simplices(0).all!(v => sc.link(v).to!SimpComp.isCircle)
         && sc.eulerCharacteristic == 2 - 2 * g
-        && SmallManifold!2(sc.facets).isOrientable;
+        && Manifold!2(sc.facets).isOrientable;
 }
 ///
 @Name("isSurfaceOfGenus") /* pure */ @system unittest

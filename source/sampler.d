@@ -4,7 +4,7 @@ import std.range : array, iota;
 import std.conv : to;
 import std.random : choice, back, uniform01, rndGen;
 import std.range : array, chain, empty, front, popFront, popBack, repeat, save;
-import manifold : SmallManifold, pachnerMoves, doPachner, degreeHistogram;
+import manifold : Manifold, pachnerMoves, doPachner, degreeHistogram;
 import utility : subsetsOfSize;
 
 import std.math : exp, sqrt;
@@ -29,7 +29,7 @@ immutable degreeStdDevCoef = 0.02;
 //------------------------------------------------------------------------------
 
 
-real[3] objectiveParts(Vertex, int dim)(const ref SmallManifold!(dim, Vertex) manifold)
+real[3] objectiveParts(Vertex, int dim)(const ref Manifold!(dim, Vertex) manifold)
 {
     // TO DO: Why does this allocate a closure? Fix it?
 
@@ -52,7 +52,7 @@ real[3] objectiveParts(Vertex, int dim)(const ref SmallManifold!(dim, Vertex) ma
         degreeStdDevCoef * (degStdDev - minDegStdDev)^^2];
 }
 
-real meanHingeDegree(Vertex, int dim)(const ref SmallManifold!(dim, Vertex) manifold)
+real meanHingeDegree(Vertex, int dim)(const ref Manifold!(dim, Vertex) manifold)
 {
     immutable real numHinges = manifold.fVector[dim - 2];
     immutable real numFacets = manifold.fVector[dim];
@@ -74,7 +74,7 @@ void sample()
      ulong[dim + 1] tryCount;
      ulong[dim + 1] acceptCount;
 
-    auto manifold = SmallManifold!dim((dim + 2).iota.subsetsOfSize(dim + 1));
+    auto manifold = Manifold!dim((dim + 2).iota.subsetsOfSize(dim + 1));
     auto oldManifold = manifold;
 
     auto unusedVertices = iota(dim + 2, maxVertices).array;

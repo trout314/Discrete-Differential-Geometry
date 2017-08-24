@@ -13,10 +13,8 @@ import utility : SmallMap, subsets, subsetsOfSize, staticIota, throwsWithMsg;
 
 //dfmt off
 ///
-@Name("SmallManifold doc tests") @system unittest
+@Name("Manifold doc tests") @system unittest
 {
-    alias Manifold = SmallManifold;
-
     auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
         [2,3,5], [3,4,5], [1,4,5]]);
 
@@ -47,11 +45,10 @@ import utility : SmallMap, subsets, subsetsOfSize, staticIota, throwsWithMsg;
 }
 
 ///
-@Name("SmallManifold (errors)") /* pure */ @system unittest
+@Name("Manifold (errors)") /* pure */ @system unittest
 {
+    // TO DO: Why does this need to be @system? Make it @safe!
     // TO DO: ldc doesn't like using "pure" above! Bugreport?
-
-    alias Manifold = SmallManifold;
 
     Manifold!2([[1,2,3,4]]).throwsWithMsg!Error(
         "not all facets have the correct dimension");
@@ -79,11 +76,10 @@ import utility : SmallMap, subsets, subsetsOfSize, staticIota, throwsWithMsg;
 }
 
 // More tests
-@Name("SmallManifold (additional)") /* pure */ @system unittest
+@Name("Manifold (additional)") /* pure */ @system unittest
 {
     // TO DO: Why does this need to be @system? Make it @safe!
-
-    alias Manifold = SmallManifold;
+    // TO DO: ldc doesn't like using "pure" above! Bugreport?
 
     static assert(!__traits(compiles, Manifold!2([["a", "bubba", "gump"]])));
 
@@ -95,7 +91,7 @@ import utility : SmallMap, subsets, subsetsOfSize, staticIota, throwsWithMsg;
 /*******************************************************************************
 Manifold type... TO DO: More info here
 */
-struct SmallManifold(int dimension_, Vertex_ = int)
+struct Manifold(int dimension_, Vertex_ = int)
 {
 private:
     SimplicialComplex!Vertex simpComp_;
@@ -113,12 +109,6 @@ public:
     this(F)(F initialFacets)
     {
         // TO DO: Put some nice constraints on F
-
-        // static assert((isInputRange!F || isArray!F)
-        //     && is(ElementType!F : Facet) || is(ElementType!F : Vertex[]),
-        //     "a " ~ SmallManifold!(dimension, Vertex).stringof ~ " must be "
-        //     ~ "constructed from a range or array of elements with type " 
-        //     ~ Facet.stringof ~ " or " ~ Vertex[].stringof ~ " not " ~ F.stringof);
 
         initialFacets.each!(f => simpComp_.insertFacet(f));
 
@@ -168,7 +158,7 @@ public:
 /*******************************************************************************
 Returns a list of all the possible pachner moves for the given manifold
 */
-const(Vertex)[][] pachnerMoves(Vertex, int dim)(const ref SmallManifold!(dim, Vertex) m)
+const(Vertex)[][] pachnerMoves(Vertex, int dim)(const ref Manifold!(dim, Vertex) m)
 {
     int[const(Vertex)[]] degreeMap;
 
@@ -191,14 +181,14 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(const ref SmallManifold!(dim, Ve
 ///
 @Name("pachnerMoves") unittest
 {
-    auto m = SmallManifold!2(
+    auto m = Manifold!2(
         [[1,2,3], [1,2,4], [1,3,4], [2,3,5], [2,4,5],[3,4,5]]);
 
     m.pachnerMoves.should.containOnly([[1], [2, 3], [2, 3, 5],
         [1, 3, 4], [1, 2, 3], [5], [2, 4, 5], [3, 4, 5], [1, 2, 4], [2, 4],
         [3, 4]]);
 
-    auto octahedron = SmallManifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4],
+    auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4],
         [1,2,5], [2,3,5], [3,4,5], [1,4,5]]);
     
     assert(octahedron.simplices(0).all!(s => octahedron.degree(s) == 4));
@@ -215,7 +205,7 @@ Does a pachner move of type 1 -> (dim + 1) with the new vertex given by
 the user.
 */
 void doPachner(Vertex, int dim)(
-    ref SmallManifold!(dim, Vertex) manifold,
+    ref Manifold!(dim, Vertex) manifold,
     const(Vertex)[] centerFacet,
     const(Vertex) newVertex)
 {
@@ -225,7 +215,7 @@ void doPachner(Vertex, int dim)(
 ///
 @Name("doPachner 1 -> (dim + 1)") unittest
 {
-    auto m = SmallManifold!2(4.iota.subsetsOfSize(3).map!(s => s.array.dup));
+    auto m = Manifold!2(4.iota.subsetsOfSize(3).map!(s => s.array.dup));
     m.doPachner([1,2,3], 4);
     m.facets.should.containOnly(
         [[0,1,2],[0,1,3], [0,2,3], [1,2,4], [1,3,4], [2,3,4]]);
@@ -242,7 +232,7 @@ Does a pachner move which replaces the star of the given simplex. This is a
 move of type (dim + 2 - center.length) -> center.length
 */
 void doPachner(Vertex, int dim)(
-    ref SmallManifold!(dim, Vertex) manifold,
+    ref Manifold!(dim, Vertex) manifold,
     const(Vertex)[] center)
 {
     // TO DO: Better error
@@ -256,7 +246,7 @@ void doPachner(Vertex, int dim)(
 ///
 @Name("doPachner n -> (dim + 2 - n), 1 < n < dim + 2") unittest
 {
-    auto octahedron = SmallManifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4],
+    auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4],
         [1,2,5], [2,3,5], [3,4,5], [1,4,5]]);
 
     octahedron.doPachner([1,2]);
@@ -273,7 +263,7 @@ void doPachner(Vertex, int dim)(
     octahedron.doPachner([99]);
 
     // Can't do 2->2 move on the boundary of a 3-simplex
-    auto m = SmallManifold!2([[1,2,3],[1,2,4], [1,3,4], [2,3,4]]);
+    auto m = Manifold!2([[1,2,3],[1,2,4], [1,3,4], [2,3,4]]);
     
     // m.doPachner([1,2]).assertThrown!Error;
 
@@ -283,7 +273,7 @@ void doPachner(Vertex, int dim)(
 }
 
 int[int] degreeHistogram(Vertex, int dim)(
-    const ref SmallManifold!(dim, Vertex) manifold,
+    const ref Manifold!(dim, Vertex) manifold,
     int histogramDim)
 {
     // TO DO: Improve this
@@ -303,7 +293,7 @@ int[int] degreeHistogram(Vertex, int dim)(
 ///
 @Name("degreeHistogram") unittest
 {
-    auto m = SmallManifold!2(
+    auto m = Manifold!2(
         [[1,2,3], [1,2,4], [1,3,4], [2,3,5], [2,4,5],[3,4,5]]);
     assert(m.degreeHistogram(0) == [4:3, 3:2]);
     assert(m.degreeHistogram(1) == [2:9]);
@@ -313,7 +303,7 @@ int[int] degreeHistogram(Vertex, int dim)(
 }
 
 auto pachnerMovesAndDegreeHistogram(Vertex, int dim)(
-    const ref SmallManifold!(dim, Vertex) manifold,
+    const ref Manifold!(dim, Vertex) manifold,
     int histogramDim)
 {
     assert(histogramDim >= 0);
@@ -356,7 +346,7 @@ auto pachnerMovesAndDegreeHistogram(Vertex, int dim)(
 ///
 @Name("pachnerMovesAndDegreeHistogram") unittest
 {
-    auto m = SmallManifold!2(
+    auto m = Manifold!2(
         [[1,2,3], [1,2,4], [1,3,4], [2,3,5], [2,4,5],[3,4,5]]);
 
     auto r0 = m.pachnerMovesAndDegreeHistogram(0);
@@ -384,7 +374,7 @@ auto pachnerMovesAndDegreeHistogram(Vertex, int dim)(
 
 // Factor out the common code for the two types of doPachner
 private void doPachnerImpl(Vertex, int dim)(
-    ref SmallManifold!(dim, Vertex) manifold,
+    ref Manifold!(dim, Vertex) manifold,
     const(Vertex)[] center,
     const(Vertex)[] coCenter
 )
@@ -414,7 +404,7 @@ private void doPachnerImpl(Vertex, int dim)(
 // TO DO: Implement 4->4 moves (Important!)
 
 private auto getCoCenter(Vertex, int dim)(
-    const ref SmallManifold!(dim, Vertex) manifold,
+    const ref Manifold!(dim, Vertex) manifold,
     const(Vertex)[] center
 )
 {
@@ -439,12 +429,12 @@ auto standardSphereFacets(int dim)
 ///
 @Name("standardSphereFacets") unittest
 {
-    auto s = SmallManifold!2(standardSphereFacets(2));
+    auto s = Manifold!2(standardSphereFacets(2));
     s.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
 
     foreach(dim; staticIota!(1,9))
     {
-        auto m = SmallManifold!dim(standardSphereFacets(dim));
+        auto m = Manifold!dim(standardSphereFacets(dim));
         assert(m.numFacets == dim + 2);
     }
 }
