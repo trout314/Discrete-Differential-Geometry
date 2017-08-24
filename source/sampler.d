@@ -1,8 +1,9 @@
+import algorithms : eulerCharacteristic;
 import std.algorithm : all, each, map, sum, max, maxElement, joiner;
 import std.range : array, iota;
 import std.conv : to;
 import std.random : choice, back, uniform01, rndGen;
-import std.range : array, chain, empty, front, popBack, repeat;
+import std.range : array, chain, empty, front, popFront, popBack, repeat, save;
 import manifold_small : SmallManifold, pachnerMoves, doPachner, degreeHistogram;
 import utility : subsetsOfSize;
 
@@ -11,7 +12,6 @@ import std.format : format;
 import std.stdio : writeln, writefln;
 
 import simplicial_complex : fVector;
-import simplicial_complex_algorithms : eulerCharacteristic;
 
 import std.datetime : StopWatch, AutoStart, Duration, msecs;
 

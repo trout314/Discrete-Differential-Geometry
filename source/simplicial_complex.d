@@ -1,5 +1,5 @@
 import fluent.asserts : should;
-import simplicial_complex_algorithms : connectedComponents, eulerCharacteristic,
+import algorithms : connectedComponents, eulerCharacteristic,
     isCircle, isConnected, isOrientableSurfaceOfGenus, isPureOfDim, join;
 import std.algorithm : all, any, canFind, chunkBy, copy, countUntil, each,
     equal, filter, find, findAdjacent, isSorted, joiner, map, maxElement,

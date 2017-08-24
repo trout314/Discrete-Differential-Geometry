@@ -1,5 +1,5 @@
 import fluent.asserts;
-import simplicial_complex_algorithms : eulerCharacteristic, is2Sphere, isCircle,
+import algorithms : eulerCharacteristic, is2Sphere, isCircle,
     isConnected, isPureOfDim, join;
 import simplicial_complex : fVector, SimplicialComplex;
 import std.algorithm : all, canFind, each, equal, filter, find, joiner,
