@@ -8,7 +8,7 @@ import std.range : array, empty, enumerate, front, iota, popFront, save,
     walkLength;
 import utility : subsetsOfSize, throwsWithMsg;
 
-import manifold_small : SmallManifold;
+import manifold : SmallManifold;
 
 /*******************************************************************************
 Returns true if the given manifold is orientable and false otherwise.

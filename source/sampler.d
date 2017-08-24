@@ -4,7 +4,7 @@ import std.range : array, iota;
 import std.conv : to;
 import std.random : choice, back, uniform01, rndGen;
 import std.range : array, chain, empty, front, popFront, popBack, repeat, save;
-import manifold_small : SmallManifold, pachnerMoves, doPachner, degreeHistogram;
+import manifold : SmallManifold, pachnerMoves, doPachner, degreeHistogram;
 import utility : subsetsOfSize;
 
 import std.math : exp, sqrt;

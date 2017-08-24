@@ -9,7 +9,7 @@ import std.exception : assertThrown;
 import std.range : array, chain, ElementType, empty, enumerate, front, iota,
     isInputRange, popFront, save, walkLength;
 import unit_threaded : Name;
-import utility : SmallMap, subsets, subsetsOfSize, throwsWithMsg;
+import utility : SmallMap, subsets, subsetsOfSize, staticIota, throwsWithMsg;
 
 //dfmt off
 ///
@@ -382,8 +382,6 @@ auto pachnerMovesAndDegreeHistogram(Vertex, int dim)(
     and degreeHistogram? */
 }
 
-
-
 // Factor out the common code for the two types of doPachner
 private void doPachnerImpl(Vertex, int dim)(
     ref SmallManifold!(dim, Vertex) manifold,
@@ -413,6 +411,8 @@ private void doPachnerImpl(Vertex, int dim)(
     // TO DO: Do sanity checking for manifold
 }
 
+// TO DO: Implement 4->4 moves (Important!)
+
 private auto getCoCenter(Vertex, int dim)(
     const ref SmallManifold!(dim, Vertex) manifold,
     const(Vertex)[] center
@@ -423,3 +423,120 @@ private auto getCoCenter(Vertex, int dim)(
 }
 
 // TO DO: Separate unittesting for getCoCenter
+
+// TO DO: Use standardSphereFacets below in appropriate places
+
+/*******************************************************************************
+Returns a lazy range that goes through the facets of the "standard" sphere
+of dimension `dim`. This manifold is just the boundary if the "standard"
+(dim+1)-simplex [0,1,2, ... (dim+1)].
+*/
+auto standardSphereFacets(int dim)
+{
+    assert(dim >= 1);
+    return iota(dim + 2).subsetsOfSize(dim + 1);
+}
+///
+@Name("standardSphereFacets") unittest
+{
+    auto s = SmallManifold!2(standardSphereFacets(2));
+    s.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
+
+    foreach(dim; staticIota!(1,9))
+    {
+        auto m = SmallManifold!dim(standardSphereFacets(dim));
+        assert(m.numFacets == dim + 2);
+    }
+}
+
+// TO DO: Adapt old code below for new manifold type!
+
+// /******************************************************************************
+// * Returns a manifold loaded from the file specified by fileName. If fileName
+// * is the empty string, the returned manifold is the standard sphere.
+// */
+// Manifold!dim loadManifold(size_t dim = dimManifold)(string fileName)
+// {
+//     auto manifoldFile = File(fileName, "r"); // Open file in read-only mode
+
+//     string facets;
+//     foreach (string line; manifoldFile.lines)
+//     {
+//         // We allow comments starting with '#'
+//         if (line.front != '#')
+//         {
+//             facets ~= line.strip;
+//         }
+//     }
+
+//     try
+//     {
+//         auto loaded = Manifold!dim(facets.parse!(Simplex[]));
+//         return loaded;
+//     }
+//     catch (Exception ex)
+//     {
+//         ex.msg ~= "\n\n\t ERROR: encountered malformed facet list in initial manifold triangulation file: "
+//             ~ fileName ~ "\n";
+//         throw ex;
+//     }
+// }
+// ///
+// unittest
+// {
+
+//     auto manifold = loadManifold!2("data/manifold_sampler_unittest_load.dat");
+//     auto expectedManifold = Manifold!2([[0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4,
+//             5], [0, 5, 6], [0, 6, 1], [1, 2, 6], [2, 3, 5], [2, 5, 6], [3, 4, 5]]);
+//     assert(manifold == expectedManifold);
+
+//     assertThrown(loadManifold!2("data/manifold_sampler_unittest_bad_load.dat"));
+// }
+
+// /******************************************************************************
+// * Saves a manifold to file specified by fileName.
+// */
+// void saveTo(size_t dimension)(Manifold!dimension manifold, string fileName)
+// {
+//     auto saveFile = File(fileName, "w"); // Open in write-only mode
+
+//     saveFile.writeln("# created ", Clock.currTime.to!DateTime);
+//     saveFile.write("[");
+//     foreach (record; manifold.facetRecords[0 .. $ - 1])
+//     {
+//         saveFile.write(record.facet, ",");
+//     }
+//     saveFile.writeln(manifold.facetRecords.back.facet, "]");
+// }
+// ///
+// unittest
+// {
+
+//     auto fileName = "data/manifold_sampler_unittest_save.dat";
+//     auto sphere = Manifold!4(standardSphere(4));
+//     sphere.saveTo(fileName);
+//     Manifold!4 loadedSphere = loadManifold!4(fileName);
+//     assert(loadedSphere == sphere);
+// }
+
+// unittest
+// {
+
+//     auto octahedron = Manifold!2([[0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 1],
+//             [5, 1, 2], [5, 2, 3], [5, 3, 4], [5, 4, 1]]);
+
+//     assert(octahedron.fVector == [6, 12, 8]);
+
+//     auto sphere7 = Manifold!7(standardSphere(7));
+
+//     // fVector should be (9 choose 1), (9 choose 2), ... , (9 choose 8)
+//     assert(sphere7.fVector == [9, 9 * 8 / 2, 9 * 8 * 7 / (3 * 2),
+//             9 * 8 * 7 * 6 / (4 * 3 * 2), 9 * 8 * 7 * 6 / (4 * 3 * 2),
+//             (9 * 8 * 7) / (3 * 2), (9 * 8) / 2, 9]);
+
+//     auto hyperbolicDodecahedral = loadManifold!3("data/manifold_sampler_unittest_dodecahedral.dat");
+
+//     // TO DO: Get reference for this...
+//     assert(hyperbolicDodecahedral.fVector == [21, 190, 338, 169]);
+
+// }
