@@ -291,7 +291,8 @@ public:
     */
     void removeFacet(V)(V vertices) if (isInputRange!V)
     {
-        assert(this.contains(vertices), "tried to remove a facet not in the simplicial complex");
+        assert(this.contains(vertices),
+            "tried to remove a facet not in the simplicial complex");
         
         assert(vertices.walkLength <= int.max);
         auto dim = cast(int) vertices.walkLength - 1;
@@ -418,7 +419,7 @@ int[] fVector(Vertex)(const ref SimplicialComplex!Vertex sc)
         .array; 
 }
 ///
-@Name("fVector") pure @safe unittest
+@Name("fVector (pure @safe)") pure @safe unittest
 {
     SimplicialComplex!() sc;
     sc.insertFacet([1,2]);

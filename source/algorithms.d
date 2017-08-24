@@ -1,14 +1,13 @@
-import std.algorithm : any, filter, find, map;
-import unit_threaded : Name;
+import manifold : SmallManifold;
 import simplicial_complex : fVector, simplicialComplex, SimplicialComplex;
-import std.algorithm : all, canFind, chunkBy, equal, find, joiner, map,
+import std.algorithm : all, any, canFind, chunkBy, equal, filter, find, joiner, map,
     setIntersection, sort, sum;
 import std.conv : to;
 import std.range : array, empty, enumerate, front, iota, popFront, save,
     walkLength;
+import unit_threaded : Name;
 import utility : subsetsOfSize, throwsWithMsg;
 
-import manifold : SmallManifold;
 
 /*******************************************************************************
 Returns true if the given manifold is orientable and false otherwise.
@@ -97,8 +96,11 @@ bool isOrientable(Vertex, int dim)(SmallManifold!(dim, Vertex) manifold)
     return true;
 }
 ///
-@Name("isOrientable") unittest
+@Name("isOrientable") /* pure */ @system unittest
 {
+    // TO DO: Why does this need to be @system? Make it @safe!
+    // TO DO: ldc doesn't like using "pure" above! Bugreport?
+
     assert(SmallManifold!2().isOrientable);
 
     // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n10_o0_g5
