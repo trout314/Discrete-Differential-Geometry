@@ -835,10 +835,11 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
         assert(31.iota.subsetsOfSize(1).walkLength == 31);
         assert(31.iota.subsetsOfSize(31).walkLength == 1);
         assert(10.iota.subsetsOfSize(2).walkLength == 45);
+        assert(1.iota.subsetsOfSize(1).walkLength == 1);
     }();
 }
 
-auto subsets(R)(R set) if (isForwardRange!R)
+auto subsets(R)(R set) if (isInputRange!R)
 {
     assert(set.walkLength <= 31);
 
@@ -865,9 +866,12 @@ auto subsets(R)(R set) if (isForwardRange!R)
             return whichToKeep == 1 << set_.walkLength;
         }
 
-        auto save()
+        static if(isForwardRange!R)
         {
-            return SubsetsRange(set_, whichToKeep);
+            auto save()
+            {
+                return SubsetsRange(set_, whichToKeep);
+            }
         }
     }
 
