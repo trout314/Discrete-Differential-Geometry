@@ -12,6 +12,8 @@ import std.range : array, chain, drop, ElementType, empty, enumerate, front,
 import std.traits : lvalueOf, rvalueOf;
 import unit_threaded : Name;
 
+//dfmt off
+
 /*******************************************************************************
 Checks if items of type T can be compared with the less-than operation. Note 
 that this means all other comparison operations are also valid, per dlang rules 
@@ -775,10 +777,11 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
 
                 whichToKeep &= ~(1 << currentPos);
 
-                iota(currentPos + 1, currentPos + 2 + numOnesSeen).each!(
-                        pos => whichToKeep |= (1 << pos));
+                iota(currentPos + 1, currentPos + 2 + numOnesSeen)
+                    .each!(pos => whichToKeep |= (1 << pos));
 
-                iota(currentPos + 2 + numOnesSeen, len).each!(pos => whichToKeep &= ~(1 << pos));
+                iota(currentPos + 2 + numOnesSeen, len)
+                    .each!(pos => whichToKeep &= ~(1 << pos));
             }
             else // Zero at current position
             {
@@ -821,8 +824,8 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
     [1, 2, 3, 4].subsetsOfSize(2).map!array.should.containOnly([[1, 2], [1, 3],
             [1, 4], [2, 3], [2, 4], [3, 4]]);
 
-    [1, 2, 3, 4].subsetsOfSize(3).map!array.should.containOnly([[1, 2, 3], [1,
-            2, 4], [1, 3, 4], [2, 3, 4]]);
+    [1, 2, 3, 4].subsetsOfSize(3).map!array.should.containOnly([[1, 2, 3], [1, 2, 4],
+        [1, 3, 4], [2, 3, 4]]);
 
     [1, 2, 3, 4].subsetsOfSize(4).map!array.should.containOnly([[1, 2, 3, 4]]);
 
@@ -924,8 +927,8 @@ auto subsets(R)(R set) if (isInputRange!R)
     [1, 2, 3].subsets.map!array.should.containOnly([[1], [2], [3], [1, 2],
             [1, 3], [2, 3], [1, 2, 3]]);
 
-    iota(1, 5).subsets.map!array.should.containOnly([[1], [2], [3], [4], [1,
-            2], [1, 3], [1, 4], [2, 3], [2, 4], [3, 4], [1, 2, 3], [1, 2, 4],
+    iota(1, 5).subsets.map!array.should.containOnly([[1], [2], [3], [4], [1, 2],
+            [1, 3], [1, 4], [2, 3], [2, 4], [3, 4], [1, 2, 3], [1, 2, 4],
             [1, 3, 4], [2, 3, 4], [1, 2, 3, 4]]);
 
     int[] emptySet;
