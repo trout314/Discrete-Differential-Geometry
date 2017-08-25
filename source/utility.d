@@ -989,16 +989,17 @@ auto capture(Range, Data...)(Range range, Data data) if (isInputRange!Range)
 
     static struct CaptureRange
     {
+    private:
         Range range_;
         mixin(dataDeclarations(data.length));
-
+    public:
         auto front()
         {
             static struct CaptureFront
             {
                 typeof(range_.front) result;
-                alias result this;
                 mixin(dataDeclarations(data.length));
+                alias result this;
             }
 
             mixin("return CaptureFront(range_.front, " ~ dataArgs(data.length) ~ ");");
