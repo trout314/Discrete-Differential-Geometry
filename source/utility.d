@@ -391,6 +391,11 @@ unittest
         "throwsWithMsg failed with wrong throwable type.\n"
         ~ "  Actual type  : core.exception.AssertError\n"
         ~ "  Expected type: Exception");
+
+    static void doesNotThrow(){}
+
+    doesNotThrow.throwsWithMsg("nope").throwsWithMsg!Error(
+        "throwsWithMsg failed because expression did not throw");
 }
 
 /*******************************************************************************
