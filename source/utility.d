@@ -346,14 +346,13 @@ void throwsWithMsg(ThrownType : Throwable = Exception, E)(lazy E expression,
         auto thrown = cast(ThrownType) exception;
         if (thrown is null)
         {
-            throw new Error("throwsWithMsg failed with wrong throwable " ~ "type.\n  Actual type  : " ~ typeid(exception)
-                    .to!string ~ "\n  Expected type: " ~ ThrownType.stringof, file, line);
+            throw new Error("throwsWithMsg failed with wrong throwable type.\n  Actual type  : " 
+                ~ typeid(exception).to!string ~ "\n  Expected type: " ~ ThrownType.stringof, file, line);
         }
         else if (thrown.msg != msg)
         {
-            throw new Error("throwsWithMsg failed with wrong message.\n"
-                    ~ "  Actual message  : " ~ thrown.msg ~ "\n  Expected message: " ~ msg,
-                    file, line);
+            throw new Error("throwsWithMsg failed with wrong message.\n  Actual message  : " 
+                ~ thrown.msg ~ "\n  Expected message: " ~ msg, file, line);
         }
         else
         {
@@ -362,6 +361,7 @@ void throwsWithMsg(ThrownType : Throwable = Exception, E)(lazy E expression,
     }
     throw new Error("throwsWithMsg failed because expression did not throw", file, line);
 }
+
 ///
 unittest
 {
@@ -378,6 +378,7 @@ unittest
     {
         assert(false, "boom!");
     }
+
     throwError().throwsWithMsg!Error("boom!");
 
     // throwsWithMsg throws an Error if the message is wrong
@@ -386,7 +387,7 @@ unittest
         ~ "  Actual message  : boom!\n"
         ~ "  Expected message: kaboom");
 
-    // throwsWithMsg also throws an Error if the wrong Throwable type is given
+    // throwsWithMsg throws an Error if the wrong Throwable type is given
     throwError().throwsWithMsg("boom!").throwsWithMsg!Error(        
         "throwsWithMsg failed with wrong throwable type.\n"
         ~ "  Actual type  : core.exception.AssertError\n"
@@ -394,6 +395,7 @@ unittest
 
     static void doesNotThrow(){}
 
+    // throwsWithMsg throws an Error if the expression does not throw
     doesNotThrow.throwsWithMsg("nope").throwsWithMsg!Error(
         "throwsWithMsg failed because expression did not throw");
 }
@@ -403,11 +405,9 @@ Returns all sequences of length `length` which contain `numOnes` ones and all
 other elements zero. Sequences given in increasing dictionary order. (This is 
 the same as saying the corresponding binary numbers are in increasing order.)
 */
-auto binarySequences(ulong length, ulong numOnes)
+auto binarySequences(size_t length, size_t numOnes)
 {
-    assert(length >= 0);
-    assert(numOnes >= 0);
-    assert(length >= numOnes);
+    assert(numOnes <= length, "the number of ones must be at most the length");
 
     if (numOnes == length)
     {
@@ -447,6 +447,12 @@ auto binarySequences(ulong length, ulong numOnes)
     assert(binarySequences(50, 0).length == 1);
     assert(binarySequences(50, 1).length == 50);
     assert(binarySequences(50, 2).length == (50 * 49) / 2);
+}
+
+///
+@Name("binarySequences (errors)") pure @system unittest
+{
+    binarySequences(5,6).throwsWithMsg!Error("the number of ones must be at most the length");
 }
 
 /*******************************************************************************
