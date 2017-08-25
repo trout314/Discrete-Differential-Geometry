@@ -105,11 +105,14 @@ public:
         ~ "dimension " ~ dimension.to!string);
 
     /// We can initialize the manifold from a range of ranges of vertices
-    this(F)(F initialFacets)
+    this(F)(F initialFacets) if (isInputRange!F)
     {
         // TO DO: Put some nice constraints on F
-
-        initialFacets.each!(f => simpComp_.insertFacet(f));
+        foreach(f; initialFacets)
+        {
+            simpComp_.insertFacet(f);
+        }
+        // initialFacets.each!(f => simpComp_.insertFacet(f));
 
         assert(this.isPureOfDim(dimension),
             "not all facets have the correct dimension");

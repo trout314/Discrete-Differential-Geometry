@@ -994,3 +994,80 @@ auto capture(Range, Data...)(Range range, Data data) if (isInputRange!Range)
 
     // TO DO: More tests! This function will probably get lots of use!
 }
+
+/*******************************************************************************
+*/
+struct StackArray(T, size_t maxLength)
+{
+private:
+    T[maxLength] data;
+    size_t currentLength;
+public:
+    auto length() const
+    {
+        return currentLength;
+    }
+
+    auto length(size_t newLength)
+    {
+        assert(newLength <= maxLength, "new length must be at most max length");
+
+        if(newLength < currentLength)
+        {
+            data[newLength .. currentLength] = T.init;
+        }
+
+        currentLength = newLength;      
+    }
+
+    @disable void opBinary(string op : "~")(T){}
+    @disable void opBinary(string op : "~")(T[]){}
+
+    T opOpAssign(string op : "~")(T itemToConcatenate)
+    {
+        ++currentLength;
+        length = currentLength;
+        return data[currentLength - 1] = itemToConcatenate;
+    }
+
+    T[] opOpAssign(string op : "~")(T[] sliceToConcatenate)
+    {
+        auto start = currentLength;
+        currentLength += sliceToConcatenate.length;
+        return data[start .. currentLength] = sliceToConcatenate[];
+    }
+
+    void clear()
+    {
+        length = 0;
+    }
+
+    inout(T)[] opSlice() inout
+    {
+        return data[0 .. currentLength];
+    }
+
+    ref inout(T) opIndex(size_t indx) inout
+    {
+        return data[indx];
+    }
+
+    alias opSlice this;
+}
+///
+
+@Name("StackArray") @nogc unittest
+{
+    int[2] toAppend = [4,5];
+
+    auto a = StackArray!(int, 5)();
+    a ~= 3;
+    assert(a.length == 1);
+    a ~= toAppend[];
+    assert(a.length == 3);
+
+    assert(a[0] == 3);
+    assert(a[1] == 4);
+    assert(a[2] == 5);
+    a.length = 5;
+}

@@ -1,15 +1,14 @@
 import algorithms : connectedComponents, eulerCharacteristic,
-    isCircle, isConnected, isOrientableSurfaceOfGenus, isPureOfDim, join;
+    isCircle, isConnected,  isPureOfDim, join;
 import fluent.asserts : should;
 import std.algorithm : all, any, canFind, chunkBy, copy, countUntil, each,
     equal, filter, find, findAdjacent, isSorted, joiner, map, maxElement,
     setDifference, sort, sum, uniq;
 import std.conv : to;
 import std.range : array, chunks, ElementType, empty, enumerate, front, iota,
-    isInputRange, popFront, refRange, walkLength, zip;
-import std.typecons : Tuple, tuple;
+    isInputRange, popFront, refRange, save, walkLength, zip;
 import unit_threaded : Name;
-import utility : capture, isSubsetOf, SmallMap, staticIota, subsets,
+import utility : capture, isSubsetOf, SmallMap, StackArray, staticIota, subsets,
     subsetsOfSize, throwsWithMsg;
 
 /// Basic Functionality
@@ -253,27 +252,30 @@ public:
     Inserts a facet (given as an input range of vertices) into the simplicial
     complex.
     */
-    void insertFacet(V)(V vertices) if (isInputRange!V)
+    void insertFacet(V)(V vertices) @trusted if (isInputRange!V)
     {
         // TO DO: Improve this! Why does this allocate a closure?
-        auto vertices_ = vertices.array;
+        StackArray!(Vertex, 16) vertices_;
+        vertices.each!(v => vertices_ ~= v);
 
-        int dim = vertices_.walkLength.to!int - 1;
+        int dim = vertices_[].walkLength.to!int - 1;
         assert(dim >= 0);
-        vertices_.assertValidSimplex(dim);
+        vertices_[].assertValidSimplex(dim);
 
         assert(!this.contains(vertices),
             "expected a simplex not already in the simplicial complex");
 
         // First we remove any existing facets which are faces of inserted facet
-        // TO DO: Create rawInsertFacet that skips this?
-        vertices_.subsets
-            .filter!(vSet => this.facets.canFind(vSet.array))
-            .each!(vSet => this.removeFacet(vSet.array));
+        
+        /* TO DO: Create rawInsertFacet that skips this? NOTE: This is what
+        is responsible for function allocating a closure! */
+        auto toRemove = vertices_[].subsets.filter!(
+            s => this.facets.canFind(s.array)).map!array.array;
+        toRemove.each!(s => this.removeFacet(s));
 
         if (dim in facetVertices)
         {
-            facetVertices[dim] ~= vertices_.dup;            
+            facetVertices[dim] ~= vertices_;            
         }
         else
         {
