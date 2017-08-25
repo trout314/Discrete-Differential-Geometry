@@ -845,10 +845,11 @@ auto subsets(R)(R set) if (isInputRange!R)
 
     static struct SubsetsRange
     {
+    private:
         R set_;
         uint whichToKeep;
         bool empty_;
-
+    public:
         auto front()
         {
             assert(!empty);
