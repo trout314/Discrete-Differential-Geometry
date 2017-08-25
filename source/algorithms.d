@@ -486,8 +486,7 @@ bool isPureOfDim(Vertex)(const ref SimplicialComplex!Vertex sc, int d)
     sc.insertFacet([4,5,6]);
     assert(iota(10).all!(d => !sc.isPureOfDim(d)));
     
-    throwsWithMsg!Error(sc.isPureOfDim(-2),
-        "expected a non-negative dimension");
+    sc.isPureOfDim(-2).throwsWithMsg("expected a non-negative dimension");
     
     auto emptyComplex = SimplicialComplex!()();
     assert(iota(16).all!(d => emptyComplex.isPureOfDim(d)));

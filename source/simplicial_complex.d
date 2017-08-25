@@ -98,21 +98,21 @@ import utility : capture, isSubsetOf, SmallMap, StackArray, staticIota, subsets,
     auto sc = simplicialComplex([[4,5], [5,6], [1,2,3], [2,3,4]]);
 
     // cannot insert a simplex if it is already the face of an existing facet
-    sc.insertFacet([4,5]).throwsWithMsg!Error(
+    sc.insertFacet([4,5]).throwsWithMsg(
         "expected a simplex not already in the simplicial complex");
 
-    sc.insertFacet([2]).throwsWithMsg!Error(
+    sc.insertFacet([2]).throwsWithMsg(
         "expected a simplex not already in the simplicial complex");
 
     // cannot remove a facet that isn't part of the simplicial complex
-    simplicialComplex([[3,4]]).removeFacet([2,3]).throwsWithMsg!Error(
+    simplicialComplex([[3,4]]).removeFacet([2,3]).throwsWithMsg(
         "tried to remove a facet not in the simplicial complex");
 
     // not allowed to ask for link of a simplex not in the simplicial complex
-    simplicialComplex([[1,3,4], [2,3,4]]).link([1,2]).throwsWithMsg!Error(
+    simplicialComplex([[1,3,4], [2,3,4]]).link([1,2]).throwsWithMsg(
         "expected a simplex in the simplicial complex");
 
-    sc.facets(-1).throwsWithMsg!Error("expected a non-negative dimension");
+    sc.facets(-1).throwsWithMsg("expected a non-negative dimension");
 }
 
 @Name("additional tests") @system unittest

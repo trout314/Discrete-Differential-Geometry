@@ -334,7 +334,7 @@ Params:
         `AssertError` if the given `Throwable` with message `msg` is
         not thrown.
 */
-void throwsWithMsg(ThrownType : Throwable = Exception, E)(lazy E expression,
+void throwsWithMsg(ThrownType : Throwable = Error, E)(lazy E expression,
         string msg = null, string file = __FILE__, size_t line = __LINE__)
 {
     try
@@ -369,26 +369,24 @@ unittest
     {
         enforce(false, "kapow!");
     }
+    throwException().throwsWithMsg!Exception("kapow!");
 
-    // The default type of throwable to catch is an Exception
-    throwException().throwsWithMsg("kapow!");
-
-    // We can also catch Errors. TO DO: Is this OK for testing purposes?
+    // TO DO: Is catching an Error OK for testing purposes?
     static void throwError()
     {
         assert(false, "boom!");
     }
 
-    throwError().throwsWithMsg!Error("boom!");
+    throwError().throwsWithMsg("boom!");
 
     // throwsWithMsg throws an Error if the message is wrong
-    throwError().throwsWithMsg!Error("kaboom").throwsWithMsg!Error(
+    throwError().throwsWithMsg("kaboom").throwsWithMsg(
         "throwsWithMsg failed with wrong message.\n"
         ~ "  Actual message  : boom!\n"
         ~ "  Expected message: kaboom");
 
     // throwsWithMsg throws an Error if the wrong Throwable type is given
-    throwError().throwsWithMsg("boom!").throwsWithMsg!Error(        
+    throwError().throwsWithMsg!Exception("boom!").throwsWithMsg(        
         "throwsWithMsg failed with wrong throwable type.\n"
         ~ "  Actual type  : core.exception.AssertError\n"
         ~ "  Expected type: Exception");
@@ -396,7 +394,7 @@ unittest
     static void doesNotThrow(){}
 
     // throwsWithMsg throws an Error if the expression does not throw
-    doesNotThrow.throwsWithMsg("nope").throwsWithMsg!Error(
+    doesNotThrow().throwsWithMsg("nope").throwsWithMsg(
         "throwsWithMsg failed because expression did not throw");
 }
 
@@ -452,7 +450,7 @@ auto binarySequences(size_t length, size_t numOnes)
 ///
 @Name("binarySequences (errors)") pure @system unittest
 {
-    binarySequences(5,6).throwsWithMsg!Error("the number of ones must be at most the length");
+    binarySequences(5,6).throwsWithMsg("the number of ones must be at most the length");
 }
 
 /*******************************************************************************
@@ -533,7 +531,7 @@ public:
 {
     SmallMap!(int, string) sm;
     sm.insert(5, "hello");
-    sm.insert(5, "nope").throwsWithMsg!Error("key already present");
+    sm.insert(5, "nope").throwsWithMsg("key already present");
 }
 
 ///
@@ -625,7 +623,7 @@ bool hasOneAtBit(uint x, size_t pos) pure nothrow @nogc @safe
 @Name("hasOneAtBit (errors)") pure @system unittest
 {
     // An error is thrown if the bit position is outside the uint
-    7.hasOneAtBit(32).throwsWithMsg!Error("bad bit position");
+    7.hasOneAtBit(32).throwsWithMsg("bad bit position");
 }
 
 auto subsetFromUint(R)(R set, uint whichToKeep) if (isInputRange!R)
@@ -698,7 +696,7 @@ auto subsetFromUint(R)(R set, uint whichToKeep) if (isInputRange!R)
 ///
 @Name("subsetsFromUint (errors)") pure nothrow @system unittest
 {
-    [3, 4, 5].subsetFromUint(1 << 3).throwsWithMsg!Error(
+    [3, 4, 5].subsetFromUint(1 << 3).throwsWithMsg(
             "1 bits found in positions not corresponsing to elements in set");
 }
 
@@ -841,9 +839,9 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
 ///
 @Name("subsetsOfSize (errors)") pure nothrow @system unittest
 {
-    [1,2].subsetsOfSize(-1).throwsWithMsg!Error("subset size must be positive");
-    3.iota.subsetsOfSize(4).throwsWithMsg!Error("subset size must be at most the size of the set");
-    40.iota.subsetsOfSize(32).throwsWithMsg!Error("subset size must be at most 31");
+    [1,2].subsetsOfSize(-1).throwsWithMsg("subset size must be positive");
+    3.iota.subsetsOfSize(4).throwsWithMsg("subset size must be at most the size of the set");
+    40.iota.subsetsOfSize(32).throwsWithMsg("subset size must be at most 31");
 }
 
 ///
