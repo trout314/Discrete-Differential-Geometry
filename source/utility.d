@@ -1,6 +1,6 @@
 import core.bitop : popcnt;
 import fluent.asserts;
-import std.algorithm : all, canFind, each, filter, find, joiner,
+import std.algorithm : all, canFind, copy, each, filter, find, joiner,
     map, sort, sum;
 import std.conv : to;
 import std.format : format;
@@ -527,7 +527,7 @@ private:
 /*******************************************************************************
 Returns true if set A is contained in set B
 */
-auto isSubsetOf(A, B)(A setA, B setB)
+bool isSubsetOf(A, B)(A setA, B setB)
 if (isInputRange!A && isInputRange!B && is(ElementType!A : ElementType!B))
 {
     return setA.all!(element => setB.canFind(element));        
@@ -546,6 +546,18 @@ if (isInputRange!A && isInputRange!B && is(ElementType!A : ElementType!B))
     work since [] has type void[] */
     static assert(!__traits(compiles, [].isSubsetOf([6, 8])));
 }
+///
+@Name("isSubsetOf (pure nothrow @nogc @safe)") pure nothrow @safe unittest
+{
+    assert([1,2,3].isSubsetOf([1,2,3,4]));
+    assert(2.iota.isSubsetOf(8.iota));
+
+    () pure nothrow @nogc @safe {
+        assert(iota(3,7).isSubsetOf(iota(10)));
+    }();
+}
+
+
 /*******************************************************************************
 Returns true if the uint `x` has a 1 at position `pos` and 0 otherwise (where
 position 0 is the lesat significant bit and position 31 the highest.)
@@ -650,8 +662,6 @@ auto subsetFromUint(R)(R set, uint whichToKeep) if (isInputRange!R)
 {
     [3,4,5].subsetFromUint(1 << 3).throwsWithMsg!Error(
         "1 bits found in positions not corresponsing to elements in set");
-
-    // TO DO: More tests
 }
 
 ///
@@ -680,11 +690,12 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
 
     static struct SubsetsOfSizeRange
     {
+    private:
         /* We will think of the bits in whichToKeep as indexed starting with
         zero for the least significant bit. Highest bit is empty flag. */
         uint whichToKeep;
         R set_;            // Underlying set from which to draw elements
-
+    public:
         auto front()
         {
             assert(!this.empty);
@@ -714,8 +725,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
                 {
                     --currentPos;
                 }
-                assert(currentPos > 0);
-                assert(currentPos < len);
+                assert(currentPos > 0 && currentPos < len);
                 assert(!whichToKeep.hasOneAtBit(currentPos));
 
                 immutable numOnesSeen = len - currentPos - 1;
@@ -725,8 +735,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
                 {
                     --currentPos;
                 }
-                assert(currentPos >= 0);
-                assert(currentPos < len);
+                assert(currentPos >= 0 && currentPos < len);
                 assert(whichToKeep.hasOneAtBit(currentPos));
 
                 whichToKeep &= ~(1 << currentPos);
@@ -746,8 +755,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
                 {
                     --currentPos;
                 }
-                assert(currentPos >= 0);
-                assert(currentPos < len);
+                assert(currentPos >= 0 && currentPos < len);
                 assert(whichToKeep.hasOneAtBit(currentPos));
 
                 whichToKeep &= ~(1 << currentPos);
@@ -797,27 +805,37 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
 }
 
 ///
-@Name("subsetsOfSize (pure nothrow @nogc @safe)") pure nothrow @nogc @safe unittest
+@Name("subsetsOfSize (pure nothrow @nogc @safe)") pure nothrow @safe unittest
 {
-    // TO DO: Improve this test! Ugly...
+    int[4] set = [1,2,3,4];
+    int[2][6] expectedSubsets = [[1,2], [1,3], [1,4], [2,3], [2,4], [3,4]];
+    int[2][6] actualSubsets;
 
-    int[4] s = [1,2,3,4];
+    () pure nothrow @nogc @safe {
+        auto subsetsRange = set[].subsetsOfSize(2);
+        auto saved = subsetsRange.save;
 
-    auto r = s[].subsetsOfSize(2);
-    assert(r.front.front == 1);
-    assert(!r.empty);
-    r.popFront;
-    r.popFront;
-    r.popFront;
-    assert(r.front.front == 2);
-    auto r1 = r.save;
-    r.popFront;
-    r.popFront;
-    assert(r.front.front == 3);
-    assert(r1.front.front == 2);
+        foreach(indx; 0 .. 6)
+        {
+            copy(subsetsRange.front, actualSubsets[indx][]);
+            subsetsRange.popFront;
+        }
+        assert(subsetsRange.empty);
+        assert(!saved.empty);
 
-    assert(iota(31).subsetsOfSize(1).walkLength == 31);
-    assert(iota(10).subsetsOfSize(2).walkLength == 45);
+        // Don't want to test the specific order, so sort
+        actualSubsets[].sort();
+
+        foreach(indx; 0 .. 6)
+        {
+            assert(actualSubsets[indx] == expectedSubsets[indx]);
+        }
+
+        // Some additional tests
+        assert(31.iota.subsetsOfSize(1).walkLength == 31);
+        assert(31.iota.subsetsOfSize(31).walkLength == 1);
+        assert(10.iota.subsetsOfSize(2).walkLength == 45);
+    }();
 }
 
 auto subsets(R)(R set) if (isForwardRange!R)

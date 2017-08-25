@@ -93,7 +93,8 @@ Manifold type... TO DO: More info here
 struct Manifold(int dimension_, Vertex_ = int)
 {
 private:
-    SimplicialComplex!Vertex simpComp_;
+    SimplicialComplex!Vertex simpComp;
+    size_t[dimension_ + 1] numSimplices;
 public:
     /// Dimension of the manifold
     static immutable dimension = dimension_;
@@ -110,9 +111,9 @@ public:
         // TO DO: Put some nice constraints on F
         foreach(f; initialFacets)
         {
-            simpComp_.insertFacet(f);
+            simpComp.insertFacet(f);
         }
-        // initialFacets.each!(f => simpComp_.insertFacet(f));
+        // initialFacets.each!(f => simpComp.insertFacet(f));
 
         assert(this.isPureOfDim(dimension),
             "not all facets have the correct dimension");
@@ -154,7 +155,7 @@ public:
     /// We provide access to the manifold as a simplicial complex
     ref const(SimplicialComplex!Vertex) asSimplicialComplex() const
     {
-        return simpComp_; 
+        return simpComp; 
     }
 
     alias asSimplicialComplex this;
@@ -402,7 +403,7 @@ private void doPachnerImpl(Vertex, int dim)(
     /* Need to ensure independent copies of the facets in the star since once a
     facet is removed, the range returned by star(center) becomes invalid! */   
     immutable toRemove = manifold.star(center).map!(f => f.dup).array;
-    toRemove.each!(f => manifold.simpComp_.removeFacet(f));
+    toRemove.each!(f => manifold.simpComp.removeFacet(f));
 
     alias SComp = SimplicialComplex!Vertex;
     immutable cDim = center.walkLength.to!int - 1;
@@ -412,7 +413,7 @@ private void doPachnerImpl(Vertex, int dim)(
         : join(SComp(center.subsetsOfSize(cDim)), SComp([coCenter]));
 
     assert(newPiece.isPureOfDim(manifold.dimension));
-    newPiece.facets.each!(f => manifold.simpComp_.insertFacet(f));
+    newPiece.facets.each!(f => manifold.simpComp.insertFacet(f));
 
     // TO DO: Do sanity checking for manifold
 }
