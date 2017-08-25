@@ -1,12 +1,14 @@
 import core.bitop : popcnt;
 import fluent.asserts;
-import std.algorithm : all, canFind, copy, each, filter, find, joiner,
-    map, sort, sum;
+import std.algorithm : all, canFind, copy, each, filter, find, joiner, map,
+    sort, sum;
 import std.conv : to;
+import std.exception : enforce;
 import std.format : format;
 import std.meta : AliasSeq, allSatisfy, anySatisfy;
 import std.range : array, chain, drop, ElementType, empty, enumerate, front,
-    iota, isForwardRange, isInputRange, popFront, repeat, save, take, walkLength;
+    iota, isForwardRange, isInputRange, popFront, repeat, save, take,
+    walkLength;
 import std.traits : lvalueOf, rvalueOf;
 import unit_threaded : Name;
 
@@ -25,7 +27,7 @@ template isLessThanComparable(T)
     }
     else
     {
-        enum isLessThanComparable = is(typeof({bool b = T.init < T.init; }));
+        enum isLessThanComparable = is(typeof({ bool b = T.init < T.init; }));
     }
 }
 
@@ -33,11 +35,11 @@ template isLessThanComparable(T)
 @Name("isLessThanComparable (basic types)")
 @safe pure nothrow @nogc unittest
 {
-    alias ComparableTypes = AliasSeq!(bool, byte, ubyte, short, ushort, int, 
-        uint, long, ulong, float, double, real, ifloat, idouble, ireal, char,
-        wchar, dchar, int*, void*);
+    alias ComparableTypes = AliasSeq!(bool, byte, ubyte, short, ushort, int,
+            uint, long, ulong, float, double, real, ifloat, idouble, ireal,
+            char, wchar, dchar, int*, void*);
     static assert(allSatisfy!(isLessThanComparable, ComparableTypes));
-    
+
     alias NonComparableTypes = AliasSeq!(cfloat, cdouble, creal, void);
     static assert(!anySatisfy!(isLessThanComparable, NonComparableTypes));
 }
@@ -47,6 +49,7 @@ template isLessThanComparable(T)
 @safe pure nothrow @nogc unittest
 {
     struct A {}
+
     static assert(!isLessThanComparable!A);
 
     /* The "auto ref" template here allows us to have a single function that
@@ -60,6 +63,7 @@ template isLessThanComparable(T)
             return 0; // b1 <= b2 and b2 <= b1 for all objects b1, b2
         }
     }
+
     static assert(isLessThanComparable!B);
 
     /* Making opCmp a normal non-template function taking the struct to compare
@@ -71,6 +75,7 @@ template isLessThanComparable(T)
             return 0;
         }
     }
+
     static assert(isLessThanComparable!C);
 
     /* Making opCmp a normal non-template function taking the strut to compare
@@ -82,11 +87,13 @@ template isLessThanComparable(T)
             return 0;
         }
     }
+
     static assert(!isLessThanComparable!D);
 
     // Check that rvalues and lvalues work for types B, C
     import std.meta : AliasSeq;
-    foreach(T; AliasSeq!(B, C))
+
+    foreach (T; AliasSeq!(B, C))
     {
         T lvalue;
         assert(lvalue <= lvalue);
@@ -102,7 +109,7 @@ template isLessThanComparable(T)
 
     /* TO DO: Find out why lvalueOf and rvalueOf don't seem to work
     correctly on A, B, C, D above. Bug? */
-    foreach(T; AliasSeq!(A, B, C, D))
+    foreach (T; AliasSeq!(A, B, C, D))
     {
         static assert(!__traits(compiles, lvalueOf!T <= lvalueOf!T));
         static assert(!__traits(compiles, rvalueOf!T <= rvalueOf!T));
@@ -114,6 +121,7 @@ template isLessThanComparable(T)
 @safe pure nothrow @nogc unittest
 {
     class A {}
+
     static assert(!isLessThanComparable!A);
 
     class B
@@ -123,6 +131,7 @@ template isLessThanComparable(T)
             return 0;
         }
     }
+
     static assert(isLessThanComparable!B);
 }
 
@@ -132,7 +141,7 @@ and make sure it works as advertised!
 */
 template isPrintable(T)
 {
-    static if(is(Vertex == class))
+    static if (is(Vertex == class))
     {
         enum isPrintable = __traits(isOverrideFunction, T.toString);
     }
@@ -158,9 +167,7 @@ template isEqualityComparable(T)
     }
     else
     {
-        enum isEqualityComparable = is(typeof({
-            bool b = T.init == T.init;   
-        }));
+        enum isEqualityComparable = is(typeof({ bool b = T.init == T.init; }));
     }
 }
 
@@ -170,23 +177,23 @@ pure nothrow @nogc @safe unittest
 {
     import std.meta : AliasSeq, allSatisfy, anySatisfy;
 
-    alias ComparableTypes = AliasSeq!(bool, byte, ubyte, short, ushort, int, 
-        uint, long, ulong, float, double, real, ifloat, idouble, ireal, char,
-        wchar, dchar, cfloat, cdouble, creal,  int*, void*);
-    static assert(allSatisfy!(isEqualityComparable, ComparableTypes));    
+    alias ComparableTypes = AliasSeq!(bool, byte, ubyte, short, ushort, int,
+            uint, long, ulong, float, double, real, ifloat, idouble, ireal,
+            char, wchar, dchar, cfloat, cdouble, creal, int*, void*);
+    static assert(allSatisfy!(isEqualityComparable, ComparableTypes));
 }
 
 /// Struct Tests
 @Name("isEqualityComparable (structs)")
 pure nothrow @nogc @safe unittest
 {
-    struct A 
+    struct A
     {
         @disable bool opEquals()(auto ref const A rhs);
     }
 
     static assert(!isEqualityComparable!A);
- 
+
     struct B
     {
         bool opEquals()(auto ref const B rhs) const
@@ -194,7 +201,7 @@ pure nothrow @nogc @safe unittest
             return true;
         }
     }
-    
+
     static assert(isEqualityComparable!B);
 
     struct C
@@ -204,6 +211,7 @@ pure nothrow @nogc @safe unittest
             return true;
         }
     }
+
     static assert(isEqualityComparable!C);
 
     struct D
@@ -213,11 +221,13 @@ pure nothrow @nogc @safe unittest
             return true;
         }
     }
+
     static assert(!isEqualityComparable!D);
-    
+
     // Check that rvalues and lvalues work for types B, C
     import std.meta : AliasSeq;
-    foreach(T; AliasSeq!(B, C))
+
+    foreach (T; AliasSeq!(B, C))
     {
         T lvalue;
         assert(lvalue == lvalue);
@@ -233,21 +243,24 @@ pure nothrow @nogc @safe unittest
 
     /* TO DO: Find out why lvalueOf and rvalueOf don't seem to work
     correctly on A, B, C, D above. Bug? */
-    foreach(T; AliasSeq!(A, B, C, D))
+    foreach (T; AliasSeq!(A, B, C, D))
     {
         import std.traits : lvalueOf, rvalueOf;
+
         static assert(!__traits(compiles, lvalueOf!T == lvalueOf!T));
         static assert(!__traits(compiles, rvalueOf!T == rvalueOf!T));
     }
 }
 
 /// Class tests
-@Name("isEqualityComparable (classes)")
-pure nothrow @nogc @safe unittest
+@Name("isEqualityComparable (classes)") pure nothrow @nogc @safe unittest
 {
-    class A {}
+    class A
+    {
+    }
+
     static assert(!isEqualityComparable!A);
- 
+
     class B
     {
         override bool opEquals(Object rhs) const
@@ -255,19 +268,18 @@ pure nothrow @nogc @safe unittest
             return true;
         }
     }
+
     static assert(isEqualityComparable!B);
 }
-
 
 /*******************************************************************************
 Checks if an instance of type S can be constructed from an instance of type T
 TO DO: Didn't see any phobos trait for this, ask about it on forums.
 TO DO: Make sure this actually works as advertised!
 */
-enum bool isConstructible(From, To) = is(From : To) ||
-is(typeof({
-    auto t = To(From());
-}));
+enum bool isConstructible(From, To) = is(From : To) || is(typeof({
+            auto t = To(From());
+        }));
 
 @Name("isConstructible")
 pure nothrow @nogc @safe unittest
@@ -283,20 +295,24 @@ pure nothrow @nogc @safe unittest
     static assert(isConstructible!(ushort, int));
     static assert(isConstructible!(short, int));
     static assert(isConstructible!(string, string));
-//    static assert(!isConstructible!(string, int));
+    static assert(!isConstructible!(string, int));
 
     struct A {}
+
     struct B {}
+
     static assert(!isConstructible!(A, B));
     static assert(isConstructible!(A, A));
 
-    struct C
+    static struct C
     {
         this(A a) {}
     }
-//    static assert(isConstructible!(A, C));
-    auto c = C(A());
 
+    /* Note, if we declare C as a non-static struct this assert fail. TO DO: Why
+    does this happen? Something to do with these structs being inside a unittest
+    and needing context pointers? */
+    static assert(isConstructible!(A, C));
 }
 
 /*******************************************************************************
@@ -317,42 +333,65 @@ Params:
     Throws:
         `AssertError` if the given `Throwable` with message `msg` is
         not thrown.
-*/  
-void throwsWithMsg(ThrownType : Throwable = Exception, E)
-                  (lazy E expression,
-                  string msg = null,
-                  string file = __FILE__,
-                  size_t line = __LINE__)
+*/
+void throwsWithMsg(ThrownType : Throwable = Exception, E)(lazy E expression,
+        string msg = null, string file = __FILE__, size_t line = __LINE__)
 {
     try
     {
         expression();
     }
-    catch(Throwable exception)
+    catch (Throwable exception)
     {
         auto thrown = cast(ThrownType) exception;
-        if(thrown is null)
+        if (thrown is null)
         {
-            throw new Error("throwsWithMsg failed with wrong throwable "
-                ~ "type.\n  Actual type  : " ~ typeid(exception).to!string 
-                ~ "\n  Expected type: " ~ ThrownType.stringof, file, line);
+            throw new Error("throwsWithMsg failed with wrong throwable " ~ "type.\n  Actual type  : " ~ typeid(exception)
+                    .to!string ~ "\n  Expected type: " ~ ThrownType.stringof, file, line);
         }
         else if (thrown.msg != msg)
         {
             throw new Error("throwsWithMsg failed with wrong message.\n"
-                ~ "  Actual message  : " ~ thrown.msg ~ "\n  Expected message: "
-                ~ msg, file, line);
+                    ~ "  Actual message  : " ~ thrown.msg ~ "\n  Expected message: " ~ msg,
+                    file, line);
         }
         else
         {
             return;
         }
     }
-    throw new Error("throwsWithMsg failed because expression did not throw",
-        file, line);
+    throw new Error("throwsWithMsg failed because expression did not throw", file, line);
 }
+///
+unittest
+{
+    static void throwException()
+    {
+        enforce(false, "kapow!");
+    }
 
-// TO DO: Tests for throwsWithMsg
+    // The default type of throwable to catch is an Exception
+    throwException().throwsWithMsg("kapow!");
+
+    // We can also catch Errors. TO DO: Is this OK for testing purposes?
+    static void throwError()
+    {
+        assert(false, "boom!");
+    }
+    throwError().throwsWithMsg!Error("boom!");
+
+    // throwsWithMsg throws an Error if the message is wrong
+    throwError().throwsWithMsg!Error("kaboom").throwsWithMsg!Error(
+        "throwsWithMsg failed with wrong message.\n"
+        ~ "  Actual message  : boom!\n"
+        ~ "  Expected message: kaboom");
+
+    // throwsWithMsg also throws an Error if the wrong Throwable type is given
+    throwError().throwsWithMsg("boom!").throwsWithMsg!Error(        
+        "throwsWithMsg failed with wrong throwable type.\n"
+        ~ "  Actual type  : core.exception.AssertError\n"
+        ~ "  Expected type: Exception");
+}
 
 /*******************************************************************************
 Returns all sequences of length `length` which contain `numOnes` ones and all 
@@ -365,32 +404,30 @@ auto binarySequences(ulong length, ulong numOnes)
     assert(numOnes >= 0);
     assert(length >= numOnes);
 
-    if(numOnes == length)
+    if (numOnes == length)
     {
         return [1.repeat(numOnes).array];
     }
 
-    if(numOnes == 0)
+    if (numOnes == 0)
     {
         return [0.repeat(length).array];
     }
 
-    return chain(
-        binarySequences(length - 1, numOnes    ).map!(seq => [0] ~ seq),
-        binarySequences(length - 1, numOnes - 1).map!(seq => [1] ~ seq)
-    ).array;
+    return chain(binarySequences(length - 1, numOnes).map!(seq => [0] ~ seq),
+            binarySequences(length - 1, numOnes - 1).map!(seq => [1] ~ seq)).array;
 }
 ///
 @Name("binarySequences") @safe pure unittest
 {
-    assert(binarySequences(3, 0) == [[0,0,0]]);
-    assert(binarySequences(3, 1) == [[0,0,1],[0,1,0],[1,0,0]]);
-    assert(binarySequences(3, 2) == [[0,1,1],[1,0,1],[1,1,0]]);
-    assert(binarySequences(3, 3) == [[1,1,1]]);
+    assert(binarySequences(3, 0) == [[0, 0, 0]]);
+    assert(binarySequences(3, 1) == [[0, 0, 1], [0, 1, 0], [1, 0, 0]]);
+    assert(binarySequences(3, 2) == [[0, 1, 1], [1, 0, 1], [1, 1, 0]]);
+    assert(binarySequences(3, 3) == [[1, 1, 1]]);
 
-    assert(binarySequences(4, 2) == [[0,0,1,1],[0,1,0,1],[0,1,1,0],
-                                     [1,0,0,1],[1,0,1,0],[1,1,0,0]]);
-                                     
+    assert(binarySequences(4, 2) == [[0, 0, 1, 1], [0, 1, 0, 1], [0, 1, 1, 0],
+            [1, 0, 0, 1], [1, 0, 1, 0], [1, 1, 0, 0]]);
+
     assert(binarySequences(0, 0) == [[]]);
 
     /* Careful! The number of such sequences is "length choose numOnes" which
@@ -458,6 +495,7 @@ struct SmallMap(KeyType, ValueType)
         assert(found.length > 0, "SmallMap access error");
         return found.front.value;
     }
+
 private:
     Record[] data;
 }
@@ -475,7 +513,6 @@ private:
     sm[2] = "bubba";
     assert(sm[2] == "bubba");
 
-
     assert(sm.keys.array == [2, 5]);
     assert(sm.values.array == ["bubba", "hello"]);
 }
@@ -490,56 +527,50 @@ private:
 
 ///
 @Name("SmallMap.keys (pure nothrow @nogc @safe)") pure @safe unittest
-{    
+{
     SmallMap!(int, string) sm;
     sm.insert(1, "hello");
     sm.insert(2, "goodbye");
 
-    () pure nothrow @nogc @safe {
-        assert(sm.keys.front == 1);
-    }();
+    () pure nothrow @nogc @safe{ assert(sm.keys.front == 1); }();
 }
 
 ///
 @Name("SmallMap.values (pure nothrow @nogc @safe)") pure @safe unittest
-{    
+{
     SmallMap!(int, string) sm;
     sm.insert(1, "hello");
     sm.insert(2, "goodbye");
 
-    () pure nothrow @nogc @safe {
-        assert(sm.values.front == "hello");
-    }();
+    () pure nothrow @nogc @safe{ assert(sm.values.front == "hello"); }();
 }
 
 ///
-@Name("SmallMap.opIndex (pure nothrow @nogc @safe)")  pure @safe unittest
-{    
+@Name("SmallMap.opIndex (pure nothrow @nogc @safe)") pure @safe unittest
+{
     SmallMap!(int, string) sm;
     sm.insert(1, "hello");
     sm.insert(2, "goodbye");
 
-    () pure nothrow @nogc @safe {
-        assert(sm[1] == "hello");
-    }();
+    () pure nothrow @nogc @safe{ assert(sm[1] == "hello"); }();
 }
 
 /*******************************************************************************
 Returns true if set A is contained in set B
 */
 bool isSubsetOf(A, B)(A setA, B setB)
-if (isInputRange!A && isInputRange!B && is(ElementType!A : ElementType!B))
+        if (isInputRange!A && isInputRange!B && is(ElementType!A : ElementType!B))
 {
-    return setA.all!(element => setB.canFind(element));        
+    return setA.all!(element => setB.canFind(element));
 }
 ///
 @Name("isSubsetOf") pure nothrow @safe unittest
 {
-    assert([1,3].isSubsetOf([1,3,4]));
-    assert(![2,3].isSubsetOf([1,3,4]));
+    assert([1, 3].isSubsetOf([1, 3, 4]));
+    assert(![2, 3].isSubsetOf([1, 3, 4]));
 
     int[] empty;
-    assert(empty.isSubsetOf([6,8]));
+    assert(empty.isSubsetOf([6, 8]));
     assert(empty.isSubsetOf(empty));
 
     /* Note that using an empty string literal in the above example will not
@@ -549,14 +580,11 @@ if (isInputRange!A && isInputRange!B && is(ElementType!A : ElementType!B))
 ///
 @Name("isSubsetOf (pure nothrow @nogc @safe)") pure nothrow @safe unittest
 {
-    assert([1,2,3].isSubsetOf([1,2,3,4]));
+    assert([1, 2, 3].isSubsetOf([1, 2, 3, 4]));
     assert(2.iota.isSubsetOf(8.iota));
 
-    () pure nothrow @nogc @safe {
-        assert(iota(3,7).isSubsetOf(iota(10)));
-    }();
+    () pure nothrow @nogc @safe{ assert(iota(3, 7).isSubsetOf(iota(10))); }();
 }
-
 
 /*******************************************************************************
 Returns true if the uint `x` has a 1 at position `pos` and 0 otherwise (where
@@ -565,13 +593,13 @@ position 0 is the lesat significant bit and position 31 the highest.)
 bool hasOneAtBit(uint x, size_t pos) pure nothrow @nogc @safe
 {
     assert(pos < uint.sizeof * 8, "bad bit position");
-    return  ((1 << pos) & x) > 0;
+    return ((1 << pos) & x) > 0;
 }
 ///
 @Name("hasOneAtBit") pure nothrow @nogc @safe unittest
 {
     assert(1.hasOneAtBit(0));
-    assert(iota(1,32).all!(pos => !1.hasOneAtBit(pos)));
+    assert(iota(1, 32).all!(pos => !1.hasOneAtBit(pos)));
 
     assert(iota(32).all!(pos => uint.max.hasOneAtBit(pos)));
 
@@ -579,7 +607,7 @@ bool hasOneAtBit(uint x, size_t pos) pure nothrow @nogc @safe
     assert(!12.hasOneAtBit(1));
     assert(12.hasOneAtBit(2));
     assert(12.hasOneAtBit(3));
-    assert(iota(4,32).all!(pos => !12.hasOneAtBit(pos)));
+    assert(iota(4, 32).all!(pos => !12.hasOneAtBit(pos)));
 }
 
 ///
@@ -592,7 +620,7 @@ bool hasOneAtBit(uint x, size_t pos) pure nothrow @nogc @safe
 auto subsetFromUint(R)(R set, uint whichToKeep) if (isInputRange!R)
 {
     assert(whichToKeep < (1 << set.walkLength),
-        "1 bits found in positions not corresponsing to elements in set");
+            "1 bits found in positions not corresponsing to elements in set");
 
     static struct SubsetFromUintRange
     {
@@ -602,7 +630,7 @@ auto subsetFromUint(R)(R set, uint whichToKeep) if (isInputRange!R)
         auto front()
         {
             assert(!set_.empty);
-            while(!whichToKeep_.hasOneAtBit(0))
+            while (!whichToKeep_.hasOneAtBit(0))
             {
                 set_.popFront;
                 whichToKeep_ >>= 1;
@@ -614,13 +642,12 @@ auto subsetFromUint(R)(R set, uint whichToKeep) if (isInputRange!R)
 
         auto popFront()
         {
-            assert(!set_.empty, 
-                "tried to popFront an empty SubsetFromUintRange");
+            assert(!set_.empty, "tried to popFront an empty SubsetFromUintRange");
 
             set_.popFront;
-            whichToKeep_ >>= 1;       
+            whichToKeep_ >>= 1;
 
-            while(!whichToKeep_.hasOneAtBit(0) && !empty)
+            while (!whichToKeep_.hasOneAtBit(0) && !empty)
             {
                 set_.popFront;
                 whichToKeep_ >>= 1;
@@ -633,7 +660,7 @@ auto subsetFromUint(R)(R set, uint whichToKeep) if (isInputRange!R)
             return whichToKeep_ == 0;
         }
 
-        static if(isForwardRange!R)
+        static if (isForwardRange!R)
         {
             auto save()
             {
@@ -647,28 +674,27 @@ auto subsetFromUint(R)(R set, uint whichToKeep) if (isInputRange!R)
 ///
 @Name("subsetsFromUint") pure nothrow @safe unittest
 {
-    assert([3,4,5].subsetFromUint(0).empty);
-    assert([3,4,5].subsetFromUint(1).array == [3]);
-    assert([3,4,5].subsetFromUint(2).array == [4]);
-    assert([3,4,5].subsetFromUint(3).array == [3,4]);
-    assert([3,4,5].subsetFromUint(4).array == [5]);
-    assert([3,4,5].subsetFromUint(5).array == [3,5]);
-    assert([3,4,5].subsetFromUint(6).array == [4,5]);
-    assert([3,4,5].subsetFromUint(7).array == [3,4,5]);
+    assert([3, 4, 5].subsetFromUint(0).empty);
+    assert([3, 4, 5].subsetFromUint(1).array == [3]);
+    assert([3, 4, 5].subsetFromUint(2).array == [4]);
+    assert([3, 4, 5].subsetFromUint(3).array == [3, 4]);
+    assert([3, 4, 5].subsetFromUint(4).array == [5]);
+    assert([3, 4, 5].subsetFromUint(5).array == [3, 5]);
+    assert([3, 4, 5].subsetFromUint(6).array == [4, 5]);
+    assert([3, 4, 5].subsetFromUint(7).array == [3, 4, 5]);
 }
 
 ///
 @Name("subsetsFromUint (errors)") pure nothrow @system unittest
 {
-    [3,4,5].subsetFromUint(1 << 3).throwsWithMsg!Error(
-        "1 bits found in positions not corresponsing to elements in set");
+    [3, 4, 5].subsetFromUint(1 << 3).throwsWithMsg!Error(
+            "1 bits found in positions not corresponsing to elements in set");
 }
 
 ///
-@Name("subsetsFromUint (pure nothrow @nogc @safe)") pure nothrow @nogc @safe
-unittest
+@Name("subsetsFromUint (pure nothrow @nogc @safe)") pure nothrow @nogc @safe unittest
 {
-    auto r = iota(1,5).subsetFromUint(7);
+    auto r = iota(1, 5).subsetFromUint(7);
     assert(r.front == 1);
     r.popFront;
     assert(r.front == 2);
@@ -694,7 +720,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
         /* We will think of the bits in whichToKeep as indexed starting with
         zero for the least significant bit. Highest bit is empty flag. */
         uint whichToKeep;
-        R set_;            // Underlying set from which to draw elements
+        R set_; // Underlying set from which to draw elements
     public:
         auto front()
         {
@@ -711,17 +737,17 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
             immutable uint lastToKeep = ((1 << subLen) - 1) << (len - subLen);
 
             // Check for impending emptiness
-            if(whichToKeep == lastToKeep)
+            if (whichToKeep == lastToKeep)
             {
                 whichToKeep = 1 << 31;
                 return;
             }
 
             auto currentPos = len - 1;
-            if(whichToKeep.hasOneAtBit(currentPos))
+            if (whichToKeep.hasOneAtBit(currentPos))
             {
                 // Skip over additional ones
-                while(whichToKeep.hasOneAtBit(currentPos))
+                while (whichToKeep.hasOneAtBit(currentPos))
                 {
                     --currentPos;
                 }
@@ -731,7 +757,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
                 immutable numOnesSeen = len - currentPos - 1;
 
                 // Find another one to move
-                while(!whichToKeep.hasOneAtBit(currentPos))
+                while (!whichToKeep.hasOneAtBit(currentPos))
                 {
                     --currentPos;
                 }
@@ -740,18 +766,17 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
 
                 whichToKeep &= ~(1 << currentPos);
 
-                iota(currentPos + 1, currentPos + 2 + numOnesSeen).
-                    each!(pos => whichToKeep |= (1 << pos));
-                
-                iota(currentPos + 2 + numOnesSeen, len).
-                    each!(pos => whichToKeep &= ~(1 << pos));  
+                iota(currentPos + 1, currentPos + 2 + numOnesSeen).each!(
+                        pos => whichToKeep |= (1 << pos));
+
+                iota(currentPos + 2 + numOnesSeen, len).each!(pos => whichToKeep &= ~(1 << pos));
             }
             else // Zero at current position
             {
                 assert(!whichToKeep.hasOneAtBit(currentPos));
 
                 // Find a one to move
-                while(!whichToKeep.hasOneAtBit(currentPos))
+                while (!whichToKeep.hasOneAtBit(currentPos))
                 {
                     --currentPos;
                 }
@@ -768,7 +793,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
             return whichToKeep.hasOneAtBit(31);
         }
 
-        static if(isForwardRange!R)
+        static if (isForwardRange!R)
         {
             auto save()
             {
@@ -780,25 +805,23 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
     return SubsetsOfSizeRange((1 << subsetSize) - 1, set);
 }
 ///
-@Name("subsetsOfSize") @system unittest 
+@Name("subsetsOfSize") @system unittest
 {
-    [1,2,3,4].subsetsOfSize(1).map!array.should.containOnly(
-        [[1], [2], [3], [4]]);
+    [1, 2, 3, 4].subsetsOfSize(1).map!array.should.containOnly([[1], [2], [3], [4]]);
 
-    [1,2,3,4].subsetsOfSize(2).map!array.should.containOnly(
-        [[1,2], [1,3], [1,4], [2,3], [2,4], [3,4]]);
+    [1, 2, 3, 4].subsetsOfSize(2).map!array.should.containOnly([[1, 2], [1, 3],
+            [1, 4], [2, 3], [2, 4], [3, 4]]);
 
-    [1,2,3,4].subsetsOfSize(3).map!array.should.containOnly(
-        [[1, 2, 3], [1, 2, 4], [1, 3, 4], [2, 3, 4]]);
-        
-    [1,2,3,4].subsetsOfSize(4).map!array.should.containOnly(
-        [[1, 2, 3, 4]]);
+    [1, 2, 3, 4].subsetsOfSize(3).map!array.should.containOnly([[1, 2, 3], [1,
+            2, 4], [1, 3, 4], [2, 3, 4]]);
+
+    [1, 2, 3, 4].subsetsOfSize(4).map!array.should.containOnly([[1, 2, 3, 4]]);
 
     [1].subsetsOfSize(1).map!array.should.containOnly([[1]]);
 
     3.iota.subsetsOfSize(1).map!array.should.containOnly([[0], [1], [2]]);
-    3.iota.subsetsOfSize(2).map!array.should.containOnly([[0,1], [0,2], [1,2]]);
-    3.iota.subsetsOfSize(3).map!array.should.containOnly([[0,1,2]]);
+    3.iota.subsetsOfSize(2).map!array.should.containOnly([[0, 1], [0, 2], [1, 2]]);
+    3.iota.subsetsOfSize(3).map!array.should.containOnly([[0, 1, 2]]);
 
     iota(31).subsetsOfSize(1).walkLength.should.equal(31);
     iota(10).subsetsOfSize(2).walkLength.should.equal(45);
@@ -807,15 +830,15 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
 ///
 @Name("subsetsOfSize (pure nothrow @nogc @safe)") pure nothrow @safe unittest
 {
-    int[4] set = [1,2,3,4];
-    int[2][6] expectedSubsets = [[1,2], [1,3], [1,4], [2,3], [2,4], [3,4]];
+    int[4] set = [1, 2, 3, 4];
+    int[2][6] expectedSubsets = [[1, 2], [1, 3], [1, 4], [2, 3], [2, 4], [3, 4]];
     int[2][6] actualSubsets;
 
-    () pure nothrow @nogc @safe {
+    () pure nothrow @nogc @safe{
         auto subsetsRange = set[].subsetsOfSize(2);
         auto saved = subsetsRange.save;
 
-        foreach(indx; 0 .. 6)
+        foreach (indx; 0 .. 6)
         {
             copy(subsetsRange.front, actualSubsets[indx][]);
             subsetsRange.popFront;
@@ -826,7 +849,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
         // Don't want to test the specific order, so sort
         actualSubsets[].sort();
 
-        foreach(indx; 0 .. 6)
+        foreach (indx; 0 .. 6)
         {
             assert(actualSubsets[indx] == expectedSubsets[indx]);
         }
@@ -867,7 +890,7 @@ auto subsets(R)(R set) if (isInputRange!R)
             return whichToKeep == 1 << set_.walkLength;
         }
 
-        static if(isForwardRange!R)
+        static if (isForwardRange!R)
         {
             auto save()
             {
@@ -881,18 +904,12 @@ auto subsets(R)(R set) if (isInputRange!R)
 ///
 @Name("subsets") @system unittest
 {
-    [1,2,3].subsets.map!array.should.containOnly([
-        [1], [2], [3],
-        [1, 2], [1, 3], [2, 3],
-        [1, 2, 3]
-    ]);
+    [1, 2, 3].subsets.map!array.should.containOnly([[1], [2], [3], [1, 2],
+            [1, 3], [2, 3], [1, 2, 3]]);
 
-    iota(1,5).subsets.map!array.should.containOnly([
-        [1], [2], [3], [4],
-        [1,2], [1,3], [1,4], [2,3], [2,4], [3,4],
-        [1,2,3], [1,2,4], [1,3,4], [2,3,4],
-        [1,2,3,4]
-    ]);
+    iota(1, 5).subsets.map!array.should.containOnly([[1], [2], [3], [4], [1,
+            2], [1, 3], [1, 4], [2, 3], [2, 4], [3, 4], [1, 2, 3], [1, 2, 4],
+            [1, 3, 4], [2, 3, 4], [1, 2, 3, 4]]);
 
     int[] emptySet;
     assert(emptySet.subsets.empty);
@@ -904,9 +921,9 @@ auto subsets(R)(R set) if (isInputRange!R)
 {
     auto subsetRange = 3.iota.subsets;
     auto saved = subsetRange.save;
-    assert(subsetRange.front.front == 0);    
+    assert(subsetRange.front.front == 0);
     subsetRange.popFront;
-    assert(subsetRange.front.front == 1);    
+    assert(subsetRange.front.front == 1);
     assert(saved.front.front == 0);
     assert(!subsetRange.empty);
 
@@ -932,8 +949,7 @@ template staticIota(int begin, int end)
     else
     {
         enum middle = begin + (end - begin) / 2;
-        alias staticIota = AliasSeq!(
-            staticIota!(begin, middle), staticIota!(middle, end));
+        alias staticIota = AliasSeq!(staticIota!(begin, middle), staticIota!(middle, end));
     }
 }
 ///
@@ -945,7 +961,7 @@ template staticIota(int begin, int end)
     static assert(seq[2] == 5);
 
     alias seq2 = staticIota!(1, 5);
-    alias func = (a,b,c,d) => a+b+c+d;
+    alias func = (a, b, c, d) => a + b + c + d;
     static assert(func(seq2) == 10);
 }
 
@@ -953,11 +969,10 @@ template staticIota(int begin, int end)
 */
 auto capture(Range, Data...)(Range range, Data data) if (isInputRange!Range)
 {
-    alias dataDeclarations = (len) => len.iota.map!(
-        indx => "Data[%s] d%s;".format(indx, indx)).joiner("\n").array;
+    alias dataDeclarations = (len) => len.iota.map!(indx => "Data[%s] d%s;".format(indx,
+            indx)).joiner("\n").array;
 
-    alias dataArgs = (len) => len.iota.map!(
-        indx => "d%s".format(indx)).joiner(",").array;
+    alias dataArgs = (len) => len.iota.map!(indx => "d%s".format(indx)).joiner(",").array;
 
     static struct CaptureRange
     {
@@ -973,8 +988,7 @@ auto capture(Range, Data...)(Range range, Data data) if (isInputRange!Range)
                 mixin(dataDeclarations(data.length));
             }
 
-            mixin("return CaptureFront(range_.front, " 
-                ~ dataArgs(data.length) ~ ");");
+            mixin("return CaptureFront(range_.front, " ~ dataArgs(data.length) ~ ");");
         }
 
         auto popFront()
@@ -987,12 +1001,11 @@ auto capture(Range, Data...)(Range range, Data data) if (isInputRange!Range)
             return range_.empty;
         }
 
-        static if(isForwardRange!Range)
+        static if (isForwardRange!Range)
         {
             auto save()
             {
-                mixin("return CaptureRange(range_, " 
-                    ~ dataArgs(data.length) ~ ");");
+                mixin("return CaptureRange(range_, " ~ dataArgs(data.length) ~ ");");
             }
         }
 
@@ -1035,15 +1048,16 @@ public:
     {
         assert(newLength <= maxLength, "new length must be at most max length");
 
-        if(newLength < currentLength)
+        if (newLength < currentLength)
         {
             data[newLength .. currentLength] = T.init;
         }
 
-        currentLength = newLength;      
+        currentLength = newLength;
     }
 
     @disable void opBinary(string op : "~")(T){}
+
     @disable void opBinary(string op : "~")(T[]){}
 
     T opOpAssign(string op : "~")(T itemToConcatenate)
@@ -1081,7 +1095,7 @@ public:
 
 @Name("StackArray") @nogc unittest
 {
-    int[2] toAppend = [4,5];
+    int[2] toAppend = [4, 5];
 
     auto a = StackArray!(int, 5)();
     a ~= 3;
