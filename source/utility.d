@@ -828,6 +828,14 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
 }
 
 ///
+@Name("subsetsOfSize (errors)") pure nothrow @system unittest
+{
+    [1,2].subsetsOfSize(-1).throwsWithMsg!Error("subset size must be positive");
+    3.iota.subsetsOfSize(4).throwsWithMsg!Error("subset size must be at most the size of the set");
+    40.iota.subsetsOfSize(32).throwsWithMsg!Error("subset size must be at most 31");
+}
+
+///
 @Name("subsetsOfSize (pure nothrow @nogc @safe)") pure nothrow @safe unittest
 {
     int[4] set = [1, 2, 3, 4];
