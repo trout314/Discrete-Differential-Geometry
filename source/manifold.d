@@ -455,6 +455,149 @@ auto standardSphereFacets(int dim)
     }
 }
 
+///
+@Name("facets(dim) (pure nothrow @nogc @safe)") @system unittest
+{
+    auto sc = Manifold!1([[0,1],[0,2],[1,2]]);
+    int[2] edge01 = [0,1];
+    int[2] edge02 = [0,2];
+    int[2] edge12 = [1,2];
+
+    () pure nothrow @nogc @safe {
+        auto facetsRange = sc.facets(1);
+        auto savedRange = facetsRange.save;
+
+        int[2][3] facs;
+        facs[0] = facetsRange.front;
+        facetsRange.popFront;
+        facs[1] = facetsRange.front;
+        facetsRange.popFront;
+        facs[2] = facetsRange.front;
+        facetsRange.popFront;
+        
+        facs[].sort();
+
+        assert(facs[0] == edge01);
+        assert(facs[1] == edge02);
+        assert(facs[2] == edge12);
+
+        assert(facetsRange.empty);    
+        assert(!savedRange.empty);    
+    }();
+}
+
+///
+@Name("facets() (pure nothrow @nogc @safe)") @system unittest
+{
+    auto sc = Manifold!1([[0,1],[0,2],[1,2]]);
+    int[2] edge01 = [0,1];
+    int[2] edge02 = [0,2];
+    int[2] edge12 = [1,2];
+
+    () pure nothrow @nogc @safe {
+        auto facetsRange = sc.facets;
+        auto savedRange = facetsRange.save;
+
+        int[2][3] facs;
+        facs[0] = facetsRange.front;
+        facetsRange.popFront;
+        facs[1] = facetsRange.front;
+        facetsRange.popFront;
+        facs[2] = facetsRange.front;
+        facetsRange.popFront;
+        
+        facs[].sort();
+
+        assert(facs[0] == edge01);
+        assert(facs[1] == edge02);
+        assert(facs[2] == edge12);
+
+        assert(facetsRange.empty);    
+        assert(!savedRange.empty);    
+    }();
+}
+
+///
+@Name("star(range) (pure nothrow @nogc @safe)") @system unittest
+{
+    auto sc = Manifold!1([[0,1],[0,2],[1,2]]);
+    int[2] edge01 = [0,1];
+    int[2] edge12 = [1,2];
+    int[1] vertex1 = [1];
+
+    () pure nothrow @nogc @safe {
+        auto starRange = sc.star(vertex1[]);
+        auto savedRange = starRange.save;
+
+        int[2][2] edges;
+        edges[0][] = starRange.front[];
+        starRange.popFront;
+        edges[1][] = starRange.front[];
+        starRange.popFront;
+
+        edges[].sort();        
+        assert(edges[0] == edge01);
+        assert(edges[1] == edge12);
+
+        assert(starRange.empty);    
+        assert(!savedRange.empty);    
+    }();
+}
+
+///
+@Name("link(range) (pure nothrow @nogc @safe)") @system unittest
+{
+    auto sc = Manifold!1([[0,1],[0,2],[1,2]]);
+    int[1] vertex0 = [0];
+    int[1] vertex1 = [1];
+    int[1] vertex2 = [2];
+
+    () pure nothrow @nogc @safe {
+        auto linkRange = sc.link(vertex1[]);
+        auto savedRange = linkRange.save;
+
+        int[2] vertices;
+        vertices[0] = linkRange.front.front;
+        linkRange.popFront;
+        vertices[1] = linkRange.front.front;
+        linkRange.popFront;
+
+        vertices[].sort();        
+        assert(vertices[0] == 0);
+        assert(vertices[1] == 2);
+
+        assert(linkRange.empty);    
+        assert(!savedRange.empty);    
+    }();
+}
+
+///
+@Name("contains (pure nothrow @nogc @safe)") @system unittest
+{
+    auto sc = Manifold!1([[0,1],[0,2],[1,2]]);
+    int[2] edge01 = [0,1];
+    int[2] edge07 = [0,7];
+
+    () pure nothrow @nogc @safe {
+        assert(sc.contains(edge01[]));
+        assert(!sc.contains(edge07[]));
+    }();  
+}
+
+///
+@Name("removeFacet unavailable") @system unittest
+{
+    auto sc = Manifold!1([[0,1],[0,2],[1,2]]);
+    static assert(!__traits(compiles, sc.removeFacet([0,1])));    
+}
+
+///
+@Name("insertFacet unavailable") @system unittest
+{
+    auto sc = Manifold!1([[0,1],[0,2],[1,2]]);
+    static assert(!__traits(compiles, sc.insertFacet([0,3])));    
+}
+
 // TO DO: Adapt old code below for new manifold type!
 
 // /******************************************************************************
