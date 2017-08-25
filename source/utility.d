@@ -684,9 +684,9 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
 {
     immutable setSize = set.walkLength;
 
-    assert(subsetSize > 0, "subsetSize must be positive");
-    assert(subsetSize <= setSize, "subsetSize must be at most the size of the set");
-    assert(setSize <= 31, "subsetSize must be at most 31");
+    assert(subsetSize > 0, "subset size must be positive");
+    assert(subsetSize <= setSize, "subset size must be at most the size of the set");
+    assert(setSize <= 31, "subset size must be at most 31");
 
     static struct SubsetsOfSizeRange
     {
