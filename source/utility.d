@@ -450,6 +450,9 @@ fast for small data sets. (TO DO: Benchmarks!)
 */
 struct SmallMap(KeyType, ValueType)
 {
+private:
+    Record[] data;
+public:
     private static struct Record
     {
         KeyType key;
@@ -495,9 +498,6 @@ struct SmallMap(KeyType, ValueType)
         assert(found.length > 0, "SmallMap access error");
         return found.front.value;
     }
-
-private:
-    Record[] data;
 }
 ///
 @Name("SmallMap") pure @safe unittest
