@@ -113,7 +113,6 @@ public:
         {
             simpComp.insertFacet(f);
         }
-        // initialFacets.each!(f => simpComp.insertFacet(f));
 
         assert(this.isPureOfDim(dimension),
             "not all facets have the correct dimension");
