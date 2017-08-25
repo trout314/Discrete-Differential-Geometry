@@ -390,6 +390,5 @@ pure @safe unittest
     assert(vec(r(1), r(3, 7), r(11, 2)).toString == "(1, (3/7)√3, (11/2)√6)");
     assert(vec(r(1, 2), r(0), r(1)).toString == "(1/2, 0, √6)");
     assert(vec(r(4), r(3), r(1, 1)).toString == "(4, 3√3, √6)");
-
 }
 
