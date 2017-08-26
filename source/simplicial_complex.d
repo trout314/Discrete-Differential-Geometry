@@ -252,7 +252,7 @@ public:
     Inserts a facet (given as an input range of vertices) into the simplicial
     complex.
     */
-    void insertFacet(V)(V vertices) @trusted if (isInputRange!V)
+    void insertFacet(V)(V vertices) if (isInputRange!V)
     {
         // TO DO: Improve this! Why does this allocate a closure?
         StackArray!(Vertex, 16) vertices_;
