@@ -882,6 +882,9 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
     }();
 }
 
+/******************************************************************************
+Returns a lazy range that lists the subsets of the given input range.
+*/
 auto subsets(R)(R set) if (isInputRange!R)
 {
     assert(set.walkLength <= 31);
@@ -989,10 +992,10 @@ template staticIota(int begin, int end)
 */
 auto capture(Range, Data...)(Range range, Data data) if (isInputRange!Range)
 {
-    alias dataDeclarations = (len) => len.iota.map!(indx => "Data[%s] d%s;".format(indx,
-            indx)).joiner("\n").array;
-
-    alias dataArgs = (len) => len.iota.map!(indx => "d%s".format(indx)).joiner(",").array;
+    alias dataDeclarations = 
+        (len) => len.iota.map!(indx => "Data[%s] d%s;".format(indx, indx)).joiner("\n").array;
+    alias dataArgs =
+        (len) => len.iota.map!(indx => "d%s".format(indx)).joiner(",").array;
 
     static struct CaptureRange
     {

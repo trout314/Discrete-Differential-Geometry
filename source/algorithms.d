@@ -1,7 +1,7 @@
 import manifold : Manifold;
 import simplicial_complex : fVector, simplicialComplex, SimplicialComplex;
-import std.algorithm : all, any, canFind, chunkBy, equal, filter, find, joiner, map,
-    setIntersection, sort, sum;
+import std.algorithm : all, any, canFind, chunkBy, equal, filter, find, fold,
+    joiner, map, setIntersection, sort, sum;
 import std.conv : to;
 import std.range : array, empty, enumerate, front, iota, popFront, save,
     walkLength;
@@ -565,4 +565,53 @@ auto join(Vertex)(const SimplicialComplex!Vertex sc1,
 
     auto emptyComplex = SimplicialComplex!()();
     assert(join(sc1, emptyComplex).facets.empty);
+}
+
+/******************************************************************************
+*/
+ulong factorial(ulong n) pure nothrow @nogc @safe
+{
+    assert(n <= 20, "factorial only accepts arguments up to 20");   
+    return n == 0 ? 1 : iota(1UL, n + 1).fold!((a, b) => a * b)(1UL);
+}
+///
+@Name("factorial") pure nothrow @nogc @safe unittest
+{
+    // Might as well test all the input values
+    assert(factorial(0) == 1UL);    
+    assert(factorial(1) == 1UL);
+    assert(factorial(2) == 1UL * 2);
+    assert(factorial(3) == 1UL * 2 * 3);
+    assert(factorial(4) == 1UL * 2 * 3 * 4);
+    assert(factorial(5) == 1UL * 2 * 3 * 4 * 5);
+    assert(factorial(6) == 1UL * 2 * 3 * 4 * 5 * 6);
+    assert(factorial(7) == 1UL * 2 * 3 * 4 * 5 * 6 * 7);
+    assert(factorial(8) == 1UL * 2 * 3 * 4 * 5 * 6 * 7 * 8);
+    assert(factorial(9) == 1UL * 2 * 3 * 4 * 5 * 6 * 7 * 8 * 9);
+    assert(factorial(10) == 1 * 2 * 3 * 4 * 5 * 6 * 7 * 8 * 9 * 10);
+    assert(factorial(11) == 1UL * 2 * 3 * 4 * 5 * 6 * 7 * 8 * 9 * 10 * 11);
+    assert(factorial(12) == 1UL * 2 * 3 * 4 * 5 * 6 * 7 * 8 * 9 * 10 * 11 
+        * 12);
+    assert(factorial(13) == 1UL * 2 * 3 * 4 * 5 * 6 * 7 * 8 * 9 * 10 * 11 
+        * 12 * 13);
+    assert(factorial(14) == 1UL * 2 * 3 * 4 * 5 * 6 * 7 * 8 * 9 * 10 * 11 
+        * 12 * 13 * 14);
+    assert(factorial(15) == 1UL * 2 * 3 * 4 * 5 * 6 * 7 * 8 * 9 * 10 * 11 
+        * 12 * 13 * 14 * 15);
+    assert(factorial(16) == 1UL * 2 * 3 * 4 * 5 * 6 * 7 * 8 * 9 * 10 * 11 
+        * 12 * 13 * 14 * 15 * 16);
+    assert(factorial(17) == 1UL * 2 * 3 * 4 * 5 * 6 * 7 * 8 * 9 * 10 * 11
+        * 12 * 13 * 14 * 15 * 16 * 17);
+    assert(factorial(18) == 1UL * 2 * 3 * 4 * 5 * 6 * 7 * 8 * 9 * 10 * 11
+        * 12 * 13 * 14 * 15 * 16 * 17 * 18);
+    assert(factorial(19) == 1UL * 2 * 3 * 4 * 5 * 6 * 7 * 8 * 9 * 10 * 11
+        * 12 * 13 * 14 * 15 * 16 * 17 * 18 * 19);
+    assert(factorial(20) == 1UL * 2 * 3 * 4 * 5 * 6 * 7 * 8 * 9 * 10 * 11
+        * 12 * 13 * 14 * 15 * 16 * 17 * 18 * 19 * 20);
+}
+
+///
+@Name("factorial (errors)") pure @system unittest
+{
+    factorial(21).throwsWithMsg("factorial only accepts arguments up to 20");
 }

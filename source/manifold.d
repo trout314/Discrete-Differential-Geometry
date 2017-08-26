@@ -140,6 +140,8 @@ public:
                 s => !SimplicialComplex!Vertex(this.link(s)).is2Sphere).empty,
                 "found a codimension-3 simplex whose link is not a 2-sphere");
         }
+
+        numSimplices[] = simpComp.fVector[];
     }
 
     /***************************************************************************
@@ -153,10 +155,13 @@ public:
     /***************************************************************************
     Returns the degree of a simplex in the simplicial complex.
     */
-    // int[] fVector() const
-    // {
-    //     return numSimplices[];
-    // }
+    const(size_t)[] fVector() const
+    {
+        // import std.stdio : writeln;
+        // writeln(numSimplices[], simpComp.fVector);
+        assert(numSimplices[] == this.simpComp.fVector);
+        return numSimplices[];
+    }
 
     /// We provide access to the manifold as a simplicial complex
     ref const(SimplicialComplex!Vertex) asSimplicialComplex() const
@@ -404,6 +409,10 @@ private void doPachnerImpl(Vertex, int dim)(
     /* Need to ensure independent copies of the facets in the star since once a
     facet is removed, the range returned by star(center) becomes invalid! */   
     immutable toRemove = manifold.star(center).map!(f => f.dup).array;
+ 
+    manifold.numSimplices[dim] -= toRemove.walkLength;
+    // TO DO: update other dimensions!
+    
     toRemove.each!(f => manifold.simpComp.removeFacet(f));
 
     alias SComp = SimplicialComplex!Vertex;
@@ -413,8 +422,11 @@ private void doPachnerImpl(Vertex, int dim)(
         ? SComp([coCenter])
         : join(SComp(center.subsetsOfSize(cDim)), SComp([coCenter]));
 
-    assert(newPiece.isPureOfDim(manifold.dimension));
+    assert(newPiece.isPureOfDim(dim));
     newPiece.facets.each!(f => manifold.simpComp.insertFacet(f));
+
+    manifold.numSimplices[dim] += newPiece.facets.walkLength;
+    // TO DO: update other dimensions!
 
     // TO DO: Do sanity checking for manifold
 }
