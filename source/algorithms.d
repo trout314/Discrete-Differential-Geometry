@@ -317,7 +317,7 @@ Returns the Euler characteristic of the simplicial complex
 */
 int eulerCharacteristic(Vertex)(const ref SimplicialComplex!Vertex sc)
 {
-    return sc.fVector.enumerate.map!(f => (-1)^^f.index.to!int * f.value).sum;
+    return sc.fVector.enumerate.map!(f => (-1)^^f.index.to!int * f.value.to!int).sum;
 }
 ///
 @Name("eulerCharacteristic") pure @safe unittest

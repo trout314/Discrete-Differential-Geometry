@@ -150,6 +150,14 @@ public:
         return star(vertices).walkLength;
     }
 
+    /***************************************************************************
+    Returns the degree of a simplex in the simplicial complex.
+    */
+    // int[] fVector() const
+    // {
+    //     return numSimplices[];
+    // }
+
     /// We provide access to the manifold as a simplicial complex
     ref const(SimplicialComplex!Vertex) asSimplicialComplex() const
     {
@@ -252,8 +260,6 @@ void doPachner(Vertex, int dim)(
 ///
 @Name("doPachner n -> (dim + 2 - n), 1 < n < dim + 2") /* pure */ @system unittest
 {
-
-
     auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4],
         [1,2,5], [2,3,5], [3,4,5], [1,4,5]]);
 

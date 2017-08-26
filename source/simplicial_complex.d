@@ -265,10 +265,10 @@ public:
         assert(!this.contains(vertices),
             "expected a simplex not already in the simplicial complex");
 
-        // First we remove any existing facets which are faces of inserted facet
-        
-        /* TO DO: Create rawInsertFacet that skips this? NOTE: This is what
-        is responsible for function allocating a closure! */
+        /* We must remove any existing facets which are faces of the inserted
+        facet. Also, we need independent copies of the facets to remove.
+        TO DO: Create rawInsertFacet that skips this? NOTE: This is what
+        is responsible for function allocating a closure!  */
         auto toRemove = vertices_[].subsets.filter!(
             s => this.facets.canFind(s.array)).map!array.array;
         toRemove.each!(s => this.removeFacet(s));
@@ -414,11 +414,10 @@ string toString(Vertex)(const ref SimplicialComplex!Vertex sc)
 Get the f-vector of the simplicial complex. The returned array lists the
 number of simplices in each dimension.
 */
-int[] fVector(Vertex)(const ref SimplicialComplex!Vertex sc)
+size_t[] fVector(Vertex)(const ref SimplicialComplex!Vertex sc)
 {   
     immutable maxDim = sc.facetVertices.keys.maxElement.to!int;
-    return iota(maxDim + 1).map!(dim => sc.simplices(dim).walkLength.to!int)
-        .array; 
+    return iota(maxDim + 1).map!(dim => sc.simplices(dim).walkLength).array; 
 }
 ///
 @Name("fVector (pure @safe)") pure @safe unittest
