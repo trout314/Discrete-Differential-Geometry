@@ -20,7 +20,7 @@ import utility : capture, isSubsetOf, SmallMap, StackArray, staticIota, subsets,
     assert(sc.facets.empty);
 
     // get the type of vertex used
-    static assert(is(sc.VertexType == int));
+    static assert(is(sc.Vertex == int));
 
     /* while you can specify the vertex type used as a template parameter,
     we will stick to `int` for now */
@@ -121,7 +121,7 @@ import utility : capture, isSubsetOf, SmallMap, StackArray, staticIota, subsets,
 
     // ---------------- TEST A DEFAULT INITIALIZED COMPLEX ---------------------
     auto sc = SimplicialComplex!()();
-    static assert(is(sc.VertexType == int)); // Default vertex type is int
+    static assert(is(sc.Vertex == int)); // Default vertex type is int
 
     sc.facets.empty.should.equal(true);
     sc.numFacets.should.equal(0);
@@ -215,7 +215,7 @@ void assertValidSimplex(V)(V vertices_, int dim) if (isInputRange!V)
 /*******************************************************************************
 A simplicial complex type whose vertices are of type `Vertex`.
 */
-struct SimplicialComplex(Vertex = int)
+struct SimplicialComplex(Vertex_ = int)
 {
 private:
     /* We store arrays containing all the vertices in the facets of a given 
@@ -228,15 +228,15 @@ public:
     /***************************************************************************
     The type of the vertices in this simplicial complex.
     */
-    alias VertexType = Vertex;
+    alias Vertex = Vertex_;
 
     /***************************************************************************
     Construct a simplicial complex from a range of ranges with element type
-    implicitly convertible to VertexType
+    implicitly convertible to Vertex
     */
     this(R)(R facets) if (isInputRange!R 
         && isInputRange!(ElementType!R) 
-        && is(ElementType!(ElementType!R) : VertexType))
+        && is(ElementType!(ElementType!R) : Vertex))
     {
         facets.each!(f => this.insertFacet(f));
     }
