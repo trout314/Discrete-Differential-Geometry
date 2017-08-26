@@ -365,7 +365,7 @@ void throwsWithMsg(ThrownType : Throwable = Error, E)(lazy E expression,
 }
 
 ///
-unittest
+@Name("throwsWithMsg") pure @system unittest
 {
     static void throwException()
     {
