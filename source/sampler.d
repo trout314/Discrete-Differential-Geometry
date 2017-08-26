@@ -15,7 +15,7 @@ import utility : subsetsOfSize;
 
 //-------------------------------- SETTINGS ------------------------------------
     
-immutable numFacetsTarget = 100;
+immutable numFacetsTarget = 350;
 immutable real numFacetsCoef = 0.1;
 
 immutable real meanHingeDegreeTarget = 5.1;
@@ -61,12 +61,10 @@ real meanHingeDegree(Vertex, int dim)(const ref Manifold!(dim, Vertex) manifold)
 
 void sample()
 {
-    auto timer = StopWatch(AutoStart.yes);
-
     enum dim = 3;
     enum triesPerReport = 200;
     immutable maxVertices = 500;
-    immutable maxTries = 5000;
+    immutable maxTries = 2000;
 
      // tryCount[j] counts j + 1 -> dim + 1 - j moves tried
     ulong[dim + 1] tryCount;
@@ -78,7 +76,8 @@ void sample()
 
     auto unusedVertices = iota(dim + 2, maxVertices).array;
     assert(unusedVertices.all!(v => !manifold.contains([v])));
-  
+
+    auto timer = StopWatch(AutoStart.yes);  
     while(!unusedVertices.empty && tryCount[].sum < maxTries)
     {
         assert(unusedVertices.all!(v => !manifold.contains([v])));
@@ -139,7 +138,7 @@ void sample()
                 }
             }
         }
-        
+
         // --------------------------- MAKE REPORT ----------------------------
         if(tryCount[].sum % triesPerReport == 0)
         {
@@ -164,8 +163,10 @@ void sample()
             writeln("var hinge-degree penalty : ", manifold.objectiveParts[2]);
             writeln("         TOTAL OBJECTIVE : ", manifold.objectiveParts[].sum);
             '-'.repeat(80).writeln;   
-            writeln("msec/move : ", timer.peek.msecs / real(tryCount[].sum));
-            '-'.repeat(80).writeln;   
+            writeln("msec/move : ", timer.peek.msecs / real(triesPerReport));
+            '-'.repeat(80).writeln;
+
+            timer.reset;
         }
     }
 }
