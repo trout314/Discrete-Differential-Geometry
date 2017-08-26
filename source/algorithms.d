@@ -568,6 +568,7 @@ auto join(Vertex)(const SimplicialComplex!Vertex sc1,
 }
 
 /******************************************************************************
+Returns a ulong giving the factorial of the input. Supports up to 20!
 */
 ulong factorial(ulong n) pure nothrow @nogc @safe
 {
@@ -614,4 +615,46 @@ ulong factorial(ulong n) pure nothrow @nogc @safe
 @Name("factorial (errors)") pure @system unittest
 {
     factorial(21).throwsWithMsg("factorial only accepts arguments up to 20");
+}
+
+ulong binomial(ulong n, ulong k) pure nothrow @nogc @safe
+{
+    assert(n <= 20, "binomial only accepts arguments up to 20");
+    assert(k <= n, "bad binomial input");
+    return (factorial(n) / factorial(k)) / factorial(n - k);
+}
+///
+@Name("binomial") pure nothrow @nogc @safe unittest
+{
+    // Test exhaustively up to n=5
+    assert(binomial(0, 0) == 1);
+   
+    assert(binomial(1, 0) == 1);
+    assert(binomial(1, 1) == 1);
+
+    assert(binomial(2, 0) == 1);
+    assert(binomial(2, 1) == 2);
+    assert(binomial(2, 2) == 1);
+
+    assert(binomial(3, 0) == 1);
+    assert(binomial(3, 1) == 3);
+    assert(binomial(3, 2) == 3);
+    assert(binomial(3, 3) == 1);
+
+    assert(binomial(4, 0) == 1);
+    assert(binomial(4, 1) == 4);
+    assert(binomial(4, 2) == 6);
+    assert(binomial(4, 3) == 4);    
+    assert(binomial(4, 4) == 1);    
+
+    assert(binomial(5, 0) == 1);
+    assert(binomial(5, 1) == 5);
+    assert(binomial(5, 2) == 10);
+    assert(binomial(5, 3) == 10);    
+    assert(binomial(5, 4) == 5);
+    assert(binomial(5, 5) == 1);
+
+    // A few larger tests, answers verified with Mathematica
+    assert(binomial(20, 10) == 184756);
+    assert(binomial(17, 7) == 19448);
 }
