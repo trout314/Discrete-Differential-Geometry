@@ -15,14 +15,14 @@ import utility : subsetsOfSize;
 
 //-------------------------------- SETTINGS ------------------------------------
     
-immutable numFacetsTarget = 350;
+immutable numFacetsTarget = 1000;
 immutable real numFacetsCoef = 0.1;
 
 immutable real meanHingeDegreeTarget = 5.1;
 immutable real numHingesCoef = 0.5;
 
 // TO DO: make setting this to 0.0 disable tracking of hinge degrees
-immutable degreeStdDevCoef = 0.02;
+immutable degreeStdDevCoef = 0.0;
 
 //------------------------------------------------------------------------------
 
@@ -63,8 +63,8 @@ void sample()
 {
     enum dim = 3;
     enum triesPerReport = 200;
-    immutable maxVertices = 500;
-    immutable maxTries = 2000;
+    immutable maxVertices = 1000;
+    immutable maxTries = 20000;
 
      // tryCount[j] counts j + 1 -> dim + 1 - j moves tried
     ulong[dim + 1] tryCount;
@@ -144,7 +144,8 @@ void sample()
         {
             writeln;
             '-'.repeat(80).writeln;   
-            " MOVE  :  DONE  /  TRIED".writeln;
+            writeln(" MOVE  :  DONE  /  TRIED  |  msec/move : ",
+                timer.peek.msecs / real(triesPerReport));
             '-'.repeat(80).writeln;   
             iota(dim + 1).each!(indx => writeln(
                 indx + 1, " -> ", dim + 1 - indx, " : ", 
@@ -163,8 +164,6 @@ void sample()
             writeln("var hinge-degree penalty : ", manifold.objectiveParts[2]);
             writeln("         TOTAL OBJECTIVE : ", manifold.objectiveParts[].sum);
             '-'.repeat(80).writeln;   
-            writeln("msec/move : ", timer.peek.msecs / real(triesPerReport));
-            '-'.repeat(80).writeln;
 
             timer.reset;
         }

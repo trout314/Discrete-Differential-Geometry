@@ -8,7 +8,7 @@ import std.conv : to;
 import std.range : array, chain, ElementType, empty, enumerate, front, iota,
     isInputRange, popFront, save, walkLength;
 import unit_threaded : Name;
-import utility : SmallMap, staticIota, subsets, subsetsOfSize, throwsWithMsg;
+import utility : binomial, SmallMap, staticIota, subsets, subsetsOfSize, throwsWithMsg;
 
 //dfmt off
 ///
@@ -405,28 +405,22 @@ private void doPachnerImpl(Vertex, int dim)(
 )
 {
     assert(manifold.pachnerMoves.canFind(center), "bad pachner move");
+    immutable centerDim = center.walkLength.to!int - 1;
 
     /* Need to ensure independent copies of the facets in the star since once a
     facet is removed, the range returned by star(center) becomes invalid! */   
     immutable toRemove = manifold.star(center).map!(f => f.dup).array;
- 
-    manifold.numSimplices[dim] -= toRemove.walkLength;
-    // TO DO: update other dimensions!
-    
     toRemove.each!(f => manifold.simpComp.removeFacet(f));
 
-    alias SComp = SimplicialComplex!Vertex;
-    immutable cDim = center.walkLength.to!int - 1;
-   
-    auto newPiece = (cDim == 0)
-        ? SComp([coCenter])
-        : join(SComp(center.subsetsOfSize(cDim)), SComp([coCenter]));
+    alias SC = SimplicialComplex!Vertex;
+    auto newPiece = (centerDim == 0)
+        ? SC([coCenter])
+        : join(SC(center.subsetsOfSize(centerDim)), SC([coCenter]));
 
     assert(newPiece.isPureOfDim(dim));
     newPiece.facets.each!(f => manifold.simpComp.insertFacet(f));
 
-    manifold.numSimplices[dim] += newPiece.facets.walkLength;
-    // TO DO: update other dimensions!
+    manifold.numSimplices[].modifyFVector(center.length);
 
     // TO DO: Do sanity checking for manifold
 }
@@ -610,6 +604,40 @@ auto standardSphereFacets(int dim)
 {
     auto sc = Manifold!1([[0,1],[0,2],[1,2]]);
     static assert(!__traits(compiles, sc.insertFacet([0,3])));    
+}
+
+/******************************************************************************
+Modifies an fVector for a pachner move with center simplex that contains `n`
+vertices.
+*/
+void modifyFVector(size_t[] fVector_, size_t centerLength)
+{
+    assert(centerLength >= 1, "center length must be at least one");
+    assert(fVector_.length >= centerLength, "fVector must have length at least the center length");
+
+    // We modify the fVector for the removal of the original star
+    auto centerDim = centerLength - 1;
+    auto dim = fVector_.length - 1;
+    foreach(d; centerDim .. dim + 1)
+    {
+        fVector_[d] -= binomial(dim + 1 - centerDim, d - centerDim);
+    }
+
+    // Now modify it for the addition of the new star
+    auto coDim = dim + 1 - centerLength;
+    foreach(d; coDim .. dim + 1)
+    {
+        fVector_[d] += binomial(dim + 1 - coDim, d - coDim);
+    }
+}
+///
+@Name("modifyFVector") unittest
+{
+    size_t[4] fVec = [0,0,0,0];
+    fVec[].modifyFVector(4);
+    
+    import std.stdio;
+    fVec[].writeln;
 }
 
 // TO DO: Adapt old code below for new manifold type!
