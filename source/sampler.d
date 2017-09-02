@@ -15,17 +15,16 @@ import utility : subsetsOfSize;
 
 //-------------------------------- SETTINGS ------------------------------------
     
-immutable numFacetsTarget = 1000;
-immutable real numFacetsCoef = 0.1;
+enum int numFacetsTarget = 1000;
+enum real numFacetsCoef = 0.1;
 
-immutable real meanHingeDegreeTarget = 5.1;
-immutable real numHingesCoef = 0.5;
+enum real meanHingeDegreeTarget = 5.1;
+enum real numHingesCoef = 0.5;
 
 // TO DO: make setting this to 0.0 disable tracking of hinge degrees
-immutable degreeStdDevCoef = 0.0;
+enum real degreeStdDevCoef = 0.0;
 
 //------------------------------------------------------------------------------
-
 
 real[3] objectiveParts(Vertex, int dim)(const ref Manifold!(dim, Vertex) manifold)
 {
@@ -63,8 +62,8 @@ void sample()
 {
     enum dim = 3;
     enum triesPerReport = 200;
-    immutable maxVertices = 1000;
-    immutable maxTries = 20000;
+    enum maxVertices = 1000;
+    enum maxTries = 20000;
 
      // tryCount[j] counts j + 1 -> dim + 1 - j moves tried
     ulong[dim + 1] tryCount;
