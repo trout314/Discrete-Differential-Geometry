@@ -221,19 +221,16 @@ public:
 /*******************************************************************************
 Returns a list of all the possible pachner moves for the given manifold
 */
-const(Vertex)[][] pachnerMoves(Vertex, int dim)(const ref Manifold!(dim, Vertex) m)
+const(Vertex)[][] pachnerMoves(Vertex, int dim)(
+    const ref Manifold!(dim, Vertex) manifold)
 {
-    int[const(Vertex)[]] degreeMap;
-
-    m.facets.each!(f => f.subsets.each!(s => ++degreeMap[s.array]));
-
     const(Vertex)[][] result;
-    foreach(simp, deg; degreeMap)
+    foreach(simp, deg; manifold.degreeMap)
     {
-        if(deg == m.dimension + 2 - simp.walkLength)
+        if(deg == manifold.dimension + 2 - simp.walkLength)
         {
-            auto coCenter = m.getCoCenter(simp);
-            if(coCenter.empty || (!m.contains(coCenter)))
+            auto coCenter = manifold.getCoCenter(simp);
+            if(coCenter.empty || (!manifold.contains(coCenter)))
             {
                 result ~= simp.dup;
             }
@@ -349,13 +346,14 @@ int[int] degreeHistogram(Vertex, int dim)(
     assert(histogramDim <= dim);
 
     int[int] result;
-    int[Vertex[]] degreeMap;
-
-    manifold.facets
-        .each!(f => f.subsetsOfSize(histogramDim + 1)
-        .each!(s => ++degreeMap[s.array]));
-
-    degreeMap.byValue.each!(deg => ++result[deg]);  
+    foreach(pair; manifold.degreeMap.byKeyValue)
+    {
+        if(pair.key.walkLength == histogramDim + 1)
+        {
+            assert(pair.value <= int.max);
+            ++result[cast(int) pair.value];
+        }
+    }
     return result;
 }
 ///
@@ -380,14 +378,9 @@ auto pachnerMovesAndDegreeHistogram(Vertex, int dim)(
     assert(histogramDim >= 0);
     assert(histogramDim <= dim);
 
-    int[Vertex[]] degreeMap;    // Stores degree of each simplex
-
-    manifold.facets.each!(
-        f => f.subsets.each!(s => ++degreeMap[s.array]));
-
     Vertex[][] moves_;
     int[int] histogram_;
-    foreach(simp, deg; degreeMap)
+    foreach(simp, deg; manifold.degreeMap)
     {
         // Add Pachner move with center `simp` if appropriate 
         if(deg == manifold.dimension + 2 - simp.walkLength)
@@ -402,7 +395,8 @@ auto pachnerMovesAndDegreeHistogram(Vertex, int dim)(
         // Increment histogram if needed
         if(simp.walkLength == histogramDim + 1)
         {
-            ++histogram_[deg];
+            assert(deg <= int.max);
+            ++histogram_[cast(int) deg];
         }
     }
     
