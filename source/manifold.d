@@ -176,8 +176,6 @@ public:
     */
     const(size_t)[] fVector() const
     {
-        // import std.stdio : writeln;
-        // writeln(numSimplices[], simpComp.fVector);
         assert(numSimplices[] == this.simpComp.fVector);
         return numSimplices[];
     }
@@ -199,8 +197,8 @@ public:
         assert(vertices.array in degreeMap);
         foreach(s; vertices.subsets)
         {
-            --degreeMap[s.array.idup];
-            if(degreeMap[s.array.idup] == 0)
+            --degreeMap[s.array];
+            if(degreeMap[s.array] == 0)
             {
                 degreeMap.remove(s.array.idup);
             }
