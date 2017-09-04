@@ -667,10 +667,33 @@ void modifyFVector(size_t[] fVector_, size_t centerLength)
 {
     size_t[4] fVec = [0,0,0,0];
 
-    /* A 1 -> 4 move should give net: +1 vertex, +4 edges, +6 triangles,
+    /* A 1 -> 4 move should give net: +1 vertices, +4 edges, +6 triangles,
     +3 tetrahdra */
-    fVec[].modifyFVector(4);
+    fVec.modifyFVector(4);
     fVec.should.equal([1, 4, 6, 3]);
+
+    /* A 2 -> 3 move should give net: +0 vertices, +1 edges, +2 triangles,
+    +1 tetrahedra */
+    fVec.modifyFVector(3);
+    fVec.should.equal([1,5,8,4]);
+
+    fVec.modifyFVector(2);    // 3 -> 2 move
+    fVec.modifyFVector(1);    // 4 -> 1 move
+
+    // Should be back where we started
+    fVec.should.equal([0,0,0,0]);
+
+    size_t[3] fVec2 = [0,0,0];
+    fVec2.modifyFVector(2); // 2 -> 2 move
+    fVec2.should.equal([0,0,0]);
+
+    fVec2.modifyFVector(3); // 1 -> 3 move
+
+    // a 1 -> 3 move should give net: +1 vertices, +3 edges, +2 triangles
+    fVec2.should.equal([1, 3, 2]);
+
+    fVec2.modifyFVector(1); // 3 -> 1 move
+    fVec2.should.equal([0,0,0]);
 }
 
 // TO DO: Adapt old code below for new manifold type!
