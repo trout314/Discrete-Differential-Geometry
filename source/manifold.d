@@ -638,20 +638,6 @@ auto standardSphereFacets(int dim)
     }();  
 }
 
-///
-// @Name("removeFacet unavailable") @system unittest
-// {
-//     auto sc = Manifold!1([[0,1],[0,2],[1,2]]);
-//     static assert(!__traits(compiles, sc.removeFacet([0,1])));    
-// }
-
-///
-// @Name("insertFacet unavailable") @system unittest
-// {
-//     auto sc = Manifold!1([[0,1],[0,2],[1,2]]);
-//     static assert(!__traits(compiles, sc.insertFacet([0,3])));    
-// }
-
 /******************************************************************************
 Modifies an fVector for a pachner move with center simplex that contains `n`
 vertices.
