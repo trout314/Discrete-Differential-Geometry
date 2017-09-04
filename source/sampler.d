@@ -24,6 +24,11 @@ enum real numHingesCoef = 0.5;
 // TO DO: make setting this to 0.0 disable tracking of hinge degrees
 enum real degreeStdDevCoef = 0.0;
 
+enum dim = 3;
+enum triesPerReport = 200;
+enum maxVertices = 1000;
+enum maxTries = 20000;
+
 //------------------------------------------------------------------------------
 
 real[3] objectiveParts(Vertex, int dim)(const ref Manifold!(dim, Vertex) manifold)
@@ -60,10 +65,6 @@ real meanHingeDegree(Vertex, int dim)(const ref Manifold!(dim, Vertex) manifold)
 
 void sample()
 {
-    enum dim = 3;
-    enum triesPerReport = 200;
-    enum maxVertices = 1000;
-    enum maxTries = 20000;
 
      // tryCount[j] counts j + 1 -> dim + 1 - j moves tried
     ulong[dim + 1] tryCount;
