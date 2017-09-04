@@ -174,7 +174,7 @@ public:
     /***************************************************************************
     Returns the degree of a simplex in the simplicial complex.
     */
-    const(size_t)[] fVector() const
+    const(size_t)[] fVector()() const
     {
         assert(numSimplices[] == this.simpComp.fVector);
         return numSimplices[];
@@ -642,7 +642,7 @@ auto standardSphereFacets(int dim)
 Modifies an fVector for a pachner move with center simplex that contains `n`
 vertices.
 */
-void modifyFVector(size_t[] fVector_, size_t centerLength)
+auto modifyFVector(size_t[] fVector_, size_t centerLength)
 {
     assert(centerLength >= 1, "center length must be at least one");
     assert(fVector_.length >= centerLength, "fVector must have length at least the center length");
