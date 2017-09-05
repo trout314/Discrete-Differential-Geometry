@@ -109,10 +109,7 @@ public:
     this(F)(F initialFacets) if (isInputRange!F)
     {
         // TO DO: Put some nice constraints on F
-        foreach(f; initialFacets)
-        {
-            this.insertFacet(f);
-        }
+        initialFacets.each!(f => this.insertFacet(f));
 
         assert(this.isPureOfDim(dimension),
             "not all facets have the correct dimension");
@@ -184,10 +181,7 @@ public:
     private void insertFacet(V)(V vertices) if (isInputRange!V)
     {
         assert(vertices.array !in degreeMap);
-        foreach(s; vertices.subsets)
-        {
-            ++degreeMap[s.array.idup];
-        }
+        vertices.subsets.each!(s => ++degreeMap[s.array.idup]);
         this.simpComp.insertFacet(vertices);
     }
 
@@ -448,11 +442,7 @@ private void doPachnerImpl(Vertex, int dim)(
     /* Need to ensure independent copies of the facets in the star since once a
     facet is removed, the range returned by star(center) becomes invalid! */   
     immutable toRemove = manifold.star(center).map!(f => f.dup).array;
-    foreach(f; toRemove)
-    {
-        manifold.removeFacet(f);
-    }
-    // toRemove.each!(f => manifold.removeFacet(f));
+    toRemove.each!(f => manifold.removeFacet(f));
 
     alias SC = SimplicialComplex!Vertex;
     auto newPiece = (centerDim == 0)
