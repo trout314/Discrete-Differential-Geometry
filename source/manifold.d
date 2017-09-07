@@ -20,12 +20,12 @@ import utility : binomial, isSubsetOf, SmallMap, staticIota, subsets, subsetsOfS
     static assert(octahedron.dimension == 2);
     static assert(is(octahedron.Vertex == int));
 
-    assert(octahedron.fVector == [6,12,8]);
-    assert(octahedron.eulerCharacteristic == 2);
+    octahedron.fVector.should.equal([6UL,12,8]);
+    octahedron.eulerCharacteristic.should.equal(2);
 
     auto tetrahedron = Manifold!2([[1,2,3], [1,2,4], [1,3,4], [2,3,4]]);
 
-    assert(octahedron.star([1,2]).equal([[0,1,2], [1,2,5]]));    
+    octahedron.star([1,2]).map!array.should.containOnly([[0,1,2], [1,2,5]]);    
 
     octahedron.pachnerMoves.should.containOnly(
         [[0,1], [0,2], [0,3], [0,4], [1,2], [1,4],
@@ -169,7 +169,7 @@ public:
     }
 
     /***************************************************************************
-    Returns the degree of a simplex in the simplicial complex.
+    Returns the fVector of the manifold.
     */
     const(size_t)[] fVector()() const
     {
@@ -452,7 +452,7 @@ private void doPachnerImpl(Vertex, int dim)(
     assert(newPiece.isPureOfDim(dim));
     newPiece.facets.each!(f => manifold.insertFacet(f));
 
-    manifold.numSimplices[].modifyFVector(center.length);
+    manifold.numSimplices.modifyFVector(center.length);
 
     // TO DO: Do sanity checking for manifold
 }
