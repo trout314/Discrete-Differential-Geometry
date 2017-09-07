@@ -287,8 +287,9 @@ auto connectedComponents(Vertex)(const ref SimplicialComplex!Vertex sc)
         currentLabel += 1;
     }
 
-    return records.chunkBy!((r1, r2) => r1.label == r2.label)
-        .map!(rList => SimplicialComplex!Vertex(rList.map!(r => r.facet).array));           
+    // TO DO: Bug report for chunkBy being @system?
+    return () @trusted { return records.chunkBy!((r1, r2) => r1.label == r2.label)
+        .map!(rList => SimplicialComplex!Vertex(rList.map!(r => r.facet).array)); } ();           
 }
 
 ///
