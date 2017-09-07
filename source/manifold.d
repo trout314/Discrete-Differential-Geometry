@@ -74,9 +74,8 @@ import utility : binomial, isSubsetOf, SmallMap, staticIota, subsets, subsetsOfS
 }
 
 // More tests
-@Name("Manifold (additional)") /* pure */ @system unittest
+@Name("Manifold (additional)") /* pure */ @safe unittest
 {
-    // TO DO: Why does this need to be @system? Make it @safe!
     // TO DO: ldc doesn't like using "pure" above! Bugreport?
 
     static assert(!__traits(compiles, Manifold!2([["a", "bubba", "gump"]])));
@@ -106,7 +105,7 @@ public:
         ~ "dimension " ~ dimension.to!string);
 
     /// We can initialize the manifold from a range of ranges of vertices
-    this(F)(F initialFacets) if (isInputRange!F)
+    this(F)(F initialFacets) @safe if (isInputRange!F)
     {
         // TO DO: Put some nice constraints on F
         initialFacets.each!(f => this.insertFacet(f));
@@ -142,7 +141,7 @@ public:
         numSimplices[] = simpComp.fVector[];
     }
 
-    this(this)
+    this(this) pure @safe
     {
         degreeMap = degreeMap.dup;
     }
@@ -171,7 +170,7 @@ public:
     /***************************************************************************
     Returns the fVector of the manifold.
     */
-    const(size_t)[] fVector()() const
+    const(size_t)[] fVector()() const 
     {
         assert(numSimplices[] == this.simpComp.fVector);
         return numSimplices[];
@@ -202,7 +201,7 @@ public:
     }
 
     /// We provide access to the manifold as a simplicial complex
-    ref const(SimplicialComplex!Vertex) asSimplicialComplex() const
+    ref const(SimplicialComplex!Vertex) asSimplicialComplex() const pure nothrow @nogc @safe 
     {
         return simpComp; 
     }

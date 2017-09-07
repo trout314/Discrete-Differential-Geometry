@@ -289,7 +289,7 @@ auto connectedComponents(Vertex)(const ref SimplicialComplex!Vertex sc)
 
     // TO DO: Bug report for chunkBy being @system?
     return () @trusted { return records.chunkBy!((r1, r2) => r1.label == r2.label)
-        .map!(rList => SimplicialComplex!Vertex(rList.map!(r => r.facet).array)); } ();           
+        .map!(rList => SimplicialComplex!Vertex(rList.map!(r => r.facet).array)).array; } ();           
 }
 
 ///

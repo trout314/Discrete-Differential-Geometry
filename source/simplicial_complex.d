@@ -234,15 +234,14 @@ public:
     Construct a simplicial complex from a range of ranges with element type
     implicitly convertible to Vertex
     */
-    this(R)(R facets) if (isInputRange!R 
-        && isInputRange!(ElementType!R) 
+    this(R)(R facets) if (isInputRange!R && isInputRange!(ElementType!R) 
         && is(ElementType!(ElementType!R) : Vertex))
     {
         facets.each!(f => this.insertFacet(f));
     }
 
     // Postblit makes sure copy doesn't share data
-    this(this)
+    this(this) pure @safe
     {
         facetVertices = facetVertices.dup;
         facetVertices.keys.each!(k => facetVertices[k] = facetVertices[k].dup);
@@ -342,7 +341,7 @@ public:
     /***************************************************************************
     Returns the number of facets
     */
-    size_t numFacets() const pure nothrow @nogc @safe
+    auto numFacets() const
     {
         return this.facets.walkLength;
     }
