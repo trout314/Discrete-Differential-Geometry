@@ -160,7 +160,7 @@ public:
     /***************************************************************************
     Returns the degree of a simplex in the simplicial complex.
     */
-    auto degree(V)(V vertices) const if (isInputRange!V)
+    size_t degree(V)(V vertices) const if (isInputRange!V)
     {
         assert(vertices.array in degreeMap);
         assert(degreeMap[vertices.array] == star(vertices).walkLength);
@@ -168,7 +168,8 @@ public:
     }
 
     /***************************************************************************
-    Returns the fVector of the manifold.
+    Returns an array containing the number of simplices in each dimension.
+    This is called the "fVector" of the manifold.
     */
     const(size_t)[] fVector()() const 
     {
@@ -268,7 +269,9 @@ void doPachner(Vertex, int dim)(
 ///
 @Name("doPachner 1 -> (dim + 1)") @system unittest
 {
-    auto m = Manifold!2(4.iota.subsetsOfSize(3).map!(s => s.array.dup));
+    auto m = Manifold!2(standardSphereFacets(2));
+    m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
+    
     m.doPachner([1,2,3], 4);
     m.facets.should.containOnly(
         [[0,1,2],[0,1,3], [0,2,3], [1,2,4], [1,3,4], [2,3,4]]);
@@ -277,7 +280,9 @@ void doPachner(Vertex, int dim)(
     m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,7],
         [0,3,7], [1,2,4], [1,3,4], [2,3,4], [2,3,7]]);
 
-    // TO DO: More pachner move tests
+    m.doPachner([7]);
+    m.doPachner([4]);
+    m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
 }
 
 /*******************************************************************************
@@ -297,16 +302,16 @@ void doPachner(Vertex, int dim)(
     manifold.doPachnerImpl(center, coCenter);
 }
 ///
-@Name("doPachner n -> (dim + 2 - n), 1 < n < dim + 2") /* pure */ @system unittest
+@Name("doPachner n -> (dim + 2 - n), 1 < n < dim + 2") @system unittest
 {
     auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4],
         [1,2,5], [2,3,5], [3,4,5], [1,4,5]]);
 
     octahedron.doPachner([1,2]);
-    assert(octahedron.degree([0]) == 5);
-    assert(octahedron.degree([5]) == 5);
-    assert(octahedron.degree([1]) == 3);
-    assert(octahedron.degree([2]) == 3);
+    octahedron.degree([0]).should.equal(5);
+    octahedron.degree([5]).should.equal(5);
+    octahedron.degree([1]).should.equal(3);
+    octahedron.degree([2]).should.equal(3);
 
     // We can undo the 2->2 move
     octahedron.doPachner([0,5]);
@@ -318,9 +323,23 @@ void doPachner(Vertex, int dim)(
     // Can't do 2->2 move on the boundary of a 3-simplex
     auto m = Manifold!2([[1,2,3],[1,2,4], [1,3,4], [2,3,4]]);   
     m.doPachner([1,2]).throwsWithMsg("bad pachner move");
-
-    // TO DO: More pachner move tests
 }
+
+///
+@Name("doPachner (general)") unittest
+{
+    auto m = Manifold!2(standardSphereFacets(2));
+    m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
+    
+    m.doPachner([1,2,3], 4);
+    m.doPachner([1,2]);
+    m.facets.should.containOnly(
+        [[0,1,3], [0,1,4], [0,2,3], [0,2,4], [1,3,4], [2,3,4]]);
+    m.doPachner([0,4]);
+    m.doPachner([4]);
+    m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);      
+}
+
 
 /*******************************************************************************
 Provides a historgram of simplex degrees for simplices of dimension 'dim' by
