@@ -14,17 +14,18 @@ import std.stdio : writefln, writeln;
 import utility : subsetsOfSize;
 
 //-------------------------------- SETTINGS ------------------------------------
-
-enum int numFacetsTarget = 1000;
-enum real numFacetsCoef = 0.1;
-
-enum real meanHingeDegreeTarget = 5.1;
-enum real numHingesCoef = 0.5;
-
-// TO DO: make setting this to 0.0 disable tracking of hinge degrees
-enum real degreeStdDevCoef = 0.0;
+// TO DO: make this sectopm a C++ style text import from a parameter file
+// TO DO: make setting setting a coef to 0.0 disable un-needed code
 
 enum dim = 3;
+
+enum int numFacetsTarget = 1000;
+enum real meanHingeDegreeTarget = 5.1;
+
+enum real numFacetsCoef = 0.1;
+enum real numHingesCoef = 0.5;
+enum real degreeStdDevCoef = 0.0;
+
 enum triesPerReport = 100;
 enum maxTries = 20000;
 
