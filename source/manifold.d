@@ -11,80 +11,6 @@ import unit_threaded : Name;
 import utility : binomial, isSubsetOf, SmallMap, staticIota, subsets, subsetsOfSize, throwsWithMsg;
 
 //dfmt off
-///
-@Name("Manifold doc tests") @system unittest
-{
-    auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
-        [2,3,5], [3,4,5], [1,4,5]]);
-
-    static assert(octahedron.dimension == 2);
-    static assert(is(octahedron.Vertex == int));
-
-    octahedron.fVector.should.equal([6UL,12,8]);
-    octahedron.eulerCharacteristic.should.equal(2);
-
-    auto tetrahedron = Manifold!2([[1,2,3], [1,2,4], [1,3,4], [2,3,4]]);
-
-    octahedron.star([1,2]).map!array.should.containOnly([[0,1,2], [1,2,5]]);    
-
-    octahedron.pachnerMoves.should.containOnly(
-        [[0,1], [0,2], [0,3], [0,4], [1,2], [1,4],
-         [1,5], [2,3], [2,5], [3,4], [3,5], [4,5],  // 1-simplices
-         [0,1,2], [0,1,4], [0,2,3], [0,3,4],
-         [1,2,5], [1,4,5], [2,3,5], [3,4,5]]);      // 2-simplices
-
-    tetrahedron.pachnerMoves.should.containOnly(
-        [[1, 2, 3], [1, 2, 4], [1, 3, 4], [2, 3, 4]]);
-
-    tetrahedron.doPachner([1,2,3], 5);
-
-    // TO DO: FINISH CHECKS!
-    // octahedron.doPachner([1,2]);
-    // octahedron.doPachner([0,5]);
-}
-
-///
-@Name("Manifold (errors)") /* pure */ @system unittest
-{
-    // TO DO: ldc doesn't like using "pure" above! Bugreport?
-
-    Manifold!2([[1,2,3,4]]).throwsWithMsg(
-        "not all facets have the correct dimension");
-
-    Manifold!2([[1,2,3]]).throwsWithMsg(
-        "found a ridge with degree not equal to 2");
-
-    Manifold!2([[1,2,3], [1,2,4], [1,3,4], [2,3,4], [1,5,6], [1,5,7], [1,6,7],
-        [5,6,7]]).throwsWithMsg("found a hinge whose link is not a circle");
-
-    auto octahedron = [[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5], [2,3,5],
-        [3,4,5], [1,4,5]];
-
-    auto sphere = [[6,7,8], [6,7,9], [6,8,9], [7,8,9]];
-
-    Manifold!2(chain(octahedron, sphere)).throwsWithMsg(
-        "facets do not define a connected simplicial complex");
-
-    // These facets separately define 3-spheres, but share the vertex 1
-    auto sphere3 = [[1,2,3,4], [1,2,3,5], [1,2,4,5], [1,3,4,5], [2,3,4,5]];
-    auto sphere3A =[[1,6,7,8], [1,6,7,9], [1,6,8,9], [1,7,8,9], [6,7,8,9]];
-
-    Manifold!3(chain(sphere3, sphere3A)).throwsWithMsg(
-        "found a codimension-3 simplex whose link is not a 2-sphere");
-}
-
-// More tests
-@Name("Manifold (additional)") /* pure */ @safe unittest
-{
-    // TO DO: ldc doesn't like using "pure" above! Bugreport?
-
-    static assert(!__traits(compiles, Manifold!2([["a", "bubba", "gump"]])));
-
-    auto m1 = Manifold!(1, string)([["a", "b"], ["b", "c"], ["a", "c"]]);
-    static assert(m1.dimension == 1);
-    static assert(is(m1.Vertex == string));
-}
-
 /*******************************************************************************
 Manifold type... TO DO: More info here
 */
@@ -105,7 +31,7 @@ public:
         ~ "dimension " ~ dimension.to!string);
 
     /// We can initialize the manifold from a range of ranges of vertices
-    this(F)(F initialFacets) @safe if (isInputRange!F)
+    this(F)(F initialFacets) if (isInputRange!F)
     {
         // TO DO: Put some nice constraints on F
         initialFacets.each!(f => this.insertFacet(f));
@@ -230,6 +156,81 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
     }
     return result;
 }
+
+///
+@Name("Manifold doc tests") @system unittest
+{
+    auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
+        [2,3,5], [3,4,5], [1,4,5]]);
+
+    static assert(octahedron.dimension == 2);
+    static assert(is(octahedron.Vertex == int));
+
+    octahedron.fVector.should.equal([6UL,12,8]);
+    octahedron.eulerCharacteristic.should.equal(2);
+
+    auto tetrahedron = Manifold!2([[1,2,3], [1,2,4], [1,3,4], [2,3,4]]);
+
+    octahedron.star([1,2]).map!array.should.containOnly([[0,1,2], [1,2,5]]);    
+
+    octahedron.pachnerMoves.should.containOnly(
+        [[0,1], [0,2], [0,3], [0,4], [1,2], [1,4],
+         [1,5], [2,3], [2,5], [3,4], [3,5], [4,5],  // 1-simplices
+         [0,1,2], [0,1,4], [0,2,3], [0,3,4],
+         [1,2,5], [1,4,5], [2,3,5], [3,4,5]]);      // 2-simplices
+
+    tetrahedron.pachnerMoves.should.containOnly(
+        [[1, 2, 3], [1, 2, 4], [1, 3, 4], [2, 3, 4]]);
+
+    tetrahedron.doPachner([1,2,3], 5);
+
+    // TO DO: FINISH CHECKS!
+    // octahedron.doPachner([1,2]);
+    // octahedron.doPachner([0,5]);
+}
+
+///
+@Name("Manifold (errors)") /* pure */ @system unittest
+{
+    // TO DO: ldc doesn't like using "pure" above! Bugreport?
+
+    Manifold!2([[1,2,3,4]]).throwsWithMsg(
+        "not all facets have the correct dimension");
+
+    Manifold!2([[1,2,3]]).throwsWithMsg(
+        "found a ridge with degree not equal to 2");
+
+    Manifold!2([[1,2,3], [1,2,4], [1,3,4], [2,3,4], [1,5,6], [1,5,7], [1,6,7],
+        [5,6,7]]).throwsWithMsg("found a hinge whose link is not a circle");
+
+    auto octahedron = [[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5], [2,3,5],
+        [3,4,5], [1,4,5]];
+
+    auto sphere = [[6,7,8], [6,7,9], [6,8,9], [7,8,9]];
+
+    Manifold!2(chain(octahedron, sphere)).throwsWithMsg(
+        "facets do not define a connected simplicial complex");
+
+    // These facets separately define 3-spheres, but share the vertex 1
+    auto sphere3 = [[1,2,3,4], [1,2,3,5], [1,2,4,5], [1,3,4,5], [2,3,4,5]];
+    auto sphere3A =[[1,6,7,8], [1,6,7,9], [1,6,8,9], [1,7,8,9], [6,7,8,9]];
+
+    Manifold!3(chain(sphere3, sphere3A)).throwsWithMsg(
+        "found a codimension-3 simplex whose link is not a 2-sphere");
+}
+
+// More tests
+@Name("Manifold (additional)") /* pure */ @safe unittest
+{
+    // TO DO: ldc doesn't like using "pure" above! Bugreport?
+
+    static assert(!__traits(compiles, Manifold!2([["a", "bubba", "gump"]])));
+
+    auto m1 = Manifold!(1, string)([["a", "b"], ["b", "c"], ["a", "c"]]);
+    static assert(m1.dimension == 1);
+    static assert(is(m1.Vertex == string));
+}
+
 ///
 @Name("pachnerMoves") @system unittest
 {
