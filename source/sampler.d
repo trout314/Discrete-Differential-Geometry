@@ -4,7 +4,8 @@ import manifold : degreeHistogram, doPachner, fVector, Manifold, pachnerMoves,
 import simplicial_complex : fVector;
 import std.algorithm : all, each, joiner, map, max, maxElement, sum;
 import std.conv : to;
-import std.datetime : AutoStart, Duration, msecs, StopWatch;
+import std.datetime : Duration, msecs;
+import std.datetime.stopwatch : StopWatch;
 import std.format : format;
 import std.math : exp, sqrt;
 import std.random : back, choice, rndGen, uniform01;
@@ -75,7 +76,8 @@ void sample()
     manifold.Vertex[] unusedVertices;
     assert(unusedVertices.all!(v => !manifold.contains([v])));
 
-    auto timer = StopWatch(AutoStart.yes);
+    StopWatch timer;
+    timer.start;
     while (tryCount[].sum < maxTries)
     {
         if(unusedVertices.empty)
@@ -148,7 +150,7 @@ void sample()
             writeln;
             '-'.repeat(80).writeln;
             writeln(" MOVE  :  DONE  /  TRIED  |  msec/move : ",
-                    timer.peek.msecs / real(triesPerReport));
+                    timer.peek.total!"msecs" / real(triesPerReport));
             '-'.repeat(80).writeln;
             iota(dim + 1).each!(indx => writeln(indx + 1, " -> ", dim + 1 - indx,
                     " : ", acceptCount[indx], " / ", tryCount[indx]));
