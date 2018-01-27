@@ -9,7 +9,7 @@
     "dflags": [""],
     "dependencies": {
         "unit-threaded": "~>0.7.28",
-        "fluent-asserts": "~>0.6.6",
+        "fluent-asserts": "0.9.0",
         "gperftools_d": "~>0.1.0",
         "emsi_containers": "~>0.5.3"
     },

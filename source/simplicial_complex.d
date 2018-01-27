@@ -138,8 +138,8 @@ import utility : capture, isSubsetOf, SmallMap, StackArray, staticIota, subsets,
     sc.numFacets.should.equal(3);
 
     sc.facets(0).empty.should.equal(true);
-    sc.facets(1).should.containOnly([[1, 2], [2, 3]]);
-    sc.facets(2).should.containOnly([[3, 4, 5]]);
+    sc.facets(1).should.containOnly([[1, 2], [2, 3]].to!(const(int)[][]));
+    sc.facets(2).should.containOnly([[3, 4, 5]].to!(const(int)[][]));
 
     sc.simplices(0).should.containOnly([[1], [2], [3], [4], [5]]);
     sc.simplices(1).should.containOnly([[1, 2], [2, 3], [3, 4], [3, 5], [4, 5]]);
