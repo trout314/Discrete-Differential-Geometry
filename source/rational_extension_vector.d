@@ -2,13 +2,13 @@ import factoring : sqrtSquarePart, squareFreePart, squarePart;
 import rational : rational, Rational;
 import std.algorithm : all, copy, equal, map, sum;
 import std.bigint : BigInt;
-import std.conv : to;
+import std.conv : hexString, to;
 import std.meta : AliasSeq;
 import std.range : array, drop, ElementType, enumerate, iota, isForwardRange,
     walkLength, zip;
 import std.traits : hasFunctionAttributes, isInstanceOf, ReturnType;
 import unit_threaded : Name;
-import utility : staticIota, subsetsOfSize;
+import utility : subsetsOfSize;
 
 /*******************************************************************************
 Returns a forward range which lists the points in the regular unit-edge simplex
@@ -140,7 +140,7 @@ if (roots_.all!(r => r>0))
     string toString() const
     {
         // square root symbol UTF-8 (hex)
-        auto rootSym = x"E2 88 9A";
+        auto rootSym = hexString!"E2 88 9A";
 
         string result = "(";
         foreach (indx, coef, root; zip(coefs[], roots[]).enumerate)
@@ -316,8 +316,8 @@ RationalType distanceSquared(int[] roots, RationalType)(
 {
     // TO DO: BigInt won't allow @safe.
 
-    foreach(dim; staticIota!(1, 8))
-    {
+    static foreach(dim; iota(1, 8))
+    {{
         foreach(pair; simplexPoints!dim.subsetsOfSize(2))
         {
             auto p0 = pair.front;
@@ -329,7 +329,7 @@ RationalType distanceSquared(int[] roots, RationalType)(
             assert(distanceSquared(p0, p1) == 1);
             assert(distanceSquared(p1, p0) == 1);       
         }
-    }
+    }}
 }
 
 //------------------------------------------------------------------------------

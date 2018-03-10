@@ -1,5 +1,5 @@
 import algorithms : eulerCharacteristic;
-import manifold : degreeHistogram, doPachner, fVector, Manifold, pachnerMoves,
+import manifold : degreeHistogram, doPachner, Manifold, pachnerMoves,
     standardSphereFacets;
 import simplicial_complex : fVector;
 import std.algorithm : all, each, joiner, map, max, maxElement, sum;
@@ -8,8 +8,8 @@ import std.datetime : Duration, msecs;
 import std.datetime.stopwatch : StopWatch;
 import std.format : format;
 import std.math : exp, sqrt;
-import std.random : back, choice, rndGen, uniform01;
-import std.range : array, chain, empty, front, iota, popBack, popFront, repeat,
+import std.random : choice, rndGen, uniform01;
+import std.range : array, back, chain, empty, front, iota, popBack, popFront, repeat,
     save;
 import std.stdio : writefln, writeln;
 import utility : subsetsOfSize;

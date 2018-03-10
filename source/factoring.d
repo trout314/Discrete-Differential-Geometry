@@ -1,7 +1,7 @@
 import std.algorithm : equal, filter, group, map, reduce, setDifference, sort;
-import std.range : array, chain, isForwardRange, stride;
+import std.range : array, chain, iota, isForwardRange, stride;
 import std.traits : ReturnType;
-import std.typecons : staticIota, tuple;
+import std.typecons : tuple;
 
 import unit_threaded : Name;
 /*******************************************************************************
@@ -261,14 +261,14 @@ int sqrtSquarePart(int num) pure nothrow @nogc @safe
     }
 
     enum maxCompiletimeTest = 100;
-    foreach (immutable n; staticIota!(1, maxCompiletimeTest))
-    {
+    static foreach (immutable n; iota(1, maxCompiletimeTest))
+    {{
         static assert(1.reduce!((a,b) => a*b)(n.primeFactors) == n);
         enum allPrimes = chain(n.squareFreePrimeFactors, n.squarePrimeFactors);        
         static assert(sort(allPrimes.array).equal(n.primeFactors));
         static assert(n == n.squareFreePart * n.squarePart);
         static assert(n == n.squareFreePart * n.sqrtSquarePart^^2);
-    }
+    }}
 }
 
 /*******************************************************************************

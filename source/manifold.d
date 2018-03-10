@@ -2,10 +2,10 @@ import algorithms : eulerCharacteristic, is2Sphere, isCircle,
     isConnected, isPureOfDim, join;
 import fluent.asserts;
 import simplicial_complex : fVector, SimplicialComplex;
-import std.algorithm : all, any, canFind, each, equal, filter, find, joiner,
+import std.algorithm : all, any, copy, canFind, each, equal, filter, find, joiner,
     map, maxElement, sort, uniq;
 import std.conv : to;
-import std.range : array, chain, ElementType, empty, enumerate, front, iota,
+import std.range : array, back, chain, ElementType, empty, enumerate, front, iota,
     isInputRange, popFront, save, walkLength;
 import unit_threaded : Name;
 import utility : binomial, isSubsetOf, SmallMap, staticIota, subsets, subsetsOfSize, throwsWithMsg;
@@ -17,9 +17,16 @@ Manifold type... TO DO: More info here
 struct Manifold(int dimension_, Vertex_ = int)
 {
 private:
-    SimplicialComplex!Vertex simpComp;
+    alias SimpComp = SimplicialComplex!Vertex;
+    SimpComp simpComp;
+
     size_t[dimension_ + 1] numSimplices;
     size_t[Vertex[]] degreeMap;
+
+    Vertex[2][Vertex[dimension_]] ridgeLinks;
+    // size_t[Vertex[dimension_ + 1]] facetIndices;
+
+
 public:
     /// Dimension of the manifold
     static immutable dimension = dimension_;
@@ -34,7 +41,13 @@ public:
     this(F)(F initialFacets) if (isInputRange!F)
     {
         // TO DO: Put some nice constraints on F
-        initialFacets.each!(f => this.insertFacet(f));
+        foreach(f ; initialFacets)
+        {
+            this.insertFacet(f);
+        }
+        // TO DO: Figure out why I need to keep switching between
+        // foreach and the following:
+        // initialFacets.each!(f => this.insertFacet(f));
 
         assert(this.isPureOfDim(dimension),
             "not all facets have the correct dimension");
@@ -44,31 +57,41 @@ public:
 
         static if(dimension >= 1)
         {
-            assert(simplices(dimension - 1).find!(s => degree(s) != 2).empty,
+            assert(simplices(dimension - 1).all!(s => degree(s) == 2),
                 "found a ridge with degree not equal to 2");
         }
 
         static if(dimension >= 2)
         {
             // TO DO: Figure out why we need "this.link" below (low priority)
-            assert(simplices(dimension - 2)
-                .find!(s => !SimplicialComplex!Vertex(this.link(s)).isCircle)
-                .empty, "found a hinge whose link is not a circle");
+            assert(simplices(dimension - 2).all!(
+                s => SimpComp(this.link(s)).isCircle),
+                "found a hinge whose link is not a circle");
         }
 
         static if(dimension >= 3)
         {
             // TO DO: Figure out why we need "this.link" below (low priority)
-            assert(simplices(dimension - 3).find!(
-                s => !SimplicialComplex!Vertex(this.link(s)).is2Sphere).empty,
+            assert(simplices(dimension - 3).all!(
+                s => SimpComp(this.link(s)).is2Sphere),
                 "found a codimension-3 simplex whose link is not a 2-sphere");
         }
 
         numSimplices[] = simpComp.fVector[];
+
+        // Sanity checking. TO DO: More checking!
+        // foreach(ridge; simplices(dimension - 1))
+        // {
+        //     auto ridgeVertices = ridge.to!(Vertex[dimension]);
+        //     Vertex[2] linkInManifoldAA = ridgeLinks[ridgeVertices];
+        //     Vertex[] linkFromSimpComp = simpComp.link(ridge).map!(s => s.front).array.dup.sort;
+        // }
+
     }
 
     this(this) pure @safe
     {
+        ridgeLinks = ridgeLinks.dup;
         degreeMap = degreeMap.dup;
     }
 
@@ -104,11 +127,37 @@ public:
     }
 
     // Special version of insertFacet to update tracked info
+    // (EXCEPT numSimplices, which is updated after each pachner move)
     private void insertFacet(V)(V vertices) if (isInputRange!V)
     {
+        this.simpComp.insertFacet(vertices);
+
+        assert(vertices.walkLength == dimension + 1,
+            "facet has wrong dimension");
+
         assert(vertices.array !in degreeMap);
         vertices.subsets.each!(s => ++degreeMap[s.array.idup]);
-        this.simpComp.insertFacet(vertices);
+        
+        foreach(vertex; vertices)
+        {
+            auto oppositeRidge = vertices.filter!(v => v != vertex);
+            Vertex[dimension] ridgeVertices;
+            copy(oppositeRidge, ridgeVertices[]);
+
+            Vertex[2] linkVertices;            
+            auto ptrToLink = ridgeVertices in ridgeLinks;
+            if(!ptrToLink)
+            {
+                linkVertices.front = vertex;
+                ridgeLinks[ridgeVertices] = linkVertices;
+            }
+            else
+            {
+                (*ptrToLink).back = vertex;
+                (*ptrToLink)[].sort;
+            }
+        }
+
     }
 
     // Special version of removeFacet to update tracked info
@@ -157,11 +206,22 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
     return result;
 }
 
+@Name("ridgeLinks") @system unittest
+{
+    auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
+        [2,3,5], [3,4,5], [1,4,5]]);
+
+    octahedron.ridgeLinks.should.equal(
+        [[1, 2]:[0, 5], [0, 1]:[2, 4], [0, 4]:[1, 3], [4, 5]:[1, 3], [2, 3]:[0, 5], [0, 3]:[2, 4],
+         [1, 5]:[2, 4], [2, 5]:[1, 3], [1, 4]:[0, 5], [3, 5]:[2, 4], [3, 4]:[0, 5], [0, 2]:[1, 3]]);
+}
+
 ///
 @Name("Manifold doc tests") @system unittest
 {
     auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
         [2,3,5], [3,4,5], [1,4,5]]);
+
 
     static assert(octahedron.dimension == 2);
     static assert(is(octahedron.Vertex == int));
@@ -194,8 +254,7 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
 {
     // TO DO: ldc doesn't like using "pure" above! Bugreport?
 
-    Manifold!2([[1,2,3,4]]).throwsWithMsg(
-        "not all facets have the correct dimension");
+    Manifold!2([[1,2,3,4]]).throwsWithMsg("facet has wrong dimension");
 
     Manifold!2([[1,2,3]]).throwsWithMsg(
         "found a ridge with degree not equal to 2");
