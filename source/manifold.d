@@ -572,7 +572,7 @@ auto standardSphereFacets(int dim)
 
     foreach(dim; staticIota!(1,9))
     {
-        auto m = Manifold!dim(standardSphereFacets(dim));
+        immutable m = Manifold!dim(standardSphereFacets(dim));
         assert(m.numFacets == dim + 2);
     }
 }
@@ -670,12 +670,10 @@ auto standardSphereFacets(int dim)
 @Name("link(range) (pure nothrow @nogc @safe)") @system unittest
 {
     auto sc = Manifold!1([[0,1],[0,2],[1,2]]);
-    int[1] vertex0 = [0];
-    int[1] vertex1 = [1];
-    int[1] vertex2 = [2];
+    immutable(int[1]) v = [1];
 
     () pure nothrow @nogc @safe {
-        auto linkRange = sc.link(vertex1[]);
+        auto linkRange = sc.link(v[]);
         auto savedRange = linkRange.save;
 
         int[2] vertices;
@@ -717,7 +715,7 @@ auto modifyFVector(size_t[] fVector_, size_t centerLength)
 
     // We modify the fVector for the removal of the original star
     auto centerDim = centerLength - 1;
-    auto dim = fVector_.length - 1;
+    auto dim = fVector_.length.to!int - 1;
     foreach(d; centerDim .. dim + 1)
     {
         fVector_[d] -= binomial(dim + 1 - centerDim, d - centerDim);

@@ -30,9 +30,8 @@ auto simplexPoints(int dim, RationalType = Rational!BigInt)()
 }
 
 ///
-@Name("simplexPoints") /* pure */ @system unittest
+@Name("simplexPoints") @system unittest
 {
-     // TO DO: ldc doesn't like using "pure" above! Bugreport?
      // TO DO: BigInt won't let me put @safe here!
 
     assert(simplexPoints!3.map!(pt => pt.toString).equal([
@@ -189,6 +188,8 @@ if (roots_.all!(r => r>0))
     {
         return (coefs < rhs.coefs) ? -1 : (coefs > rhs.coefs);
     }
+
+
 private:
     RationalType[dimension] coefs;
 }
@@ -197,7 +198,7 @@ private:
 @Name("coefficients") pure nothrow @safe unittest
 {
     alias r = rational;
-    auto v = reVector!(3,5,11)(r(1), r(2, 3), r(6));
+    immutable v = reVector!(3,5,11)(r(1), r(2, 3), r(6));
     assert(v.coefficients == [r(1), r(2, 3), r(6)]);
 }
 
@@ -209,8 +210,8 @@ private:
     alias vec = reVector!(1, 3, 6);
     alias r = (a, b) => rational(BigInt(a), BigInt(b));
 
-    auto v = simplexPoints!3.array[3];
-    auto w = simplexPoints!3.array[2];
+    immutable v = simplexPoints!3.array[3];
+    immutable w = simplexPoints!3.array[2];
 
     // Negate a vector (and for completeness unary "+")
     assert(-v == vec(-r(1,2), -r(1,6), -r(1,3)));
@@ -249,12 +250,12 @@ template reVector(R...)
 @Name("reVector") pure @safe unittest
 {
     alias r = rational;
-    auto v = reVector!(3,5,11)(r(1), r(2, 3), r(6));
-    static assert(is(typeof(v.coefs[0]) == Rational!int));
+    immutable v = reVector!(3,5,11)(r(1), r(2, 3), r(6));
+    static assert(is(typeof(v.coefs[0]) == immutable(Rational!int)));
     assert(v.toString == "(√3, (2/3)√5, 6√11)");
 
-    auto w = reVector!(1,3,6)(r(1), r(2), r(3));
-    assert(dotProduct(w, w) == 67);
+    auto x = reVector!(1,3,6)(r(1), r(2), r(3));
+    assert(dotProduct(x, x) == 67);
 }
 
 RationalType dotProduct(int[] roots, RationalType)(
