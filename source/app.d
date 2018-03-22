@@ -6,7 +6,6 @@ else
         import sampler : sample;
         // import gperftools_d.profiler;
         // ProfilerStart();
-        // Test comment
         sample;
         // ProfilerStop();
     }
