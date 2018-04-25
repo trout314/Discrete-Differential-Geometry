@@ -256,6 +256,8 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
 
     Manifold!2([[1,2,3,4]]).throwsWithMsg("facet has wrong dimension");
 
+    // TO DO: Improve this test! The simplicial complex defined by given facets
+    // has additional things wrong with it than simply a non deg-2 ridge 
     Manifold!2([[1,2,3]]).throwsWithMsg(
         "found a ridge with degree not equal to 2");
 
