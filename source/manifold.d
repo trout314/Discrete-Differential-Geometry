@@ -250,10 +250,8 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
 }
 
 ///
-@Name("Manifold (errors)") /* pure */ @system unittest
+@Name("Manifold (errors)") pure @system unittest
 {
-    // TO DO: ldc doesn't like using "pure" above! Bugreport?
-
     Manifold!2([[1,2,3,4]]).throwsWithMsg("facet has wrong dimension");
 
     // TO DO: Improve this test! The simplicial complex defined by given facets
@@ -281,10 +279,8 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
 }
 
 // More tests
-@Name("Manifold (additional)") /* pure */ @safe unittest
+@Name("Manifold (additional)") pure @safe unittest
 {
-    // TO DO: ldc doesn't like using "pure" above! Bugreport?
-
     static assert(!__traits(compiles, Manifold!2([["a", "bubba", "gump"]])));
 
     auto m1 = Manifold!(1, string)([["a", "b"], ["b", "c"], ["a", "c"]]);
@@ -429,10 +425,8 @@ int[int] degreeHistogram(Vertex, int dim)(
     return result;
 }
 ///
-@Name("degreeHistogram") /* pure */ @system unittest
+@Name("degreeHistogram") pure @system unittest
 {
-    // TO DO: ldc doesn't like using "pure" above! Bugreport?
-
     auto m = Manifold!2(
         [[1,2,3], [1,2,4], [1,3,4], [2,3,5], [2,4,5],[3,4,5]]);
     assert(m.degreeHistogram(0) == [4:3, 3:2]);
