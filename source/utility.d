@@ -191,7 +191,7 @@ pure nothrow @nogc @safe unittest
 {
     struct A
     {
-        @disable bool opEquals()(auto ref const A rhs);
+        @disable bool opEquals()(auto ref const A rhs) const;
     }
 
     static assert(!isEqualityComparable!A);
