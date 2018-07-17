@@ -27,7 +27,9 @@
                     "message": 6
                 }
             },
-            "args": []
+            "args": [
+                "--compiler=ldc2"
+            ]
         },
         {
             "taskName": "test",
@@ -44,7 +46,9 @@
                     "message": 3
                 }
             },
-            "args": []
+            "args": [
+                "--compiler=ldc2"
+            ]
         },
         {
             "taskName": "run"

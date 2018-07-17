@@ -8,10 +8,8 @@
     "targetPath": "bin",
     "dflags": [""],
     "dependencies": {
-        "unit-threaded": "~>0.7.43",
-        "fluent-asserts": "~>0.11.3",
-        "gperftools_d": "~>0.1.0",
-        "emsi_containers": "~>0.8.0-alpha.5"
+        "unit-threaded": "~>0.7.46",
+        "fluent-asserts": "~>0.11.4"
     },
     "configurations": [
         { "name": "executable" },
