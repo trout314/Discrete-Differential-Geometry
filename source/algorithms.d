@@ -469,7 +469,7 @@ bool isPureOfDim(Vertex)(const ref SimplicialComplex!Vertex sc, int d)
     auto emptyComplex = SimplicialComplex!()();
     assert(iota(16).all!(d => emptyComplex.isPureOfDim(d)));
 }
-// NOTE: that the following unittest cannot be @safe since throwsWithMsg 
+// NOTE: The following unittest cannot be @safe since throwsWithMsg 
 // catches an Error
 ///
 @Name("isPureOfDim (errors)") pure @system unittest
