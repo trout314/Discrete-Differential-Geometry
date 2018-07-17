@@ -12,35 +12,36 @@ Copyright:  Copyright (c) 2009-2011, David Simcha.
 License:    $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0)
 */
 
-import std.algorithm, std.bigint, std.conv, std.exception, std.format, std.math, std.stdio,
-    std.traits;
+import std.algorithm, std.bigint, std.conv, std.exception, std.format, std.math,
+    std.stdio, std.traits;
 
 import unit_threaded : Name;
 
- ///
- @Name("pi approximation") @system unittest
- {
-     enum maxTerm = 30;
+// TO DO: BigInt won't allow @safe unittest here
+///
+@Name("pi approximation") @system unittest
+{
+    enum maxTerm = 30;
 
     Rational!(BigInt) getTerm(int termNumber)
     {
         auto addFactor = 2 * termNumber - 1;
 
-        if(termNumber == maxTerm)
+        if (termNumber == maxTerm)
         {
             return rational(BigInt(addFactor));
         }
-    
+
         immutable termNumberSquared = BigInt(termNumber * termNumber);
         auto continued = termNumberSquared / getTerm(termNumber + 1);
         continued += addFactor;
         return continued;
     }
-    
+
     auto pi = rational(BigInt(4)) / getTerm(1);
     assert(pi.to!string == "586398465775082011623424/186656428899215824574025");
     assert("%.18f".format(cast(real) pi) == "3.141592653589793238");
- }
+}
 
 alias abs = std.math.abs; // Allow cross-module overloading.
 
@@ -157,8 +158,8 @@ Rational!(CommonInteger!(I1, I2)) rational(I1, I2)(const I1 i1, const I2 i2)
 ///
 @Name("rational 2-arg") @system unittest
 {
-    auto r1 = rational( BigInt("314159265"), BigInt("27182818"));
-    auto r2 = rational( BigInt("8675309"), BigInt("362436"));
+    auto r1 = rational(BigInt("314159265"), BigInt("27182818"));
+    auto r2 = rational(BigInt("8675309"), BigInt("362436"));
     r1 += r2;
     assert(r1 == rational(BigInt("174840986505151"), BigInt("4926015912324")));
     assert(r1.to!string == "174840986505151/4926015912324");
@@ -175,9 +176,9 @@ Rational!I rational(I)(const I val) if (isIntegerLike!I)
 ///
 @Name("rational 1-arg") @system unittest
 {
-    assert(rational(5) == rational(5,1));
-    assert(rational(BigInt("94362349639838383827627")) ==
-        rational(BigInt("94362349639838383827627"), BigInt("1")));
+    assert(rational(5) == rational(5, 1));
+    assert(rational(BigInt("94362349639838383827627")) == rational(
+            BigInt("94362349639838383827627"), BigInt("1")));
 }
 
 /*******************************************************************************
@@ -194,29 +195,29 @@ public:
     alias IntType = Int;
 
     // ----------------Multiplication operators----------------------------------
- 
-    auto opBinary(string op, Rhs)(const Rhs rhs) const
-        if (op == "*" && is(CommonRational!(Int, Rhs)) && isRational!Rhs)
+
+    auto opBinary(string op, Rhs)(const Rhs rhs) const 
+            if (op == "*" && is(CommonRational!(Int, Rhs)) && isRational!Rhs)
     {
         auto ret = CommonRational!(Int, Rhs)(this.numer, this.denom);
         return ret *= rhs;
     }
 
-    auto opBinary(string op, Rhs)(const Rhs rhs) const
-        if (op == "*" && is(CommonRational!(Int, Rhs)) && isIntegerLike!Rhs)
+    auto opBinary(string op, Rhs)(const Rhs rhs) const 
+            if (op == "*" && is(CommonRational!(Int, Rhs)) && isIntegerLike!Rhs)
     {
         Rational!Int ret = this;
         return ret *= rhs;
     }
 
-    Rational!Int opBinaryRight(string op, Rhs)(const Rhs rhs) const
-        if (op == "*" && is(CommonRational!(Int, Rhs)) && isIntegerLike!Rhs)
+    Rational!Int opBinaryRight(string op, Rhs)(const Rhs rhs) const 
+            if (op == "*" && is(CommonRational!(Int, Rhs)) && isIntegerLike!Rhs)
     {
         return opBinary!(op, Rhs)(rhs);
     }
 
     Rational!Int opOpAssign(string op, Rhs)(const Rhs rhs_)
-        if (op == "*" && isRational!Rhs)
+            if (op == "*" && isRational!Rhs)
     {
         Rhs rhs = rhs_;
 
@@ -266,29 +267,29 @@ public:
 
     // --------------------Division operators-----------------------------------
 
-    Rational!Int opBinary(string op, Rhs)(const Rhs rhs) const
-        if (op == "/" && is(CommonRational!(Int, Rhs)) && isRational!Rhs)
+    Rational!Int opBinary(string op, Rhs)(const Rhs rhs) const 
+            if (op == "/" && is(CommonRational!(Int, Rhs)) && isRational!Rhs)
     {
         // multiply by inverse.
         return this * Rhs(rhs.denom, rhs.numer);
     }
 
-    auto opBinary(string op, Rhs)(const Rhs rhs) const
-        if (op == "/" && is(CommonRational!(Int, Rhs)) && isIntegerLike!(Rhs))
+    auto opBinary(string op, Rhs)(const Rhs rhs) const 
+            if (op == "/" && is(CommonRational!(Int, Rhs)) && isIntegerLike!(Rhs))
     {
         auto ret = CommonRational!(Int, Rhs)(this.numer, this.denom);
         return ret /= rhs;
     }
 
-    Rational!Int opBinaryRight(string op, Rhs)(const Rhs rhs) const
-        if (op == "/" && is(CommonRational!(Int, Rhs)) && isIntegerLike!Rhs)
+    Rational!Int opBinaryRight(string op, Rhs)(const Rhs rhs) const 
+            if (op == "/" && is(CommonRational!(Int, Rhs)) && isIntegerLike!Rhs)
     {
         auto ret = CommonRational!(Int, Rhs)(this.denom, this.numer);
         return ret *= rhs;
     }
 
     Rational!Int opOpAssign(string op, Rhs)(const Rhs rhs_)
-        if (op == "/" && isIntegerLike!Rhs)
+            if (op == "/" && isIntegerLike!Rhs)
     {
         Rhs rhs = rhs_;
 
@@ -306,7 +307,7 @@ public:
     }
 
     Rational!Int opOpAssign(string op, Rhs)(const Rhs rhs_)
-        if (op == "/" && isRational!Rhs)
+            if (op == "/" && isRational!Rhs)
     {
         Rhs rhs = rhs_;
 
@@ -316,22 +317,22 @@ public:
     }
 
     // ---------------------Addition operators----------------------------------
- 
-    auto opBinary(string op, Rhs)(const Rhs rhs) const
-        if (op == "+" && (isRational!Rhs || isIntegerLike!Rhs))
+
+    auto opBinary(string op, Rhs)(const Rhs rhs) const 
+            if (op == "+" && (isRational!Rhs || isIntegerLike!Rhs))
     {
         auto ret = CommonRational!(Rational!Int, Rhs)(this.numer, this.denom);
         return ret += rhs;
     }
 
-    auto opBinaryRight(string op, Rhs)(const Rhs rhs) const
-        if (op == "+" && is(CommonRational!(Int, Rhs)) && isIntegerLike!Rhs)
+    auto opBinaryRight(string op, Rhs)(const Rhs rhs) const 
+            if (op == "+" && is(CommonRational!(Int, Rhs)) && isIntegerLike!Rhs)
     {
         return opBinary!(op, Rhs)(rhs);
     }
 
     Rational!Int opOpAssign(string op, Rhs)(const Rhs rhs)
-        if (op == "+" && isRational!Rhs)
+            if (op == "+" && isRational!Rhs)
     {
         if (this.denom == rhs.denom)
         {
@@ -354,7 +355,7 @@ public:
     }
 
     Rational!Int opOpAssign(string op, Rhs)(const Rhs rhs)
-        if (op == "+" && isIntegerLike!Rhs)
+            if (op == "+" && isIntegerLike!Rhs)
     {
         this.numer += rhs * this.denom;
 
@@ -364,15 +365,15 @@ public:
 
     // -----------------------Subtraction operators-----------------------------
 
-    auto opBinary(string op, Rhs)(const Rhs rhs) const
-        if (op == "-" && is(CommonRational!(Int, Rhs)))
+    auto opBinary(string op, Rhs)(const Rhs rhs) const 
+            if (op == "-" && is(CommonRational!(Int, Rhs)))
     {
         auto ret = CommonRational!(Rational!Int, Rhs)(this.numer, this.denom);
         return ret -= rhs;
     }
 
     Rational!Int opOpAssign(string op, Rhs)(const Rhs rhs)
-        if (op == "-" && isRational!Rhs)
+            if (op == "-" && isRational!Rhs)
     {
         if (this.denom == rhs.denom)
         {
@@ -395,7 +396,7 @@ public:
     }
 
     Rational!Int opOpAssign(string op, Rhs)(const Rhs rhs)
-        if (op == "-" && isIntegerLike!Rhs)
+            if (op == "-" && isIntegerLike!Rhs)
     {
         this.numer -= rhs * this.denom;
 
@@ -403,8 +404,8 @@ public:
         return this;
     }
 
-    Rational!Int opBinaryRight(string op, Rhs)(const Rhs rhs) const
-        if (op == "-" && is(CommonInteger!(Int, Rhs)) && isIntegerLike!Rhs)
+    Rational!Int opBinaryRight(string op, Rhs)(const Rhs rhs) const 
+            if (op == "-" && is(CommonInteger!(Int, Rhs)) && isIntegerLike!Rhs)
     {
         Rational!Int ret;
         ret.denom = this.denom;
@@ -428,7 +429,7 @@ public:
     // rational.
 
     Rational!Int opOpAssign(string op, Rhs)(const Rhs rhs_)
-        if (op == "^^" && isIntegerLike!Rhs)
+            if (op == "^^" && isIntegerLike!Rhs)
     {
         Rhs rhs = rhs_;
 
@@ -447,8 +448,8 @@ public:
         return this;
     }
 
-    auto opBinary(string op, Rhs)(const Rhs rhs) const
-        if (op == "^^" && isIntegerLike!Rhs && is(CommonRational!(Int, Rhs)))
+    auto opBinary(string op, Rhs)(const Rhs rhs) const 
+            if (op == "^^" && isIntegerLike!Rhs && is(CommonRational!(Int, Rhs)))
     {
         auto ret = CommonRational!(Int, Rhs)(this.numer, this.denom);
         ret^^=rhs;
@@ -458,7 +459,7 @@ public:
     // ---------------------Assignment operators--------------------------------
 
     Rational!Int opAssign(Rhs)(const Rhs rhs)
-        if (isIntegerLike!Rhs && isAssignable!(Int, Rhs))
+            if (isIntegerLike!Rhs && isAssignable!(Int, Rhs))
     {
         this.numer = rhs;
         this.denom = 1;
@@ -466,7 +467,7 @@ public:
     }
 
     Rational!Int opAssign(Rhs)(const Rhs rhs)
-        if (isRational!Rhs && isAssignable!(Int, typeof(Rhs.numer)))
+            if (isRational!Rhs && isAssignable!(Int, typeof(Rhs.numer)))
     {
         this.numer = rhs.numer;
         this.denom = rhs.denom;
@@ -475,7 +476,8 @@ public:
 
     // --------------------Comparison/Equality Operators---------------------------
 
-    bool opEquals(Rhs)(const Rhs rhs) const if (isRational!Rhs || isIntegerLike!Rhs)
+    bool opEquals(Rhs)(const Rhs rhs) const 
+            if (isRational!Rhs || isIntegerLike!Rhs)
     {
         static if (isRational!Rhs)
         {
@@ -508,14 +510,12 @@ public:
         {
             return 1;
         }
-        else if (this.numer >= rhs.numer 
-            && this.denom <= rhs.denom)
+        else if (this.numer >= rhs.numer && this.denom <= rhs.denom)
         {
             // We've already ruled out equality, so this must be > rhs.
             return 1;
         }
-        else if (rhs.numer >= this.numer 
-            && rhs.denom <= this.denom)
+        else if (rhs.numer >= this.numer && rhs.denom <= this.denom)
         {
             return -1;
         }
@@ -584,7 +584,7 @@ public:
     ///
     @Name("invert") pure nothrow @nogc @safe unittest
     {
-        assert(rational(2,3).invert == rational(3,2));
+        assert(rational(2, 3).invert == rational(3, 2));
     }
 
     /***************************************************************************
@@ -638,9 +638,8 @@ public:
 
                     // This checks for overflow in case we're working with a
                     // user-defined fixed-precision integer.
-                    assert(temp.numer > 0, text("Overflow while ",
-                        "converting ", Rational!Int.stringof, " to ",
-                        F.stringof, "."));
+                    assert(temp.numer > 0, text("Overflow while ", "converting ",
+                            Rational!Int.stringof, " to ", F.stringof, "."));
 
                 }
 
@@ -712,7 +711,7 @@ public:
     @Name("denominator") pure @system unittest
     {
         assert(rational(17, 324).denominator == 324);
-        assert(rational(BigInt("82"), BigInt("7")).denominator == BigInt("7"));        
+        assert(rational(BigInt("82"), BigInt("7")).denominator == BigInt("7"));
     }
 
     /***************************************************************************
@@ -729,7 +728,7 @@ public:
 
         assert(r(99, 100).integerPart == 0);
         assert(r(23, 10).integerPart == 2);
-        assert(r(BigInt("6"), BigInt("7")).integerPart == BigInt("0"));        
+        assert(r(BigInt("6"), BigInt("7")).integerPart == BigInt("0"));
         assert(r(BigInt("82"), BigInt("7")).integerPart == BigInt("11"));
     }
 
@@ -747,10 +746,8 @@ public:
 
         assert(r(99, 100).fractionPart == r(99, 100));
         assert(r(23, 10).fractionPart == r(3, 10));
-        assert(r(BigInt("6"), BigInt("7")).fractionPart 
-            == r(BigInt("6"), BigInt("7")));        
-        assert(r(BigInt("82"), BigInt("7")).fractionPart
-            == r(BigInt("5"), BigInt("7")));        
+        assert(r(BigInt("6"), BigInt("7")).fractionPart == r(BigInt("6"), BigInt("7")));
+        assert(r(BigInt("82"), BigInt("7")).fractionPart == r(BigInt("5"), BigInt("7")));
     }
 
     /***************************************************************************
@@ -766,20 +763,20 @@ public:
         }
         else
         {
-            return numer.to!string;            
+            return numer.to!string;
         }
     }
     ///
     @Name("toString") @system unittest
     {
-        assert(rational(3,4).toString == "3/4");
-        assert(rational(BigInt(3),BigInt(4)).toString == "3/4");
-        assert(rational(3,1).toString == "3");
-        assert(rational(BigInt(3),BigInt(1)).toString == "3");
+        assert(rational(3, 4).toString == "3/4");
+        assert(rational(BigInt(3), BigInt(4)).toString == "3/4");
+        assert(rational(3, 1).toString == "3");
+        assert(rational(BigInt(3), BigInt(1)).toString == "3");
     }
 
 private:
-    Int numer = 0;  // NOTE: Default values added by Aaron Trout
+    Int numer = 0; // NOTE: Default values added by Aaron Trout
     Int denom = 1;
 
     void simplify()
@@ -828,10 +825,8 @@ private:
     assert(f1 == f2);
 
     // Test multiplication.
-    assert(rational(8, 42) * rational(cast(byte) 7, cast(byte) 68)
-        == rational(1, 51));
-    assert(rational(20_000L, 3_486_784_401U) * rational(3_486_784_401U, 1_000U) 
-        == rational(20, 1));
+    assert(rational(8, 42) * rational(cast(byte) 7, cast(byte) 68) == rational(1, 51));
+    assert(rational(20_000L, 3_486_784_401U) * rational(3_486_784_401U, 1_000U) == rational(20, 1));
     auto f3 = rational(7, 57);
     f3 *= rational(2, 78);
     assert(f3 == rational(7, 2223));
@@ -855,8 +850,7 @@ private:
     assert(f4 == 2);
 
     // Test addition.
-    assert(rational(1, 3) + rational(cast(byte) 2, cast(byte) 3)
-        == rational(1, 1));
+    assert(rational(1, 3) + rational(cast(byte) 2, cast(byte) 3) == rational(1, 1));
     assert(rational(1, 3) + rational(1, 2L) == rational(5, 6));
     auto f5 = rational(BigInt("314159265"), BigInt("27182818"));
     auto f6 = rational(BigInt("8675309"), BigInt("362436"));
@@ -914,7 +908,7 @@ private:
     assert(one == zero);
 
     // Added by Aaron Trout June 2017
-    assert(rational(3, 3) * rational(0,5) == rational(0,1));
+    assert(rational(3, 3) * rational(0, 5) == rational(0, 1));
 
     // Test integerPart, fraction part.
     auto intFract = rational(5, 4);
@@ -925,7 +919,7 @@ private:
     // Works at compile time too. (Added by A. Trout, June 2017)
     static assert(rational(1, 2) + rational(1, 4) == rational(3, 4));
     static assert(rational(3, 4) * 2 - rational(1, 4) == rational(5, 4));
-    static assert(rational(5, 4) / 2 + 1 * rational(1, 2) - 1 == rational(1,8));
+    static assert(rational(5, 4) / 2 + 1 * rational(1, 2) - 1 == rational(1, 8));
     static assert(rational(1, 8) / rational(2, 5) == rational(5, 16));
 }
 
@@ -947,11 +941,10 @@ writeln( toRational!int( PI, 1e-1));
 Rational!(Int) toRational(Int)(real floatNum, real epsilon = 1e-8)
 {
     assert(floatNum != real.infinity && floatNum != -real.infinity
-        && !isNaN(floatNum), "Can't convert NaNs and infinities to rational.");
+            && !isNaN(floatNum), "Can't convert NaNs and infinities to rational.");
     assert(floatNum < long.max && floatNum > -long.max,
-        "Rational conversions of very large numbers not yet implemented.");
-    assert(1.0L / epsilon < long.max,
-        "Can't handle very small epsilons < long.max in toRational.");
+            "Rational conversions of very large numbers not yet implemented.");
+    assert(1.0L / epsilon < long.max, "Can't handle very small epsilons < long.max in toRational.");
 
     // Handle this as a special case to make the rest of the code less
     // complicated:
@@ -1019,10 +1012,8 @@ private Rational!Int toRationalImpl(Int)(real floatNum, real epsilon)
 {
     // Start with simple cases.
     assert(toRational!int(0.5) == rational(1, 2));
-    assert(toRational!BigInt(0.333333333333333L) 
-        == rational(BigInt(1), BigInt(3)));
-    assert(toRational!int(2.470588235294118) 
-        == rational(cast(int) 42, cast(int) 17));
+    assert(toRational!BigInt(0.333333333333333L) == rational(BigInt(1), BigInt(3)));
+    assert(toRational!int(2.470588235294118) == rational(cast(int) 42, cast(int) 17));
     assert(toRational!long(2.007874015748032) == rational(255L, 127L));
     assert(toRational!int(3.0L / 7.0L) == rational(3, 7));
     assert(toRational!int(7.0L / 3.0L) == rational(7, 3));

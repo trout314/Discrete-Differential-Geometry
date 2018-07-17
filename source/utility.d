@@ -373,7 +373,6 @@ void throwsWithMsg(ThrownType : Throwable = Error, E)(lazy E expression,
     }
     throwException().throwsWithMsg!Exception("kapow!");
 
-    // TO DO: Is catching an Error OK for testing purposes?
     static void throwError()
     {
         assert(false, "boom!");
@@ -817,7 +816,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
     return SubsetsOfSizeRange((1 << subsetSize) - 1, set);
 }
 ///
-@Name("subsetsOfSize") @system unittest
+@Name("subsetsOfSize") @safe unittest
 {
     [1, 2, 3, 4].subsetsOfSize(1).map!array.should.containOnly([[1], [2], [3], [4]]);
 
@@ -925,7 +924,7 @@ auto subsets(R)(R set) if (isInputRange!R)
     return SubsetsRange(set, 1);
 }
 ///
-@Name("subsets") @system unittest
+@Name("subsets") @safe unittest
 {
     [1, 2, 3].subsets.map!array.should.containOnly([[1], [2], [3], [1, 2],
             [1, 3], [2, 3], [1, 2, 3]]);

@@ -115,7 +115,7 @@ import utility : capture, isSubsetOf, SmallMap, StackArray, staticIota, subsets,
     sc.facets(-1).throwsWithMsg("expected a non-negative dimension");
 }
 
-@Name("additional tests") @system unittest
+@Name("additional tests") @safe unittest
 {
     alias sComp = simplicialComplex;
 

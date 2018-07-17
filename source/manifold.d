@@ -206,7 +206,7 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
     return result;
 }
 
-@Name("ridgeLinks") @system unittest
+@Name("ridgeLinks") @safe unittest
 {
     auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
         [2,3,5], [3,4,5], [1,4,5]]);
@@ -217,7 +217,7 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
 }
 
 ///
-@Name("Manifold doc tests") @system unittest
+@Name("Manifold doc tests") @safe unittest
 {
     auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
         [2,3,5], [3,4,5], [1,4,5]]);
@@ -248,7 +248,8 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
     // octahedron.doPachner([1,2]);
     // octahedron.doPachner([0,5]);
 }
-
+// NOTE: The following unittest cannot be @safe since throwsWithMsg 
+// catches an Error
 ///
 @Name("Manifold (errors)") pure @system unittest
 {
@@ -289,10 +290,8 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
 }
 
 ///
-@Name("pachnerMoves") @system unittest
+@Name("pachnerMoves") @safe unittest
 {
-    // TO DO: Why does this need to be @system? Make it @safe!
-
     auto m = Manifold!2(
         [[1,2,3], [1,2,4], [1,3,4], [2,3,5], [2,4,5],[3,4,5]]);
 
@@ -325,7 +324,7 @@ void doPachner(Vertex, int dim)(
     manifold.doPachnerImpl(centerFacet, [newVertex]);
 }
 ///
-@Name("doPachner 1 -> (dim + 1)") @system unittest
+@Name("doPachner 1 -> (dim + 1)") @safe unittest
 {
     auto m = Manifold!2(standardSphereFacets(2));
     m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]].to!(const(int)[][]));
@@ -360,7 +359,7 @@ void doPachner(Vertex, int dim)(
     manifold.doPachnerImpl(center, coCenter);
 }
 ///
-@Name("doPachner n -> (dim + 2 - n), 1 < n < dim + 2") @system unittest
+@Name("doPachner n -> (dim + 2 - n), 1 < n < dim + 2") @safe unittest
 {
     auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4],
         [1,2,5], [2,3,5], [3,4,5], [1,4,5]]);
@@ -377,12 +376,16 @@ void doPachner(Vertex, int dim)(
 
     octahedron.doPachner([0,1,2], 99);
     octahedron.doPachner([99]);
-
+}
+// NOTE: The following unittest cannot be @safe since throwsWithMsg 
+// catches an Error
+///
+@Name("doPachner (errors)") @system unittest
+{
     // Can't do 2->2 move on the boundary of a 3-simplex
     auto m = Manifold!2([[1,2,3],[1,2,4], [1,3,4], [2,3,4]]);   
     m.doPachner([1,2]).throwsWithMsg("bad pachner move");
 }
-
 ///
 @Name("doPachner (general)") unittest
 {
@@ -397,7 +400,6 @@ void doPachner(Vertex, int dim)(
     m.doPachner([4]);
     m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]].to!(const(int)[][]));      
 }
-
 
 /*******************************************************************************
 Provides a historgram of simplex degrees for simplices of dimension 'dim' by
@@ -425,7 +427,7 @@ int[int] degreeHistogram(Vertex, int dim)(
     return result;
 }
 ///
-@Name("degreeHistogram") pure @system unittest
+@Name("degreeHistogram") pure @safe unittest
 {
     auto m = Manifold!2(
         [[1,2,3], [1,2,4], [1,3,4], [2,3,5], [2,4,5],[3,4,5]]);
@@ -475,7 +477,7 @@ auto pachnerMovesAndDegreeHistogram(Vertex, int dim)(
     return Result(moves_, histogram_);
 }
 ///
-@Name("pachnerMovesAndDegreeHistogram") @system unittest
+@Name("pachnerMovesAndDegreeHistogram") @safe unittest
 {
     auto m = Manifold!2(
         [[1,2,3], [1,2,4], [1,3,4], [2,3,5], [2,4,5],[3,4,5]]);
@@ -557,7 +559,7 @@ auto standardSphereFacets(int dim)
     return iota(dim + 2).subsetsOfSize(dim + 1).map!array;
 }
 ///
-@Name("standardSphereFacets") @system unittest
+@Name("standardSphereFacets") @safe unittest
 {
     import std.stdio : writeln;
     standardSphereFacets(2).should.containOnly(
@@ -574,7 +576,7 @@ auto standardSphereFacets(int dim)
 }
 
 ///
-@Name("facets(dim) (pure nothrow @nogc @safe)") @system unittest
+@Name("facets(dim) (pure nothrow @nogc @safe)") pure @safe unittest
 {
     auto sc = Manifold!1([[0,1],[0,2],[1,2]]);
     int[2] edge01 = [0,1];
@@ -605,7 +607,7 @@ auto standardSphereFacets(int dim)
 }
 
 ///
-@Name("facets() (pure nothrow @nogc @safe)") @system unittest
+@Name("facets() (pure nothrow @nogc @safe)") pure @safe unittest
 {
     auto sc = Manifold!1([[0,1],[0,2],[1,2]]);
     int[2] edge01 = [0,1];
@@ -636,7 +638,7 @@ auto standardSphereFacets(int dim)
 }
 
 ///
-@Name("star(range) (pure nothrow @nogc @safe)") @system unittest
+@Name("star(range) (pure nothrow @nogc @safe)") pure @safe unittest
 {
     auto sc = Manifold!1([[0,1],[0,2],[1,2]]);
     int[2] edge01 = [0,1];
@@ -663,7 +665,7 @@ auto standardSphereFacets(int dim)
 }
 
 ///
-@Name("link(range) (pure nothrow @nogc @safe)") @system unittest
+@Name("link(range) (pure nothrow @nogc @safe)") pure @safe unittest
 {
     auto sc = Manifold!1([[0,1],[0,2],[1,2]]);
     immutable(int[1]) v = [1];
@@ -688,7 +690,7 @@ auto standardSphereFacets(int dim)
 }
 
 ///
-@Name("contains (pure nothrow /* @nogc */ @safe)") @system unittest
+@Name("contains (pure nothrow /* @nogc */ @safe)") pure @safe unittest
 {
     auto sc = Manifold!1([[0,1],[0,2],[1,2]]);
     int[2] edge01 = [0,1];

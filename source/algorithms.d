@@ -96,10 +96,8 @@ bool isOrientable(Vertex, int dim)(Manifold!(dim, Vertex) manifold)
     return true;
 }
 ///
-@Name("isOrientable") pure @system unittest
+@Name("isOrientable") pure @safe unittest
 {
-    // TO DO: Why does this need to be @system? Make it @safe!
- 
     assert(Manifold!2().isOrientable);
 
     // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n10_o0_g5
@@ -286,16 +284,13 @@ auto connectedComponents(Vertex)(const ref SimplicialComplex!Vertex sc)
         currentLabel += 1;
     }
 
-    // TO DO: Bug report for chunkBy being @system?
+    // @safe BUG, see: https://issues.dlang.org/show_bug.cgi?id=18161
     return () @trusted { return records.chunkBy!((r1, r2) => r1.label == r2.label)
-        .map!(rList => SimplicialComplex!Vertex(rList.map!(r => r.facet).array)).array; } ();           
+        .map!(rList => SimplicialComplex!Vertex(rList.map!(r => r.facet).array)).array; } ();
 }
-
 ///
-@Name("connectedComponents") pure @system unittest
+@Name("connectedComponents") pure @safe unittest
 {
-    // TO DO: Why does this need to be @system? Make it @safe!
-
     alias sComp = simplicialComplex;
 
     auto sc = sComp([[1], [9], [2,3], [3,4], [5,6], [6,7,8]]);
@@ -342,10 +337,8 @@ bool is2Sphere(Vertex)(SimplicialComplex!Vertex sc)
     return sc.isOrientableSurfaceOfGenus(0);
 }
 ///
-@Name("is2Sphere") pure @system unittest
+@Name("is2Sphere") pure @safe unittest
 {
-    // TO DO: Why does this need to be @system? Make it @safe!
-
     auto s1 = simplicialComplex([[1,2,3], [1,2,4], [1,3,4], [2,3,4]]);
     assert(s1.is2Sphere);
 
@@ -376,10 +369,8 @@ bool is2Torus(Vertex)(SimplicialComplex!Vertex sc)
     return sc.isOrientableSurfaceOfGenus(1);
 }
 ///
-@Name("is2Torus") pure @system unittest
+@Name("is2Torus") pure @safe unittest
 {
-    // TO DO: Why does this need to be @system? Make it @safe!
-
     // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n10_o1_g1
     // Surface #2105 on genus 1 list
     auto g1 = simplicialComplex([[1,2,3],[1,2,4],[1,3,5],[1,4,6],[1,5,6],
@@ -402,10 +393,8 @@ bool isCircle(Vertex)(const SimplicialComplex!Vertex sc)
         && sc.isConnected;
 }
 ///
-@Name("isCircle") pure @system unittest
+@Name("isCircle") pure @safe unittest
 {
-    // TO DO: Why does this need to be @system? Make it @safe!
-
     // Start with a circle with 4 edges
     auto s = simplicialComplex([[1,2], [2,3], [3,4], [1,4]]);
     assert(s.isCircle);
@@ -437,10 +426,8 @@ bool isConnected(Vertex)(const ref SimplicialComplex!Vertex sc)
     return sc.connectedComponents.walkLength <= 1;
 }
 ///
-@Name("isConnected") pure @system unittest
+@Name("isConnected") pure @safe unittest
 {
-    // TO DO: Why does this need to be @system? Make it @safe!
-
     auto disjointCircles = simplicialComplex([
         [1,2], [2,3], [1,3],
         [4,5], [5,6], [4,6]]);
@@ -463,10 +450,8 @@ bool isPureOfDim(Vertex)(const ref SimplicialComplex!Vertex sc, int d)
     return sc.facets(d).walkLength == sc.numFacets;
 }
 ///
-@Name("isPureOfDim") pure @system unittest
+@Name("isPureOfDim") pure @safe unittest
 {
-    // TO DO: Why does this need to be @system? Make it @safe!
-
     auto sc = SimplicialComplex!()();
 
     // An empty simplicial complex is pure of any dimension
@@ -481,10 +466,16 @@ bool isPureOfDim(Vertex)(const ref SimplicialComplex!Vertex sc, int d)
     sc.insertFacet([4,5,6]);
     assert(iota(10).all!(d => !sc.isPureOfDim(d)));
     
-    sc.isPureOfDim(-2).throwsWithMsg("expected a non-negative dimension");
-    
     auto emptyComplex = SimplicialComplex!()();
     assert(iota(16).all!(d => emptyComplex.isPureOfDim(d)));
+}
+// NOTE: that the following unittest cannot be @safe since throwsWithMsg 
+// catches an Error
+///
+@Name("isPureOfDim (errors)") pure @system unittest
+{
+    auto sc = SimplicialComplex!()();
+    sc.isPureOfDim(-2).throwsWithMsg("expected a non-negative dimension");
 }
 
 /*******************************************************************************
@@ -503,10 +494,8 @@ bool isOrientableSurfaceOfGenus(Vertex)(const ref SimplicialComplex!Vertex sc, i
         && Manifold!2(sc.facets).isOrientable;
 }
 ///
-@Name("isSurfaceOfGenus") pure @system unittest
+@Name("isSurfaceOfGenus") pure @safe unittest
 {
-    // TO DO: Why does this need to be @system? Make it @safe!
-
     // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n10_o1_g2
     // Surface #514 in the genus 2 list 
     auto g2 = simplicialComplex([[1,2,3],[1,2,4],[1,3,5],[1,4,6],[1,5,6],
