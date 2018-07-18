@@ -5,7 +5,7 @@ import std.algorithm : all, any, canFind, chunkBy, copy, countUntil, each,
     equal, filter, find, findAdjacent, isSorted, joiner, map, maxElement,
     setDifference, sort, sum, uniq;
 import std.conv : to;
-import std.range : array, chunks, ElementType, empty, enumerate, front, iota,
+import std.range : array, chunks, dropExactly, ElementType, empty, enumerate, front, iota,
     isInputRange, popFront, refRange, save, walkLength, zip;
 import unit_threaded : Name;
 import utility : capture, isSubsetOf, SmallMap, StackArray, staticIota, subsets,
@@ -329,9 +329,7 @@ public:
     */
     auto facets() const
     {
-        // TO DO: Needed capture here to make this @nogc. Clean up capture!
-        return facetVertices.keys.capture(&this)
-            .map!(d => d.d0.facets(d)).joiner;
+       return FacetRange!Vertex(this.facetVertices);
     }
 
     /***************************************************************************
@@ -559,4 +557,60 @@ SimplicialComplex!Vertex simplicialComplex(Vertex)(const(Vertex)[][] initialFace
     () pure nothrow @nogc @safe {
         assert(sc.numFacets == 2);
     }();  
+}
+
+private struct FacetRange(Vertex_ = int)
+{
+    const(SmallMap!(int, Vertex_[])) facetVertices;
+    typeof(SmallMap!(int, Vertex_[])().keys()) facetDims;
+    const(Vertex_)[] vertices;
+
+    this(T)(T facetVertices_)
+    {
+        facetVertices = facetVertices_;
+        facetDims = facetVertices.keys;
+        if(!facetDims.empty)
+        {
+            vertices = facetVertices[facetDims.front];
+        }
+    }
+
+    @property const(Vertex_)[] front() /* pure  nothrow @nogc */ @safe
+    {
+        assert(!this.empty);
+        return vertices[0 .. facetDims.front + 1];
+    }
+
+    @property bool empty() const pure nothrow @nogc @safe
+    {
+        return vertices.empty;
+    }
+
+    void popFront() pure nothrow @nogc @safe
+    {
+        assert(!this.empty);
+        vertices = vertices[facetDims.front + 1 .. $];
+        if(vertices.empty)
+        {
+            facetDims.popFront;
+            if(!facetDims.empty)
+            {
+                vertices = facetVertices[facetDims.front];
+            }
+        }
+    }
+
+    FacetRange!Vertex_ save() pure nothrow @nogc @safe
+    {
+        return FacetRange!Vertex_(this.facetVertices);
+    }
+}
+
+unittest
+{
+    auto sc = simplicialComplex([[1,2], [2,3], [3,4,5], [6,7,8]]);
+    auto fr = FacetRange!int(sc.facetVertices);
+
+    import std.stdio : writeln;
+    fr.writeln;
 }
