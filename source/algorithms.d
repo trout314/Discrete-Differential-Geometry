@@ -7,6 +7,7 @@ import std.range : array, empty, enumerate, front, iota, popFront, save,
     walkLength;
 import unit_threaded : Name;
 import utility : subsetsOfSize, throwsWithMsg;
+import fluent.asserts;
 
 
 /*******************************************************************************
@@ -537,14 +538,14 @@ auto join(Vertex)(const SimplicialComplex!Vertex sc1,
     return SimplicialComplex!Vertex(result);
 }
 ///
-@Name("join") pure @safe unittest
+@Name("join") @safe unittest
 {
     auto sc1 = simplicialComplex([[1,2], [2,3,4], [5]]);
     auto sc2 = simplicialComplex([[6,7], [8]]);
 
-    assert(join(sc1, sc2).facets.equal([
+    join(sc1, sc2).facets.array.should.containOnly([
         [5, 8], [1, 2, 8], [5, 6, 7],
-        [1, 2, 6, 7], [2, 3, 4, 8], [2, 3, 4, 6, 7]]));
+        [1, 2, 6, 7], [2, 3, 4, 8], [2, 3, 4, 6, 7]]);
 
     auto emptyComplex = SimplicialComplex!()();
     assert(join(sc1, emptyComplex).facets.empty);

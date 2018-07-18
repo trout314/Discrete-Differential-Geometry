@@ -1,7 +1,7 @@
-import algorithms : eulerCharacteristic, is2Sphere, isCircle,
+import algorithms : canFind, eulerCharacteristic, is2Sphere, isCircle,
     isConnected, isPureOfDim, join;
 import fluent.asserts;
-import simplicial_complex : fVector, SimplicialComplex;
+import simplicial_complex : fVector, SimplicialComplex, assertValidSimplex;
 import std.algorithm : all, any, copy, canFind, each, equal, filter, find, joiner,
     map, maxElement, sort, uniq;
 import std.conv : to;
@@ -24,9 +24,6 @@ private:
     size_t[Vertex[]] degreeMap;
 
     Vertex[2][Vertex[dimension_]] ridgeLinks;
-    // size_t[Vertex[dimension_ + 1]] facetIndices;
-
-
 public:
     /// Dimension of the manifold
     static immutable dimension = dimension_;
@@ -105,7 +102,6 @@ public:
         return !((vertices.array in degreeMap) is null);
     }
 
-
     /***************************************************************************
     Returns the degree of a simplex in the simplicial complex.
     */
@@ -144,15 +140,19 @@ public:
             Vertex[dimension] ridgeVertices;
             copy(oppositeRidge, ridgeVertices[]);
 
-            Vertex[2] linkVertices;            
             auto ptrToLink = ridgeVertices in ridgeLinks;
             if(!ptrToLink)
             {
+                assert(degreeMap[ridgeVertices[].idup] == 1);
+                // If the degree of the ridge is one we make sure it is
+                // the *first* vertex in the Vertex[2] pair that valid
+                Vertex[2] linkVertices;            
                 linkVertices.front = vertex;
                 ridgeLinks[ridgeVertices] = linkVertices;
             }
             else
             {
+                assert(degreeMap[ridgeVertices[].idup] == 2);
                 (*ptrToLink).back = vertex;
                 (*ptrToLink)[].sort;
             }
@@ -163,18 +163,62 @@ public:
     // Special version of removeFacet to update tracked info
     private void removeFacet(V)(V vertices) if (isInputRange!V)
     {
+        vertices.assertValidSimplex(dimension);      
         assert(vertices.array in degreeMap);
-        foreach(s; vertices.subsets)
+        this.simpComp.removeFacet(vertices);        
+        foreach(s; vertices.subsets.map!array)
         {
-            --degreeMap[s.array];
+            --degreeMap[s];
+
+            // If the degree of an ridge is one, make sure it is the first
+            // vertex in the Vertex[2] pair that is the valid one
+            if((degreeMap[s] == 1) && (s.walkLength == dimension))
+            {
+                Vertex[dimension] ridge;
+                copy(s, ridge[]);
+                ridge[].sort;
+                assert(ridge in ridgeLinks);
+
+                auto oppVerts = vertices.filter!(v => !ridge[].canFind(v));
+                assert(oppVerts.walkLength == 1);
+                auto oppVert = oppVerts.front;
+                assert(ridgeLinks[ridge][].canFind(oppVert));
+                if(ridgeLinks[ridge].front == oppVert)
+                {
+                    ridgeLinks[ridge].front = ridgeLinks[ridge].back;
+                }
+                else
+                {
+                    assert(ridgeLinks[ridge].back == oppVert);
+                }
+                ridgeLinks[ridge].back = Vertex.init;
+            }
+
             if(degreeMap[s.array] == 0)
             {
-                degreeMap.remove(s.array.idup);
+                degreeMap.remove(s.idup);
+                if(s.walkLength == dimension)
+                {
+                    Vertex[dimension] ridgeVertices;
+                    copy(s, ridgeVertices[]);
+                    ridgeLinks.remove(ridgeVertices);
+                }
             }
+
         }
         assert(vertices.array !in degreeMap);
-        this.simpComp.removeFacet(vertices);        
     }
+
+    private void printDiagnosticReport()
+    {
+        import std.stdio : writeln;
+        writeln("dimension: ", dimension);
+        writeln("SComp: ", this.asSimplicialComplex.facets);
+        writeln("numSimplices: ", numSimplices);
+        writeln("degreeMap: ", degreeMap);
+        writeln("ridgeLinks: ", ridgeLinks);        
+    }
+
 
     /// We provide access to the manifold as a simplicial complex
     ref const(SimplicialComplex!Vertex) asSimplicialComplex() const pure nothrow @nogc @safe 
@@ -214,6 +258,7 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
     octahedron.ridgeLinks.should.equal(
         [[1, 2]:[0, 5], [0, 1]:[2, 4], [0, 4]:[1, 3], [4, 5]:[1, 3], [2, 3]:[0, 5], [0, 3]:[2, 4],
          [1, 5]:[2, 4], [2, 5]:[1, 3], [1, 4]:[0, 5], [3, 5]:[2, 4], [3, 4]:[0, 5], [0, 2]:[1, 3]]);
+
 }
 
 ///
@@ -759,6 +804,7 @@ auto modifyFVector(size_t[] fVector_, size_t centerLength)
     fVec2.modifyFVector(1); // 3 -> 1 move
     fVec2.should.equal([0,0,0]);
 }
+
 
 // TO DO: Adapt old code below for new manifold type!
 

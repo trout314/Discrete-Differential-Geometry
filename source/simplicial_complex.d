@@ -280,10 +280,6 @@ public:
         {
             facetVertices.insert(dim, vertices_.dup);
         }
-        
-        // TO DO: Improve this sorting function? Seems yucky!
-        facetVertices[dim][] = facetVertices[dim].chunks(dim + 1)
-            .array.sort().joiner.array[];
     }
 
     /***************************************************************************
@@ -329,7 +325,7 @@ public:
     /***************************************************************************
     Returns the facets of the simplicial complex. These are simplicies that 
     are not the face of another simplex. They are returned in increasing order 
-    of dimension and in lexicographic order within dimensions.
+    of dimension but in an implementation defined order within dimension.
     */
     auto facets() const
     {
