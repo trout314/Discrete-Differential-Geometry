@@ -152,7 +152,7 @@ import utility : capture, isSubsetOf, SmallMap, StackArray, staticIota, subsets,
     }
 }
 
-@Name("insertFacet") pure @safe unittest
+@Name("insertFacet") @safe unittest
 {
     auto sc = SimplicialComplex!()();
     sc.insertFacet([1,2]);
@@ -160,12 +160,12 @@ import utility : capture, isSubsetOf, SmallMap, StackArray, staticIota, subsets,
     sc.insertFacet([2,3,4]);
     assert(sc.facets.equal([[1,2], [2,3,4]]));
     sc.insertFacet([1,5,6]);
-    assert(sc.facets.equal([[1,2], [1,5,6], [2,3,4]]));
+    sc.facets.array.should.containOnly([[1,2], [1,5,6], [2,3,4]]);
     sc.insertFacet([1,5,6,7]);
     assert(sc.facets.equal([[1,2], [2,3,4], [1,5,6,7]]));
 }
 
-@Name("insertFacet/removeFacet") pure @safe unittest
+@Name("insertFacet/removeFacet") @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [1,3], [1,4], [4,5,6]]);
 
@@ -185,8 +185,8 @@ import utility : capture, isSubsetOf, SmallMap, StackArray, staticIota, subsets,
     sc2.insertFacet([1,2,5]);
     sc2.insertFacet([1,3,5]);
     sc2.insertFacet([2,3,5]);
-    assert(sc2.facets.equal([[1,2,4], [1,2,5], [1,3,4], [1,3,5], [2,3,4],
-        [2,3,5]]));
+    sc2.facets.should.containOnly([[1,2,4], [1,2,5], [1,3,4], [1,3,5], [2,3,4],
+        [2,3,5]]);
 
     SimplicialComplex!int sc3;
     sc3.insertFacet([1,2,3]);
