@@ -600,17 +600,8 @@ private struct FacetRange(Vertex_ = int)
         }
     }
 
-    FacetRange!Vertex_ save() pure nothrow @nogc @safe
+    FacetRange!Vertex_ save() const pure nothrow @nogc @safe
     {
         return FacetRange!Vertex_(this.facetVertices);
     }
-}
-
-unittest
-{
-    auto sc = simplicialComplex([[1,2], [2,3], [3,4,5], [6,7,8]]);
-    auto fr = FacetRange!int(sc.facetVertices);
-
-    import std.stdio : writeln;
-    fr.writeln;
 }
