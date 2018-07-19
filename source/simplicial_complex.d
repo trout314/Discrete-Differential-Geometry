@@ -575,7 +575,7 @@ private struct FacetRange(Vertex_ = int)
         }
     }
 
-    @property const(Vertex_)[] front() /* pure  nothrow @nogc */ @safe
+    @property const(Vertex_)[] front() /* const */ pure nothrow @nogc @safe
     {
         assert(!this.empty);
         return vertices[0 .. facetDims.front + 1];
