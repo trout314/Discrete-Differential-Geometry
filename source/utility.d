@@ -1,6 +1,6 @@
 import core.bitop : popcnt;
 import fluent.asserts;
-import std.algorithm : all, canFind, copy, each, filter, find, fold, joiner, map,
+import std.algorithm : all, canFind, copy, each, equal, filter, find, fold, joiner, map,
     sort, sum;
 import std.conv : to;
 import std.exception : enforce;
@@ -486,17 +486,17 @@ public:
     /// We support the (key in smallMap) syntax 
     bool opBinaryRight(string op : "in")(const KeyType key) const
     {
-        return this.keys.canFind(key);
+        return this.byKey.canFind(key);
     }
 
-    /// Get a lazy range returning the keys in increasing order sorted
-    auto keys() const
+    /// Returns a range containing the keys in increasing order.
+    auto byKey() const
     {
         return data.map!(r => r.key);
     }
 
-    /// Get a lazy range returning the values
-    auto values() const
+    /// Returns a range containing the values in increasing order of their corresponding keys.
+    auto byValue() const
     {
         return data.map!(r => r.value);
     }
@@ -520,11 +520,31 @@ public:
     sm.insert(2, "goodbye");
     assert(2 in sm);
 
-    sm[2] = "bubba";
-    assert(sm[2] == "bubba");
+    sm[2] = "Wayne";
+    assert(sm[2] == "Wayne");
 
-    assert(sm.keys.array == [2, 5]);
-    assert(sm.values.array == ["bubba", "hello"]);
+    assert(sm.byKey.equal([2, 5]));
+    assert(sm.byValue.equal(["Wayne", "hello"]));
+
+    // WARNING: A SmallMap instance behaves like a slice!
+
+    // 1) If no insertions are done, we get reference-type behavior for accessing values
+    auto sm1 = sm;
+    sm1[5] = "all aboard!";
+    assert(sm1.byKey.equal([2, 5]));
+    assert(sm1.byValue.equal(["Wayne", "all aboard!"]));
+    assert(sm.byKey.equal([2, 5]));
+    assert(sm.byValue.equal(["Wayne", "all aboard!"]));
+
+    // 2) After an insertion, two SmallMap instances become independent.
+    sm1.insert(7,"good luck!");
+    assert(sm1.byKey.equal([2, 5, 7]));
+    assert(sm1.byValue.equal(["Wayne", "all aboard!", "good luck!"]));
+    assert(sm.byKey.equal([2, 5]));
+    assert(sm.byValue.equal(["Wayne", "all aboard!"]));
+    sm1[2] = "Barb";
+    assert(sm1.byValue.equal(["Barb", "all aboard!", "good luck!"]));
+    assert(sm.byValue.equal(["Wayne", "all aboard!"]));
 }
 
 ///
@@ -540,9 +560,7 @@ public:
 {
     SmallMap!(int, string) sm;
     sm.insert(1, "hello");
-    sm.insert(2, "goodbye");
-
-    () pure nothrow @nogc @safe{ assert(sm.keys.front == 1); }();
+    () pure nothrow @nogc @safe{ assert(sm.byKey.front == 1); }();
 }
 
 ///
@@ -550,9 +568,7 @@ public:
 {
     SmallMap!(int, string) sm;
     sm.insert(1, "hello");
-    sm.insert(2, "goodbye");
-
-    () pure nothrow @nogc @safe{ assert(sm.values.front == "hello"); }();
+    () pure nothrow @nogc @safe{ assert(sm.byValue.front == "hello"); }();
 }
 
 ///

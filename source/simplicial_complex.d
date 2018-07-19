@@ -244,7 +244,7 @@ public:
     this(this) pure @safe
     {
         facetVertices = facetVertices.dup;
-        facetVertices.keys.each!(k => facetVertices[k] = facetVertices[k].dup);
+        facetVertices.byKey.each!(k => facetVertices[k] = facetVertices[k].dup);
     }
 
     /***************************************************************************
@@ -382,7 +382,7 @@ public:
             ~ dim.to!string);
 
         Vertex[][] simplicesSeen;
-        auto dims = facetVertices.keys;
+        auto dims = facetVertices.byKey;
         foreach(d; dims.filter!(d => d >= dim))
         {
             foreach(f; this.facets(d))
@@ -409,7 +409,7 @@ number of simplices in each dimension.
 */
 size_t[] fVector(Vertex)(const ref SimplicialComplex!Vertex sc)
 {   
-    immutable maxDim = sc.facetVertices.keys.maxElement.to!int;
+    immutable maxDim = sc.facetVertices.byKey.maxElement.to!int;
     return iota(maxDim + 1).map!(dim => sc.simplices(dim).walkLength).array; 
 }
 ///
@@ -562,13 +562,13 @@ SimplicialComplex!Vertex simplicialComplex(Vertex)(const(Vertex)[][] initialFace
 private struct FacetRange(Vertex_ = int)
 {
     const(SmallMap!(int, Vertex_[])) facetVertices;
-    typeof(SmallMap!(int, Vertex_[])().keys()) facetDims;
+    typeof(SmallMap!(int, Vertex_[])().byKey()) facetDims;
     const(Vertex_)[] vertices;
 
     this(T)(T facetVertices_)
     {
         facetVertices = facetVertices_;
-        facetDims = facetVertices.keys;
+        facetDims = facetVertices.byKey;
         if(!facetDims.empty)
         {
             vertices = facetVertices[facetDims.front];
