@@ -725,11 +725,8 @@ public:
 {
     auto sc = simplicialComplex([[1,2], [2,3,4], [2,3,5]]);
     int[] vertex = [3];
-    int[] t1 = [2,4];
-    int[] t2 = [2,5];
-
-    int[][] answer1 = [t1, t2];
-    int[][] answer2 = [t2, t1];
+    int[] e1 = [2,4];
+    int[] e2 = [2,5];
 
     () pure nothrow @nogc @safe {
         auto linkRange = LinkRange!int(sc.star(vertex));
@@ -738,8 +735,8 @@ public:
         auto first = linkRange.front;
         linkRange.popFront;
         auto second = linkRange.front;
-        assert((first.equal(t1) && second.equal(t2))
-            || (first.equal(t2) && second.equal(t1)));
+        assert((first.equal(e1) && second.equal(e2))
+            || (first.equal(e2) && second.equal(e1)));
 
         linkRange.popFront;
         assert(linkRange.empty);
