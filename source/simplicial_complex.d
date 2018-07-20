@@ -659,7 +659,7 @@ public:
     }
 }
 
-@Name("StarRange") pure @safe unittest
+@Name("StarRange (pure nothrow @nogc @safe)") pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,3,4], [2,3,5]]);
     int[] vertex = [3];
@@ -721,7 +721,7 @@ public:
     }
 }
 
-@Name("LinkRange") pure @safe unittest
+@Name("LinkRange (pure nothrow @nogc @safe)") pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,3,4], [2,3,5]]);
     int[] vertex = [3];
