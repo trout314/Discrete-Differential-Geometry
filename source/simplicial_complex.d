@@ -671,17 +671,79 @@ public:
 
 
     () pure nothrow @nogc @safe {
-        auto starRange = StarRange!int(vertex[], sc.facets);
-        auto saved = starRange.save;
+        auto linkRange = StarRange!int(vertex[], sc.facets);
+        auto saved = linkRange.save;
 
-        assert(starRange.equal(answer1) || starRange.equal(answer2));
+        assert(linkRange.equal(answer1) || linkRange.equal(answer2));
 
-        starRange.popFront;
-        assert(starRange.front.equal(t1) || starRange.front.equal(t2));
+        linkRange.popFront;
+        assert(linkRange.front.equal(t1) || linkRange.front.equal(t2));
 
-        starRange.popFront;
-        assert(starRange.empty);
+        linkRange.popFront;
+        assert(linkRange.empty);
         assert(!saved.empty);
         assert(saved.equal(answer1) || saved.equal(answer2));
+    }();
+}
+
+private struct LinkRange(Vertex_ = int)
+{
+private:
+    StarRange!Vertex_ facetsLeft;
+public:
+    this()(const(StarRange!Vertex_) starFacets)
+    {
+        facetsLeft = starFacets.save;
+    }
+
+    // TO DO: facetsLeft.front isn't const, so this cant be const. FIX?
+    @property auto front() /* const */ pure nothrow @nogc @safe
+    {
+        assert(!this.empty);
+        import std.algorithm : setDifference;
+        return facetsLeft.front.setDifference(facetsLeft.centerSimplex);
+    }
+
+    @property bool empty() const pure nothrow @nogc @safe
+    {
+        return facetsLeft.empty;
+    }
+
+    void popFront() pure nothrow @nogc @safe
+    {
+        assert(!this.empty);
+        facetsLeft.popFront;
+    }
+
+    LinkRange!Vertex_ save() const pure nothrow @nogc @safe
+    {
+        return LinkRange!Vertex_(this.facetsLeft);
+    }
+}
+
+@Name("LinkRange") pure @safe unittest
+{
+    auto sc = simplicialComplex([[1,2], [2,3,4], [2,3,5]]);
+    int[] vertex = [3];
+    int[] t1 = [2,4];
+    int[] t2 = [2,5];
+
+    int[][] answer1 = [t1, t2];
+    int[][] answer2 = [t2, t1];
+
+    () pure nothrow @nogc @safe {
+        auto linkRange = LinkRange!int(sc.star(vertex));
+        auto saved = linkRange.save;
+
+        auto first = linkRange.front;
+        linkRange.popFront;
+        auto second = linkRange.front;
+        assert((first.equal(t1) && second.equal(t2))
+            || (first.equal(t2) && second.equal(t1)));
+
+        linkRange.popFront;
+        assert(linkRange.empty);
+        assert(!saved.empty);
+        assert(saved.walkLength == 2);
     }();
 }
