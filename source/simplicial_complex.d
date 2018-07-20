@@ -74,10 +74,6 @@ import utility : capture, isSubsetOf, SmallMap, StackArray, staticIota, subsets,
     assert(!sc.contains([1,2,5]));
     assert(!sc.contains([4,6]));
 
-    import std.stdio : writeln;
-    debug sc.star([5]).writeln;
-
-
     // get the star of a simplex an array of facets
     assert(sc.star([5]).equal([[4,5], [5,6]]));
 
@@ -352,14 +348,12 @@ public:
     auto link(V)(V vertices) const if (isInputRange!V)
     {
         assert(contains(vertices), "expected a simplex in the simplicial complex");
-
-        // TO DO: Clean this up! Get rid of capture ...
-        return this.star(vertices).capture(vertices).map!(f => setDifference(f, f.d0));
+        return LinkRange!Vertex(StarRange!Vertex(vertices, this.facets));
     }
 
     /***************************************************************************
-    Returns the star of the given simplex as an array of arrays of vertices of 
-    the facets. These are given in the same order as specified facets()
+    Returns the star of the given simplex a forward range of arrays of vertices
+    giving the facets. These are given in the same order as specified facets()
     */ 
     auto star(V)(V vertices) const if (isInputRange!V)
     {
@@ -725,22 +719,18 @@ public:
 {
     auto sc = simplicialComplex([[1,2], [2,3,4], [2,3,5]]);
     int[] vertex = [3];
-    int[] e1 = [2,4];
-    int[] e2 = [2,5];
+    int[][] ans1 = [[2, 4], [2, 5]];
+    int[][] ans2 = [[2, 5], [2, 4]];
 
     () pure nothrow @nogc @safe {
-        auto linkRange = LinkRange!int(sc.star(vertex));
-        auto saved = linkRange.save;
-
-        auto first = linkRange.front;
-        linkRange.popFront;
-        auto second = linkRange.front;
-        assert((first.equal(e1) && second.equal(e2))
-            || (first.equal(e2) && second.equal(e1)));
-
-        linkRange.popFront;
-        assert(linkRange.empty);
+        auto lnk = LinkRange!int(sc.star(vertex));
+        auto saved = lnk.save;
+        assert(lnk.equal!equal(ans1) || lnk.equal!equal(ans2));
+        lnk.popFront;
+        lnk.popFront;
+        assert(lnk.empty);
         assert(!saved.empty);
         assert(saved.walkLength == 2);
+        assert(saved.equal!equal(ans1) || saved.equal!equal(ans2));
     }();
 }
