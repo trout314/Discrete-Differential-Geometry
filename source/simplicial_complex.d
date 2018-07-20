@@ -5,8 +5,8 @@ import std.algorithm : all, any, canFind, chunkBy, copy, countUntil, each,
     equal, filter, find, findAdjacent, isSorted, joiner, map, maxElement,
     setDifference, sort, sum, uniq;
 import std.conv : to;
-import std.range : array, chunks, dropExactly, ElementType, empty, enumerate, front, iota,
-    isInputRange, popFront, refRange, save, walkLength, zip;
+import std.range : array, chunks, dropExactly, ElementType, empty, enumerate, 
+    front, iota, isForwardRange, isInputRange, popFront, refRange, save, walkLength, zip;
 import unit_threaded : Name;
 import utility : capture, isSubsetOf, SmallMap, StackArray, staticIota, subsets,
     subsetsOfSize, throwsWithMsg;
@@ -74,8 +74,13 @@ import utility : capture, isSubsetOf, SmallMap, StackArray, staticIota, subsets,
     assert(!sc.contains([1,2,5]));
     assert(!sc.contains([4,6]));
 
+    import std.stdio : writeln;
+    debug sc.star([5]).writeln;
+
+
     // get the star of a simplex an array of facets
     assert(sc.star([5]).equal([[4,5], [5,6]]));
+
     assert(sc.star([4]).equal([[4,5], [2,3,4]]));
     assert(sc.star([2,3]).equal([[1,2,3], [2,3,4]]));
 
@@ -348,8 +353,8 @@ public:
     {
         assert(contains(vertices), "expected a simplex in the simplicial complex");
 
-        // Here f.d0 is vertices since star has captured it. TO DO: Clean this up!
-        return this.star(vertices).map!(f => setDifference(f, f.d0));
+        // TO DO: Clean this up! Get rid of capture ...
+        return this.star(vertices).capture(vertices).map!(f => setDifference(f, f.d0));
     }
 
     /***************************************************************************
@@ -358,8 +363,7 @@ public:
     */ 
     auto star(V)(V vertices) const if (isInputRange!V)
     {
-        // Here f.d0 is vertices since star has captured it. TO DO: Clean this up!
-        return this.facets.capture(vertices).filter!(f => f.d0.isSubsetOf(f));
+        return StarRange!Vertex(vertices, this.facets);
     }
 
     /***************************************************************************
@@ -374,7 +378,7 @@ public:
     /***************************************************************************
     Get the simplices of dimension `dim` as lists of vertices.
     */
-    auto simplices(int dim) const
+    Vertex[][] simplices(int dim) const
     {
         // TO DO: Reduce gc presure here. (Can't make @nogc I think.)
 
@@ -391,7 +395,8 @@ public:
                     .map!(s => s.array.dup).array;
             }
         }
-        return simplicesSeen.sort().uniq;
+        simplicesSeen = simplicesSeen.sort.uniq.array;
+        return simplicesSeen;
     }
 }
 
@@ -498,7 +503,7 @@ SimplicialComplex!Vertex simplicialComplex(Vertex)(const(Vertex)[][] initialFace
         assert(starRange.front == edge[]);
 
         // Can still access the captured simplex
-        assert(starRange.front.d0 == edge[]);
+        assert(starRange.centerSimplex == edge[]);
 
         starRange.popFront;
         assert(starRange.empty);
@@ -565,7 +570,7 @@ private struct FacetRange(Vertex_ = int)
     typeof(SmallMap!(int, Vertex_[])().byKey()) facetDims;
     const(Vertex_)[] vertices;
 
-    this(T)(T facetVertices_)
+    this()(const(SmallMap!(int, Vertex_[])) facetVertices_)
     {
         facetVertices = facetVertices_;
         facetDims = facetVertices.byKey;
@@ -604,4 +609,79 @@ private struct FacetRange(Vertex_ = int)
     {
         return FacetRange!Vertex_(this.facetVertices);
     }
+}
+
+@Name("FacetRange (forward range)") unittest
+{
+    static assert(isForwardRange!(FacetRange!int));
+}
+
+private struct StarRange(Vertex_ = int)
+{
+private:
+    alias SimpComp = SimplicialComplex!Vertex_;
+    alias Facets = typeof(SimpComp().facets()); 
+    Facets facetsLeft;
+public:
+    const(Vertex_)[] centerSimplex;
+
+    this()(const(Vertex_)[] centerSimplex_, const(Facets) facets_)
+    {
+        centerSimplex = centerSimplex_;
+        facetsLeft = facets_.save.find!(f => centerSimplex.isSubsetOf(f));
+    }
+
+    // TO DO: facetsLeft.front isn't const, so this cant be const. FIX?
+    @property const(Vertex_)[] front() /* const */ pure nothrow @nogc @safe
+    {
+        assert(!this.empty);
+        return facetsLeft.front;
+    }
+
+    @property bool empty() const pure nothrow @nogc @safe
+    {
+        return facetsLeft.empty;
+    }
+
+    void popFront() pure nothrow @nogc @safe
+    {
+        assert(!this.empty);
+        facetsLeft.popFront;
+        while((!facetsLeft.empty) && (!centerSimplex.isSubsetOf(facetsLeft.front)))
+        {
+            facetsLeft.popFront;
+        }
+    }
+
+    StarRange!Vertex_ save() const pure nothrow @nogc @safe
+    {
+        return StarRange!Vertex_(this.centerSimplex, this.facetsLeft);
+    }
+}
+
+@Name("StarRange") pure @safe unittest
+{
+    auto sc = simplicialComplex([[1,2], [2,3,4], [2,3,5]]);
+    int[] vertex = [3];
+    int[] t1 = [2,3,4];
+    int[] t2 = [2,3,5];
+
+    int[][] answer1 = [t1, t2];
+    int[][] answer2 = [t2, t1];
+
+
+    () pure nothrow @nogc @safe {
+        auto starRange = StarRange!int(vertex[], sc.facets);
+        auto saved = starRange.save;
+
+        assert(starRange.equal(answer1) || starRange.equal(answer2));
+
+        starRange.popFront;
+        assert(starRange.front.equal(t1) || starRange.front.equal(t2));
+
+        starRange.popFront;
+        assert(starRange.empty);
+        assert(!saved.empty);
+        assert(saved.equal(answer1) || saved.equal(answer2));
+    }();
 }
