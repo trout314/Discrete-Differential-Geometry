@@ -694,7 +694,6 @@ public:
     @property auto front() /* const */ pure nothrow @nogc @safe
     {
         assert(!this.empty);
-        import std.algorithm : setDifference;
         return facetsLeft.front.setDifference(facetsLeft.centerSimplex);
     }
 
