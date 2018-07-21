@@ -372,7 +372,7 @@ public:
     /***************************************************************************
     Get the simplices of dimension `dim` as lists of vertices.
     */
-    Vertex[][] simplices(int dim) const
+    Vertex[][] simplices(int dim) const pure nothrow @safe
     {
         // TO DO: Reduce gc presure here. (Can't make @nogc I think.)
 
