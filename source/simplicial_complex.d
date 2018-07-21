@@ -35,16 +35,20 @@ import utility : isSubsetOf, SmallMap, StackArray, staticIota, subsets,
     /* can also create simplicial complexes directly from an array of arrays of
     vertices which specify the facets */
     auto sc2 = SimplicialComplex!()([[4,5], [5,6], [1,2,3], [2,3,4]]);
+
+    /* can compare simplicial complexes for equality. NOTE: this allocates new
+    memory to copy all facets into, then sorts each array of facets. */
     assert(sc == sc2);
 
     // a helper function template that returns a newly constructed complex
-    auto sc3 = simplicialComplex([[4,5], [5,6], [1,2,3], [2,3,4]]);
+    auto sc3 = simplicialComplex([[5,6], [2,3,4], [1,2,3], [4,5]]);
     assert(sc3 == sc);
 
     // simplicial complexes are value types
     auto sc4 = sc3;
     sc4.insertFacet([6,7]);
     assert(sc3 == sc);
+    assert(sc4 != sc);
 
     /* get the vertices in the facets, returned in order of increasing dimension
     and dictionary order within a dimension */
@@ -391,6 +395,28 @@ public:
         }
         simplicesSeen = simplicesSeen.sort.uniq.array;
         return simplicesSeen;
+    }
+
+    bool opEquals()(auto ref const SimplicialComplex!Vertex sc) const
+    {
+        auto dims = sc.facetVertices.byKey;
+        auto thisDims = this.facetVertices.byKey;
+        if(dims.walkLength != thisDims.walkLength)
+        {
+            return false;
+        }
+        foreach(dim, thisDim; zip(dims, thisDims))
+        {
+            if(dim != thisDim)
+            {
+                return false;
+            }
+            const(Vertex)[][] f = sc.facets(dim).map!array.array.sort.array;
+            const(Vertex)[][] thisF = this.facets(dim).map!array.array.sort.array;
+            return f == thisF;
+        }
+
+        return true;
     }
 
     /*******************************************************************************
