@@ -252,34 +252,34 @@ public:
     Inserts a facet (given as an input range of vertices) into the simplicial
     complex.
     */
-    void insertFacet(V)(V vertices) if (isInputRange!V)
+    void insertFacet(S)(S simplex) if (isInputRange!S)
     {
         // TO DO: Improve this!
-        StackArray!(Vertex, 16) vertices_;
-        vertices.each!(v => vertices_ ~= v);
+        StackArray!(Vertex, 16) simplex_;
+        simplex.each!(v => simplex_ ~= v);
 
-        int dim = vertices_[].walkLength.to!int - 1;
+        int dim = simplex_[].walkLength.to!int - 1;
         assert(dim >= 0);
-        vertices_[].assertValidSimplex(dim);
+        simplex_[].assertValidSimplex(dim);
 
-        assert(!this.contains(vertices),
+        assert(!this.contains(simplex),
             "expected a simplex not already in the simplicial complex");
 
         /* We must remove any existing facets which are faces of the inserted
         facet. Also, we need independent copies of the facets to remove.
         TO DO: Create rawInsertFacet that skips this? NOTE: This is what
         is responsible for function allocating a closure!  */
-        auto toRemove = vertices_[].subsets.filter!(
+        auto toRemove = simplex_[].subsets.filter!(
             s => this.facets.canFind(s.array)).map!array.array;
         toRemove.each!(s => this.removeFacet(s));
 
         if (dim in facetVertices)
         {
-            facetVertices[dim] ~= vertices_;            
+            facetVertices[dim] ~= simplex_;            
         }
         else
         {
-            facetVertices.insert(dim, vertices_.dup);
+            facetVertices.insert(dim, simplex_.dup);
         }
     }
 
@@ -287,16 +287,16 @@ public:
     Removes an existing facet of the simplicial complex a facet (given as an 
     input range of vertices)
     */
-    void removeFacet(V)(V vertices) if (isInputRange!V)
+    void removeFacet(S)(S simplex) if (isInputRange!S && is(ElementType!S : Vertex))
     {
-        assert(this.contains(vertices),
+        assert(this.contains(simplex),
             "tried to remove a facet not in the simplicial complex");
         
-        assert(vertices.walkLength <= int.max);
-        auto dim = cast(int) vertices.walkLength - 1;
-        vertices.assertValidSimplex(dim);
+        assert(simplex.walkLength <= int.max);
+        auto dim = cast(int) simplex.walkLength - 1;
+        simplex.assertValidSimplex(dim);
      
-        auto indx = facetVertices[dim].chunks(dim + 1).countUntil(vertices);
+        auto indx = facetVertices[dim].chunks(dim + 1).countUntil(simplex);
         
         copy(facetVertices[dim][(dim + 1) * (indx + 1)  .. $],
              facetVertices[dim][(dim + 1) * indx .. $ - (dim + 1)]);
@@ -342,10 +342,10 @@ public:
     }
 
     /***************************************************************************
-    Returns the facets in the link of the simplex `s` as an array of arrays of 
-    vertices, given in same order as they appear in `facets()`
+    Returns the star of the given simplex a forward range of arrays of vertices
+    giving the facets.
     */
-    auto link(S)(S simplex) const if (isInputRange!S)
+    auto link(S)(S simplex) const if (isInputRange!S && is(ElementType!S : Vertex))
     {
         assert(this.contains(simplex), "expected a simplex in the simplicial complex");
         return LinkRange!Vertex(StarRange!Vertex(simplex, this.facets));
@@ -353,20 +353,20 @@ public:
 
     /***************************************************************************
     Returns the star of the given simplex a forward range of arrays of vertices
-    giving the facets. These are given in the same order as specified facets()
+    giving the facets.
     */ 
-    auto star(V)(V vertices) const if (isInputRange!V)
+    auto star(S)(S simplex) const if (isInputRange!S && is(ElementType!S : Vertex))
     {
-        return StarRange!Vertex(vertices, this.facets);
+        return StarRange!Vertex(simplex, this.facets);
     }
 
     /***************************************************************************
-    Returns true if the simplex with vertices given by the input range 
-    `vertices` is in this simplicial complex and false otherwise
+    Returns true if the given simplex is in this simplicial complex and false
+    otherwise.
     */
-    bool contains(V)(V vertices) const if (isInputRange!V)
+    bool contains(S)(S simplex) const if (isInputRange!S && is(ElementType!S : Vertex))
     {
-        return this.facets.any!(f => vertices.isSubsetOf(f));
+        return this.facets.any!(f => simplex.isSubsetOf(f));
     }
 
     /***************************************************************************
