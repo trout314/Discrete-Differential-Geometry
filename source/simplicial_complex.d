@@ -6,7 +6,7 @@ import std.algorithm : all, any, canFind, chunkBy, copy, countUntil, each,
     setDifference, sort, sum, uniq;
 import std.conv : to;
 import std.range : array, chunks, dropExactly, ElementType, empty, enumerate, 
-    front, iota, isForwardRange, isInputRange, popFront, refRange, save, walkLength, zip;
+    front, iota, isForwardRange, isInputRange, isOutputRange, popFront, put, refRange, save, walkLength, zip;
 import unit_threaded : Name;
 import utility : isSubsetOf, SmallMap, StackArray, staticIota, subsets,
     subsetsOfSize, throwsWithMsg;
@@ -392,14 +392,37 @@ public:
         simplicesSeen = simplicesSeen.sort.uniq.array;
         return simplicesSeen;
     }
-}
 
-/*******************************************************************************
-Returns a nice looking representation of the simplicial complex as a string.
-*/
-string toString(Vertex)(const ref SimplicialComplex!Vertex sc)
-{
-    return sc.facets.to!string;
+    /*******************************************************************************
+    Returns a nice looking representation of the simplicial complex as a string.
+    */
+    string toString() const
+    {
+        return this.facets.to!string;
+    }
+
+    /*******************************************************************************
+    Returns a string containing more detailed, implementation specific info on the
+    simplicial complex
+    */
+    string toDetailedString() const
+    {
+        string output;
+        output ~= "facets   : " ~ facets.to!string ~ "\n";
+        output ~= "dims     : " ~ facetVertices.byKey.to!string ~ "\n";
+        foreach(dim; facetVertices.byKey)
+        {
+            output ~= "vertex list (dim " ~ dim.to!string ~ "): "
+                ~ facetVertices[dim].to!string ~ "\n";
+        }
+        
+        return output;
+    }
+
+    void toString(W)(ref W writer) const if (isOutputRange!(W, char)) 
+    {
+        put(writer, facets.toString);
+    }
 }
 
 /*******************************************************************************
