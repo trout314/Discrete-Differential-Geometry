@@ -345,11 +345,10 @@ public:
     Returns the facets in the link of the simplex `s` as an array of arrays of 
     vertices, given in same order as they appear in `facets()`
     */
-    auto link(S)(S simplex) const if (isInputRange!V)
+    auto link(S)(S simplex) const if (isInputRange!S)
     {
-        assert(this.contains(simplex),
-            "expected a simplex in the simplicial complex");
-        return LinkRange!Vertex(StarRange!Vertex(vertices, this.facets));
+        assert(this.contains(simplex), "expected a simplex in the simplicial complex");
+        return LinkRange!Vertex(StarRange!Vertex(simplex, this.facets));
     }
 
     /***************************************************************************
