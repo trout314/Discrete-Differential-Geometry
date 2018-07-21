@@ -23,7 +23,7 @@ enum dim = 3;
 enum int numFacetsTarget = 1000;
 enum real meanHingeDegreeTarget = 5.1;
 
-enum real numFacetsCoef = 0.1;
+enum real numFacetsCoef = 0.05;
 enum real numHingesCoef = 0.5;
 enum real degreeStdDevCoef = 0.0;
 

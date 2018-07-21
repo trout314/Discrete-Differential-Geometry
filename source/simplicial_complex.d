@@ -8,7 +8,7 @@ import std.conv : to;
 import std.range : array, chunks, dropExactly, ElementType, empty, enumerate, 
     front, iota, isForwardRange, isInputRange, popFront, refRange, save, walkLength, zip;
 import unit_threaded : Name;
-import utility : capture, isSubsetOf, SmallMap, StackArray, staticIota, subsets,
+import utility : isSubsetOf, SmallMap, StackArray, staticIota, subsets,
     subsetsOfSize, throwsWithMsg;
 
 /// Basic Functionality
@@ -254,7 +254,7 @@ public:
     */
     void insertFacet(V)(V vertices) if (isInputRange!V)
     {
-        // TO DO: Improve this! Why does this allocate a closure?
+        // TO DO: Improve this!
         StackArray!(Vertex, 16) vertices_;
         vertices.each!(v => vertices_ ~= v);
 
@@ -345,9 +345,10 @@ public:
     Returns the facets in the link of the simplex `s` as an array of arrays of 
     vertices, given in same order as they appear in `facets()`
     */
-    auto link(V)(V vertices) const if (isInputRange!V)
+    auto link(S)(S simplex) const if (isInputRange!V)
     {
-        assert(contains(vertices), "expected a simplex in the simplicial complex");
+        assert(this.contains(simplex),
+            "expected a simplex in the simplicial complex");
         return LinkRange!Vertex(StarRange!Vertex(vertices, this.facets));
     }
 

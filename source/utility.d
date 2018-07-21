@@ -1004,7 +1004,6 @@ template staticIota(int begin, int end)
 }
 
 /*******************************************************************************
-*/
 auto capture(Range, Data...)(Range range, Data data) if (isInputRange!Range)
 {
     alias dataDeclarations = 
@@ -1069,6 +1068,7 @@ auto capture(Range, Data...)(Range range, Data data) if (isInputRange!Range)
 
     // TO DO: More tests! This function will probably get lots of use!
 }
+*/
 
 /*******************************************************************************
 */
