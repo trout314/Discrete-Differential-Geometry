@@ -97,6 +97,43 @@ import utility : isSubsetOf, SmallMap, StackArray, staticIota, subsets,
     assert(sc5.facets.equal([[0, 1, 2], [3, 4, 5], [6, 7, 8]]));
 }
 
+///
+@Name("toHash (@safe nothrow)") @safe unittest
+{
+    auto sc1 = simplicialComplex([[4,5], [1,2,3], [2,3,4], [5,6]]);
+    auto sc2 = simplicialComplex([[4,5], [5,6], [2,3,4], [1,2,3]]);
+    
+    () nothrow @safe {
+        assert(sc1.toHash == sc2.toHash);
+    }();
+
+    sc1.insertFacet([6,7]);
+
+    // Note: this assert *could* fail, but useful check anyway!
+    () nothrow @safe {
+        assert(sc1.toHash != sc2.toHash);
+    }();
+}
+
+///
+@Name("works as AA KeyType") @safe unittest
+{
+    int[SimplicialComplex!()] aa;
+    auto sc1 = simplicialComplex([[4,5]]);
+    auto sc2 = simplicialComplex([[4,5], [5,6]]);
+    auto sc3 = simplicialComplex([[4,5], [5,6], [1,2,3]]);
+
+    aa[sc1] = 1;
+    aa[sc2] = 2;
+
+    assert(sc1 in aa);
+    assert(sc2 in aa);
+    assert(sc3 !in aa);
+
+    aa[sc3] = 3;
+    assert(sc3 in aa);    
+}
+
 /// Some restrictions
 @Name("doc tests (errors)") pure @system unittest
 {
@@ -417,6 +454,12 @@ public:
         }
 
         return true;
+    }
+
+    size_t toHash() const @safe nothrow
+    {
+        auto f = facets.map!array.array.sort.array;
+        return () @trusted {return typeid(f).getHash(&f);} ();
     }
 
     /*******************************************************************************
