@@ -450,7 +450,10 @@ public:
             }
             const(Vertex)[][] f = sc.facets(dim).map!array.array.sort.array;
             const(Vertex)[][] thisF = this.facets(dim).map!array.array.sort.array;
-            return f == thisF;
+            if(f != thisF)
+            {
+                return false;
+            }
         }
 
         return true;
