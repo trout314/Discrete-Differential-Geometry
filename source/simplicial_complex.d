@@ -310,8 +310,8 @@ public:
         facet. Also, we need independent copies of the facets to remove.
         TO DO: Create rawInsertFacet that skips this? NOTE: This is what
         is responsible for function allocating a closure!  */
-        auto toRemove = simplex_[].subsets.filter!(
-            s => this.facets.canFind(s.array)).map!array.array;
+        auto toRemove = simplex_[].subsets.map!array.filter!(
+            s => this.facets.canFind(s)).array;
         toRemove.each!(s => this.removeFacet(s));
 
         if (dim in facetVertices)
