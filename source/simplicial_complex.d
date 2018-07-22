@@ -293,7 +293,7 @@ public:
     Inserts a facet (given as an input range of vertices) into the simplicial
     complex.
     */
-    void insertFacet(S)(S simplex) if (isInputRange!S)
+    void insertFacet(S)(S simplex) if (isInputRange!S && is(ElementType!S : Vertex))
     {
         // TO DO: Improve this!
         StackArray!(Vertex, 16) simplex_;
@@ -320,7 +320,7 @@ public:
         }
         else
         {
-            facetVertices.insert(dim, simplex_.dup);
+            facetVertices.insert(dim, simplex_);
         }
     }
 
