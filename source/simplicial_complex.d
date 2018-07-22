@@ -567,6 +567,8 @@ SimplicialComplex!Vertex simplicialComplex(Vertex)(const(Vertex)[][] initialFace
     int[2] edge = [1,2];
     int[3] triangle = [2,4,5];
 
+    static assert(isForwardRange!(typeof(sc.facets())));
+
     () pure nothrow @nogc @safe {
         auto facs = sc.facets;
         auto saved = facs.save;
@@ -700,11 +702,6 @@ private struct FacetRange(Vertex_ = int)
     }
 }
 
-@Name("FacetRange (forward range)") unittest
-{
-    static assert(isForwardRange!(FacetRange!int));
-}
-
 private struct StarRange(Vertex_ = int)
 {
 private:
@@ -758,6 +755,7 @@ public:
     int[][] answer1 = [t1, t2];
     int[][] answer2 = [t2, t1];
 
+    static assert(isForwardRange!(StarRange!int));
 
     () pure nothrow @nogc @safe {
         auto linkRange = StarRange!int(vertex[], sc.facets);
@@ -815,6 +813,8 @@ public:
     int[] vertex = [3];
     int[][] ans1 = [[2, 4], [2, 5]];
     int[][] ans2 = [[2, 5], [2, 4]];
+
+    static assert(isForwardRange!(LinkRange!int));
 
     () pure nothrow @nogc @safe {
         auto lnk = LinkRange!int(sc.star(vertex));
