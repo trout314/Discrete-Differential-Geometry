@@ -497,7 +497,7 @@ public:
     }
 }
 
-@Name("opEquals (pure nothrow @safe)") pure @safe unittest
+@Name("opEquals (pure @safe)") pure @safe unittest
 {
     auto s1 = simplicialComplex([[1,2], [2,3,4]]);
     auto s2 = simplicialComplex([[1,3], [2,3,4]]);
@@ -505,7 +505,7 @@ public:
     auto s4 = simplicialComplex([[2,3,4], [1,2]]);
     auto s5 = simplicialComplex([[1,2], [2,3,4,5]]);
 
-    () pure nothrow @safe {
+    () pure @safe {
         assert(s1 != s2);
         assert(s2 != s3);
         assert(s1 != s3);
