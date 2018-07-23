@@ -266,6 +266,11 @@ private:
     the first simplex, [w1, w2, w3] the second, etc.
     */
     SmallMap!(int, Vertex[]) facetVertices;
+
+    /* indexOfFacet[f] = i means f is the i-th facet in flattened list above
+    starting at i=0.
+    */
+    size_t[Vertex[]] indexOfFacet;
 public:
     /***************************************************************************
     The type of the vertices in this simplicial complex.
@@ -316,7 +321,7 @@ public:
 
         if (dim in facetVertices)
         {
-            facetVertices[dim] ~= simplex_;            
+            facetVertices[dim] ~= simplex_;
         }
         else
         {
