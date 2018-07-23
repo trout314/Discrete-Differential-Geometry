@@ -267,8 +267,7 @@ private:
     */
     SmallMap!(int, Vertex[]) facetVertices;
 
-    /* indexOfFacet[f] = i means f is the i-th facet in flattened list above
-    starting at i=0.
+    /* indexOfFacet[f] = i means the vertices of f begins at facetVertices[i]
     */
     size_t[Vertex[]] indexOfFacet;
 public:
