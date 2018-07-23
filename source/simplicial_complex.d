@@ -12,7 +12,7 @@ import utility : isSubsetOf, SmallMap, StackArray, staticIota, subsets,
     subsetsOfSize, throwsWithMsg;
 
 /// Basic Functionality
-@Name("doc tests") pure @safe unittest
+@Name("doc tests") /* pure */ @safe unittest
 {
     // create an empty simplicial complex with vertices of default type `int`
     SimplicialComplex!() sc;
@@ -52,20 +52,20 @@ import utility : isSubsetOf, SmallMap, StackArray, staticIota, subsets,
 
     /* get the vertices in the facets, returned in order of increasing dimension
     and dictionary order within a dimension */
-    assert(sc.facets.equal([[4,5], [5,6], [1,2,3], [2,3,4]]));
+    sc.facets.should.containOnly([[4,5], [5,6], [1,2,3], [2,3,4]]);
     assert(sc.numFacets == 4);
 
     // Can get a sorted array of all the facet simplices of a given dimension
     assert(sc.facets(0).empty);
-    assert(sc.facets(1).equal([[4,5], [5,6]]));
-    assert(sc.facets(2).equal([[1,2,3], [2,3,4]]));
+    sc.facets(1).should.containOnly([[4,5], [5,6]]);
+    sc.facets(2).should.containOnly([[1,2,3], [2,3,4]]);
     assert(sc.facets(3).empty);
 
     // Can get a sorted array of all the simplices of a given dimension
-    assert(sc.simplices(0).equal([[1], [2], [3], [4], [5], [6]]));
-    assert(sc.simplices(1).equal([[1,2], [1,3], [2,3], [2,4], [3,4], 
-        [4,5], [5,6]]));
-    assert(sc.simplices(2).equal(sc.facets(2)));
+    sc.simplices(0).should.containOnly([[1], [2], [3], [4], [5], [6]]);
+    sc.simplices(1).should.containOnly([[1,2], [1,3], [2,3], [2,4], [3,4], 
+        [4,5], [5,6]]);
+    sc.simplices(2).should.containOnly(sc.facets(2));
     assert(sc.simplices(3).empty);
 
     // get the f-vector of the simplicial complex
@@ -79,22 +79,22 @@ import utility : isSubsetOf, SmallMap, StackArray, staticIota, subsets,
     assert(!sc.contains([4,6]));
 
     // get the star of a simplex an array of facets
-    assert(sc.star([5]).equal([[4,5], [5,6]]));
-
-    assert(sc.star([4]).equal([[4,5], [2,3,4]]));
-    assert(sc.star([2,3]).equal([[1,2,3], [2,3,4]]));
+    sc.star([5]).should.containOnly([[4,5], [5,6]]);
+    sc.star([4]).should.containOnly([[4,5], [2,3,4]]);
+    sc.star([2,3]).should.containOnly([[1,2,3], [2,3,4]]);
 
     // get link of a simplex as list of facets
-    assert(sc.link([5]).equal!equal([[4], [6]]));
-    assert(sc.link([4]).equal!equal([[5], [2,3]]));
-    assert(sc.link([2,3]).equal!equal([[1], [4]]));
+    // TO DO: Why do I need .map!array here?
+    sc.link([5]).map!array.should.containOnly([[4], [6]]);
+    sc.link([4]).map!array.should.containOnly([[5], [2,3]]);
+    sc.link([2,3]).map!array.should.containOnly([[1], [4]]);
 
     // can print out a simplicial complex
     assert(sc.toString == "[[4, 5], [5, 6], [1, 2, 3], [2, 3, 4]]");
 
     // can construct from a range of ranges of vertices
     auto sc5 = SimplicialComplex!()(iota(3).map!(i => iota(3*i, 3*i + 3)));
-    assert(sc5.facets.equal([[0, 1, 2], [3, 4, 5], [6, 7, 8]]));
+    sc5.facets.should.containOnly([[0, 1, 2], [3, 4, 5], [6, 7, 8]]);
 }
 
 ///
@@ -180,8 +180,8 @@ import utility : isSubsetOf, SmallMap, StackArray, staticIota, subsets,
     sc.numFacets.should.equal(3);
 
     sc.facets(0).empty.should.equal(true);
-    sc.facets(1).should.containOnly([[1, 2], [2, 3]].to!(const(int)[][]));
-    sc.facets(2).should.containOnly([[3, 4, 5]].to!(const(int)[][]));
+    sc.facets(1).should.containOnly([[1, 2], [2, 3]]);
+    sc.facets(2).should.containOnly([[3, 4, 5]]);
 
     sc.simplices(0).should.containOnly([[1], [2], [3], [4], [5]]);
     sc.simplices(1).should.containOnly([[1, 2], [2, 3], [3, 4], [3, 5], [4, 5]]);
@@ -198,32 +198,32 @@ import utility : isSubsetOf, SmallMap, StackArray, staticIota, subsets,
 {
     auto sc = SimplicialComplex!()();
     sc.insertFacet([1,2]);
-    assert(sc.facets.equal([[1,2]]));
+    sc.facets.should.containOnly([[1,2]]);
     sc.insertFacet([2,3,4]);
-    assert(sc.facets.equal([[1,2], [2,3,4]]));
+    sc.facets.should.containOnly([[1,2], [2,3,4]]);
     sc.insertFacet([1,5,6]);
-    sc.facets.array.should.containOnly([[1,2], [1,5,6], [2,3,4]]);
+    sc.facets.should.containOnly([[1,2], [1,5,6], [2,3,4]]);
     sc.insertFacet([1,5,6,7]);
-    assert(sc.facets.equal([[1,2], [2,3,4], [1,5,6,7]]));
+    sc.facets.should.containOnly([[1,2], [2,3,4], [1,5,6,7]]);
 }
 
 @Name("insertFacet/removeFacet") @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [1,3], [1,4], [4,5,6]]);
 
-    assert(sc.facets.equal([[1,2], [1,3], [1,4], [4,5,6]]));
+    sc.facets.should.containOnly([[1,2], [1,3], [1,4], [4,5,6]]);
     sc.removeFacet([1,3]);
-    assert(sc.facets.equal([[1,2], [1,4], [4,5,6]]));
+    sc.facets.should.containOnly([[1,2], [1,4], [4,5,6]]);
     sc.removeFacet([1,2]);
-    assert(sc.facets.equal([[1,4], [4,5,6]]));
+    sc.facets.should.containOnly([[1,4], [4,5,6]]);
     sc.removeFacet([4,5,6]);
-    assert(sc.facets.equal([[1,4]]));
+    sc.facets.should.containOnly([[1,4]]);
     sc.removeFacet([1,4]);
     assert(sc.facets.empty);
 
     auto sc2 = simplicialComplex([[1,2,3], [1,2,4], [1,3,4], [2,3,4]]);
     sc2.removeFacet([1,2,3]);
-    assert(sc2.facets.equal([[1,2,4], [1,3,4], [2,3,4]]));
+    sc2.facets.should.containOnly([[1,2,4], [1,3,4], [2,3,4]]);
     sc2.insertFacet([1,2,5]);
     sc2.insertFacet([1,3,5]);
     sc2.insertFacet([2,3,5]);
@@ -321,10 +321,13 @@ public:
         if (dim in facetVertices)
         {
             facetVertices[dim] ~= simplex_;
+            assert(simplex_ !in indexOfFacet);
+            indexOfFacet[simplex_] = facetVertices[dim].length - dim - 1;
         }
         else
         {
             facetVertices.insert(dim, simplex_);
+            indexOfFacet[simplex_] = 0;
         }
     }
 
@@ -334,19 +337,26 @@ public:
     */
     void removeFacet(S)(S simplex) if (isInputRange!S && is(ElementType!S : Vertex))
     {
+        // TO DO: Improve this!
+        StackArray!(Vertex, 16) simplex_;
+        simplex.each!(v => simplex_ ~= v);
+
+        int dim = simplex_[].walkLength.to!int - 1;
+        assert(dim >= 0);
+        simplex_[].assertValidSimplex(dim);
+
         assert(this.contains(simplex),
             "tried to remove a facet not in the simplicial complex");
-        
-        assert(simplex.walkLength <= int.max);
-        auto dim = cast(int) simplex.walkLength - 1;
-        simplex.assertValidSimplex(dim);
-     
-        auto indx = facetVertices[dim].chunks(dim + 1).countUntil(simplex);
-        
-        copy(facetVertices[dim][(dim + 1) * (indx + 1)  .. $],
-             facetVertices[dim][(dim + 1) * indx .. $ - (dim + 1)]);
-        
-        facetVertices[dim] = facetVertices[dim][0 .. $ - (dim + 1)];
+            
+        auto indx = indexOfFacet[simplex_[]];
+
+        // copy last facet into removed ones spot        
+        copy(facetVertices[dim][$ - dim - 1  .. $],
+             facetVertices[dim][indx .. indx + dim + 1]);
+
+        indexOfFacet[facetVertices[dim][$ - dim - 1  .. $].idup] = indx;
+        facetVertices[dim] = facetVertices[dim][0 .. $ - dim - 1];
+        indexOfFacet.remove(simplex_[]);
     }
 
     /***************************************************************************
@@ -544,10 +554,10 @@ SimplicialComplex!Vertex simplicialComplex(Vertex)(const(Vertex)[][] initialFace
     return SimplicialComplex!Vertex(initialFacets);
 }
 ///
-@Name("simplicialComplex") pure @safe unittest
+@Name("simplicialComplex") @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,3], [3,4,5], [6,7,8]]);
-    assert(sc.facets.equal([[1,2], [2,3], [3,4,5], [6,7,8]]));
+    sc.facets.should.containOnly([[1,2], [2,3], [3,4,5], [6,7,8]]);
 
     assert(sc == simplicialComplex(sc.facets.array));
 
@@ -657,12 +667,12 @@ SimplicialComplex!Vertex simplicialComplex(Vertex)(const(Vertex)[][] initialFace
 }
 
 ///
-@Name("removeFacet (pure nothrow @nogc @safe)") pure @safe unittest
+@Name("removeFacet (pure /* nothrow @nogc */ @safe)") pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,4,5]]);
     int[2] edge = [1,2];
 
-    () pure nothrow @nogc @safe {
+    () pure /* nothrow @nogc */ @safe {
         sc.removeFacet(edge[]);
     }();  
 }
