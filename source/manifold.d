@@ -35,7 +35,9 @@ public:
         ~ "dimension " ~ dimension.to!string);
 
     /// We can initialize the manifold from a range of ranges of vertices
-    this(F)(F initialFacets) if (isInputRange!F)
+    this(F)(F initialFacets)
+    if (isInputRange!F && isInputRange!(ElementType!F)
+        && is(ElementType!(ElementType!F) : Vertex))
     {
         // TO DO: Put some nice constraints on F
         foreach(f ; initialFacets)
