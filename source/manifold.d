@@ -97,23 +97,23 @@ public:
     /***************************************************************************
     Returns true if and only if the given simplex is in the manifold
     */
-    bool contains(V)(V vertices) const
-    if (isInputRange!V && is(ElementType!V : Vertex))
+    bool contains(S)(S simplex) const
+    if (isInputRange!S && is(ElementType!S : Vertex))
     {
-        assert(this.simpComp.facets.any!(f => vertices.isSubsetOf(f))
-            == !((vertices.array in degreeMap) is null));
-        return !((vertices.array in degreeMap) is null);
+        assert(this.simpComp.facets.any!(f => simplex.isSubsetOf(f))
+            == !((simplex.array in degreeMap) is null));
+        return !((simplex.array in degreeMap) is null);
     }
 
     /***************************************************************************
     Returns the degree of a simplex in the simplicial complex.
     */
-    size_t degree(V)(V vertices) const
-    if (isInputRange!V && is(ElementType!V : Vertex))
+    size_t degree(S)(S simplex) const
+    if (isInputRange!S && is(ElementType!S : Vertex))
     {
-        assert(vertices.array in degreeMap);
-        assert(degreeMap[vertices.array] == star(vertices).walkLength);
-        return degreeMap[vertices.array];
+        assert(simplex.array in degreeMap);
+        assert(degreeMap[simplex.array] == star(simplex).walkLength);
+        return degreeMap[simplex.array];
     }
 
     /***************************************************************************
@@ -128,20 +128,20 @@ public:
 
     // Special version of insertFacet to update tracked info
     // (EXCEPT numSimplices, which is updated after each pachner move)
-    private void insertFacet(V)(V vertices)
-    if (isInputRange!V && is(ElementType!V : Vertex))
+    private void insertFacet(F)(F facet)
+    if (isInputRange!F && is(ElementType!F : Vertex))
     {
-        this.simpComp.insertFacet(vertices);
+        this.simpComp.insertFacet(facet);
 
-        assert(vertices.walkLength == dimension + 1,
+        assert(facet.walkLength == dimension + 1,
             "facet has wrong dimension");
 
-        assert(vertices.array !in degreeMap);
-        vertices.subsets.each!(s => ++degreeMap[s.array.idup]);
+        assert(facet.array !in degreeMap);
+        facet.subsets.each!(s => ++degreeMap[s.array.idup]);
         
-        foreach(vertex; vertices)
+        foreach(vertex; facet)
         {
-            auto oppositeRidge = vertices.filter!(v => v != vertex);
+            auto oppositeRidge = facet.filter!(v => v != vertex);
             Vertex[dimension] ridgeVertices;
             copy(oppositeRidge, ridgeVertices[]);
 
@@ -166,13 +166,13 @@ public:
     }
 
     // Special version of removeFacet to update tracked info
-    private void removeFacet(V)(V vertices)
-    if (isInputRange!V && is(ElementType!V : Vertex))
+    private void removeFacet(F)(F facet)
+    if (isInputRange!F && is(ElementType!F : Vertex))
     {
-        vertices.assertValidSimplex(dimension);      
-        assert(vertices.array in degreeMap);
-        this.simpComp.removeFacet(vertices);        
-        foreach(s; vertices.subsets.map!array)
+        facet.assertValidSimplex(dimension);      
+        assert(facet.array in degreeMap);
+        this.simpComp.removeFacet(facet);        
+        foreach(s; facet.subsets.map!array)
         {
             --degreeMap[s];
 
@@ -185,7 +185,7 @@ public:
                 ridge[].sort;
                 assert(ridge in ridgeLinks);
 
-                auto oppVerts = vertices.filter!(v => !ridge[].canFind(v));
+                auto oppVerts = facet.filter!(v => !ridge[].canFind(v));
                 assert(oppVerts.walkLength == 1);
                 auto oppVert = oppVerts.front;
                 assert(ridgeLinks[ridge][].canFind(oppVert));
@@ -212,7 +212,7 @@ public:
             }
 
         }
-        assert(vertices.array !in degreeMap);
+        assert(facet.array !in degreeMap);
     }
 
     private void printDiagnosticReport()
