@@ -97,7 +97,8 @@ public:
     /***************************************************************************
     Returns true if and only if the given simplex is in the manifold
     */
-    bool contains(V)(V vertices) const if (isInputRange!V)
+    bool contains(V)(V vertices) const
+    if (isInputRange!V && is(ElementType!V : Vertex))
     {
         assert(this.simpComp.facets.any!(f => vertices.isSubsetOf(f))
             == !((vertices.array in degreeMap) is null));
@@ -107,7 +108,8 @@ public:
     /***************************************************************************
     Returns the degree of a simplex in the simplicial complex.
     */
-    size_t degree(V)(V vertices) const if (isInputRange!V)
+    size_t degree(V)(V vertices) const
+    if (isInputRange!V && is(ElementType!V : Vertex))
     {
         assert(vertices.array in degreeMap);
         assert(degreeMap[vertices.array] == star(vertices).walkLength);
@@ -126,7 +128,8 @@ public:
 
     // Special version of insertFacet to update tracked info
     // (EXCEPT numSimplices, which is updated after each pachner move)
-    private void insertFacet(V)(V vertices) if (isInputRange!V)
+    private void insertFacet(V)(V vertices)
+    if (isInputRange!V && is(ElementType!V : Vertex))
     {
         this.simpComp.insertFacet(vertices);
 
@@ -163,7 +166,8 @@ public:
     }
 
     // Special version of removeFacet to update tracked info
-    private void removeFacet(V)(V vertices) if (isInputRange!V)
+    private void removeFacet(V)(V vertices)
+    if (isInputRange!V && is(ElementType!V : Vertex))
     {
         vertices.assertValidSimplex(dimension);      
         assert(vertices.array in degreeMap);
