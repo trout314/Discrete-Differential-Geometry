@@ -83,9 +83,8 @@ import utility : isSubsetOf, SmallMap, StackArray, staticIota, subsets,
     sc.star([4]).should.containOnly([[4,5], [2,3,4]]);
     sc.star([2,3]).should.containOnly([[1,2,3], [2,3,4]]);
 
-    // get link of a simplex as list of facets
-    // TO DO: Why do I need .map!array here? Tests fail without it. I think 
-    // this is a fluentasserts library issue.
+    /* get link of a simplex as list of facets. NOTE: map!array is needed here
+    due to library bug. See https://github.com/gedaiu/fluent-asserts/issues/85 */
     sc.link([5]).map!array.should.containOnly([[4], [6]]);
     sc.link([4]).map!array.should.containOnly([[5], [2,3]]);
     sc.link([2,3]).map!array.should.containOnly([[1], [4]]);
