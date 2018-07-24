@@ -84,7 +84,8 @@ import utility : isSubsetOf, SmallMap, StackArray, staticIota, subsets,
     sc.star([2,3]).should.containOnly([[1,2,3], [2,3,4]]);
 
     // get link of a simplex as list of facets
-    // TO DO: Why do I need .map!array here?
+    // TO DO: Why do I need .map!array here? Tests fail without it. I think 
+    // this is a fluentasserts library issue.
     sc.link([5]).map!array.should.containOnly([[4], [6]]);
     sc.link([4]).map!array.should.containOnly([[5], [2,3]]);
     sc.link([2,3]).map!array.should.containOnly([[1], [4]]);
@@ -291,6 +292,7 @@ public:
     {
         facetVertices = facetVertices.dup;
         facetVertices.byKey.each!(k => facetVertices[k] = facetVertices[k].dup);
+        indexOfFacet = indexOfFacet.dup;
     }
 
     /***************************************************************************
@@ -321,8 +323,8 @@ public:
         if (dim in facetVertices)
         {
             facetVertices[dim] ~= simplex_;
-            assert(simplex_ !in indexOfFacet);
-            indexOfFacet[simplex_] = facetVertices[dim].length - dim - 1;
+            assert(simplex_[] !in indexOfFacet);
+            indexOfFacet[simplex_[].idup] = facetVertices[dim].length - dim - 1;
         }
         else
         {
@@ -501,7 +503,8 @@ public:
             output ~= "vertex list (dim " ~ dim.to!string ~ "): "
                 ~ facetVertices[dim].to!string ~ "\n";
         }
-        
+        output ~= indexOfFacet.to!string; 
+
         return output;
     }
 
