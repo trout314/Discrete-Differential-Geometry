@@ -39,14 +39,7 @@ public:
     if (isInputRange!F && isInputRange!(ElementType!F)
         && is(ElementType!(ElementType!F) : Vertex))
     {
-        // TO DO: Put some nice constraints on F
-        foreach(f ; initialFacets)
-        {
-            this.insertFacet(f);
-        }
-        // TO DO: Figure out why I need to keep switching between
-        // foreach and the following:
-        // initialFacets.each!(f => this.insertFacet(f));
+        initialFacets.each!(f => this.insertFacet(f));
 
         assert(this.isPureOfDim(dimension),
             "not all facets have the correct dimension");
@@ -273,7 +266,6 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
     auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
         [2,3,5], [3,4,5], [1,4,5]]);
 
-
     static assert(octahedron.dimension == 2);
     static assert(is(octahedron.Vertex == int));
 
@@ -282,16 +274,16 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
 
     auto tetrahedron = Manifold!2([[1,2,3], [1,2,4], [1,3,4], [2,3,4]]);
 
-    octahedron.star([1,2]).map!array.should.containOnly([[0,1,2], [1,2,5]].to!(const(int)[][]));    
+    octahedron.star([1,2]).should.containOnly([[0,1,2], [1,2,5]]);    
 
     octahedron.pachnerMoves.should.containOnly(
-        [[0,1], [0,2], [0,3], [0,4], [1,2], [1,4],
-         [1,5], [2,3], [2,5], [3,4], [3,5], [4,5],  // 1-simplices
-         [0,1,2], [0,1,4], [0,2,3], [0,3,4],
-         [1,2,5], [1,4,5], [2,3,5], [3,4,5]].to!(const(int)[][]));      // 2-simplices
+        [[0,1], [0,2], [0,3], [0,4], [1,2], [1,4],  // 1-simplices
+         [1,5], [2,3], [2,5], [3,4], [3,5], [4,5],
+         [0,1,2], [0,1,4], [0,2,3], [0,3,4],        // 2-simplices
+         [1,2,5], [1,4,5], [2,3,5], [3,4,5]]);      
 
     tetrahedron.pachnerMoves.should.containOnly(
-        [[1, 2, 3], [1, 2, 4], [1, 3, 4], [2, 3, 4]].to!(const(int)[][]));
+        [[1, 2, 3], [1, 2, 4], [1, 3, 4], [2, 3, 4]]);
 
     tetrahedron.doPachner([1,2,3], 5);
 
@@ -348,7 +340,7 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
 
     m.pachnerMoves.should.containOnly([[1], [2, 3], [2, 3, 5],
         [1, 3, 4], [1, 2, 3], [5], [2, 4, 5], [3, 4, 5], [1, 2, 4], [2, 4],
-        [3, 4]].to!(const(int)[][]));
+        [3, 4]]);
 
     auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4],
         [1,2,5], [2,3,5], [3,4,5], [1,4,5]]);
@@ -358,7 +350,7 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
     octahedron.pachnerMoves.should.containOnly(
         [[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5], [2,3,5], [3,4,5], [1,4,5],
         [2, 3], [0, 1], [1, 5], [4, 5], [0, 3], [1, 4],
-        [1, 2], [0, 4], [0, 2], [2, 5], [3, 5], [3, 4]].to!(const(int)[][]));
+        [1, 2], [0, 4], [0, 2], [2, 5], [3, 5], [3, 4]]);
 
 }
 
@@ -378,19 +370,19 @@ void doPachner(Vertex, int dim)(
 @Name("doPachner 1 -> (dim + 1)") @safe unittest
 {
     auto m = Manifold!2(standardSphereFacets(2));
-    m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]].to!(const(int)[][]));
+    m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
     
     m.doPachner([1,2,3], 4);
     m.facets.should.containOnly(
-        [[0,1,2],[0,1,3], [0,2,3], [1,2,4], [1,3,4], [2,3,4]].to!(const(int)[][]));
+        [[0,1,2],[0,1,3], [0,2,3], [1,2,4], [1,3,4], [2,3,4]]);
 
     m.doPachner([0,2,3], 7);
     m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,7],
-        [0,3,7], [1,2,4], [1,3,4], [2,3,4], [2,3,7]].to!(const(int)[][]));
+        [0,3,7], [1,2,4], [1,3,4], [2,3,4], [2,3,7]]);
 
     m.doPachner([7]);
     m.doPachner([4]);
-    m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]].to!(const(int)[][]));
+    m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
 }
 
 /*******************************************************************************
@@ -441,15 +433,15 @@ void doPachner(Vertex, int dim)(
 @Name("doPachner (general)") unittest
 {
     auto m = Manifold!2(standardSphereFacets(2));
-    m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]].to!(const(int)[][]));
+    m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
     
     m.doPachner([1,2,3], 4);
     m.doPachner([1,2]);
     m.facets.should.containOnly(
-        [[0,1,3], [0,1,4], [0,2,3], [0,2,4], [1,3,4], [2,3,4]].to!(const(int)[][]));
+        [[0,1,3], [0,1,4], [0,2,3], [0,2,4], [1,3,4], [2,3,4]]);
     m.doPachner([0,4]);
     m.doPachner([4]);
-    m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]].to!(const(int)[][]));      
+    m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);      
 }
 
 /*******************************************************************************
@@ -617,7 +609,7 @@ auto standardSphereFacets(int dim)
         [[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
 
     auto s = Manifold!2(standardSphereFacets(2));
-    s.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]].to!(const(int)[][]));
+    s.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
 
     foreach(dim; staticIota!(1,9))
     {
