@@ -9,7 +9,7 @@
     "dflags": [""],
     "dependencies": {
         "unit-threaded": "~>0.7.46",
-        "fluent-asserts": "~>0.11.4"
+        "fluent-asserts": "~>0.12.3"
     },
     "configurations": [
         { "name": "executable" },
