@@ -9,7 +9,7 @@ import std.meta : AliasSeq, allSatisfy, anySatisfy;
 import std.range : array, chain, drop, ElementType, empty, enumerate, front,
     iota, isForwardRange, isInputRange, popFront, repeat, save, take,
     walkLength;
-import std.traits : lvalueOf, rvalueOf;
+import std.traits : lvalueOf, rvalueOf, hasAliasing;
 import unit_threaded : Name;
 
 //dfmt off
@@ -1238,4 +1238,25 @@ ulong binomial(ulong n, ulong k) pure nothrow @nogc @safe
     // A few larger tests, answers verified with Mathematica
     assert(binomial(20, 10) == 184756);
     assert(binomial(17, 7) == 19448);
+}
+
+/******************************************************************************
+Applies const to types with non-immutable indirections and not to others.
+*/
+template ApplyConstTo(T)
+{
+    static if(hasAliasing!T)
+    {
+        alias ApplyConstTo = const(T);
+    }
+    else
+    {
+        alias ApplyConstTo = T;
+    }
+}
+
+@Name("ApplyConstTo") unittest
+{
+    static assert(is(ApplyConstTo!int == int));
+    static assert(is(ApplyConstTo!(int*) == const(int*)));
 }
