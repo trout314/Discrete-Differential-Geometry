@@ -441,8 +441,7 @@ public:
         {
             foreach(f; this.facets(d))
             {
-                simplicesSeen ~= f.subsetsOfSize(dim + 1)
-                    .map!(s => s.array.dup).array;
+                simplicesSeen ~= f.subsetsOfSize(dim + 1).map!array.array;
             }
         }
         simplicesSeen = simplicesSeen.sort.uniq.array;
