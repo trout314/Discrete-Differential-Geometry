@@ -428,14 +428,14 @@ public:
     /***************************************************************************
     Get the simplices of dimension `dim` as lists of vertices.
     */
-    Vertex[][] simplices(int dim) const pure nothrow @safe
+    const(Vertex)[][] simplices(int dim) const pure nothrow @safe
     {
         // TO DO: Reduce gc presure here. (Can't make @nogc I think.)
 
         assert(dim >= 0, "dimension must be non-negative, but got "
             ~ dim.to!string);
 
-        Vertex[][] simplicesSeen;
+        const(Vertex)[][] simplicesSeen;
         auto dims = facetVertices.byKey;
         foreach(d; dims.filter!(d => d >= dim))
         {
