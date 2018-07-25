@@ -1257,6 +1257,9 @@ template ApplyConstTo(T)
 
 @Name("ApplyConstTo") unittest
 {
+    // TO DO: More tests. Think about design of this template...
     static assert(is(ApplyConstTo!int == int));
-    static assert(is(ApplyConstTo!(int*) == const(int*)));
+
+    static class C {}
+    static assert(is(ApplyConstTo!C == const(C)));
 }
