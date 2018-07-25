@@ -5,6 +5,7 @@ import std.algorithm : all, any, canFind, chunkBy, copy, countUntil, each,
     equal, filter, find, findAdjacent, isSorted, map, maxElement,
     setDifference, sort, sum, uniq;
 import std.conv : to;
+import std.random : uniform;
 import std.range : array, chunks, dropExactly, ElementType, empty, enumerate, 
     front, iota, isForwardRange, isInputRange, isOutputRange, popFront, put, save, walkLength, zip;
 import unit_threaded : Name;
@@ -440,6 +441,17 @@ public:
     }
 
     /***************************************************************************
+    Returns a range containing a randomly chosen facet of given dimension
+    */
+    const(Vertex)[] randomFacetOfDim(int dimension)
+    {
+        assert(dimension in this.facetVertices);
+        size_t nVerts = (dimension + 1).to!size_t;
+        auto i = uniform(0, facetVertices[dimension].length / nVerts);
+        return facetVertices[dimension][i * nVerts .. (i + 1) * nVerts];
+    }
+
+    /***************************************************************************
     Get the simplices of dimension `dim` as lists of vertices.
     */
     const(Vertex)[][] simplices(int dim) const pure nothrow @safe
@@ -525,6 +537,34 @@ public:
         put(writer, facets.toString);
     }
 }
+
+///
+@Name("randomFacetOfDim") unittest
+{
+    auto sc = simplicialComplex([[1,2,3]]);
+    assert(sc.randomFacetOfDim(2) == [1,2,3]);
+
+    sc.insertFacet([4,5,6]);
+    sc.insertFacet([7]);
+
+    int count;
+    foreach(i; 0 .. 100)
+    {
+        auto f = sc.randomFacetOfDim(2);  
+        if(f == [1,2,3])
+        {
+            count++;
+        }
+        else
+        {
+            assert(f == [4,5,6]);
+        }
+    }
+    assert(count > 35);
+    assert(count < 65);
+}
+
+// TO DO: randomFacetsOfDim error unittests?
 
 ///
 @Name("containsFacet") pure @safe unittest
