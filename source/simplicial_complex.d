@@ -323,6 +323,8 @@ public:
         {
             facetVertices[dim] ~= simplex_;
             assert(simplex_[] !in indexOfFacet);
+            
+            // TO DO: Remove the need for .idup here. Custom AA type?
             indexOfFacet[simplex_[].idup] = facetVertices[dim].length - dim - 1;
         }
         else
@@ -355,6 +357,7 @@ public:
         copy(facetVertices[dim][$ - dim - 1  .. $],
              facetVertices[dim][indx .. indx + dim + 1]);
 
+        // TO DO: Remove the need for .idup here. Custom AA type?
         indexOfFacet[facetVertices[dim][$ - dim - 1  .. $].idup] = indx;
         facetVertices[dim] = facetVertices[dim][0 .. $ - dim - 1];
         indexOfFacet.remove(simplex_[]);
