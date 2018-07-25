@@ -12,7 +12,10 @@ import utility : binomial, isSubsetOf, SmallMap, staticIota, subsets, subsetsOfS
 
 //dfmt off
 /*******************************************************************************
-Manifold type... TO DO: More info here
+Manifold type... TO DO: More info here.
+
+Manifold models a compact combinatorial n-manifold. Supports doing pachner moves
+quickly
 */
 struct Manifold(int dimension_, Vertex_ = int)
 {
@@ -558,6 +561,9 @@ private void doPachnerImpl(Vertex, int dim)(
     assert(manifold.pachnerMoves.canFind(center), "bad pachner move");
     immutable centerDim = center.walkLength.to!int - 1;
 
+    // TO DO: FIX THIS! We don't need to look up the facets in star(center)
+    // those are given by center and coCenter
+
     /* Need .map!array.array here to ensure independent copies of the
     facets in the star. Once a facet is removed, the range returned
     by star(center) becomes invalid! */   
@@ -565,6 +571,7 @@ private void doPachnerImpl(Vertex, int dim)(
         f => manifold.removeFacet(f));
 
     alias SC = SimplicialComplex!Vertex;
+
     auto newPiece = (centerDim == 0)
         ? SC([coCenter])
         : join(SC(center.subsetsOfSize(centerDim)), SC([coCenter]));
