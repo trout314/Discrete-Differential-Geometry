@@ -441,14 +441,14 @@ public:
     }
 
     /***************************************************************************
-    Returns a range containing a randomly chosen facet of given dimension
+    Returns a range containing a randomly chosen facet of dimension `dim`
     */
-    const(Vertex)[] randomFacetOfDim(int dimension)
+    const(Vertex)[] randomFacetOfDim(int dim)
     {
-        assert(dimension in this.facetVertices);
-        size_t nVerts = (dimension + 1).to!size_t;
-        auto i = uniform(0, facetVertices[dimension].length / nVerts);
-        return facetVertices[dimension][i * nVerts .. (i + 1) * nVerts];
+        assert(dim in this.facetVertices);
+        size_t nVerts = (dim + 1).to!size_t;
+        auto indx = uniform(0, facetVertices[dim].length / nVerts);
+        return facetVertices[dim][indx * nVerts .. (indx + 1) * nVerts];
     }
 
     /***************************************************************************
