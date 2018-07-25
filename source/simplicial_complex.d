@@ -1,14 +1,14 @@
 import algorithms : connectedComponents, eulerCharacteristic,
-    isCircle, isConnected,  isPureOfDim, join;
+    isCircle, isConnected,  isPureOfDim;
 import fluent.asserts : should;
 import std.algorithm : all, any, canFind, chunkBy, copy, countUntil, each,
-    equal, filter, find, findAdjacent, isSorted, joiner, map, maxElement,
+    equal, filter, find, findAdjacent, isSorted, map, maxElement,
     setDifference, sort, sum, uniq;
 import std.conv : to;
 import std.range : array, chunks, dropExactly, ElementType, empty, enumerate, 
-    front, iota, isForwardRange, isInputRange, isOutputRange, popFront, put, refRange, save, walkLength, zip;
+    front, iota, isForwardRange, isInputRange, isOutputRange, popFront, put, save, walkLength, zip;
 import unit_threaded : Name;
-import utility : isSubsetOf, SmallMap, StackArray, staticIota, subsets,
+import utility : isSubsetOf, SmallMap, StackArray, subsets,
     subsetsOfSize, throwsWithMsg;
 
 /// Basic Functionality
