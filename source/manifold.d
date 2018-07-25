@@ -560,23 +560,23 @@ private void doPachnerImpl(Vertex, int dim)(
 {
     assert(manifold.pachnerMoves.canFind(center), "bad pachner move");
     immutable centerDim = center.walkLength.to!int - 1;
-
-    // TO DO: FIX THIS! We don't need to look up the facets in star(center)
-    // those are given by center and coCenter
-
-    /* Need .map!array.array here to ensure independent copies of the
-    facets in the star. Once a facet is removed, the range returned
-    by star(center) becomes invalid! */   
-    manifold.star(center).map!array.array.each!(
-        f => manifold.removeFacet(f));
-
+    immutable coCenterDim = coCenter.walkLength.to!int - 1;
     alias SC = SimplicialComplex!Vertex;
+
+    auto oldPiece = (coCenterDim == 0)
+        ? SC([center])
+        : join(SC(coCenter.subsetsOfSize(coCenterDim)), SC([center]));
+    assert(oldPiece.isPureOfDim(dim));
+    assert(manifold.star(center).map!array.array.sort
+        .equal!equal(oldPiece.facets.map!array.array.sort));
 
     auto newPiece = (centerDim == 0)
         ? SC([coCenter])
         : join(SC(center.subsetsOfSize(centerDim)), SC([coCenter]));
-
     assert(newPiece.isPureOfDim(dim));
+    assert(newPiece.facets.walkLength + oldPiece.facets.walkLength == dim + 2);
+
+    oldPiece.facets.each!(f => manifold.removeFacet(f));
     newPiece.facets.each!(f => manifold.insertFacet(f));
     manifold.numSimplices.modifyFVector(center.length);
 
