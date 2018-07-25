@@ -448,7 +448,7 @@ public:
         return simplicesSeen;
     }
 
-    bool opEquals()(auto ref const SimplicialComplex!Vertex sc) const
+    bool opEquals()(auto ref const(SimplicialComplex!Vertex) sc) const
     {
         auto dims = sc.facetVertices.byKey;
         auto thisDims = this.facetVertices.byKey;
@@ -473,7 +473,7 @@ public:
         return true;
     }
 
-    size_t toHash() const @safe nothrow
+    size_t toHash() const nothrow @safe
     {
         auto f = facets.map!array.array.sort.array;
         return () @trusted {return typeid(f).getHash(&f);} ();
@@ -482,7 +482,7 @@ public:
     /*******************************************************************************
     Returns a nice looking representation of the simplicial complex as a string.
     */
-    string toString() const
+    string toString() const pure @safe
     {
         return this.facets.to!string;
     }
@@ -491,7 +491,7 @@ public:
     Returns a string containing more detailed, implementation specific info on the
     simplicial complex
     */
-    string toDetailedString() const
+    string toDetailedString() const pure @safe
     {
         string output;
         output ~= "facets   : " ~ facets.to!string ~ "\n";
