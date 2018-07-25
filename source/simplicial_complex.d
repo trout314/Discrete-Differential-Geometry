@@ -423,9 +423,20 @@ public:
     Returns true if the given simplex is in this simplicial complex and false
     otherwise.
     */
-    bool contains(S)(S simplex) const if (isInputRange!S && is(ElementType!S : Vertex))
+    bool contains(S)(S simplex) const
+    if (isInputRange!S && is(ElementType!S : Vertex))
     {
         return this.facets.any!(f => simplex.isSubsetOf(f));
+    }
+
+    /***************************************************************************
+    Returns true if the given simplex is a facet in this simplicial complex and
+    false otherwise.
+    */
+    bool containsFacet(F)(F facet) const
+    if (isInputRange!F && is(ElementType!F : Vertex))
+    {
+        return cast(bool) (facet.array in indexOfFacet);
     }
 
     /***************************************************************************
@@ -513,6 +524,25 @@ public:
     {
         put(writer, facets.toString);
     }
+}
+
+///
+@Name("containsFacet") pure @safe unittest
+{
+    auto sc = simplicialComplex([[1], [2,3], [3,4,5], [3,4,6]]);
+    assert(sc.containsFacet([1]));
+    assert(sc.containsFacet([2,3]));
+    assert(sc.containsFacet([3,4,5]));
+    assert(sc.containsFacet([3,4,6]));
+
+    assert(!sc.containsFacet([2]));
+    assert(!sc.containsFacet([4]));
+    assert(!sc.containsFacet([3,6]));
+    assert(!sc.containsFacet([1,7]));
+    assert(!sc.containsFacet([1,6]));
+
+    assert(simplicialComplex([[1,2]]).containsFacet([1,2]));
+    assert(!simplicialComplex([[1,2]]).containsFacet([2]));
 }
 
 @Name("opEquals (pure @safe)") pure @safe unittest
