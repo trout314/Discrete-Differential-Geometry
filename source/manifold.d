@@ -584,7 +584,7 @@ private auto getCoCenter(Vertex, int dim)(
 )
 {
     assert(manifold.contains(center));
-    return manifold.link(center).joiner.array.dup.sort().uniq.array;
+    return manifold.link(center).joiner.array.dup.sort.uniq.array;
 }
 
 // TO DO: Separate unittesting for getCoCenter
