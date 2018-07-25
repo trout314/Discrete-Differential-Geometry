@@ -558,10 +558,11 @@ private void doPachnerImpl(Vertex, int dim)(
     assert(manifold.pachnerMoves.canFind(center), "bad pachner move");
     immutable centerDim = center.walkLength.to!int - 1;
 
-    /* Need to ensure independent copies of the facets in the star since once a
-    facet is removed, the range returned by star(center) becomes invalid! */   
-    immutable toRemove = manifold.star(center).map!(f => f.dup).array;
-    toRemove.each!(f => manifold.removeFacet(f));
+    /* Need .map!array.array here to ensure independent copies of the
+    facets in the star. Once a facet is removed, the range returned
+    by star(center) becomes invalid! */   
+    manifold.star(center).map!array.array.each!(
+        f => manifold.removeFacet(f));
 
     alias SC = SimplicialComplex!Vertex;
     auto newPiece = (centerDim == 0)
@@ -570,7 +571,6 @@ private void doPachnerImpl(Vertex, int dim)(
 
     assert(newPiece.isPureOfDim(dim));
     newPiece.facets.each!(f => manifold.insertFacet(f));
-
     manifold.numSimplices.modifyFVector(center.length);
 
     // TO DO: Do sanity checking for manifold
