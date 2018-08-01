@@ -12,23 +12,47 @@ import std.random : choice, rndGen, uniform01;
 import std.range : array, back, chain, empty, front, iota, popBack, popFront, repeat,
     save;
 import std.stdio : writefln, writeln;
+import unit_threaded : Name;
 import utility : subsetsOfSize;
 
+// I wish we could compute these, but acos dosn't work at compile time. These
+// come from wolfram alpha input: Table[N[2 Pi/ArcCos[1/k],30],{k, 2, 16}]
+enum real[17] flatDegreeInDim = [
+    real.nan,   // Not applicable in dimension zero!
+    2.00000000000000000000000000000,
+    6.00000000000000000000000000000,
+    5.10429931211954041318017937918,
+    4.76679212271567770016331231084,
+    4.58814743301323607389345550261,
+    4.47728161419381561316532718870,
+    4.40168886795573189523776294354,
+    4.34681580829256787810763853238,
+    4.30515772121519709317292314208,
+    4.27244785078781511448809296727,
+    4.24607958792781091933915226732,
+    4.22436998865935854222871451330,
+    4.20618365430421015310353357902,
+    4.19072666439811610044839625288,
+    4.17742710626470998673691504053,
+    4.16586250565979517934736897387];
+
+
 //-------------------------------- SETTINGS ------------------------------------
-// TO DO: make this sectopm a C++ style text import from a parameter file
 // TO DO: make setting setting a coef to 0.0 disable un-needed code
 
 enum dim = 3;
 
 enum int numFacetsTarget = 1000;
-enum real meanHingeDegreeTarget = 5.1;
+enum real hingeDegreeTarget = flatDegreeInDim[dim];
 
-enum real numFacetsCoef = 0.05;
-enum real numHingesCoef = 0.5;
-enum real degreeStdDevCoef = 0.0;
 
-enum triesPerReport = 100;
-enum maxTries = 20000;
+enum real numFacetsCoef = 0.01;
+enum real numHingesCoef = 0.0;
+enum real hingeDegreeVarCoef = 0.0;
+
+//
+enum triesPerReport = 500;
+enum maxTries = 200000;
 
 //------------------------------------------------------------------------------
 
@@ -41,7 +65,7 @@ real[3] objectiveParts(Vertex, int dim)(const ref Manifold!(dim, Vertex) manifol
 
     /* The target mean hinge-degree and current number of facets imply a target
     number of hinges. See Eq. 7, p. 5 of https://arxiv.org/pdf/1208.1514.pdf */
-    immutable numHingesTarget = dim * (dim + 1) * numFacets / (2 * meanHingeDegreeTarget);
+    immutable numHingesTarget = dim * (dim + 1) * numFacets / (2 * hingeDegreeTarget);
 
     immutable real degStdDev = manifold.degreeHistogram(dim - 2)
         .byKeyValue.map!(p => p.key * (p.value - manifold.meanHingeDegree) ^^ 2).sum.sqrt;
@@ -50,8 +74,8 @@ real[3] objectiveParts(Vertex, int dim)(const ref Manifold!(dim, Vertex) manifol
     immutable real minDegStdDev = 0.5 * numHinges;
 
     return [numFacetsCoef * (numFacets - numFacetsTarget) ^^ 2,
-        numHingesCoef * (numHinges - numHingesTarget) ^^ 2,
-        degreeStdDevCoef * (degStdDev - minDegStdDev) ^^ 2];
+            numHingesCoef * (numHinges - numHingesTarget) ^^ 2,
+            hingeDegreeVarCoef * (degStdDev - minDegStdDev) ^^ 2];
 }
 
 real meanHingeDegree(Vertex, int dim)(const ref Manifold!(dim, Vertex) manifold)
@@ -63,7 +87,7 @@ real meanHingeDegree(Vertex, int dim)(const ref Manifold!(dim, Vertex) manifold)
     return numFacets * (dim + 1) * dim / (2 * numHinges);
 }
 
-void sample()
+void sampleOld()
 {
 
     // tryCount[j] counts j + 1 -> dim + 1 - j moves tried
@@ -161,7 +185,7 @@ void sample()
             writeln("number of facets     : ", manifold.fVector.back,
                     " (target: ", numFacetsTarget, ")");
             writeln("average hinge-degree : ", manifold.meanHingeDegree,
-                    " (target: ", meanHingeDegreeTarget, ")");
+                    " (target: ", hingeDegreeTarget, ")");
             '-'.repeat(80).writeln;
             writeln("number of facets penalty : ", manifold.objectiveParts[0]);
             writeln("mean hinge-degee penalty : ", manifold.objectiveParts[1]);
@@ -172,4 +196,105 @@ void sample()
             timer.reset;
         }
     }
+}
+
+struct Sampler(Vertex, int dim)
+{
+    Manifold!(dim, Vertex) manifold;
+
+    // tryCount[j] counts j + 1 -> dim + 1 - j moves tried
+    ulong[dim + 1] tryCount;
+    ulong[dim + 1] acceptCount;
+
+    ulong totalSquaredHingeDegree;
+
+    this(Manifold!(dim, Vertex) initialManifold)
+    {
+        manifold = initialManifold;
+        totalSquaredHingeDegree = initialManifold.simplices(dim - 2)
+            .map!(s => manifold.degree(s)^^2).sum;
+    }
+
+    private void updateTotSqDeg(
+        const(Vertex)[] center,
+        const(Vertex)[] coCenter)
+    {
+
+    }
+}
+
+real volumePenalty(Vertex, int dim)(Sampler!(Vertex, dim) s)
+{
+    immutable numF = s.manifold.fVector[dim];
+    return numFacetsCoef * (numF - numFacetsTarget) ^^ 2;
+}
+
+real globalCurvaturePenalty(Vertex, int dim)(Sampler!(Vertex, dim) s)
+{
+    /* The target mean hinge-degree and current number of facets imply a target
+    number of hinges. See Eq. 7, p. 5 of https://arxiv.org/pdf/1208.1514.pdf */
+    immutable numF = s.manifold.fVector[dim];
+    immutable numH = s.manifold.fVector[dim - 2];
+    immutable hPerF = dim * (dim + 1) / 2;
+
+    immutable numHingesTarget = hPerF * numF / hingeDegreeTarget;
+    return numHingesCoef * (numH - numHingesTarget) ^^ 2;
+}
+
+real localCurvaturePenalty(Vertex, int dim)(Sampler!(Vertex, dim) s)
+{
+    // TO DO: IMPORTANT! Make this take difference between 
+    //
+    // ACTUAL = sum_over_s of (deg(s) - targetDeg)^2
+    //
+    // IDEAL = sum_over_s of (deg(s) - targetDeg)^2 
+    //         (if all s had degrees closest to targetDeg)
+
+    immutable numF = s.manifold.fVector[dim];
+    immutable numH = s.manifold.fVector[dim - 2];
+    immutable hPerF = dim * (dim + 1) / 2;
+
+    immutable sqDeg = s.totalSquaredHingeDegree;
+    immutable real degTarget = hPerF * numF / numH.to!real;
+
+    // TO DO: Refer to arxiv paper for this!
+    return hingeDegreeVarCoef * (
+        (degTarget^^2 * numH - 2*degTarget*hPerF*numF + sqDeg)
+        -numH)^^2; // TO DO: Fix this fudge! See TO DO above...
+}
+
+
+void sample(Vertex, int dim)(Sampler!(Vertex, dim) s)
+{
+    auto m = s.manifold;
+}
+ 
+
+@Name("sample") unittest
+{
+    // octahedron    
+    auto m = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
+        [2,3,5], [3,4,5], [1,4,5]]);
+
+    auto s = Sampler!(int, 2)(m);
+
+        real tot = s.volumePenalty 
+        + s.globalCurvaturePenalty + s.localCurvaturePenalty;
+
+    writeln("volume           : ", s.volumePenalty);
+    writeln("global curvature : ", s.globalCurvaturePenalty);
+    writeln("local curvature  : ", s.localCurvaturePenalty);
+    writeln("-----------------:-------------");
+    writeln("total objective  : ", tot, "\n");
+
+    s.manifold.writeln;
+    s.manifold.doPachner([1,2]);
+    s.manifold.writeln;
+
+
+    writeln("volume           : ", s.volumePenalty);
+    writeln("global curvature : ", s.globalCurvaturePenalty);
+    writeln("local curvature  : ", s.localCurvaturePenalty);
+    writeln("-----------------:-------------");
+    writeln("total objective  : ", tot, "\n");
 }
