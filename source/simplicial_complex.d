@@ -936,5 +936,5 @@ public:
 
 unittest 
 {
-    auto x = simplicialComplex([[1,2],[2,3]]);
+    auto x = simplicialComplex([[1,2],[2,3], [3,4]]);
 }
