@@ -933,3 +933,8 @@ public:
         assert(saved.equal!equal(ans1) || saved.equal!equal(ans2));
     }();
 }
+
+unittest 
+{
+    auto x = simplicialComplex([[1,2],[2,3], [3,4]]);
+}
