@@ -1,5 +1,5 @@
 import algorithms : eulerCharacteristic;
-import manifold : degreeHistogram, doPachner, getCoCenter, moveCentersAtFacet, Manifold, pachnerMoves,
+import manifold : degreeHistogram, doPachner, getCoCenter, movesAtFacet, Manifold, pachnerMoves,
     standardSphereFacets;
 import simplicial_complex : fVector;
 import std.algorithm : all, each, filter, joiner, map, max, maxElement, sum;
