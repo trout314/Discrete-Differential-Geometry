@@ -1,5 +1,5 @@
 import algorithms : eulerCharacteristic;
-import manifold : degreeHistogram, doPachner, getCoCenter, Manifold, pachnerMoves,
+import manifold : degreeHistogram, doPachner, getCoCenter, moveCentersAtFacet, Manifold, pachnerMoves,
     standardSphereFacets;
 import simplicial_complex : fVector;
 import std.algorithm : all, each, filter, joiner, map, max, maxElement, sum;
@@ -264,16 +264,15 @@ real localCurvaturePenalty(Vertex, int dim)(Sampler!(Vertex, dim) s)
 }
 
 
+
+
 void sample(Vertex, int dim)(Sampler!(Vertex, dim) s)
 {
     auto simp = s.manifold.randomFacetOfDim(dim).array;
 
-    auto possibleMoves = simp.subsets.map!array.filter!(
-        face => s.manifold.degree(face) == dim + 2 - face.walkLength);
-
     import std.stdio : writeln;
     simp.writeln;
-    possibleMoves.writeln;
+    s.manifold.movesAtFacet(simp).writeln;
 }
  
 
@@ -294,12 +293,9 @@ void sample(Vertex, int dim)(Sampler!(Vertex, dim) s)
     writeln("-----------------:-------------");
     writeln("total objective  : ", tot, "\n");
 
-    s.manifold.writeln;
     s.manifold.doPachner([1,2]);
     s.manifold.writeln;
-
     s.sample;
-
 
     writeln("volume           : ", s.volumePenalty);
     writeln("global curvature : ", s.globalCurvaturePenalty);

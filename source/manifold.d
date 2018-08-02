@@ -840,8 +840,10 @@ auto modifyFVector(size_t[] fVector_, size_t centerLength)
     fVec2.should.equal([0,0,0]);
 }
 
-
-auto moveCentersAtFacet(Vertex, int dim)(
+/******************************************************************************
+Returns a lazy range 
+*/
+auto movesAtFacet(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) manifold,
     const(Vertex)[] facet
 )
