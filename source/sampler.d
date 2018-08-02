@@ -2,7 +2,7 @@ import algorithms : eulerCharacteristic;
 import manifold : degreeHistogram, doPachner, Manifold, pachnerMoves,
     standardSphereFacets;
 import simplicial_complex : fVector;
-import std.algorithm : all, each, joiner, map, max, maxElement, sum;
+import std.algorithm : all, each, filter, joiner, map, max, maxElement, sum;
 import std.conv : to;
 import std.datetime : Duration, msecs;
 import std.datetime.stopwatch : StopWatch;
@@ -10,10 +10,10 @@ import std.format : format;
 import std.math : exp, sqrt;
 import std.random : choice, rndGen, uniform01;
 import std.range : array, back, chain, empty, front, iota, popBack, popFront, repeat,
-    save;
+    save, walkLength;
 import std.stdio : writefln, writeln;
 import unit_threaded : Name;
-import utility : subsetsOfSize;
+import utility : subsetsOfSize, subsets;
 
 // I wish we could compute these, but acos dosn't work at compile time. These
 // come from wolfram alpha input: Table[N[2 Pi/ArcCos[1/k],30],{k, 2, 16}]
@@ -266,7 +266,14 @@ real localCurvaturePenalty(Vertex, int dim)(Sampler!(Vertex, dim) s)
 
 void sample(Vertex, int dim)(Sampler!(Vertex, dim) s)
 {
-    auto m = s.manifold;
+    auto simp = s.manifold.randomFacetOfDim(dim).array;
+
+    auto possibleMoves = simp.subsets.map!array.filter!(
+        face => s.manifold.degree(face) == dim + 2 - face.walkLength);
+
+    import std.stdio : writeln;
+    simp.writeln;
+    possibleMoves.writeln;
 }
  
 
@@ -290,6 +297,8 @@ void sample(Vertex, int dim)(Sampler!(Vertex, dim) s)
     s.manifold.writeln;
     s.manifold.doPachner([1,2]);
     s.manifold.writeln;
+
+    s.sample;
 
 
     writeln("volume           : ", s.volumePenalty);
