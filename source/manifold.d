@@ -841,6 +841,20 @@ auto modifyFVector(size_t[] fVector_, size_t centerLength)
 }
 
 
+auto moveCentersAtFacet(Vertex, int dim)(
+    const ref Manifold!(dim, Vertex) manifold,
+    const(Vertex)[] facet
+)
+{
+    alias m = manifold;  
+
+    return facet.subsets.map!array.filter!(
+        center => (center.walkLength == dim + 1) 
+            || (m.degree(center) == dim + 2 - center.walkLength 
+                && !m.contains(m.getCoCenter(center, facet))));
+}
+
+
 // TO DO: Adapt old code below for new manifold type!
 
 // /******************************************************************************
