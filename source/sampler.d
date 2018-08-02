@@ -1,5 +1,5 @@
 import algorithms : eulerCharacteristic;
-import manifold : degreeHistogram, doPachner, Manifold, pachnerMoves,
+import manifold : degreeHistogram, doPachner, getCoCenter, Manifold, pachnerMoves,
     standardSphereFacets;
 import simplicial_complex : fVector;
 import std.algorithm : all, each, filter, joiner, map, max, maxElement, sum;
@@ -306,4 +306,8 @@ void sample(Vertex, int dim)(Sampler!(Vertex, dim) s)
     writeln("local curvature  : ", s.localCurvaturePenalty);
     writeln("-----------------:-------------");
     writeln("total objective  : ", tot, "\n");
+
+    s.manifold.getCoCenter([3,4]).writeln;
+    s.manifold.getCoCenter([3,4], [3,4,5]).writeln;
+
 }

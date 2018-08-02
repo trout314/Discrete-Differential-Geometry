@@ -585,13 +585,41 @@ private void doPachnerImpl(Vertex, int dim)(
 
 // TO DO: Implement 4->4 moves (Important!)
 
-private auto getCoCenter(Vertex, int dim)(
+auto getCoCenter(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) manifold,
     const(Vertex)[] center
 )
 {
     assert(manifold.contains(center));
     return manifold.link(center).joiner.array.dup.sort.uniq.array;
+}
+
+/*******************************************************************************
+Returns the coCenter for the Pachner move with given center. For efficiency we
+also need to know a facet with face center.
+*/
+auto getCoCenter(Vertex, int dim)(
+    const ref Manifold!(dim, Vertex) manifold,
+    const(Vertex)[] center,
+    const(Vertex)[] facet
+)
+{
+    assert(manifold.contains(facet));
+    assert(manifold.contains(center));
+    assert(center.isSubsetOf(facet));
+    
+    // The coCenter of a facet is a new vertex not in the manifold.
+    assert(center.walkLength < dim + 1);
+
+
+    auto ridges = facet.subsetsOfSize(dim)
+        .filter!(r => center.isSubsetOf(r)).map!array;
+
+    // TO DO: Clean this up!
+    auto coCenterVerts = ridges.map!(r => manifold.ridgeLinks[r.to!(int[2])][])
+        .array.joiner.array.dup.sort.uniq.array;
+
+    return coCenterVerts;
 }
 
 // TO DO: Separate unittesting for getCoCenter
