@@ -443,7 +443,7 @@ public:
     /***************************************************************************
     Returns a range containing a randomly chosen facet of dimension `dim`
     */
-    const(Vertex)[] randomFacetOfDim(int dim)
+    const(Vertex)[] randomFacetOfDim(int dim) const
     {
         assert(dim in this.facetVertices);
         size_t nVerts = (dim + 1).to!size_t;
