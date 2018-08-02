@@ -619,6 +619,8 @@ auto getCoCenter(Vertex, int dim)(
     auto coCenterVerts = ridges.map!(r => manifold.ridgeLinks[r.to!(int[2])][])
         .array.joiner.array.dup.sort.uniq.array;
 
+    assert(coCenterVerts.equal(manifold.getCoCenter(center)));
+
     return coCenterVerts;
 }
 
