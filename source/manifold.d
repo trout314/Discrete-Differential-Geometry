@@ -616,7 +616,7 @@ auto getCoCenter(Vertex, int dim)(
         .filter!(r => center.isSubsetOf(r)).map!array;
 
     // TO DO: Clean this up!
-    auto coCenterVerts = ridges.map!(r => manifold.ridgeLinks[r.to!(int[2])][])
+    auto coCenterVerts = ridges.map!(r => manifold.ridgeLinks[r.to!(int[dim])][])
         .array.joiner.array.dup.sort.uniq.array;
 
     assert(coCenterVerts.equal(manifold.getCoCenter(center)));
@@ -862,12 +862,51 @@ auto movesAtFacet(Vertex, int dim)(
     auto emptyMfd = Manifold!3();
     assert(emptyMfd.movesAtFacet([]).empty);
 
-    auto m1 = Manifold!1([[1,2],[2,3],[1,3]]);
+    /* If the manifold is the boundary of a simplex (i.e. a sphere with the
+    minimum number of facets) then only the type 1 -> (dim + 1) Pachner moves
+    are valid. */    
+    foreach(dim; staticIota!(1,4))
+    {
+        immutable sphere = Manifold!dim(standardSphereFacets(dim));
+        foreach(f; sphere.facets)
+        {
+            sphere.movesAtFacet(f).should.containOnly([f.array]);
+        }
+    }
 
-    import std.stdio : writeln;
-//    m1.movesAtFacet([1,2]).writeln;
+    auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
+        [2,3,5], [3,4,5], [1,4,5]]);
 
-    // assert(m1.movesAtFacet([1,2]).map!array.array.equal!equal([[1,2]]));
+    octahedron.movesAtFacet([0,1,2]).should.containOnly([
+        [0,1], [0,2], [1,2],    // 2 -> 2 moves
+        [0,1,2]                 // 1 -> 3 move
+    ]);
+    
+    foreach(f; octahedron.facets)
+    {
+        octahedron.movesAtFacet(f).should.containOnly(
+            chain([f.array], f.subsetsOfSize(2).map!array).array);
+    }
+    
+    auto pyramid = Manifold!2(
+        [[0,1,2], [0,2,3], [0,1,3], [1,2,4], [2,3,4], [1,3,4]]);
+    pyramid.movesAtFacet([0,1,2]).should.containOnly([
+        [0],                    // 3 -> 1 move
+        [1,2],                  // 2 -> 2 move
+        [0,1,2]                 // 1 -> 3 move
+    ]);
+    pyramid.movesAtFacet([0,2,3]).should.containOnly([
+        [0],                    // 3 -> 1 move
+        [2,3],                  // 2 -> 2 move
+        [0,2,3]                 // 1 -> 3 move
+    ]);
+    pyramid.movesAtFacet([1,3,4]).should.containOnly([
+        [4],                    // 3 -> 1 move
+        [1,3],                  // 2 -> 2 move
+        [1,3,4]                 // 1 -> 3 move
+    ]);
+
+
 }
 
 // TO DO: Adapt old code below for new manifold type!
