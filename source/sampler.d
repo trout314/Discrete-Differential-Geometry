@@ -270,9 +270,9 @@ void sample(Vertex, int dim)(Sampler!(Vertex, dim) s)
 {
     auto simp = s.manifold.randomFacetOfDim(dim).array;
 
-    import std.stdio : writeln;
-    simp.writeln;
-    s.manifold.movesAtFacet(simp).writeln;
+    // import std.stdio : writeln;
+    // simp.writeln;
+    // s.manifold.movesAtFacet(simp).writeln;
 }
  
 
@@ -287,23 +287,23 @@ void sample(Vertex, int dim)(Sampler!(Vertex, dim) s)
         real tot = s.volumePenalty 
         + s.globalCurvaturePenalty + s.localCurvaturePenalty;
 
-    writeln("volume           : ", s.volumePenalty);
-    writeln("global curvature : ", s.globalCurvaturePenalty);
-    writeln("local curvature  : ", s.localCurvaturePenalty);
-    writeln("-----------------:-------------");
-    writeln("total objective  : ", tot, "\n");
+    // writeln("volume           : ", s.volumePenalty);
+    // writeln("global curvature : ", s.globalCurvaturePenalty);
+    // writeln("local curvature  : ", s.localCurvaturePenalty);
+    // writeln("-----------------:-------------");
+    // writeln("total objective  : ", tot, "\n");
 
-    s.manifold.doPachner([1,2]);
-    s.manifold.writeln;
-    s.sample;
+    // s.manifold.doPachner([1,2]);
+    // s.manifold.writeln;
+    // s.sample;
 
-    writeln("volume           : ", s.volumePenalty);
-    writeln("global curvature : ", s.globalCurvaturePenalty);
-    writeln("local curvature  : ", s.localCurvaturePenalty);
-    writeln("-----------------:-------------");
-    writeln("total objective  : ", tot, "\n");
+    // writeln("volume           : ", s.volumePenalty);
+    // writeln("global curvature : ", s.globalCurvaturePenalty);
+    // writeln("local curvature  : ", s.localCurvaturePenalty);
+    // writeln("-----------------:-------------");
+    // writeln("total objective  : ", tot, "\n");
 
-    s.manifold.getCoCenter([3,4]).writeln;
-    s.manifold.getCoCenter([3,4], [3,4,5]).writeln;
+    // s.manifold.getCoCenter([3,4]).writeln;
+    // s.manifold.getCoCenter([3,4], [3,4,5]).writeln;
 
 }

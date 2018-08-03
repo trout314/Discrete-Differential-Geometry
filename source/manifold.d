@@ -841,7 +841,8 @@ auto modifyFVector(size_t[] fVector_, size_t centerLength)
 }
 
 /******************************************************************************
-Returns a lazy range 
+Returns a range containing the valid pachner moves whose center is a face of
+the given facet
 */
 auto movesAtFacet(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) manifold,
@@ -855,7 +856,19 @@ auto movesAtFacet(Vertex, int dim)(
             || (m.degree(center) == dim + 2 - center.walkLength 
                 && !m.contains(m.getCoCenter(center, facet))));
 }
+///
+@Name("movesAtFacet") unittest
+{
+    auto emptyMfd = Manifold!3();
+    assert(emptyMfd.movesAtFacet([]).empty);
 
+    auto m1 = Manifold!1([[1,2],[2,3],[1,3]]);
+
+    import std.stdio : writeln;
+//    m1.movesAtFacet([1,2]).writeln;
+
+    // assert(m1.movesAtFacet([1,2]).map!array.array.equal!equal([[1,2]]));
+}
 
 // TO DO: Adapt old code below for new manifold type!
 
