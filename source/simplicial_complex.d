@@ -299,6 +299,40 @@ public:
     Inserts a facet (given as an input range of vertices) into the simplicial
     complex.
     */
+    void insertFacetRAW(S)(S simplex) if (isInputRange!S && is(ElementType!S : Vertex))
+    {
+        // TO DO: Improve this!
+        StackArray!(Vertex, 16) simplex_;
+        simplex.each!(v => simplex_ ~= v);
+
+        int dim = simplex_[].walkLength.to!int - 1;
+        assert(dim >= 0);
+        simplex_[].assertValidSimplex(dim);
+
+        assert(!this.contains(simplex),
+            "expected a simplex not already in the simplicial complex");
+
+        if (dim in facetVertices)
+        {
+            facetVertices[dim] ~= simplex_;
+            assert(simplex_[] !in indexOfFacet);
+            
+            // TO DO: Remove the need for .idup here. Custom AA type?
+            indexOfFacet[simplex_[].idup] = facetVertices[dim].length - dim - 1;
+        }
+        else
+        {
+            facetVertices.insert(dim, simplex_);
+            indexOfFacet[simplex_] = 0;
+        }
+    }
+
+
+
+    /***************************************************************************
+    Inserts a facet (given as an input range of vertices) into the simplicial
+    complex.
+    */
     void insertFacet(S)(S simplex) if (isInputRange!S && is(ElementType!S : Vertex))
     {
         // TO DO: Improve this!
