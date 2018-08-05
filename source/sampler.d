@@ -1,6 +1,5 @@
 import algorithms : eulerCharacteristic;
-import manifold : degreeHistogram, doPachner, getCoCenter, movesAtFacet, Manifold, pachnerMoves,
-    standardSphereFacets;
+import manifold : degreeHistogram, coCenter, movesAtFacet, Manifold, standardSphereFacets, doPachnerImpl;
 import simplicial_complex : fVector;
 import std.algorithm : all, each, filter, joiner, map, max, maxElement, sum;
 import std.conv : to;
@@ -46,37 +45,13 @@ enum int numFacetsTarget = 1000;
 enum real hingeDegreeTarget = flatDegreeInDim[dim];
 
 
-enum real numFacetsCoef = 0.01;
-enum real numHingesCoef = 0.0;
+enum real numFacetsCoef = 0.1;
+enum real numHingesCoef = 0.05;
 enum real hingeDegreeVarCoef = 0.0;
 
 //
-enum triesPerReport = 500;
-enum maxTries = 200000;
-
-//------------------------------------------------------------------------------
-
-real[3] objectiveParts(Vertex, int dim)(const ref Manifold!(dim, Vertex) manifold)
-{
-    // TO DO: Why does this allocate a closure? Fix it?
-
-    immutable numHinges = manifold.fVector[dim - 2];
-    immutable numFacets = manifold.fVector[dim];
-
-    /* The target mean hinge-degree and current number of facets imply a target
-    number of hinges. See Eq. 7, p. 5 of https://arxiv.org/pdf/1208.1514.pdf */
-    immutable numHingesTarget = dim * (dim + 1) * numFacets / (2 * hingeDegreeTarget);
-
-    immutable real degStdDev = manifold.degreeHistogram(dim - 2)
-        .byKeyValue.map!(p => p.key * (p.value - manifold.meanHingeDegree) ^^ 2).sum.sqrt;
-
-    // TO DO: Put in a more realistic value here...
-    immutable real minDegStdDev = 0.5 * numHinges;
-
-    return [numFacetsCoef * (numFacets - numFacetsTarget) ^^ 2,
-            numHingesCoef * (numHinges - numHingesTarget) ^^ 2,
-            hingeDegreeVarCoef * (degStdDev - minDegStdDev) ^^ 2];
-}
+enum triesPerReport = 1000;
+enum maxTries = 50000;
 
 real meanHingeDegree(Vertex, int dim)(const ref Manifold!(dim, Vertex) manifold)
 {
@@ -87,120 +62,10 @@ real meanHingeDegree(Vertex, int dim)(const ref Manifold!(dim, Vertex) manifold)
     return numFacets * (dim + 1) * dim / (2 * numHinges);
 }
 
-void sampleOld()
-{
-
-    // tryCount[j] counts j + 1 -> dim + 1 - j moves tried
-    ulong[dim + 1] tryCount;
-    ulong[dim + 1] acceptCount;
-
-    auto manifold = Manifold!dim(standardSphereFacets(dim));
-    auto oldManifold = manifold;
-    auto oldObjective = manifold.objectiveParts[].sum;
-    manifold.Vertex[] unusedVertices;
-    assert(unusedVertices.all!(v => !manifold.contains([v])));
-
-    StopWatch timer;
-    timer.start;
-    while (tryCount[].sum < maxTries)
-    {
-        if(unusedVertices.empty)
-        {
-            /* If no unused vertices then next unused vertex label
-            is just the number of vertices. */
-            unusedVertices ~= manifold.fVector[0].to!int;
-        }
-        assert(unusedVertices.all!(v => !manifold.contains([v])));
-
-        oldObjective = manifold.objectiveParts[].sum;
-        auto moves = manifold.pachnerMoves;
-        auto chosenMove = moves.choice;
-
-        manifold.Vertex vertexToRemember;
-        if (chosenMove.length == 1)
-        {
-            unusedVertices ~= chosenMove;
-            manifold.doPachner(chosenMove);
-        }
-        else if (chosenMove.length == manifold.dimension + 1)
-        {
-            manifold.doPachner(chosenMove, unusedVertices.back);
-            vertexToRemember = unusedVertices.back;
-            unusedVertices.popBack;
-        }
-        else
-        {
-            manifold.doPachner(chosenMove);
-        }
-        ++tryCount[dim + 1 - chosenMove.length];
-
-        if (manifold.objectiveParts[].sum < oldObjective)
-        {
-            oldManifold = manifold;
-            ++acceptCount[dim + 1 - chosenMove.length];
-        }
-        else
-        {
-            immutable acceptProb = exp(oldObjective - manifold.objectiveParts[].sum);
-            assert(acceptProb >= 0.0);
-            assert(acceptProb <= 1.0);
-
-            // TO DO: Put #pachner-moves effect into accept/reject (important!)
-
-            if (uniform01 <= acceptProb)
-            {
-                oldManifold = manifold;
-                ++acceptCount[dim + 1 - chosenMove.length];
-            }
-            else
-            {
-                manifold = oldManifold;
-
-                // Make sure to undo any changes to list of unused vertices
-                if (chosenMove.length == 1)
-                {
-                    unusedVertices.popBack;
-                }
-                else if (chosenMove.length == manifold.dimension + 1)
-                {
-                    unusedVertices ~= vertexToRemember;
-                }
-            }
-        }
-
-        // --------------------------- MAKE REPORT ----------------------------
-        if (tryCount[].sum % triesPerReport == 0)
-        {
-            writeln;
-            '-'.repeat(80).writeln;
-            writeln(" MOVE  :  DONE  /  TRIED  |  msec/move : ",
-                    timer.peek.total!"msecs" / real(triesPerReport));
-            '-'.repeat(80).writeln;
-            iota(dim + 1).each!(indx => writeln(indx + 1, " -> ", dim + 1 - indx,
-                    " : ", acceptCount[indx], " / ", tryCount[indx]));
-
-            writeln("TOTALS : ", acceptCount[].sum, " / ", tryCount[].sum);
-            '-'.repeat(80).writeln;
-            writeln("fVector              : ", manifold.fVector);
-            writeln("number of facets     : ", manifold.fVector.back,
-                    " (target: ", numFacetsTarget, ")");
-            writeln("average hinge-degree : ", manifold.meanHingeDegree,
-                    " (target: ", hingeDegreeTarget, ")");
-            '-'.repeat(80).writeln;
-            writeln("number of facets penalty : ", manifold.objectiveParts[0]);
-            writeln("mean hinge-degee penalty : ", manifold.objectiveParts[1]);
-            writeln("var hinge-degree penalty : ", manifold.objectiveParts[2]);
-            writeln("         TOTAL OBJECTIVE : ", manifold.objectiveParts[].sum);
-            '-'.repeat(80).writeln;
-
-            timer.reset;
-        }
-    }
-}
-
 struct Sampler(Vertex, int dim)
 {
     Manifold!(dim, Vertex) manifold;
+    const(Vertex)[] unusedVertices;
 
     // tryCount[j] counts j + 1 -> dim + 1 - j moves tried
     ulong[dim + 1] tryCount;
@@ -219,17 +84,17 @@ struct Sampler(Vertex, int dim)
         const(Vertex)[] center,
         const(Vertex)[] coCenter)
     {
-
+        // TO DO: Implement this!
     }
 }
 
-real volumePenalty(Vertex, int dim)(Sampler!(Vertex, dim) s)
+real volumePenalty(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
 {
     immutable numF = s.manifold.fVector[dim];
     return numFacetsCoef * (numF - numFacetsTarget) ^^ 2;
 }
 
-real globalCurvaturePenalty(Vertex, int dim)(Sampler!(Vertex, dim) s)
+real globalCurvaturePenalty(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
 {
     /* The target mean hinge-degree and current number of facets imply a target
     number of hinges. See Eq. 7, p. 5 of https://arxiv.org/pdf/1208.1514.pdf */
@@ -241,7 +106,7 @@ real globalCurvaturePenalty(Vertex, int dim)(Sampler!(Vertex, dim) s)
     return numHingesCoef * (numH - numHingesTarget) ^^ 2;
 }
 
-real localCurvaturePenalty(Vertex, int dim)(Sampler!(Vertex, dim) s)
+real localCurvaturePenalty(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
 {
     // TO DO: IMPORTANT! Make this take difference between 
     //
@@ -263,47 +128,91 @@ real localCurvaturePenalty(Vertex, int dim)(Sampler!(Vertex, dim) s)
         -numH)^^2; // TO DO: Fix this fudge! See TO DO above...
 }
 
-
-
-
-void sample(Vertex, int dim)(Sampler!(Vertex, dim) s)
+void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
 {
-    auto simp = s.manifold.randomFacetOfDim(dim).array;
+    StopWatch timer;
+    timer.start;
 
-    // import std.stdio : writeln;
-    // simp.writeln;
-    // s.manifold.movesAtFacet(simp).writeln;
+    while (s.tryCount[].sum < maxTries)
+    {
+        assert(s.unusedVertices.all!(v => !s.manifold.contains([v])));
+        if(s.unusedVertices.empty)
+        {
+            /* If no unused vertices then next unused vertex label
+            is just the number of vertices. */
+            s.unusedVertices ~= s.manifold.fVector[0].to!int;
+        }
+
+        auto facet = s.manifold.randomFacetOfDim(dim).array;
+        auto move = s.manifold.movesAtFacet(facet).map!array.array.choice;
+
+        auto coMove = (move.walkLength == dim + 1) 
+            ? [s.unusedVertices.back] 
+            : s.manifold.coCenter(move, facet);
+
+        real oldObjective = s.volumePenalty
+            + s.globalCurvaturePenalty 
+            + s.localCurvaturePenalty;
+
+        s.manifold.doPachnerImpl(move, coMove);
+        ++s.tryCount[dim + 1 - move.walkLength];
+
+        real newObjective = s.volumePenalty
+            + s.globalCurvaturePenalty 
+            + s.localCurvaturePenalty;
+
+        real deltaObj = newObjective - oldObjective;
+        if ((deltaObj < 0) || (uniform01 < exp(-deltaObj))) // ACCEPT MOVE
+        {
+            ++s.acceptCount[dim + 1 - move.walkLength];
+            if (move.walkLength == 1)
+            {
+                s.unusedVertices ~= move.front;
+            }
+            else if (move.walkLength == dim + 1)
+            {
+                s.unusedVertices.popBack;
+            }
+        }
+        else                                                // REJECT MOVE
+        {
+            s.manifold.doPachnerImpl(coMove, move);
+        }
+
+        // --------------------------- MAKE REPORT ----------------------------
+        if (s.tryCount[].sum % triesPerReport == 0)
+        {
+            writeln;
+            '-'.repeat(80).writeln;
+            writeln(" MOVE  :  DONE  /  TRIED  |  msec/move : ",
+                    timer.peek.total!"msecs" / real(triesPerReport));
+            '-'.repeat(80).writeln;
+            iota(dim + 1).each!(indx => writeln(indx + 1, " -> ", dim + 1 - indx,
+                    " : ", s.acceptCount[indx], " / ", s.tryCount[indx]));
+
+            writeln("TOTALS : ", s.acceptCount[].sum, " / ", s.tryCount[].sum);
+            '-'.repeat(80).writeln;
+            writeln("fVector              : ", s.manifold.fVector);
+            writeln("number of facets     : ", s.manifold.fVector.back,
+                    " (target: ", numFacetsTarget, ")");
+            writeln("average hinge-degree : ", s.manifold.meanHingeDegree,
+                    " (target: ", hingeDegreeTarget, ")");
+            '-'.repeat(80).writeln;
+            writeln("number of facets penalty : ", s.volumePenalty);
+            writeln("mean hinge-degee penalty : ", s.globalCurvaturePenalty);
+            writeln("var hinge-degree penalty : ", s.localCurvaturePenalty);
+            writeln("         TOTAL OBJECTIVE : ", s.volumePenalty
+            + s.globalCurvaturePenalty 
+            + s.localCurvaturePenalty);
+            '-'.repeat(80).writeln;
+
+            timer.reset;
+        }
+    }
 }
  
 
 @Name("sample") unittest
 {
-    // octahedron    
-    auto m = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
-        [2,3,5], [3,4,5], [1,4,5]]);
-
-    auto s = Sampler!(int, 2)(m);
-
-        real tot = s.volumePenalty 
-        + s.globalCurvaturePenalty + s.localCurvaturePenalty;
-
-    // writeln("volume           : ", s.volumePenalty);
-    // writeln("global curvature : ", s.globalCurvaturePenalty);
-    // writeln("local curvature  : ", s.localCurvaturePenalty);
-    // writeln("-----------------:-------------");
-    // writeln("total objective  : ", tot, "\n");
-
-    // s.manifold.doPachner([1,2]);
-    // s.manifold.writeln;
-    // s.sample;
-
-    // writeln("volume           : ", s.volumePenalty);
-    // writeln("global curvature : ", s.globalCurvaturePenalty);
-    // writeln("local curvature  : ", s.localCurvaturePenalty);
-    // writeln("-----------------:-------------");
-    // writeln("total objective  : ", tot, "\n");
-
-    // s.manifold.getCoCenter([3,4]).writeln;
-    // s.manifold.getCoCenter([3,4], [3,4,5]).writeln;
 
 }
