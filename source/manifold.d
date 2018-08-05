@@ -242,7 +242,7 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
     {
         if(deg == manifold.dimension + 2 - simp.walkLength)
         {
-            auto coCenter = manifold.getCoCenter(simp);
+            auto coCenter = manifold.findCoCenter(simp);
             if(coCenter.empty || (!manifold.contains(coCenter)))
             {
                 result ~= simp.dup;
@@ -399,7 +399,7 @@ void doPachner(Vertex, int dim)(
     // TO DO: Better error
     assert(manifold.pachnerMoves.canFind(center), "bad pachner move");
 
-    auto coCenter = manifold.getCoCenter(center);
+    auto coCenter = manifold.findCoCenter(center);
     assert(!coCenter.empty);
 
     manifold.doPachnerImpl(center, coCenter);
@@ -499,7 +499,7 @@ auto pachnerMovesAndDegreeHistogram(Vertex, int dim)(
         // Add Pachner move with center `simp` if appropriate 
         if(deg == manifold.dimension + 2 - simp.walkLength)
         {
-            auto coCenter = manifold.getCoCenter(simp);
+            auto coCenter = manifold.findCoCenter(simp);
             if(coCenter.empty || (!manifold.contains(coCenter)))
             {
                 moves_ ~= simp.dup;
@@ -552,7 +552,7 @@ auto pachnerMovesAndDegreeHistogram(Vertex, int dim)(
 }
 
 // Factor out the common code for the two types of doPachner
-private void doPachnerImpl(Vertex, int dim)(
+void doPachnerImpl(Vertex, int dim)(
     ref Manifold!(dim, Vertex) manifold,
     const(Vertex)[] center,
     const(Vertex)[] coCenter
@@ -585,7 +585,7 @@ private void doPachnerImpl(Vertex, int dim)(
 
 // TO DO: Implement 4->4 moves (Important!)
 
-auto getCoCenter(Vertex, int dim)(
+auto findCoCenter(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) manifold,
     const(Vertex)[] center
 )
@@ -598,7 +598,7 @@ auto getCoCenter(Vertex, int dim)(
 Returns the coCenter for the Pachner move with given center. For efficiency we
 also need to know a facet with face center.
 */
-auto getCoCenter(Vertex, int dim)(
+auto coCenter(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) manifold,
     const(Vertex)[] center,
     const(Vertex)[] facet
@@ -619,12 +619,12 @@ auto getCoCenter(Vertex, int dim)(
     auto coCenterVerts = ridges.map!(r => manifold.ridgeLinks[r.to!(int[dim])][])
         .array.joiner.array.dup.sort.uniq.array;
 
-    assert(coCenterVerts.equal(manifold.getCoCenter(center)));
+    assert(coCenterVerts.equal(manifold.findCoCenter(center)));
 
     return coCenterVerts;
 }
 
-// TO DO: Separate unittesting for getCoCenter
+// TO DO: Separate unittesting for findCoCenter
 
 // TO DO: Use standardSphereFacets below in appropriate places
 
@@ -854,7 +854,7 @@ auto movesAtFacet(Vertex, int dim)(
     return facet.subsets.map!array.filter!(
         center => (center.walkLength == dim + 1) 
             || (m.degree(center) == dim + 2 - center.walkLength 
-                && !m.contains(m.getCoCenter(center, facet))));
+                && !m.contains(m.coCenter(center, facet))));
 }
 ///
 @Name("movesAtFacet") unittest
