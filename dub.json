@@ -9,7 +9,8 @@
     "dflags": [""],
     "dependencies": {
         "unit-threaded": "~>0.7.46",
-        "fluent-asserts": "~>0.12.3"
+        "fluent-asserts": "~>0.12.3",
+        "gperftools_d": "~>0.1.0"
     },
     "configurations": [
         { "name": "executable" },
