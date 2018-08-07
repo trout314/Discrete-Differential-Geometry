@@ -4,9 +4,8 @@ else
     void main()
     {
         // import gperftools_d.profiler;
+        import core.memory : GC;
         // ProfilerStart();
-        // sampleOld;
-        // ProfilerStop();
 
         import sampler;
 
@@ -14,5 +13,7 @@ else
         auto m = Manifold!3(standardSphereFacets(3));
         auto s = Sampler!(int, 3)(m);
         s.sample;
+
+        // ProfilerStop();
     }
 }
