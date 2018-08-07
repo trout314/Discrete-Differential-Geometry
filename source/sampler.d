@@ -44,7 +44,7 @@ enum real[17] flatDegreeInDim = [
 
 enum dim = 3;
 
-enum int numFacetsTarget = 2000;
+enum int numFacetsTarget = 100;
 enum real hingeDegreeTarget = flatDegreeInDim[dim];
 
 
@@ -207,10 +207,10 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         {
             moveTimer.stop;
 
-            auto mt = moveTimer.peek.total!"msecs" / real(triesPerReport);
+            auto mt = moveTimer.peek.total!"usecs" / real(triesPerReport);
             moveTimer.reset;
 
-            auto gt = gcTimer.peek.total!"msecs" / real(triesPerReport);
+            auto gt = gcTimer.peek.total!"usecs" / real(triesPerReport);
             gcTimer.reset;
 
             '-'.repeat(80).writeln;
@@ -236,10 +236,10 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
             + s.localCurvaturePenalty);
             '-'.repeat(80).writeln;
 
-            writeln("msec/move (moves) : ", mt);
-            writeln("msec/move (GC)    : ", gt);
-            writeln("msec/move (total) : ",
-                timer.peek.total!"msecs" / real(triesPerReport));
+            writeln("usec/move (moves) : ", mt);
+            writeln("usec/move (GC)    : ", gt);
+            writeln("usec/move (total) : ",
+                timer.peek.total!"usecs" / real(triesPerReport));
             timer.reset;
             
             moveTimer.start;
@@ -250,5 +250,5 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
 
 @Name("sample") unittest
 {
-
+    // TO DO: Tests!
 }
