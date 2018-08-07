@@ -299,40 +299,6 @@ public:
     Inserts a facet (given as an input range of vertices) into the simplicial
     complex.
     */
-    void insertFacetRAW(S)(S simplex) if (isInputRange!S && is(ElementType!S : Vertex))
-    {
-        // TO DO: Improve this!
-        StackArray!(Vertex, 16) simplex_;
-        simplex.each!(v => simplex_ ~= v);
-
-        int dim = simplex_[].walkLength.to!int - 1;
-        assert(dim >= 0);
-        simplex_[].assertValidSimplex(dim);
-
-        assert(!this.contains(simplex),
-            "expected a simplex not already in the simplicial complex");
-
-        if (dim in facetVertices)
-        {
-            facetVertices[dim] ~= simplex_;
-            assert(simplex_[] !in indexOfFacet);
-            
-            // TO DO: Remove the need for .idup here. Custom AA type?
-            indexOfFacet[simplex_[].idup] = facetVertices[dim].length - dim - 1;
-        }
-        else
-        {
-            facetVertices.insert(dim, simplex_);
-            indexOfFacet[simplex_] = 0;
-        }
-    }
-
-
-
-    /***************************************************************************
-    Inserts a facet (given as an input range of vertices) into the simplicial
-    complex.
-    */
     void insertFacet(S)(S simplex) if (isInputRange!S && is(ElementType!S : Vertex))
     {
         // TO DO: Improve this!
@@ -348,19 +314,17 @@ public:
 
         /* We must remove any existing facets which are faces of the inserted
         facet. Also, we need independent copies of the facets to remove.
-        TO DO: Create rawInsertFacet that skips this? NOTE: This is what
-        is responsible for function allocating a closure!  */
+        TO DO: Create version w/ template arg that says skips this?
+        NOTE: This is what is responsible for function allocating a closure!  */
         auto toRemove = simplex_[].subsets.map!array.filter!(
-            s => this.facets.canFind(s)).array;
+            s => this.containsFacet(s)).array;
         toRemove.each!(s => this.removeFacet(s));
 
         if (dim in facetVertices)
         {
             facetVertices[dim] ~= simplex_;
-            assert(simplex_[] !in indexOfFacet);
-            
-            // TO DO: Remove the need for .idup here. Custom AA type?
-            indexOfFacet[simplex_[].idup] = facetVertices[dim].length - dim - 1;
+            assert(simplex_[] !in indexOfFacet);           
+            indexOfFacet[simplex_] = facetVertices[dim].length - dim - 1;
         }
         else
         {
