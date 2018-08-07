@@ -10,9 +10,12 @@ import std.math : exp, sqrt;
 import std.random : choice, rndGen, uniform01;
 import std.range : array, back, chain, empty, front, iota, popBack, popFront, repeat,
     save, walkLength;
-import std.stdio : writefln, writeln;
+import std.stdio : write, writefln, writeln;
 import unit_threaded : Name;
 import utility : subsetsOfSize, subsets;
+
+import core.memory : GC;
+
 
 // I wish we could compute these, but acos dosn't work at compile time. These
 // come from wolfram alpha input: Table[N[2 Pi/ArcCos[1/k],30],{k, 2, 16}]
@@ -41,7 +44,7 @@ enum real[17] flatDegreeInDim = [
 
 enum dim = 3;
 
-enum int numFacetsTarget = 1000;
+enum int numFacetsTarget = 2000;
 enum real hingeDegreeTarget = flatDegreeInDim[dim];
 
 
@@ -50,8 +53,10 @@ enum real numHingesCoef = 0.05;
 enum real hingeDegreeVarCoef = 0.0;
 
 //
-enum triesPerReport = 1000;
-enum maxTries = 50000;
+enum int triesPerReport = 50000;
+enum int triesPerCollect = 8000;
+
+enum int maxTries = 1000000;
 
 real meanHingeDegree(Vertex, int dim)(const ref Manifold!(dim, Vertex) manifold)
 {
@@ -130,9 +135,14 @@ real localCurvaturePenalty(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
 
 void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
 {
-    StopWatch timer;
-    timer.start;
+    GC.disable;
 
+    StopWatch moveTimer;
+    StopWatch gcTimer;
+    StopWatch timer;
+
+    timer.start;
+    moveTimer.start;
     while (s.tryCount[].sum < maxTries)
     {
         assert(s.unusedVertices.all!(v => !s.manifold.contains([v])));
@@ -179,13 +189,33 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
             s.manifold.doPachnerImpl(coMove, move);
         }
 
+        // ------------------------- COLLECT GARBAGE --------------------------
+        if (s.tryCount[].sum % triesPerCollect == 0)
+        {
+            moveTimer.stop;
+            gcTimer.start;
+            GC.enable;
+            GC.collect;
+            GC.disable;
+            gcTimer.stop;
+            moveTimer.start;
+        }
+
+
         // --------------------------- MAKE REPORT ----------------------------
         if (s.tryCount[].sum % triesPerReport == 0)
         {
-            writeln;
+            moveTimer.stop;
+
+            auto mt = moveTimer.peek.total!"msecs" / real(triesPerReport);
+            moveTimer.reset;
+
+            auto gt = gcTimer.peek.total!"msecs" / real(triesPerReport);
+            gcTimer.reset;
+
             '-'.repeat(80).writeln;
-            writeln(" MOVE  :  DONE  /  TRIED  |  msec/move : ",
-                    timer.peek.total!"msecs" / real(triesPerReport));
+
+            writeln(" MOVE  :  DONE  /  TRIED");
             '-'.repeat(80).writeln;
             iota(dim + 1).each!(indx => writeln(indx + 1, " -> ", dim + 1 - indx,
                     " : ", s.acceptCount[indx], " / ", s.tryCount[indx]));
@@ -206,7 +236,13 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
             + s.localCurvaturePenalty);
             '-'.repeat(80).writeln;
 
+            writeln("msec/move (moves) : ", mt);
+            writeln("msec/move (GC)    : ", gt);
+            writeln("msec/move (total) : ",
+                timer.peek.total!"msecs" / real(triesPerReport));
             timer.reset;
+            
+            moveTimer.start;
         }
     }
 }
