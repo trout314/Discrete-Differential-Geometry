@@ -4,7 +4,6 @@ else
     void main()
     {
         // import gperftools_d.profiler;
-        import core.memory : GC;
         // ProfilerStart();
 
         import sampler;
