@@ -214,11 +214,11 @@ public:
     private void printDiagnosticReport()
     {
         import std.stdio : writeln;
-        writeln("dimension: ", dimension);
-        writeln("SComp: ", this.asSimplicialComplex.facets);
-        writeln("numSimplices: ", numSimplices);
-        writeln("degreeMap: ", degreeMap);
-        writeln("ridgeLinks: ", ridgeLinks);        
+        debug writeln("dimension: ", dimension);
+        debug writeln("SComp: ", this.asSimplicialComplex.facets);
+        debug writeln("numSimplices: ", numSimplices);
+        debug writeln("degreeMap: ", degreeMap);
+        debug writeln("ridgeLinks: ", ridgeLinks);        
     }
 
 
@@ -555,24 +555,24 @@ auto pachnerMovesAndDegreeHistogram(Vertex, int dim)(
 void doPachnerImpl(Vertex, int dim)(
     ref Manifold!(dim, Vertex) manifold,
     const(Vertex)[] center,
-    const(Vertex)[] coCenter
+    const(Vertex)[] coCenter_
 )
 {
     assert(manifold.pachnerMoves.canFind(center), "bad pachner move");
     immutable centerDim = center.walkLength.to!int - 1;
-    immutable coCenterDim = coCenter.walkLength.to!int - 1;
+    immutable coCenterDim = coCenter_.walkLength.to!int - 1;
     alias SC = SimplicialComplex!Vertex;
 
     auto oldPiece = (coCenterDim == 0)
         ? SC([center])
-        : join(SC(coCenter.subsetsOfSize(coCenterDim)), SC([center]));
+        : join(SC(coCenter_.subsetsOfSize(coCenterDim)), SC([center]));
     assert(oldPiece.isPureOfDim(dim));
     assert(manifold.star(center).map!array.array.sort
         .equal!equal(oldPiece.facets.map!array.array.sort));
 
     auto newPiece = (centerDim == 0)
-        ? SC([coCenter])
-        : join(SC(center.subsetsOfSize(centerDim)), SC([coCenter]));
+        ? SC([coCenter_])
+        : join(SC(center.subsetsOfSize(centerDim)), SC([coCenter_]));
     assert(newPiece.isPureOfDim(dim));
     assert(newPiece.facets.walkLength + oldPiece.facets.walkLength == dim + 2);
 
