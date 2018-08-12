@@ -3,7 +3,7 @@ import algorithms : canFind, eulerCharacteristic, is2Sphere, isCircle,
 import fluent.asserts;
 import simplicial_complex : fVector, SimplicialComplex, assertValidSimplex;
 import std.algorithm : all, any, copy, canFind, each, equal, filter, find, joiner,
-    map, maxElement, sort, uniq;
+    map, maxElement, sort, sum, uniq;
 import std.conv : to;
 import std.range : array, back, chain, ElementType, empty, enumerate, front, iota,
     isInputRange, popFront, save, walkLength;
@@ -25,8 +25,8 @@ private:
 
     size_t[dimension_ + 1] numSimplices;
     size_t[Vertex[]] degreeMap;
-
-    Vertex[2][Vertex[dimension_]] ridgeLinks;
+    Vertex[2][Vertex[]] ridgeLinks;
+    ulong totalSquaredHingeDegree;
 public:
     /// Dimension of the manifold
     static immutable dimension = dimension_;
@@ -74,6 +74,13 @@ public:
 
         numSimplices[] = simpComp.fVector[];
 
+        static if(dimension >= 2)
+        {
+            totalSquaredHingeDegree = simplices(dimension - 2)
+                .map!(s => this.degree(s)^^2).sum;
+        }
+
+
         // Sanity checking. TO DO: More checking!
         // foreach(ridge; simplices(dimension - 1))
         // {
@@ -98,7 +105,7 @@ public:
     {
         assert(this.simpComp.facets.any!(f => simplex.isSubsetOf(f))
             == !((simplex.array in degreeMap) is null));
-        return !((simplex.array in degreeMap) is null);
+        return !((simplex in degreeMap) is null);
     }
 
     /***************************************************************************
@@ -107,9 +114,9 @@ public:
     size_t degree(S)(S simplex) const
     if (isInputRange!S && is(ElementType!S : Vertex))
     {
-        assert(simplex.array in degreeMap);
-        assert(degreeMap[simplex.array] == star(simplex).walkLength);
-        return degreeMap[simplex.array];
+        assert(simplex in degreeMap);
+        assert(degreeMap[simplex] == star(simplex).walkLength);
+        return degreeMap[simplex];
     }
 
     /***************************************************************************
@@ -124,36 +131,51 @@ public:
 
     // Special version of insertFacet to update tracked info
     // (EXCEPT numSimplices, which is updated after each pachner move)
-    private void insertFacet(F)(F facet)
+    private void insertFacet(F)(F facet_)
     if (isInputRange!F && is(ElementType!F : Vertex))
     {
-        this.simpComp.insertFacet(facet);
-
-        assert(facet.walkLength == dimension + 1,
+        assert(facet_.walkLength == dimension + 1,
             "facet has wrong dimension");
 
-        assert(facet.array !in degreeMap);
-        facet.subsets.each!(s => ++degreeMap[s.array.idup]);
-        
+        Vertex[dimension + 1] facetBuffer;
+        copy(facet_, facetBuffer[]);
+        auto facet = facetBuffer[];
+
+        facet.assertValidSimplex(dimension);      
+        assert(facet !in degreeMap);
+        this.simpComp.insertFacet(facet);
+
+        assert(facet !in degreeMap);
+        foreach(s; facet.subsets.map!array.map!idup)
+        {
+            // Vertex[dimension + 1] simplexBuffer;
+            // auto nLeft = copy(simplex_, simplexBuffer[]).walkLength;
+            // auto s = simplexBuffer[0 .. $ - nLeft].idup;
+
+            ++degreeMap[s];
+            if(s.walkLength == dimension - 1)
+            {
+                totalSquaredHingeDegree += 2*degreeMap[s] - 1;
+            }
+        }
+       
         foreach(vertex; facet)
         {
-            auto oppositeRidge = facet.filter!(v => v != vertex);
-            Vertex[dimension] ridgeVertices;
-            copy(oppositeRidge, ridgeVertices[]);
+            auto ridge = facet.filter!(v => v != vertex).array.idup;
 
-            auto ptrToLink = ridgeVertices in ridgeLinks;
+            auto ptrToLink = ridge in ridgeLinks;
             if(!ptrToLink)
             {
-                assert(degreeMap[ridgeVertices[].idup] == 1);
+                assert(degreeMap[ridge] == 1);
                 // If the degree of the ridge is one we make sure it is
                 // the *first* vertex in the Vertex[2] pair that valid
                 Vertex[2] linkVertices;            
                 linkVertices.front = vertex;
-                ridgeLinks[ridgeVertices] = linkVertices;
+                ridgeLinks[ridge] = linkVertices;
             }
             else
             {
-                assert(degreeMap[ridgeVertices[].idup] == 2);
+                assert(degreeMap[ridge] == 2);
                 (*ptrToLink).back = vertex;
                 (*ptrToLink)[].sort;
             }
@@ -162,53 +184,60 @@ public:
     }
 
     // Special version of removeFacet to update tracked info
-    private void removeFacet(F)(F facet)
+    private void removeFacet(F)(F facet_)
     if (isInputRange!F && is(ElementType!F : Vertex))
     {
-        facet.assertValidSimplex(dimension);      
-        assert(facet.array in degreeMap);
-        this.simpComp.removeFacet(facet);        
-        foreach(s; facet.subsets.map!array)
-        {
-            --degreeMap[s];
+        Vertex[dimension + 1] facetBuffer;
+        copy(facet_, facetBuffer[]);
+        auto facet = facetBuffer[];
 
-            // If the degree of an ridge is one, make sure it is the first
+        facet.assertValidSimplex(dimension);      
+        assert(facet in degreeMap);
+        this.simpComp.removeFacet(facet);
+        foreach(s; facet.subsets.map!array.map!idup)
+        {
+            // Vertex[dimension + 1] simplexBuffer;
+            // auto nLeft = copy(simplex_, simplexBuffer[]).walkLength;
+            // auto s = simplexBuffer[0 .. $ - nLeft].assumeUnique;
+
+            --degreeMap[s];
+            if(s.walkLength == dimension - 1)
+            {
+                totalSquaredHingeDegree -= 2*degreeMap[s] - 1;
+            }
+
+            // If the degree of a ridge is one, make sure it is the first
             // vertex in the Vertex[2] pair that is the valid one
             if((degreeMap[s] == 1) && (s.walkLength == dimension))
             {
-                Vertex[dimension] ridge;
-                copy(s, ridge[]);
-                ridge[].sort;
-                assert(ridge in ridgeLinks);
+                assert(s in ridgeLinks);
 
-                auto oppVerts = facet.filter!(v => !ridge[].canFind(v));
+                auto oppVerts = facet.filter!(v => !s.canFind(v));
                 assert(oppVerts.walkLength == 1);
                 auto oppVert = oppVerts.front;
-                assert(ridgeLinks[ridge][].canFind(oppVert));
-                if(ridgeLinks[ridge].front == oppVert)
+                assert(ridgeLinks[s][].canFind(oppVert));
+                if(ridgeLinks[s].front == oppVert)
                 {
-                    ridgeLinks[ridge].front = ridgeLinks[ridge].back;
+                    ridgeLinks[s].front = ridgeLinks[s].back;
                 }
                 else
                 {
-                    assert(ridgeLinks[ridge].back == oppVert);
+                    assert(ridgeLinks[s].back == oppVert);
                 }
-                ridgeLinks[ridge].back = Vertex.init;
+                ridgeLinks[s].back = Vertex.init;
             }
 
-            if(degreeMap[s.array] == 0)
+            if(degreeMap[s] == 0)
             {
-                degreeMap.remove(s.idup);
+                degreeMap.remove(s);
                 if(s.walkLength == dimension)
                 {
-                    Vertex[dimension] ridgeVertices;
-                    copy(s, ridgeVertices[]);
-                    ridgeLinks.remove(ridgeVertices);
+                    ridgeLinks.remove(s);
                 }
             }
 
         }
-        assert(facet.array !in degreeMap);
+        assert(facet !in degreeMap);
     }
 
     private void printDiagnosticReport()
@@ -229,6 +258,12 @@ public:
     }
 
     alias asSimplicialComplex this;
+
+    auto totSqrDegree() const
+    {
+        return totalSquaredHingeDegree;
+    }
+
 }
 
 /*******************************************************************************
@@ -326,7 +361,7 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
 }
 
 // More tests
-@Name("Manifold (additional)") pure @safe unittest
+@Name("Manifold (additional)") pure /* @safe */ unittest
 {
     static assert(!__traits(compiles, Manifold!2([["a", "bubba", "gump"]])));
 
@@ -354,7 +389,6 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
         [[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5], [2,3,5], [3,4,5], [1,4,5],
         [2, 3], [0, 1], [1, 5], [4, 5], [0, 3], [1, 4],
         [1, 2], [0, 4], [0, 2], [2, 5], [3, 5], [3, 4]]);
-
 }
 
 /*******************************************************************************
@@ -447,116 +481,12 @@ void doPachner(Vertex, int dim)(
     m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);      
 }
 
-/*******************************************************************************
-Provides a historgram of simplex degrees for simplices of dimension 'dim' by
-returning an associative array whose values are the number of simplices and 
-whose keys are the degrees.
-*/
-int[int] degreeHistogram(Vertex, int dim)(
-    const ref Manifold!(dim, Vertex) manifold,
-    int histogramDim)
-{
-    // TO DO: Improve this
-
-    assert(histogramDim >= 0);
-    assert(histogramDim <= dim);
-
-    int[int] result;
-    foreach(pair; manifold.degreeMap.byKeyValue)
-    {
-        if(pair.key.walkLength == histogramDim + 1)
-        {
-            assert(pair.value <= int.max);
-            ++result[cast(int) pair.value];
-        }
-    }
-    return result;
-}
-///
-@Name("degreeHistogram") pure @safe unittest
-{
-    auto m = Manifold!2(
-        [[1,2,3], [1,2,4], [1,3,4], [2,3,5], [2,4,5],[3,4,5]]);
-    assert(m.degreeHistogram(0) == [4:3, 3:2]);
-    assert(m.degreeHistogram(1) == [2:9]);
-    assert(m.degreeHistogram(2) == [1:6]);
-
-    // TO DO: Some more tests
-}
-
-///
-auto pachnerMovesAndDegreeHistogram(Vertex, int dim)(
-    const ref Manifold!(dim, Vertex) manifold,
-    int histogramDim)
-{
-    assert(histogramDim >= 0);
-    assert(histogramDim <= dim);
-
-    Vertex[][] moves_;
-    int[int] histogram_;
-    foreach(simp, deg; manifold.degreeMap)
-    {
-        // Add Pachner move with center `simp` if appropriate 
-        if(deg == manifold.dimension + 2 - simp.walkLength)
-        {
-            auto coCenter = manifold.findCoCenter(simp);
-            if(coCenter.empty || (!manifold.contains(coCenter)))
-            {
-                moves_ ~= simp.dup;
-            }
-        }
-
-        // Increment histogram if needed
-        if(simp.walkLength == histogramDim + 1)
-        {
-            assert(deg <= int.max);
-            ++histogram_[cast(int) deg];
-        }
-    }
-    
-    static struct Result
-    {
-        Vertex[][] moves;
-        int[int] histogram;
-    }
-
-    return Result(moves_, histogram_);
-}
-///
-@Name("pachnerMovesAndDegreeHistogram") @safe unittest
-{
-    auto m = Manifold!2(
-        [[1,2,3], [1,2,4], [1,3,4], [2,3,5], [2,4,5],[3,4,5]]);
-
-    auto r0 = m.pachnerMovesAndDegreeHistogram(0);
-    auto r1 = m.pachnerMovesAndDegreeHistogram(1);
-    auto r2 = m.pachnerMovesAndDegreeHistogram(2);
-
-    foreach(r; [r0, r1, r2])
-    {
-        r.moves.should.containOnly([
-            [1], [5],
-            [2, 3], [2, 4], [3, 4],
-            [2, 3, 5], [1, 3, 4], [1, 2, 3], [2, 4, 5], [3, 4, 5], [1, 2, 4]
-        ]);
-    }
-
-    assert(r0.histogram == [4:3, 3:2]);
-    assert(r1.histogram == [2:9]);
-    assert(r2.histogram == [1:6]);
-
-    // TO DO: More tests
-
-    /* TO DO: Is this actually faster than two separate calls to pachnerMoves
-    and degreeHistogram? */
-}
-
 // Factor out the common code for the two types of doPachner
 void doPachnerImpl(Vertex, int dim)(
     ref Manifold!(dim, Vertex) manifold,
     const(Vertex)[] center,
     const(Vertex)[] coCenter_
-)
+) @safe
 {
     assert(manifold.pachnerMoves.canFind(center), "bad pachner move");
     immutable centerDim = center.walkLength.to!int - 1;
@@ -905,9 +835,8 @@ auto movesAtFacet(Vertex, int dim)(
         [1,3],                  // 2 -> 2 move
         [1,3,4]                 // 1 -> 3 move
     ]);
-
-
 }
+
 
 // TO DO: Adapt old code below for new manifold type!
 

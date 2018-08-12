@@ -1,20 +1,22 @@
 import algorithms : eulerCharacteristic;
-import manifold : degreeHistogram, coCenter, movesAtFacet, Manifold, standardSphereFacets, doPachnerImpl;
+import manifold : coCenter, movesAtFacet, Manifold, standardSphereFacets, doPachnerImpl;
 import simplicial_complex : fVector;
 import std.algorithm : all, each, filter, joiner, map, max, maxElement, sum;
 import std.conv : to;
 import std.datetime : Duration, msecs;
 import std.datetime.stopwatch : StopWatch;
-import std.format : format;
+// import std.format : format, formattedWrite;
 import std.math : exp, sqrt;
 import std.random : choice, rndGen, uniform01;
 import std.range : array, back, chain, empty, front, iota, popBack, popFront, repeat,
     save, walkLength;
-import std.stdio : write, writefln, writeln;
+import std.stdio : write, writefln, writeln, stdout;
 import unit_threaded : Name;
 import utility : subsetsOfSize, subsets;
 
 import core.memory : GC;
+import std.datetime.systime : Clock;
+
 
 
 // I wish we could compute these, but acos dosn't work at compile time. These
@@ -42,20 +44,14 @@ enum real[17] flatDegreeInDim = [
 //-------------------------------- SETTINGS ------------------------------------
 // TO DO: make setting setting a coef to 0.0 disable un-needed code
 
-enum dim = 3;
+enum int numFacetsTarget = 16000;
+enum real hingeDegreeTarget = flatDegreeInDim[3];
 
-enum int numFacetsTarget = 100;
-enum real hingeDegreeTarget = flatDegreeInDim[dim];
-
-
-enum real numFacetsCoef = 0.1;
-enum real numHingesCoef = 0.05;
+enum real numFacetsCoef = 0.01;
+enum real numHingesCoef = 0.1;
 enum real hingeDegreeVarCoef = 0.0;
 
-//
-enum int triesPerReport = 50000;
-enum int triesPerCollect = 8000;
-
+enum int triesPerReport = 10000;
 enum int maxTries = 1000000;
 
 real meanHingeDegree(Vertex, int dim)(const ref Manifold!(dim, Vertex) manifold)
@@ -69,6 +65,7 @@ real meanHingeDegree(Vertex, int dim)(const ref Manifold!(dim, Vertex) manifold)
 
 struct Sampler(Vertex, int dim)
 {
+private:
     Manifold!(dim, Vertex) manifold;
     const(Vertex)[] unusedVertices;
 
@@ -76,27 +73,64 @@ struct Sampler(Vertex, int dim)
     ulong[dim + 1] tryCount;
     ulong[dim + 1] acceptCount;
 
-    ulong totalSquaredHingeDegree;
-
+    StopWatch moveTimer;
+    StopWatch outputTimer;
+    StopWatch timer;
+public:
     this(Manifold!(dim, Vertex) initialManifold)
     {
         manifold = initialManifold;
-        totalSquaredHingeDegree = initialManifold.simplices(dim - 2)
-            .map!(s => manifold.degree(s)^^2).sum;
     }
-
-    private void updateTotSqDeg(
-        const(Vertex)[] center,
-        const(Vertex)[] coCenter)
+    
+    void report(Writer)(auto ref Writer w)
     {
-        // TO DO: Implement this!
+        auto tt = timer.peek.total!"usecs" / real(triesPerReport);
+        timer.reset;
+
+        auto mt = moveTimer.peek.total!"usecs" / real(triesPerReport);
+        moveTimer.reset;
+
+        // auto gt = gcTimer.peek.total!"usecs" / real(triesPerReport);
+        // gcTimer.reset;
+
+        w.writeln('#'.repeat(80));
+        w.writefln("# %s", Clock.currTime);
+        w.writefln("# usec/move (moves) : %s", mt);
+        // w.writefln("# usec/move (GC)    : %s", gt);
+        w.writefln("# usec/move total   : %s", tt);
+
+        w.writeln("#", '-'.repeat(79));
+        w.writefln("# fVector              : %s", manifold.fVector);
+        w.writefln("# number of facets     : %s (target: %s)",
+            manifold.fVector.back, numFacetsTarget);
+        w.writefln("# average hinge-degree : %s (target: %s)",
+            manifold.meanHingeDegree, hingeDegreeTarget);
+
+        auto vp = this.volumePenalty;
+        auto gcp = this.globalCurvaturePenalty;
+        auto lcp = this.localCurvaturePenalty;
+
+        w.writeln("#", '-'.repeat(79));
+        w.writefln("# number of facets penalty : %e = %f * %e",
+            numFacetsCoef * vp, numFacetsCoef, vp);
+        w.writefln("# mean hinge-degee penalty : %e = %f * %e",
+            numHingesCoef * gcp, numHingesCoef, gcp);
+        w.writefln("# var hinge-degree penalty : %e = %f * %e",
+            hingeDegreeVarCoef * lcp, hingeDegreeVarCoef, lcp);
+        w.writefln("#          TOTAL OBJECTIVE : %e", this.objective);
+
+        w.writeln("#", '-'.repeat(79));
+        w.writeln("# MOVE   : DONE  /  TRIED");
+        iota(dim + 1).each!(i => w.writefln("# %s -> %s : %s / %s",
+            i + 1, dim + 1 - i, acceptCount[i], tryCount[i]));
+        w.writefln("# TOTALS : %s / %s", acceptCount[].sum, tryCount[].sum);        
     }
 }
 
 real volumePenalty(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
 {
     immutable numF = s.manifold.fVector[dim];
-    return numFacetsCoef * (numF - numFacetsTarget) ^^ 2;
+    return (numF - numFacetsTarget) ^^ 2;
 }
 
 real globalCurvaturePenalty(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
@@ -106,9 +140,8 @@ real globalCurvaturePenalty(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
     immutable numF = s.manifold.fVector[dim];
     immutable numH = s.manifold.fVector[dim - 2];
     immutable hPerF = dim * (dim + 1) / 2;
-
     immutable numHingesTarget = hPerF * numF / hingeDegreeTarget;
-    return numHingesCoef * (numH - numHingesTarget) ^^ 2;
+    return (numH - numHingesTarget) ^^ 2;
 }
 
 real localCurvaturePenalty(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
@@ -124,25 +157,31 @@ real localCurvaturePenalty(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
     immutable numH = s.manifold.fVector[dim - 2];
     immutable hPerF = dim * (dim + 1) / 2;
 
-    immutable sqDeg = s.totalSquaredHingeDegree;
+    immutable sqDeg = s.manifold.totSqrDegree;
     immutable real degTarget = hPerF * numF / numH.to!real;
 
+    import std.math : modf;
+
+    real _; // dummy for integer part
+    immutable real x = degTarget.modf(_);   // fractional part
+    immutable real minPenalty = (x - x^^2) * numH;
+
     // TO DO: Refer to arxiv paper for this!
-    return hingeDegreeVarCoef * (
-        (degTarget^^2 * numH - 2*degTarget*hPerF*numF + sqDeg)
-        -numH)^^2; // TO DO: Fix this fudge! See TO DO above...
+    return (degTarget^^2 * numH - 2*degTarget*hPerF*numF + sqDeg) - minPenalty;
 }
 
-void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
+real objective(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
 {
-    GC.disable;
+    return numFacetsCoef * s.volumePenalty
+        + numHingesCoef * s.globalCurvaturePenalty
+        + hingeDegreeVarCoef * s.localCurvaturePenalty;
+}
 
-    StopWatch moveTimer;
-    StopWatch gcTimer;
-    StopWatch timer;
-
-    timer.start;
-    moveTimer.start;
+void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s) @safe
+{
+    // GC.disable;
+    s.timer.start;
+    // s.moveTimer.start;
     while (s.tryCount[].sum < maxTries)
     {
         assert(s.unusedVertices.all!(v => !s.manifold.contains([v])));
@@ -160,18 +199,14 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
             ? [s.unusedVertices.back] 
             : s.manifold.coCenter(move, facet);
 
-        real oldObjective = s.volumePenalty
-            + s.globalCurvaturePenalty 
-            + s.localCurvaturePenalty;
+        real oldObj = s.objective;
 
         s.manifold.doPachnerImpl(move, coMove);
         ++s.tryCount[dim + 1 - move.walkLength];
 
-        real newObjective = s.volumePenalty
-            + s.globalCurvaturePenalty 
-            + s.localCurvaturePenalty;
+        real newObj = s.objective;
 
-        real deltaObj = newObjective - oldObjective;
+        real deltaObj = newObj - oldObj;
         if ((deltaObj < 0) || (uniform01 < exp(-deltaObj))) // ACCEPT MOVE
         {
             ++s.acceptCount[dim + 1 - move.walkLength];
@@ -189,64 +224,17 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
             s.manifold.doPachnerImpl(coMove, move);
         }
 
-        // ------------------------- COLLECT GARBAGE --------------------------
-        if (s.tryCount[].sum % triesPerCollect == 0)
-        {
-            moveTimer.stop;
-            gcTimer.start;
-            GC.enable;
-            GC.collect;
-            GC.disable;
-            gcTimer.stop;
-            moveTimer.start;
-        }
-
-
-        // --------------------------- MAKE REPORT ----------------------------
+        //--------------------------- MAKE REPORT ----------------------------
         if (s.tryCount[].sum % triesPerReport == 0)
         {
-            moveTimer.stop;
+            s.moveTimer.stop;
+            scope(exit) s.moveTimer.start;
 
-            auto mt = moveTimer.peek.total!"usecs" / real(triesPerReport);
-            moveTimer.reset;
-
-            auto gt = gcTimer.peek.total!"usecs" / real(triesPerReport);
-            gcTimer.reset;
-
-            '-'.repeat(80).writeln;
-
-            writeln(" MOVE  :  DONE  /  TRIED");
-            '-'.repeat(80).writeln;
-            iota(dim + 1).each!(indx => writeln(indx + 1, " -> ", dim + 1 - indx,
-                    " : ", s.acceptCount[indx], " / ", s.tryCount[indx]));
-
-            writeln("TOTALS : ", s.acceptCount[].sum, " / ", s.tryCount[].sum);
-            '-'.repeat(80).writeln;
-            writeln("fVector              : ", s.manifold.fVector);
-            writeln("number of facets     : ", s.manifold.fVector.back,
-                    " (target: ", numFacetsTarget, ")");
-            writeln("average hinge-degree : ", s.manifold.meanHingeDegree,
-                    " (target: ", hingeDegreeTarget, ")");
-            '-'.repeat(80).writeln;
-            writeln("number of facets penalty : ", s.volumePenalty);
-            writeln("mean hinge-degee penalty : ", s.globalCurvaturePenalty);
-            writeln("var hinge-degree penalty : ", s.localCurvaturePenalty);
-            writeln("         TOTAL OBJECTIVE : ", s.volumePenalty
-            + s.globalCurvaturePenalty 
-            + s.localCurvaturePenalty);
-            '-'.repeat(80).writeln;
-
-            writeln("usec/move (moves) : ", mt);
-            writeln("usec/move (GC)    : ", gt);
-            writeln("usec/move (total) : ",
-                timer.peek.total!"usecs" / real(triesPerReport));
-            timer.reset;
-            
-            moveTimer.start;
+            () @trusted {s.report(stdout);} ();
+            s.timer.reset;
         }
     }
 }
- 
 
 @Name("sample") unittest
 {
