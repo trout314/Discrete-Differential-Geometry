@@ -1239,27 +1239,3 @@ ulong binomial(ulong n, ulong k) pure nothrow @nogc @safe
     assert(binomial(20, 10) == 184756);
     assert(binomial(17, 7) == 19448);
 }
-
-/******************************************************************************
-Applies const to types with non-immutable indirections and not to others.
-*/
-template ApplyConstTo(T)
-{
-    static if(hasAliasing!T)
-    {
-        alias ApplyConstTo = const(T);
-    }
-    else
-    {
-        alias ApplyConstTo = T;
-    }
-}
-
-@Name("ApplyConstTo") unittest
-{
-    // TO DO: More tests. Think about design of this template...
-    static assert(is(ApplyConstTo!int == int));
-
-    static class C {}
-    static assert(is(ApplyConstTo!C == const(C)));
-}
