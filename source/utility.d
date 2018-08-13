@@ -650,35 +650,42 @@ auto subsetFromUint(R)(R set, uint whichToKeep) if (isInputRange!R)
 
     static struct SubsetFromUintRange
     {
-        uint whichToKeep_;
         R set_;
+        uint whichToKeep_;
 
-        auto front()
+        void advance()()
         {
-            assert(!set_.empty);
-            while (!whichToKeep_.hasOneAtBit(0))
+            while (!this.empty && !whichToKeep_.hasOneAtBit(0))
             {
+                assert(!set_.empty);
                 set_.popFront;
                 whichToKeep_ >>= 1;
             }
+        }
 
+        this(R s, uint w)
+        {
+            set_ = s;
+            whichToKeep_ = w;
+            this.advance;
+        }
+
+        auto front()
+        {
+            assert(!this.empty,
+                "called popFront on an empty SubsetFromUintRange");
             assert(!set_.empty);
             return set_.front;
         }
 
         auto popFront()
         {
-            assert(!set_.empty, "tried to popFront an empty SubsetFromUintRange");
-
+            assert(!this.empty,
+                "called popFront on an empty SubsetFromUintRange");
+            assert(!set_.empty);
             set_.popFront;
             whichToKeep_ >>= 1;
-
-            while (!whichToKeep_.hasOneAtBit(0) && !empty)
-            {
-                set_.popFront;
-                whichToKeep_ >>= 1;
-            }
-            assert(whichToKeep_.hasOneAtBit(0) || empty);
+            this.advance;
         }
 
         auto empty()
@@ -690,12 +697,12 @@ auto subsetFromUint(R)(R set, uint whichToKeep) if (isInputRange!R)
         {
             auto save()
             {
-                return SubsetFromUintRange(whichToKeep_, set_);
+                return SubsetFromUintRange(set_, whichToKeep_);
             }
         }
     }
 
-    return SubsetFromUintRange(whichToKeep, set);
+    return SubsetFromUintRange(set, whichToKeep);
 }
 ///
 @Name("subsetsFromUint") pure nothrow @safe unittest
@@ -908,31 +915,30 @@ auto subsets(R)(R set) if (isInputRange!R)
     {
     private:
         R set_;
-        uint whichToKeep;
-        bool empty_;
+        uint whichToKeep_;
     public:
         auto front()
         {
             assert(!empty);
-            return subsetFromUint(set_, whichToKeep);
+            return subsetFromUint(set_, whichToKeep_);
         }
 
         auto popFront()
         {
             assert(!empty);
-            ++whichToKeep;
+            ++whichToKeep_;
         }
 
         auto empty()
         {
-            return whichToKeep == 1 << set_.walkLength;
+            return whichToKeep_ == (1 << set_.walkLength);
         }
 
         static if (isForwardRange!R)
         {
             auto save()
             {
-                return SubsetsRange(set_, whichToKeep);
+                return SubsetsRange(set_, whichToKeep_);
             }
         }
     }
@@ -966,6 +972,16 @@ auto subsets(R)(R set) if (isInputRange!R)
     assert(!subsetRange.empty);
 
     // TO DO: Improve this test. Ugly...
+}
+
+@Name("subsets bug") unittest
+{
+    auto set = [1,2,3];
+   
+    foreach(s; set.subsets)
+    {
+        assert(s.walkLength == s.array.walkLength);        
+    }
 }
 
 /*******************************************************************************
