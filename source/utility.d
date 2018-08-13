@@ -1239,3 +1239,38 @@ ulong binomial(ulong n, ulong k) pure nothrow @nogc @safe
     assert(binomial(20, 10) == 184756);
     assert(binomial(17, 7) == 19448);
 }
+
+/******************************************************************************
+Returns a static array of specified size of immutable(T) which is initialized
+with the given range of T. 
+// TO DO: clean up docs
+*/
+immutable(ElementType!R)[arrayLength] toImmutStaticArray(size_t arrayLength, R)(R range)
+if (isForwardRange!R)
+{
+    assert(range.walkLength <= arrayLength,
+        "range has too many elements for static array");
+
+    alias T = ElementType!R;
+    T[arrayLength] r;
+    copy(range, r[]);
+    return r;
+}
+///
+@Name("toImmutStaticArray (pure nothrow @nogc @safe)") pure nothrow @safe unittest
+{
+    auto expectedAns = [1,2,3,0,0];
+
+    () pure nothrow @nogc @safe
+    {
+        auto buffer = iota(1,4).toImmutStaticArray!5;
+        static assert(is(typeof(buffer) == immutable(int)[5]));
+        assert(buffer[].equal(expectedAns));
+    } ();
+}
+///
+@Name("toImmutStaticArray (errors)") pure @system unittest
+{
+    iota(1,10).toImmutStaticArray!5.throwsWithMsg(
+        "range has too many elements for static array");
+}
