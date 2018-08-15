@@ -745,13 +745,13 @@ auto standardSphereFacets(int dim)
 }
 
 ///
-@Name("contains (pure nothrow /* @nogc */ @safe)") pure @safe unittest
+@Name("contains (pure nothrow @nogc @safe)") pure @safe unittest
 {
     auto sc = Manifold!1([[0,1],[0,2],[1,2]]);
     int[2] edge01 = [0,1];
     int[2] edge07 = [0,7];
 
-    () pure nothrow /* @nogc */ @safe {
+    () pure nothrow @nogc @safe {
         assert(sc.contains(edge01[]));
         assert(!sc.contains(edge07[]));
     }();  
