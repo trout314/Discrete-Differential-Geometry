@@ -9,7 +9,7 @@ import std.meta : AliasSeq, allSatisfy, anySatisfy;
 import std.range : array, chain, drop, ElementType, empty, enumerate, front,
     iota, isForwardRange, isInputRange, popFront, repeat, save, take,
     walkLength;
-import std.traits : lvalueOf, rvalueOf, hasAliasing;
+import std.traits : lvalueOf, rvalueOf, hasAliasing, Unqual;
 import unit_threaded : Name;
 
 //dfmt off
@@ -1262,15 +1262,14 @@ with the given range of T.
 // TO DO: clean up docs
 */
 immutable(ElementType!R)[arrayLength] toImmutStaticArray(size_t arrayLength, R)(R range)
-if (isForwardRange!R)
+if (isInputRange!R)
 {
     assert(range.walkLength <= arrayLength,
         "range has too many elements for static array");
 
-    alias T = ElementType!R;
-    T[arrayLength] r;
-    copy(range, r[]);
-    return r;
+    Unqual!(ElementType!R)[arrayLength] arrayToReturn;
+    copy(range, arrayToReturn[]);
+    return arrayToReturn;
 }
 ///
 @Name("toImmutStaticArray (pure nothrow @nogc @safe)") pure nothrow @safe unittest
