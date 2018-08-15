@@ -13,7 +13,7 @@ import fluent.asserts;
 /*******************************************************************************
 Returns true if the given manifold is orientable and false otherwise.
 */
-bool isOrientable(Vertex, int dim)(Manifold!(dim, Vertex) manifold)
+bool isOrientable(Vertex, int dim)(const auto ref Manifold!(dim, Vertex) manifold)
 {
     /* We must choose a compatible orientation for each facet. Since the facets
     already come equipped with an ordering for the vertices, we need only
@@ -231,7 +231,7 @@ bool isOrientable(Vertex, int dim)(Manifold!(dim, Vertex) manifold)
 Returns a range containing this simplicial complex's connected components
 (returned as simplicial complexes of the same vertex type.)
 */
-auto connectedComponents(Vertex)(const ref SimplicialComplex!Vertex sc)
+auto connectedComponents(Vertex)(const auto ref SimplicialComplex!Vertex sc)
 {
     static struct FacetRecord
     {
@@ -310,7 +310,7 @@ auto connectedComponents(Vertex)(const ref SimplicialComplex!Vertex sc)
 /*******************************************************************************
 Returns the Euler characteristic of the simplicial complex
 */
-int eulerCharacteristic(Vertex)(const ref SimplicialComplex!Vertex sc)
+int eulerCharacteristic(Vertex)(const auto ref SimplicialComplex!Vertex sc)
 {
     return sc.fVector.enumerate.map!(f => (-1)^^f.index.to!int * f.value.to!int).sum;
 }
@@ -422,7 +422,7 @@ bool isCircle(Vertex)(const SimplicialComplex!Vertex sc)
 Returns true if the simplicial complex is connected and false otherwise.
 Note that an empty complex counts as connected.
 */
-bool isConnected(Vertex)(const ref SimplicialComplex!Vertex sc)
+bool isConnected(Vertex)(const auto ref SimplicialComplex!Vertex sc)
 {
     return sc.connectedComponents.walkLength <= 1;
 }
@@ -445,7 +445,7 @@ bool isConnected(Vertex)(const ref SimplicialComplex!Vertex sc)
 /*******************************************************************************
 Decide if a simplicial complex is pure of dimension `d`
 */
-bool isPureOfDim(Vertex)(const ref SimplicialComplex!Vertex sc, int d)
+bool isPureOfDim(Vertex)(const auto ref SimplicialComplex!Vertex sc, int d)
 {
     assert(d >= 0, "expected a non-negative dimension");
     return sc.facets(d).walkLength == sc.numFacets;
@@ -482,7 +482,7 @@ bool isPureOfDim(Vertex)(const ref SimplicialComplex!Vertex sc, int d)
 /*******************************************************************************
 Decide if a simplicial complex is homeomorphic to a surface of genus `g`
 */
-bool isOrientableSurfaceOfGenus(Vertex)(const ref SimplicialComplex!Vertex sc, int g)
+bool isOrientableSurfaceOfGenus(Vertex)(const auto ref SimplicialComplex!Vertex sc, int g)
 {
     alias SimpComp = SimplicialComplex!Vertex;
 
