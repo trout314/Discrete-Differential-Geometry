@@ -7,7 +7,7 @@ import std.datetime : Duration, msecs;
 import std.datetime.stopwatch : StopWatch;
 // import std.format : format, formattedWrite;
 import std.math : exp, sqrt;
-import std.random : choice, rndGen, uniform01;
+import std.random : choice, dice, rndGen, uniform, uniform01;
 import std.range : array, back, chain, empty, front, iota, popBack, popFront, repeat,
     save, walkLength;
 import std.stdio : write, writefln, writeln, stdout;
@@ -21,7 +21,7 @@ import std.datetime.systime : Clock;
 
 // I wish we could compute these, but acos dosn't work at compile time. These
 // come from wolfram alpha input: Table[N[2 Pi/ArcCos[1/k],30],{k, 2, 16}]
-enum real[17] flatDegreeInDim = [
+static immutable real[17] flatDegreeInDim = [
     real.nan,   // Not applicable in dimension zero!
     2.00000000000000000000000000000,
     6.00000000000000000000000000000,
@@ -44,7 +44,7 @@ enum real[17] flatDegreeInDim = [
 //-------------------------------- SETTINGS ------------------------------------
 // TO DO: make setting setting a coef to 0.0 disable un-needed code
 
-enum int numFacetsTarget = 16000;
+enum int numFacetsTarget = 1000;
 enum real hingeDegreeTarget = flatDegreeInDim[3];
 
 enum real numFacetsCoef = 0.01;
@@ -52,7 +52,7 @@ enum real numHingesCoef = 0.1;
 enum real hingeDegreeVarCoef = 0.0;
 
 enum int triesPerReport = 10000;
-enum int maxTries = 1000000;
+enum int maxTries = 100000;
 
 real meanHingeDegree(Vertex, int dim)(const ref Manifold!(dim, Vertex) manifold)
 {
@@ -146,13 +146,6 @@ real globalCurvaturePenalty(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
 
 real localCurvaturePenalty(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
 {
-    // TO DO: IMPORTANT! Make this take difference between 
-    //
-    // ACTUAL = sum_over_s of (deg(s) - targetDeg)^2
-    //
-    // IDEAL = sum_over_s of (deg(s) - targetDeg)^2 
-    //         (if all s had degrees closest to targetDeg)
-
     immutable numF = s.manifold.fVector[dim];
     immutable numH = s.manifold.fVector[dim - 2];
     immutable hPerF = dim * (dim + 1) / 2;
@@ -169,6 +162,8 @@ real localCurvaturePenalty(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
     // TO DO: Refer to arxiv paper for this!
     return (degTarget^^2 * numH - 2*degTarget*hPerF*numF + sqDeg) - minPenalty;
 }
+// TO DO: unittests!
+
 
 real objective(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
 {
@@ -193,7 +188,9 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s) @safe
         }
 
         auto facet = s.manifold.randomFacetOfDim(dim).array;
-        auto move = s.manifold.movesAtFacet(facet).map!array.array.choice;
+        auto moves = s.manifold.movesAtFacet(facet).map!array.array;
+        auto choiceIndx = moves.map!(m => 1.0L / (dim - m.walkLength + 2)).array.dice;
+        auto move = moves[choiceIndx];
 
         auto coMove = (move.walkLength == dim + 1) 
             ? [s.unusedVertices.back] 
