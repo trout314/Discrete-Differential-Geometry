@@ -2,15 +2,22 @@ import algorithms : connectedComponents, eulerCharacteristic,
     isCircle, isConnected,  isPureOfDim;
 import fluent.asserts : should;
 import std.algorithm : all, any, canFind, chunkBy, copy, countUntil, each,
-    equal, filter, find, findAdjacent, isSorted, map, maxElement,
+    equal, filter, find, findAdjacent, isSorted, joiner, map, maxElement,
     setDifference, sort, sum, uniq;
-import std.conv : to;
+import std.conv : to, parse;
+import std.datetime.systime : Clock;
+import std.datetime.date : DateTime;
+import std.exception : assertThrown;
 import std.random : uniform;
 import std.range : array, chunks, dropExactly, ElementType, empty, enumerate, 
     front, iota, isForwardRange, isInputRange, isOutputRange, popFront, put, save, walkLength, zip;
 import unit_threaded : Name;
 import utility : isSubsetOf, SmallMap, StackArray, subsets,
     subsetsOfSize, throwsWithMsg;
+import std.stdio : File;
+
+
+import std.stdio : writeln;
 
 /// Basic Functionality
 @Name("doc tests") /* pure */ @safe unittest
@@ -238,6 +245,18 @@ import utility : isSubsetOf, SmallMap, StackArray, subsets,
     assert(sc3.facets.empty);
 }
 
+@Name("insertFacetRAW/removeFacet") @safe unittest
+{
+    SimplicialComplex!() sc;
+    sc.insertFacetRAW([1,2]);
+    sc.insertFacetRAW([2,3]);
+    // sc.insertFacetRAW([3,4,5]);
+    // sc.insertFacetRAW([3,4,6]);
+
+    import std.stdio : writeln;
+    writeln(sc);
+}
+
 /*******************************************************************************
 Checks if a range or array of vertices represents a valid simplex or not.
 Throws error if anything is wrong.
@@ -258,7 +277,7 @@ void assertValidSimplex(V)(V vertices_, int dim) if (isInputRange!V)
 /*******************************************************************************
 A simplicial complex type whose vertices are of type `Vertex`.
 */
-struct SimplicialComplex(Vertex_ = int)
+struct SimplicialComplex(Vertex_ = int, int maxFacetDimension = 16)
 {
 private:
     /* We store arrays containing all the vertices in the facets of a given 
@@ -270,7 +289,28 @@ private:
 
     /* indexOfFacet[f] = i means the vertices of f begins at facetVertices[i]
     */
-    size_t[Vertex[]] indexOfFacet;
+
+    static struct Simplex
+    {
+        Vertex_[maxFacetDimension + 1] vertices;
+        size_t nValid;
+        auto opSlice() const
+        {
+            return vertices[0 .. nValid];
+        }
+    }
+
+    static Simplex toSimplex(R)(R range)
+    if (isInputRange!R && is(ElementType!R : Vertex_))
+    {
+        assert(range.walkLength <= maxFacetDimension + 1);
+        Simplex simplexToReturn;
+        copy(range, simplexToReturn.vertices[]);
+        simplexToReturn.nValid = range.walkLength;
+        return simplexToReturn;
+    }
+
+    size_t[Simplex] indexOfFacet;
 public:
     /***************************************************************************
     The type of the vertices in this simplicial complex.
@@ -301,7 +341,6 @@ public:
     */
     void insertFacet(S)(S simplex) if (isInputRange!S && is(ElementType!S : Vertex))
     {
-        // TO DO: Improve this!
         StackArray!(Vertex, 16) simplex_;
         simplex.each!(v => simplex_ ~= v);
 
@@ -323,13 +362,50 @@ public:
         if (dim in facetVertices)
         {
             facetVertices[dim] ~= simplex_;
-            assert(simplex_[] !in indexOfFacet);           
-            indexOfFacet[simplex_] = facetVertices[dim].length - dim - 1;
+            assert(toSimplex(simplex_[]) !in indexOfFacet);           
+            indexOfFacet[toSimplex(simplex_[])] = facetVertices[dim].length - dim - 1;
         }
         else
         {
             facetVertices.insert(dim, simplex_);
-            indexOfFacet[simplex_] = 0;
+            indexOfFacet[toSimplex(simplex_[])] = 0;
+        }
+    }
+
+    /***************************************************************************
+    Inserts a facet (given as an input range of vertices) into the simplicial
+    complex.
+    */
+    void insertFacetRAW(S)(S simplex) if (isInputRange!S && is(ElementType!S : Vertex))
+    {
+        // StackArray!(Vertex, 16) simplex_;
+        // simplex.each!(v => simplex_ ~= v);
+        auto simplex_ = simplex.array.idup;
+
+        int dim = simplex_[].walkLength.to!int - 1;
+        assert(dim >= 0);
+        simplex_[].assertValidSimplex(dim);
+        assert(simplex_[] == simplex.array);
+
+        assert(!this.contains(simplex),
+            "expected a simplex not already in the simplicial complex");
+
+        foreach(face; simplex_[].subsets)
+        {
+            assert(!this.containsFacet(face),
+                "expected a simplex without any faces that are facets");
+        }
+
+        if (dim in facetVertices)
+        {
+            facetVertices[dim] ~= simplex_;
+            assert(toSimplex(simplex_[]) !in indexOfFacet);
+            indexOfFacet[toSimplex(simplex_[])] = facetVertices[dim].length - dim - 1;
+        }
+        else
+        {
+            facetVertices.insert(dim, simplex_.dup);
+            indexOfFacet[toSimplex(simplex_[])] = 0;
         }
     }
 
@@ -350,16 +426,17 @@ public:
         assert(this.contains(simplex),
             "tried to remove a facet not in the simplicial complex");
             
-        auto indx = indexOfFacet[simplex_[]];
+        auto indx = indexOfFacet[toSimplex(simplex_[])];
 
         // copy last facet into removed ones spot        
         copy(facetVertices[dim][$ - dim - 1  .. $],
              facetVertices[dim][indx .. indx + dim + 1]);
 
         // TO DO: Remove the need for .idup here. Custom AA type?
-        indexOfFacet[facetVertices[dim][$ - dim - 1  .. $].idup] = indx;
+        indexOfFacet[toSimplex(facetVertices[dim][$ - dim - 1  .. $])] = indx;
+
         facetVertices[dim] = facetVertices[dim][0 .. $ - dim - 1];
-        indexOfFacet.remove(simplex_[]);
+        indexOfFacet.remove(toSimplex(simplex_[]));        
     }
 
     /***************************************************************************
@@ -435,7 +512,7 @@ public:
     bool containsFacet(F)(F facet) const
     if (isInputRange!F && is(ElementType!F : Vertex))
     {
-        return cast(bool) (facet.array in indexOfFacet);
+        return cast(bool) (toSimplex(facet.array) in indexOfFacet);
     }
 
     /***************************************************************************
@@ -935,4 +1012,67 @@ public:
 unittest 
 {
     auto x = simplicialComplex([[1,2],[2,3], [3,4]]);
+}
+
+class BadSimpCompLoad : Exception
+{
+    this(string msg, string file = __FILE__, size_t line = __LINE__) {
+        super(msg, file, line);
+    }
+}
+
+/******************************************************************************
+Returns a simplicial complex loaded from the file specified by fileName.
+*/
+SimplicialComplex!Vertex loadSimplicialComplexFrom(Vertex = int)(string fileName)
+{
+    auto facetString = File(fileName, "r").byLineCopy
+        .filter!(line => line.front != '#').joiner.array;   
+
+    Vertex[][] facets;
+    try
+    {
+        facets = facetString.to!(Vertex[][]);
+    }
+    catch (Exception ex)
+    {
+        throw new BadSimpCompLoad("malformed facet list in file "
+            ~ fileName ~ "\n    " ~ ex.msg);
+    }
+    facets.each!sort;
+    return SimplicialComplex!Vertex(facets);
+}
+
+///
+unittest
+{
+    auto sc = loadSimplicialComplexFrom(
+        "data/manifold_sampler_unittest_load.dat");
+    auto expected = simplicialComplex([[0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 5],
+        [0, 5, 6], [0, 1, 6], [1, 2, 6], [2, 3, 5], [2, 5, 6], [3, 4, 5]]);
+    assert(sc == expected);
+
+    assertThrown(loadSimplicialComplexFrom(
+        "data/manifold_sampler_unittest_bad_load.dat"));
+}
+
+/******************************************************************************
+* Saves a simplicial complex to a file specified by fileName.
+*/
+void saveSimplicialComplexTo(Vertex)(SimplicialComplex!Vertex sc, string fileName)
+{
+    auto saveFile = File(fileName, "w"); // Open in write-only mode
+    saveFile.writeln("# created ", Clock.currTime.to!DateTime);
+    saveFile.write(sc);
+}
+
+///
+unittest
+{
+    import manifold : standardSphereFacets;
+    auto fileName = "data/manifold_sampler_unittest_save.dat";
+    auto sc = simplicialComplex([[1,2],[3],[2,4,5], [2,4,6]]);
+    sc.saveSimplicialComplexTo(fileName);
+    auto loaded = loadSimplicialComplexFrom(fileName);
+    assert(loaded == sc);
 }
