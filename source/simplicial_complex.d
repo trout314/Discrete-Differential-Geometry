@@ -1024,7 +1024,7 @@ class BadSimpCompLoad : Exception
 /******************************************************************************
 Returns a simplicial complex loaded from the file specified by fileName.
 */
-SimplicialComplex!Vertex loadSimplicialComplexFrom(Vertex = int)(string fileName)
+SimplicialComplex!Vertex loadSimplicialComplex(Vertex = int)(string fileName)
 {
     auto facetString = File(fileName, "r").byLineCopy
         .filter!(line => line.front != '#').joiner.array;   
@@ -1046,13 +1046,13 @@ SimplicialComplex!Vertex loadSimplicialComplexFrom(Vertex = int)(string fileName
 ///
 unittest
 {
-    auto sc = loadSimplicialComplexFrom(
+    auto sc = loadSimplicialComplex(
         "data/manifold_sampler_unittest_load.dat");
     auto expected = simplicialComplex([[0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 5],
         [0, 5, 6], [0, 1, 6], [1, 2, 6], [2, 3, 5], [2, 5, 6], [3, 4, 5]]);
     assert(sc == expected);
 
-    assertThrown(loadSimplicialComplexFrom(
+    assertThrown(loadSimplicialComplex(
         "data/manifold_sampler_unittest_bad_load.dat"));
 }
 
@@ -1073,6 +1073,6 @@ unittest
     auto fileName = "data/manifold_sampler_unittest_save.dat";
     auto sc = simplicialComplex([[1,2],[3],[2,4,5], [2,4,6]]);
     sc.saveSimplicialComplexTo(fileName);
-    auto loaded = loadSimplicialComplexFrom(fileName);
+    auto loaded = loadSimplicialComplex(fileName);
     assert(loaded == sc);
 }
