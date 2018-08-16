@@ -172,7 +172,7 @@ real objective(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
         + hingeDegreeVarCoef * s.localCurvaturePenalty;
 }
 
-void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s) @safe
+void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
 {
     // GC.disable;
     s.timer.start;
