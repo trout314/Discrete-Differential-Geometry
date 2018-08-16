@@ -4,6 +4,7 @@ import simplicial_complex : fVector;
 import std.algorithm : all, each, filter, joiner, map, max, maxElement, sum;
 import std.conv : to;
 import std.datetime : Duration, msecs;
+import std.datetime.date : DateTime;
 import std.datetime.stopwatch : StopWatch;
 // import std.format : format, formattedWrite;
 import std.math : exp, sqrt;
@@ -94,7 +95,7 @@ public:
         // gcTimer.reset;
 
         w.writeln('#'.repeat(80));
-        w.writefln("# %s", Clock.currTime);
+        w.writefln("# %s", Clock.currTime.to!DateTime);
         w.writefln("# usec/move (moves) : %s", mt);
         // w.writefln("# usec/move (GC)    : %s", gt);
         w.writefln("# usec/move total   : %s", tt);
