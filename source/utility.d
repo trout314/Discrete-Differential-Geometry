@@ -3,7 +3,7 @@ import fluent.asserts;
 import std.algorithm : all, canFind, copy, each, equal, filter, find, fold, joiner, map,
     sort, sum;
 import std.conv : to;
-import std.exception : enforce;
+import std.exception : enforce, assertThrown;
 import std.format : format;
 import std.meta : AliasSeq, allSatisfy, anySatisfy;
 import std.range : array, chain, drop, ElementType, empty, enumerate, front,
@@ -1146,22 +1146,42 @@ public:
 
     alias opSlice this;
 }
-///
 
-@Name("StackArray") @nogc unittest
+///
+@Name("StackArray") pure @safe unittest
 {
     int[2] toAppend = [4, 5];
 
-    auto a = StackArray!(int, 5)();
-    a ~= 3;
-    assert(a.length == 1);
-    a ~= toAppend[];
-    assert(a.length == 3);
+    () pure nothrow @nogc @safe {
+        auto sa = StackArray!(int, 5)();
+        sa ~= 3;
+        assert(sa.length == 1);
+        sa ~= toAppend[];
+        assert(sa.length == 3);
 
-    assert(a[0] == 3);
-    assert(a[1] == 4);
-    assert(a[2] == 5);
-    a.length = 5;
+        assert(sa[0] == 3);
+        assert(sa[1] == 4);
+        assert(sa[2] == 5);
+
+        sa.length = 5;
+        assert(sa[0] == 3);
+        assert(sa[1] == 4);
+        assert(sa[2] == 5);
+        assert(sa[3] == 0);
+        assert(sa[4] == 0);
+    } ();
+}
+
+///
+@Name("StackArray (errors)") pure @safe unittest
+{
+    StackArray!(int, 2) sa;
+    sa ~= 1;    
+    sa ~= 2;    // No more space now!
+
+    int[2] toAppend = [3, 4];
+    assertThrown(sa ~= toAppend[]);
+    assertThrown(sa ~= 2);
 }
 
 /******************************************************************************
