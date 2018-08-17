@@ -1115,15 +1115,17 @@ public:
 
     @disable void opBinary(string op : "~")(T[]){}
 
-    T opOpAssign(string op : "~")(T itemToConcatenate)
+    T opOpAssign(string op : "~")(T itemToAppend)
     {
-        ++currentLength;
-        length = currentLength;
-        return data[currentLength - 1] = itemToConcatenate;
+        assert(currentLength < maxLength, "StackArray at maximum length. cannot append");
+        length = currentLength + 1;
+        return data[currentLength - 1] = itemToAppend;
     }
 
     T[] opOpAssign(string op : "~")(T[] sliceToConcatenate)
     {
+        assert(currentLength + sliceToConcatenate.length <= maxLength,
+            "slice to concatenate is too long");
         auto start = currentLength;
         currentLength += sliceToConcatenate.length;
         return data[start .. currentLength] = sliceToConcatenate[];
@@ -1173,15 +1175,18 @@ public:
 }
 
 ///
-@Name("StackArray (errors)") pure @safe unittest
+@Name("StackArray (errors)") pure @system unittest
 {
-    StackArray!(int, 2) sa;
-    sa ~= 1;    
-    sa ~= 2;    // No more space now!
+    StackArray!(int, 3) sa;
+    sa ~= 1;   
+    sa ~= [2,3];    // No more space now!   
 
-    int[2] toAppend = [3, 4];
-    assertThrown(sa ~= toAppend[]);
-    assertThrown(sa ~= 2);
+    (sa ~= [4, 5]).throwsWithMsg("slice to concatenate is too long");
+    (sa ~= 4).throwsWithMsg("StackArray at maximum length. cannot append");
+
+    sa.clear;
+    sa ~= [1,2];
+    (sa ~= [3,4]).throwsWithMsg("slice to concatenate is too long");
 }
 
 /******************************************************************************
