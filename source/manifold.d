@@ -1,15 +1,17 @@
 import algorithms : canFind, eulerCharacteristic, is2Sphere, isCircle,
     isConnected, isPureOfDim, join;
 import fluent.asserts;
-import simplicial_complex : fVector, SimplicialComplex, assertValidSimplex;
+import simplicial_complex : fVector, SimplicialComplex, assertValidSimplex, loadSimplicialComplex;
 import std.algorithm : all, any, copy, canFind, each, equal, filter, find, joiner,
     map, maxElement, sort, sum, uniq;
 import std.conv : to;
+import std.exception : assertThrown;
 import std.range : array, back, chain, ElementType, empty, enumerate, front, iota,
     isInputRange, popFront, save, walkLength;
 import unit_threaded : Name;
 import utility : binomial, isSubsetOf, SmallMap, staticIota, subsets, subsetsOfSize,
     throwsWithMsg, toImmutStaticArray;
+import std.stdio : File;
 
 //dfmt off
 /*******************************************************************************
@@ -882,26 +884,49 @@ auto movesAtFacet(Vertex, int dim)(
     ]);
 }
 
+/******************************************************************************
+* Returns a manifold loaded from the file specified by fileName. If fileName
+* is the empty string, the returned manifold is the standard sphere.
+*/
+Manifold!(dimension, Vertex) loadManifold(int dimension, Vertex = int)(string fileName)
+{
+    SimplicialComplex!Vertex sc = loadSimplicialComplex!Vertex(fileName);
+    return Manifold!(dimension, Vertex)(sc.facets.map!array.array);
+}
 
-// TO DO: Adapt old code below for new manifold type!
+///
+unittest
+{
+    auto m = loadManifold!2(
+        "data/manifold_sampler_unittest_load.dat");
+    auto expected = Manifold!2([[0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 5],
+        [0, 5, 6], [0, 1, 6], [1, 2, 6], [2, 3, 5], [2, 5, 6], [3, 4, 5]]);
+    assert(m == expected);
+
+    assertThrown(loadManifold!2(
+        "data/manifold_sampler_unittest_bad_load.dat"));
+}
 
 // /******************************************************************************
-// * Returns a manifold loaded from the file specified by fileName. If fileName
-// * is the empty string, the returned manifold is the standard sphere.
+// * Saves a simplicial complex to a file specified by fileName.
 // */
-// Manifold!dim loadManifold(size_t dim = dimManifold)(string fileName)
+// void saveSimplicialComplexTo(Vertex)(SimplicialComplex!Vertex sc, string fileName)
 // {
-//     auto manifoldFile = File(fileName, "r"); // Open file in read-only mode
+//     auto saveFile = File(fileName, "w"); // Open in write-only mode
+//     saveFile.writeln("# created ", Clock.currTime.to!DateTime);
+//     saveFile.write(sc);
+// }
 
-//     string facets;
-//     foreach (string line; manifoldFile.lines)
-//     {
-//         // We allow comments starting with '#'
-//         if (line.front != '#')
-//         {
-//             facets ~= line.strip;
-//         }
-//     }
+// ///
+// unittest
+// {
+//     import manifold : standardSphereFacets;
+//     auto fileName = "data/manifold_sampler_unittest_save.dat";
+//     auto sc = simplicialComplex([[1,2],[3],[2,4,5], [2,4,6]]);
+//     sc.saveSimplicialComplexTo(fileName);
+//     auto loaded = loadSimplicialComplexFrom(fileName);
+//     assert(loaded == sc);
+// }
 
 //     try
 //     {
