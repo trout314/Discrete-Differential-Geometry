@@ -9,7 +9,7 @@ import std.exception : assertThrown;
 import std.range : array, back, chain, ElementType, empty, enumerate, front, iota,
     isInputRange, popFront, save, walkLength;
 import unit_threaded : Name;
-import utility : binomial, isSubsetOf, SmallMap, staticIota, subsets, subsetsOfSize,
+import utility : binomial, isSubsetOf, SmallMap, StackArray, staticIota, subsets, subsetsOfSize,
     throwsWithMsg, toImmutStaticArray;
 import std.stdio : File;
 
@@ -25,6 +25,18 @@ struct Manifold(int dimension_, Vertex_ = int)
 private:
     alias SimpComp = SimplicialComplex!Vertex_;
 
+    alias NSimplex = StackArray!(Vertex, dimension + 1);
+    static NSimplex toNSimplex(R)(R range)
+    if (isInputRange!R && is(ElementType!R : Vertex_))
+    {
+        assert(range.walkLength <= dimension + 1);
+        NSimplex simplexToReturn;
+        range.each!(r => simplexToReturn ~= r);        
+        return simplexToReturn;
+    }
+    size_t[NSimplex] degreeMap;
+
+
     static struct Simplex(int maxDim)
     {
         Vertex_[maxDim + 1] vertices;
@@ -35,22 +47,11 @@ private:
         }
     }
 
-    static Simplex!dimension_ toSimplex(R)(R range)
-    if (isInputRange!R && is(ElementType!R : Vertex_))
-    {
-        assert(range.walkLength <= dimension_ + 1);
-        Simplex!dimension_ simplexToReturn;
-        copy(range, simplexToReturn.vertices[]);
-        simplexToReturn.nValid = range.walkLength;
-        return simplexToReturn;
-    }
-
     alias Ridge = Vertex[dimension_];
 
     SimpComp simpComp;
-    size_t[Simplex!dimension_] degreeMap;
 
-    alias RidgeLink = Simplex!1;
+    alias RidgeLink = StackArray!(Vertex, 2);
     RidgeLink[Ridge] ridgeLinks;
 
     size_t[dimension_ + 1] numSimplices;   
@@ -123,7 +124,6 @@ public:
     {
         ridgeLinks = ridgeLinks.dup;
         degreeMap = degreeMap.dup;
-
     }
 
     /***************************************************************************
@@ -133,9 +133,9 @@ public:
     if (isInputRange!S && is(ElementType!S : Vertex))
     {
         assert(this.simpComp.facets.any!(f => simplex.isSubsetOf(f))
-            == !((toSimplex(simplex) in degreeMap) is null));
+            == !((toNSimplex(simplex) in degreeMap) is null));
 
-        return !((toSimplex(simplex) in degreeMap) is null);
+        return !((toNSimplex(simplex) in degreeMap) is null);
     }
 
     /***************************************************************************
@@ -145,8 +145,8 @@ public:
     if (isInputRange!S && is(ElementType!S : Vertex))
     {
         assert(this.contains(simplex));
-        assert(degreeMap[toSimplex(simplex)] == star(simplex).walkLength);
-        return degreeMap[toSimplex(simplex)];
+        assert(degreeMap[toNSimplex(simplex)] == star(simplex).walkLength);
+        return degreeMap[toNSimplex(simplex)];
     }
 
     /***************************************************************************
@@ -172,15 +172,13 @@ public:
         auto facet = facetBuffer[];
 
         facet.assertValidSimplex(dimension);
-
-        assert(toSimplex(facet) !in degreeMap);
+        assert(toNSimplex(facet) !in degreeMap);
 
         this.simpComp.insertFacet(facet);
 
         foreach(simplex_; facet.subsets)
         {
-            auto simplex = toSimplex(simplex_);
-
+            auto simplex = toNSimplex(simplex_);
             ++degreeMap[simplex];
         
             if(simplex_.walkLength == dimension - 1)
@@ -200,28 +198,21 @@ public:
                 {
                     assert(simplex in degreeMap);
                     assert(degreeMap[simplex] == 1);
-
-                    // If the degree of the ridge is one we make sure it is
-                    // the *first* vertex in the Vertex[2] pair that valid
-                    Vertex[2] linkVertices;
-                    linkVertices.front = oppVert;
-                    size_t nValid = 1;
-                    ridgeLinks[ridge] = RidgeLink(linkVertices, nValid);
+                    auto rL = RidgeLink();
+                    rL ~= oppVert;
+                    ridgeLinks[ridge] = rL;
                 }
                 else
-                {                   
+                {
                     assert(simplex in degreeMap);
                     assert(degreeMap[simplex] == 2);
-
-                    (*ptrToLink).vertices.back = oppVert;
-                    (*ptrToLink).nValid = 2;
-                    (*ptrToLink).vertices[].sort;
+                    (*ptrToLink) ~= oppVert;
+                    (*ptrToLink)[].sort;
                 }
                 assert(ridge in ridgeLinks);
-
             }
         }
-        assert(toSimplex(facet) in degreeMap);
+        assert(toNSimplex(facet) in degreeMap);
     }
 
     // Special version of removeFacet to update tracked info.
@@ -235,15 +226,15 @@ public:
         auto facet = facetBuffer[];
 
         facet.assertValidSimplex(dimension);      
-        assert(toSimplex(facet) in degreeMap);
+        assert(toNSimplex(facet) in degreeMap);
 
         this.simpComp.removeFacet(facet);
         
         foreach(simplex_; facet.subsets)
         {
-            auto simplex = toSimplex(simplex_);
-
+            auto simplex = toNSimplex(simplex_);
             assert(simplex in degreeMap);
+
             --degreeMap[simplex];
 
             if(simplex_.walkLength == dimension - 1)
@@ -251,8 +242,6 @@ public:
                 totalSquaredHingeDegree -= 2*degreeMap[simplex] - 1;
             }
 
-            // If the degree of a ridge is one, make sure it is the first
-            // vertex in the Vertex[2] pair that is the valid one
             if((simplex_.walkLength == dimension) && (degreeMap[simplex] == 1))
             {
                 auto ridge = simplex_.toImmutStaticArray!dimension();
@@ -262,23 +251,23 @@ public:
                 assert(oppVerts.walkLength == 1);
                 auto oppVert = oppVerts.front;
 
-                assert(ridgeLinks[ridge].vertices[].canFind(oppVert));
-                if(ridgeLinks[ridge].nValid == 2)
+                assert(ridgeLinks[ridge][].canFind(oppVert));
+
+                if(ridgeLinks[ridge].length == 2)
                 {
-                    if(ridgeLinks[ridge].vertices[].front == oppVert)
+                    if(ridgeLinks[ridge][0] == oppVert)
                     {
-                        ridgeLinks[ridge].vertices[].front = ridgeLinks[ridge].vertices.back;
+                        ridgeLinks[ridge][0] = ridgeLinks[ridge][1];
                     }
                     else
                     {
-                        assert(ridgeLinks[ridge].vertices[].back == oppVert);
+                        assert(ridgeLinks[ridge][1] == oppVert);
                     }
-                    ridgeLinks[ridge].vertices[].back = Vertex.init;
-                    ridgeLinks[ridge].nValid = 1;
+                    ridgeLinks[ridge].length = 1;
                 }
                 else
                 {
-                    assert(ridgeLinks[ridge].nValid == 1);
+                    assert(ridgeLinks[ridge].length == 1);
                 }
 
             }
@@ -290,13 +279,13 @@ public:
                 if(simplex_.walkLength == dimension)
                 {
                     auto ridge = simplex_.toImmutStaticArray!dimension();
-                    assert(ridgeLinks[ridge].nValid == 1);
+                    assert(ridgeLinks[ridge].length == 1);
                     ridgeLinks.remove(ridge);
                 }
             }
 
         }
-        assert(toSimplex(facet) !in degreeMap);
+        assert(toNSimplex(facet) !in degreeMap);
         assert(!this.simpComp.containsFacet(facet));
     }
 
@@ -591,11 +580,10 @@ auto coCenter(Vertex, int dim)(
     // The coCenter of a facet is a new vertex not in the manifold.
     assert(center.walkLength < dim + 1);
 
-
     // TO DO: Clean this up!
     auto ridges = facet.subsetsOfSize(dim)
         .filter!(r => center.isSubsetOf(r)).map!(r => r.toImmutStaticArray!dim());
-    auto coCenterVerts = ridges.map!(r => manifold.ridgeLinks[r].vertices[])
+    auto coCenterVerts = ridges.map!(r => manifold.ridgeLinks[r][])
         .array.joiner.array.dup.sort.uniq.array;
 
     assert(coCenterVerts.equal(manifold.findCoCenter(center)));
@@ -603,7 +591,6 @@ auto coCenter(Vertex, int dim)(
 }
 
 // TO DO: Separate unittesting for findCoCenter
-
 // TO DO: Use standardSphereFacets below in appropriate places
 
 /*******************************************************************************
