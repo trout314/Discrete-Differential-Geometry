@@ -1150,6 +1150,16 @@ public:
 }
 
 ///
+StackArray!(T, maxLen) toStackArray(T, size_t maxLen, R)(R range)
+if (isForwardRange!R && (is(ElementType!R : T)))
+{
+    assert(range.walkLength <= maxLen);
+    StackArray!(T, maxLen) sa;
+    range.each!(r => sa ~= r);
+    return sa;
+}
+
+///
 @Name("StackArray") pure @safe unittest
 {
     int[2] toAppend = [4, 5];
