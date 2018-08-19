@@ -1156,21 +1156,36 @@ public:
 
     () pure nothrow @nogc @safe {
         auto sa = StackArray!(int, 5)();
+        assert(sa.length == 0);
+
         sa ~= 3;
         assert(sa.length == 1);
+        
         sa ~= toAppend[];
         assert(sa.length == 3);
-
         assert(sa[0] == 3);
         assert(sa[1] == 4);
         assert(sa[2] == 5);
 
         sa.length = 5;
+        assert(sa.length == 5);
         assert(sa[0] == 3);
         assert(sa[1] == 4);
         assert(sa[2] == 5);
         assert(sa[3] == 0);
         assert(sa[4] == 0);
+
+        sa.clear;
+        assert(sa.length == 0);
+        assert(sa[].empty);
+        assert(sa[].walkLength == 0);
+        assert(sa[].length == 0);
+
+        sa.length = 3.iota.length;
+        copy(3.iota, sa[]);
+        assert(sa[0] == 0);
+        assert(sa[1] == 1);
+        assert(sa[2] == 2);        
     } ();
 }
 
