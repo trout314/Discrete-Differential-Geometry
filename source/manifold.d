@@ -10,9 +10,9 @@ import std.range : array, back, chain, ElementType, empty, enumerate, front, iot
     isInputRange, popFront, save, walkLength;
 import unit_threaded : Name;
 import utility : binomial, isSubsetOf, SmallMap, StackArray, staticIota, subsets, subsetsOfSize,
-    throwsWithMsg, toImmutStaticArray;
+    throwsWithMsg, toImmutStaticArray, toStackArray, toStaticArray;
 import std.stdio : File;
-
+import std.typecons : Flag, No, Yes;
 //dfmt off
 /*******************************************************************************
 Manifold type... TO DO: More info here.
@@ -24,38 +24,37 @@ struct Manifold(int dimension_, Vertex_ = int)
 {
 private:
     alias SimpComp = SimplicialComplex!Vertex_;
-
-    alias NSimplex = StackArray!(Vertex, dimension + 1);
-    static NSimplex toNSimplex(R)(R range)
-    if (isInputRange!R && is(ElementType!R : Vertex_))
-    {
-        assert(range.walkLength <= dimension + 1);
-        NSimplex simplexToReturn;
-        range.each!(r => simplexToReturn ~= r);        
-        return simplexToReturn;
-    }
-    size_t[NSimplex] degreeMap;
-
-
-    static struct Simplex(int maxDim)
-    {
-        Vertex_[maxDim + 1] vertices;
-        size_t nValid;
-        auto opSlice()
-        {
-            return vertices[0 .. nValid];
-        }
-    }
-
-    alias Ridge = Vertex[dimension_];
-
     SimpComp simpComp;
 
+    alias NSimplex = StackArray!(Vertex, dimension + 1);
+    size_t[NSimplex] degreeMap;
+    
+    alias Ridge = Vertex[dimension_];
     alias RidgeLink = StackArray!(Vertex, 2);
     RidgeLink[Ridge] ridgeLinks;
 
     size_t[dimension_ + 1] numSimplices;   
     ulong totalSquaredHingeDegree;
+
+    //--------------- Helper Functions ---------------
+    static NSimplex toNSimp(R)(R range)
+    if (isInputRange!R && is(ElementType!R : Vertex_))
+    {
+        return range.toStackArray!(Vertex_, dimension + 1, R);
+    }
+
+    static Ridge toRidge(R)(R range)
+    if (isInputRange!R && is(ElementType!R : Vertex_))
+    {
+        return range.toStaticArray!dimension;
+    }
+
+    alias Facet = Vertex[dimension_ + 1];
+    static Facet toFacet(R)(R range)
+    if (isInputRange!R && is(ElementType!R : Vertex_))
+    {
+        return range.toStaticArray!(dimension_ + 1);
+    }
 public:
     /// Dimension of the manifold
     static immutable dimension = dimension_;
@@ -133,9 +132,9 @@ public:
     if (isInputRange!S && is(ElementType!S : Vertex))
     {
         assert(this.simpComp.facets.any!(f => simplex.isSubsetOf(f))
-            == !((toNSimplex(simplex) in degreeMap) is null));
+            == !((toNSimp(simplex) in degreeMap) is null));
 
-        return !((toNSimplex(simplex) in degreeMap) is null);
+        return !((toNSimp(simplex) in degreeMap) is null);
     }
 
     /***************************************************************************
@@ -145,8 +144,8 @@ public:
     if (isInputRange!S && is(ElementType!S : Vertex))
     {
         assert(this.contains(simplex));
-        assert(degreeMap[toNSimplex(simplex)] == star(simplex).walkLength);
-        return degreeMap[toNSimplex(simplex)];
+        assert(degreeMap[toNSimp(simplex)] == star(simplex).walkLength);
+        return degreeMap[toNSimp(simplex)];
     }
 
     /***************************************************************************
@@ -167,32 +166,31 @@ public:
         assert(facet_.walkLength == dimension + 1,
             "facet has wrong dimension");
 
-        Vertex[dimension + 1] facetBuffer;
-        copy(facet_, facetBuffer[]);
+        auto facetBuffer = toFacet(facet_);
         auto facet = facetBuffer[];
 
         facet.assertValidSimplex(dimension);
-        assert(toNSimplex(facet) !in degreeMap);
+        assert(toNSimp(facet) !in degreeMap);
 
-        this.simpComp.insertFacet(facet);
+        this.simpComp.insertFacet!(No.checkForFacetFaces)(facet);
 
         foreach(simplex_; facet.subsets)
         {
-            auto simplex = toNSimplex(simplex_);
+            auto simplex = toNSimp(simplex_);
             ++degreeMap[simplex];
         
-            if(simplex_.walkLength == dimension - 1)
+            if(simplex.length == dimension - 1)
             {
                 totalSquaredHingeDegree += 2*degreeMap[simplex] - 1;
             }
         
-            if(simplex_.walkLength == dimension)
+            if(simplex.length == dimension)
             {
                 auto oppVerts = facet.filter!(v => !simplex_.canFind(v));
                 assert(oppVerts.walkLength == 1);
                 auto oppVert = oppVerts.front;
                
-                auto ridge = simplex_.toImmutStaticArray!dimension_();
+                auto ridge = toRidge(simplex_);
                 auto ptrToLink = ridge in ridgeLinks;
                 if(!ptrToLink)
                 {
@@ -212,7 +210,7 @@ public:
                 assert(ridge in ridgeLinks);
             }
         }
-        assert(toNSimplex(facet) in degreeMap);
+        assert(toNSimp(facet) in degreeMap);
     }
 
     // Special version of removeFacet to update tracked info.
@@ -221,30 +219,29 @@ public:
     {
         assert(facet_.walkLength == dimension + 1);
 
-        Vertex[dimension + 1] facetBuffer;
-        copy(facet_, facetBuffer[]);
+        auto facetBuffer = toFacet(facet_);
         auto facet = facetBuffer[];
 
         facet.assertValidSimplex(dimension);      
-        assert(toNSimplex(facet) in degreeMap);
+        assert(toNSimp(facet) in degreeMap);
 
         this.simpComp.removeFacet(facet);
         
         foreach(simplex_; facet.subsets)
         {
-            auto simplex = toNSimplex(simplex_);
+            auto simplex = toNSimp(simplex_);
             assert(simplex in degreeMap);
 
             --degreeMap[simplex];
 
-            if(simplex_.walkLength == dimension - 1)
+            if(simplex.length == dimension - 1)
             {
                 totalSquaredHingeDegree -= 2*degreeMap[simplex] - 1;
             }
 
-            if((simplex_.walkLength == dimension) && (degreeMap[simplex] == 1))
+            if((simplex.length == dimension) && (degreeMap[simplex] == 1))
             {
-                auto ridge = simplex_.toImmutStaticArray!dimension();
+                auto ridge = toRidge(simplex_);
                 assert(ridge in ridgeLinks);
 
                 auto oppVerts = facet.filter!(v => !simplex_.canFind(v));
@@ -275,17 +272,16 @@ public:
             if(degreeMap[simplex] == 0)
             {
                 degreeMap.remove(simplex);
-                
-                if(simplex_.walkLength == dimension)
+                if(simplex.length == dimension)
                 {
-                    auto ridge = simplex_.toImmutStaticArray!dimension();
+                    auto ridge = toRidge(simplex_);
                     assert(ridgeLinks[ridge].length == 1);
                     ridgeLinks.remove(ridge);
                 }
             }
 
         }
-        assert(toNSimplex(facet) !in degreeMap);
+        assert(toNSimp(facet) !in degreeMap);
         assert(!this.simpComp.containsFacet(facet));
     }
 
@@ -582,7 +578,7 @@ auto coCenter(Vertex, int dim)(
 
     // TO DO: Clean this up!
     auto ridges = facet.subsetsOfSize(dim)
-        .filter!(r => center.isSubsetOf(r)).map!(r => r.toImmutStaticArray!dim());
+        .filter!(r => center.isSubsetOf(r)).map!(r => manifold.toRidge(r));
     auto coCenterVerts = ridges.map!(r => manifold.ridgeLinks[r][])
         .array.joiner.array.dup.sort.uniq.array;
 
