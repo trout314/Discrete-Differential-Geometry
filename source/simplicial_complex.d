@@ -15,7 +15,7 @@ import unit_threaded : Name;
 import utility : isSubsetOf, SmallMap, StackArray, subsets,
     subsetsOfSize, throwsWithMsg;
 import std.stdio : File;
-
+import std.typecons : Flag, Yes, No;
 
 import std.stdio : writeln;
 
@@ -245,16 +245,19 @@ import std.stdio : writeln;
     assert(sc3.facets.empty);
 }
 
-@Name("insertFacetRAW/removeFacet") @safe unittest
+@Name("insertFacet!(No.checkForFacetFaces)") @safe unittest
 {
     SimplicialComplex!() sc;
-    sc.insertFacetRAW([1,2]);
-    sc.insertFacetRAW([2,3]);
+    sc.insertFacet!(No.checkForFacetFaces)([1,2]);
+    sc.insertFacet!(No.checkForFacetFaces)([3,4]);
+
+    // TO DO: More tests here!
+
     // sc.insertFacetRAW([3,4,5]);
     // sc.insertFacetRAW([3,4,6]);
 
-    import std.stdio : writeln;
-    writeln(sc);
+    // import std.stdio : writeln;
+    // writeln(sc);
 }
 
 /*******************************************************************************
@@ -287,30 +290,17 @@ private:
     */
     SmallMap!(int, Vertex[]) facetVertices;
 
-    /* indexOfFacet[f] = i means the vertices of f begins at facetVertices[i]
-    */
-
-    static struct Simplex
-    {
-        Vertex_[maxFacetDimension + 1] vertices;
-        size_t nValid;
-        auto opSlice() const
-        {
-            return vertices[0 .. nValid];
-        }
-    }
-
-    static Simplex toSimplex(R)(R range)
+    alias NSimplex = StackArray!(Vertex_, maxFacetDimension + 1);
+    static NSimplex toNSimp(R)(R range)
     if (isInputRange!R && is(ElementType!R : Vertex_))
     {
-        assert(range.walkLength <= maxFacetDimension + 1);
-        Simplex simplexToReturn;
-        copy(range, simplexToReturn.vertices[]);
-        simplexToReturn.nValid = range.walkLength;
-        return simplexToReturn;
+        NSimplex toReturn;
+        range.each!(r => toReturn ~= r);
+        return toReturn;
     }
 
-    size_t[Simplex] indexOfFacet;
+    // indexOfFacet[f] = i means the vertices of f begins at facetVertices[i]
+    size_t[NSimplex] indexOfFacet;
 public:
     /***************************************************************************
     The type of the vertices in this simplicial complex.
@@ -339,15 +329,16 @@ public:
     Inserts a facet (given as an input range of vertices) into the simplicial
     complex.
     */
-    void insertFacet(S)(S simplex) if (isInputRange!S && is(ElementType!S : Vertex))
+    void insertFacet(Flag!"checkForFacetFaces" checkForFacetFaces = Yes.checkForFacetFaces, S)(S simplex)
+    if (isInputRange!S && is(ElementType!S : Vertex))
     {
-        StackArray!(Vertex, 16) simplex_;
+        // NSimplex simplex_ = toNSimp(simplex);
+        NSimplex simplex_;
         simplex.each!(v => simplex_ ~= v);
 
-        int dim = simplex_[].walkLength.to!int - 1;
+        int dim = simplex.walkLength.to!int - 1;
         assert(dim >= 0);
         simplex_[].assertValidSimplex(dim);
-
         assert(!this.contains(simplex),
             "expected a simplex not already in the simplicial complex");
 
@@ -355,57 +346,29 @@ public:
         facet. Also, we need independent copies of the facets to remove.
         TO DO: Create version w/ template arg that says skips this?
         NOTE: This is what is responsible for function allocating a closure!  */
-        auto toRemove = simplex_[].subsets.map!array.filter!(
-            s => this.containsFacet(s)).array;
-        toRemove.each!(s => this.removeFacet(s));
 
-        if (dim in facetVertices)
+        static if(checkForFacetFaces)
         {
-            facetVertices[dim] ~= simplex_;
-            assert(toSimplex(simplex_[]) !in indexOfFacet);           
-            indexOfFacet[toSimplex(simplex_[])] = facetVertices[dim].length - dim - 1;
+            simplex_[].subsets
+                .filter!(s => containsFacet(s))
+                .each!(s => removeFacet(s));
         }
         else
         {
-            facetVertices.insert(dim, simplex_);
-            indexOfFacet[toSimplex(simplex_[])] = 0;
+            assert(!simplex_[].subsets.any!(f => this.containsFacet(f)),
+                    "expected a simplex without any faces that are facets");
         }
-    }
-
-    /***************************************************************************
-    Inserts a facet (given as an input range of vertices) into the simplicial
-    complex.
-    */
-    void insertFacetRAW(S)(S simplex) if (isInputRange!S && is(ElementType!S : Vertex))
-    {
-        // StackArray!(Vertex, 16) simplex_;
-        // simplex.each!(v => simplex_ ~= v);
-        auto simplex_ = simplex.array.idup;
-
-        int dim = simplex_[].walkLength.to!int - 1;
-        assert(dim >= 0);
-        simplex_[].assertValidSimplex(dim);
-        assert(simplex_[] == simplex.array);
-
-        assert(!this.contains(simplex),
-            "expected a simplex not already in the simplicial complex");
-
-        foreach(face; simplex_[].subsets)
-        {
-            assert(!this.containsFacet(face),
-                "expected a simplex without any faces that are facets");
-        }
-
+        
         if (dim in facetVertices)
         {
             facetVertices[dim] ~= simplex_;
-            assert(toSimplex(simplex_[]) !in indexOfFacet);
-            indexOfFacet[toSimplex(simplex_[])] = facetVertices[dim].length - dim - 1;
+            assert(toNSimp(simplex_[]) !in indexOfFacet);                       
+            indexOfFacet[toNSimp(simplex_[])] = facetVertices[dim].length - dim - 1;
         }
         else
         {
-            facetVertices.insert(dim, simplex_.dup);
-            indexOfFacet[toSimplex(simplex_[])] = 0;
+            facetVertices.insert(dim, simplex_[].dup);
+            indexOfFacet[toNSimp(simplex_[])] = 0;
         }
     }
 
@@ -426,17 +389,17 @@ public:
         assert(this.contains(simplex),
             "tried to remove a facet not in the simplicial complex");
             
-        auto indx = indexOfFacet[toSimplex(simplex_[])];
+        auto indx = indexOfFacet[toNSimp(simplex_[])];
 
         // copy last facet into removed ones spot        
         copy(facetVertices[dim][$ - dim - 1  .. $],
              facetVertices[dim][indx .. indx + dim + 1]);
 
         // TO DO: Remove the need for .idup here. Custom AA type?
-        indexOfFacet[toSimplex(facetVertices[dim][$ - dim - 1  .. $])] = indx;
+        indexOfFacet[toNSimp(facetVertices[dim][$ - dim - 1  .. $])] = indx;
 
         facetVertices[dim] = facetVertices[dim][0 .. $ - dim - 1];
-        indexOfFacet.remove(toSimplex(simplex_[]));        
+        indexOfFacet.remove(toNSimp(simplex_[]));        
     }
 
     /***************************************************************************
@@ -512,7 +475,7 @@ public:
     bool containsFacet(F)(F facet) const
     if (isInputRange!F && is(ElementType!F : Vertex))
     {
-        return cast(bool) (toSimplex(facet.array) in indexOfFacet);
+        return cast(bool) (toNSimp(facet) in indexOfFacet);
     }
 
     /***************************************************************************
