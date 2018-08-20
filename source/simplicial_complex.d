@@ -332,11 +332,8 @@ public:
     void insertFacet(Flag!"checkForFacetFaces" checkForFacetFaces = Yes.checkForFacetFaces, S)(S simplex)
     if (isInputRange!S && is(ElementType!S : Vertex))
     {
-        // NSimplex simplex_ = toNSimp(simplex);
-        NSimplex simplex_;
-        simplex.each!(v => simplex_ ~= v);
-
-        int dim = simplex.walkLength.to!int - 1;
+        NSimplex simplex_ = toNSimp(simplex);
+        int dim = simplex_.length.to!int - 1;
         assert(dim >= 0);
         simplex_[].assertValidSimplex(dim);
         assert(!this.contains(simplex),
@@ -362,13 +359,13 @@ public:
         if (dim in facetVertices)
         {
             facetVertices[dim] ~= simplex_;
-            assert(toNSimp(simplex_[]) !in indexOfFacet);                       
-            indexOfFacet[toNSimp(simplex_[])] = facetVertices[dim].length - dim - 1;
+            assert(simplex_ !in indexOfFacet);                       
+            indexOfFacet[simplex_] = facetVertices[dim].length - dim - 1;
         }
         else
         {
             facetVertices.insert(dim, simplex_[].dup);
-            indexOfFacet[toNSimp(simplex_[])] = 0;
+            indexOfFacet[simplex_] = 0;
         }
     }
 
@@ -378,18 +375,16 @@ public:
     */
     void removeFacet(S)(S simplex) if (isInputRange!S && is(ElementType!S : Vertex))
     {
-        // TO DO: Improve this!
-        StackArray!(Vertex, 16) simplex_;
-        simplex.each!(v => simplex_ ~= v);
+        NSimplex simplex_ = toNSimp(simplex);
 
-        int dim = simplex_[].walkLength.to!int - 1;
+        int dim = simplex_[].length.to!int - 1;
         assert(dim >= 0);
         simplex_[].assertValidSimplex(dim);
 
         assert(this.contains(simplex),
             "tried to remove a facet not in the simplicial complex");
             
-        auto indx = indexOfFacet[toNSimp(simplex_[])];
+        auto indx = indexOfFacet[simplex_];
 
         // copy last facet into removed ones spot        
         copy(facetVertices[dim][$ - dim - 1  .. $],
@@ -399,7 +394,7 @@ public:
         indexOfFacet[toNSimp(facetVertices[dim][$ - dim - 1  .. $])] = indx;
 
         facetVertices[dim] = facetVertices[dim][0 .. $ - dim - 1];
-        indexOfFacet.remove(toNSimp(simplex_[]));        
+        indexOfFacet.remove(simplex_);        
     }
 
     /***************************************************************************
