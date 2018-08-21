@@ -2,12 +2,13 @@ import core.bitop : popcnt;
 import fluent.asserts;
 import std.algorithm : all, canFind, copy, each, equal, filter, find, fold, joiner, map,
     sort, sum;
+    
 import std.conv : to;
 import std.exception : enforce, assertThrown;
 import std.format : format;
 import std.meta : AliasSeq, allSatisfy, anySatisfy;
-import std.range : array, chain, drop, ElementType, empty, enumerate, front,
-    iota, isForwardRange, isInputRange, popFront, repeat, save, take,
+import std.range : array, back, popBack, chain, cycle, drop, ElementType, empty, enumerate, front,
+    iota, isForwardRange, isInputRange, popFront, repeat, retro, save, take,
     walkLength;
 import std.traits : lvalueOf, rvalueOf, hasAliasing, Unqual;
 import unit_threaded : Name;
@@ -1373,4 +1374,62 @@ if (isInputRange!R)
 {
     iota(1,10).toStaticArray!5.throwsWithMsg(
         "range has too many elements for static array");
+}
+
+/******************************************************************************
+Returns the set of symmetries of the n-gon.
+*/
+auto nGonSymmetries(int n)
+{
+    return chain(nGonRotations(n), nGonReflections(n));
+}
+///
+@Name("nGonSymmetries") unittest
+{
+    3.nGonSymmetries.should.containOnly([
+        [0,1,2], [1,2,0], [2,0,1],  // rotations
+        [2,1,0], [0,2,1], [1,0,2]   // reflections
+    ]);
+
+    4.nGonSymmetries.should.containOnly([
+        [0,1,2,3], [1,2,3,0], [2,3,0,1], [3,0,1,2], // rotations
+        [3,2,1,0], [0,3,2,1], [1,0,3,2], [2,1,0,3]  // reflections
+    ]);
+}
+
+/******************************************************************************
+Returns the set of rotations of the n-gon.
+*/
+auto nGonRotations(int n)
+{
+    return n.iota.map!(k => n.iota.cycle(k).take(n).array);
+}
+///
+@Name("nGonRotations") unittest
+{
+    3.nGonRotations.should.containOnly([
+        [0,1,2], [1,2,0], [2,0,1]
+    ]);
+    4.nGonRotations.should.containOnly([
+        [0,1,2,3], [1,2,3,0], [2,3,0,1], [3,0,1,2]
+    ]);    
+}
+
+/******************************************************************************
+Returns the set of reflections of the n-gon.
+*/
+auto nGonReflections(int n)
+{
+    return n.iota.map!(k => n.iota.cycle(k).take(n).retro.array);
+}
+///
+@Name("nGonReflections") unittest
+{
+    3.nGonReflections.should.containOnly([
+        [2,1,0], [0,2,1], [1,0,2]
+    ]);
+
+    4.nGonReflections.should.containOnly([
+        [3,2,1,0], [0,3,2,1], [1,0,3,2], [2,1,0,3]
+    ]);        
 }
