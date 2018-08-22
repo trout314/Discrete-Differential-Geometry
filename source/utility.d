@@ -1,7 +1,7 @@
 import core.bitop : popcnt;
 import fluent.asserts;
 import std.algorithm : all, canFind, copy, each, equal, filter, find, fold, joiner, map,
-    sort, sum;
+    sort, sum, uniq;
     
 import std.conv : to;
 import std.exception : enforce, assertThrown;
@@ -1432,4 +1432,105 @@ auto nGonReflections(int n)
     4.nGonReflections.should.containOnly([
         [3,2,1,0], [0,3,2,1], [1,0,3,2], [2,1,0,3]
     ]);        
+}
+
+/******************************************************************************
+Returns the set distinct triangulations of the labelled n-gon [0,1, ... ,n-1]
+up to the action of the isometry group of the n-gon
+*/
+const(int)[][][] nGonTriangReps(int n)
+{
+    if(n == 3)
+    {
+        return [[[0,1,2]]];
+    }
+
+    if(n == 4)
+    {
+        return [[[0,1,2],[0,2,3]]];
+    }
+
+    if(n == 5)
+    {
+        return [[[0,1,2],[0,2,3],[0,3,4]]];
+    }
+
+    if(n == 6)
+    {
+        return [
+            [[0,1,2],[0,2,3],[0,3,4],[0,4,5]], 
+            [[0,1,2],[0,2,3],[0,3,5],[3,4,5]],
+            [[0,1,5],[1,2,3],[1,3,5],[3,4,5]]
+        ];
+    }
+
+    if(n == 7)
+    {
+        return [
+            [[0,1,2],[0,2,3],[0,3,4],[0,4,5],[0,5,6]], 
+            [[0,1,3],[0,3,4],[0,4,5],[0,5,6],[1,2,3]],
+            [[0,1,3],[0,3,4],[0,4,6],[1,2,3],[4,5,6]],
+            [[0,1,2],[0,2,4],[0,4,5],[0,5,6],[2,3,4]]
+        ];
+    }
+
+    // TO DO: Make function to generate these
+    assert(0, "unsupported nubmer of sides");
+}
+
+@Name("nGonTriangReps") unittest
+{
+    foreach(n; 3 .. 8)
+    {
+        foreach(triang; nGonTriangReps(n))
+        {
+            import simplicial_complex : simplicialComplex;
+            import algorithms : isPureOfDim;
+            import std.stdio : writeln;
+
+            auto sc = simplicialComplex(triang);
+
+            // Test that this is n-gon triangulation
+            assert(sc.isPureOfDim(2));
+            assert(sc.simplices(1).all!(
+                edge => sc.star(edge).walkLength <= 2));
+
+            auto boundaryEdges = sc.simplices(1).filter!(
+                edge => sc.star(edge).walkLength == 1);
+            
+            auto interiorEdges = sc.simplices(1).filter!(
+                edge => sc.star(edge).walkLength == 2);
+
+            boundaryEdges.walkLength.should.equal(n);
+            interiorEdges.walkLength.should.equal(n - 3);
+            sc.simplices(2).walkLength.should.equal(n - 2);
+        
+            auto nGonEdges = n.iota.map!(
+                k => (k < n - 1) ? [k, k + 1] : [0 , n - 1]);
+            boundaryEdges.should.containOnly(nGonEdges);
+
+            sc.simplices(0).map!front.should.containOnly(n.iota);
+        }
+    }
+}
+
+int[][][] nGonTriangs(int n)
+{
+    int[][][] ans;
+    foreach(rep; nGonTriangReps(n))
+    {
+        foreach(sym_; nGonSymmetries(n))
+        {
+            alias sym = f => f.map!(v => sym_[v]).array.sort.array;
+            ans ~= rep.map!sym.array.sort.array;
+        }
+    }
+    return ans.sort.uniq.array;
+}
+///
+@Name("nGonTriangs") unittest
+{
+    import std.stdio : writeln;
+    7.nGonTriangs.each!writeln;
+    7.nGonTriangs.length.writeln;
 }
