@@ -1017,7 +1017,7 @@ unittest
 /******************************************************************************
 * Saves a simplicial complex to a file specified by fileName.
 */
-void saveSimplicialComplexTo(Vertex)(SimplicialComplex!Vertex sc, string fileName)
+void saveSimplicialComplex(Vertex)(SimplicialComplex!Vertex sc, string fileName)
 {
     auto saveFile = File(fileName, "w"); // Open in write-only mode
     saveFile.writeln("# created ", Clock.currTime.to!DateTime);
@@ -1028,9 +1028,9 @@ void saveSimplicialComplexTo(Vertex)(SimplicialComplex!Vertex sc, string fileNam
 unittest
 {
     import manifold : standardSphereFacets;
-    auto fileName = "data/manifold_sampler_unittest_save.dat";
+    auto fileName = "data/simplicial_complex_unittest_save.dat";
     auto sc = simplicialComplex([[1,2],[3],[2,4,5], [2,4,6]]);
-    sc.saveSimplicialComplexTo(fileName);
+    sc.saveSimplicialComplex(fileName);
     auto loaded = loadSimplicialComplex(fileName);
     assert(loaded == sc);
 }
