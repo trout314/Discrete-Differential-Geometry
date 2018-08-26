@@ -234,7 +234,7 @@ public:
 
             if(simplex.length <= dimension - 1)
             {
-                totSqrDegrees[simplex.length - 1] -= 2*degreeMap[simplex] - 1;
+                totSqrDegrees[simplex.length - 1] -= 2*degreeMap[simplex] + 1;
             }
 
             if((simplex.length == dimension) && (degreeMap[simplex] == 1))
@@ -970,6 +970,56 @@ real degreeVariance(Vertex, int mfdDim)(const ref Manifold!(mfdDim, Vertex) mfd,
     return meanSqrDeg - meanDeg^^2;
 }
 
+/******************************************************************************
+Does the 'diskIndx'-th hinge move associated at 'hinge'. Must give the
+link of this hinge as `hingeLink`
+*/
+void doHingeMove(Vertex, int dim, H, K)(
+    ref Manifold!(dim, Vertex) manifold,
+    H hinge_,
+    K linkVertices_,
+    int diskIndx
+)
+if (isInputRange!H && is(ElementType!H : Vertex)
+    && isInputRange!K && is(ElementType!K : Vertex))
+{
+    import utility : nGonTriangs;
+
+    auto hinge = hinge_.toStaticArray!(dim - 1);
+
+    // TO DO: Decide what to do about this magic constant 7
+    auto linkVertices = linkVertices_.toStaticArray!7;
+
+    immutable deg = manifold.degree(hinge_).to!int;
+    assert(diskIndx < deg.nGonTriangs.walkLength);
+    auto diskFacets = deg.nGonTriangs[diskIndx];
+
+    import std.stdio : writeln;
+    SimplicialComplex!(Vertex, 2) disk;
+    foreach(triangle; diskFacets)
+    {
+        triangle.writeln;
+        triangle.map!(indx => linkVertices[indx]).writeln;
+        disk.insertFacet(triangle.map!(indx => linkVertices[indx]));
+    }
+    disk.writeln;
+
+}
+
+unittest
+{
+    auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
+        [2,3,5], [3,4,5], [1,4,5]]);
+    
+    auto twoPts = simplicialComplex([[7], [8]]);
+    auto suspension = octahedron.asSimplicialComplex.join(twoPts);
+    auto mfd = Manifold!3(suspension.facets);
+
+    import std.stdio : writeln;
+    mfd.writeln;
+    mfd.doHingeMove([0,7], [1,2,3,4], 1);
+    mfd.writeln;
+}
 
 
 // unittest
