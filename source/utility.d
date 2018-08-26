@@ -1530,7 +1530,14 @@ int[][][] nGonTriangs(int n)
 ///
 @Name("nGonTriangs") unittest
 {
-    import std.stdio : writeln;
-    7.nGonTriangs.each!writeln;
-    7.nGonTriangs.length.writeln;
+    // import std.stdio : writeln;
+    // 7.nGonTriangs.each!writeln;
+    // 7.nGonTriangs.length.writeln;
+    assert(3.nGonTriangs.walkLength == 1);
+    assert(4.nGonTriangs.walkLength == 2);
+    assert(5.nGonTriangs.walkLength == 5);
+    assert(6.nGonTriangs.walkLength == 14);
+    assert(7.nGonTriangs.walkLength == 42);
+
+    // TO DO: More tests!
 }
