@@ -1,5 +1,5 @@
 import algorithms : eulerCharacteristic;
-import manifold : coCenter, movesAtFacet, Manifold, standardSphereFacets, doPachnerImpl;
+import manifold : coCenter, degreeVariance, movesAtFacet, Manifold, standardSphere, totalSquareDegree, doPachnerImpl, meanDegree;
 import simplicial_complex : fVector;
 import std.algorithm : all, each, filter, joiner, map, max, maxElement, sum;
 import std.conv : to;
@@ -45,24 +45,15 @@ static immutable real[17] flatDegreeInDim = [
 //-------------------------------- SETTINGS ------------------------------------
 // TO DO: make setting setting a coef to 0.0 disable un-needed code
 
-enum int numFacetsTarget = 1000;
+enum int numFacetsTarget = 10000;
 enum real hingeDegreeTarget = flatDegreeInDim[3];
 
 enum real numFacetsCoef = 0.01;
-enum real numHingesCoef = 0.1;
+enum real numHingesCoef = 0.01;
 enum real hingeDegreeVarCoef = 0.0;
 
-enum int triesPerReport = 10000;
-enum int maxTries = 100000;
-
-real meanHingeDegree(Vertex, int dim)(const ref Manifold!(dim, Vertex) manifold)
-{
-    immutable real numHinges = manifold.fVector[dim - 2];
-    immutable real numFacets = manifold.fVector[dim];
-
-    // See Eq. 7, p. 5 of https://arxiv.org/pdf/1208.1514.pdf
-    return numFacets * (dim + 1) * dim / (2 * numHinges);
-}
+enum int triesPerReport = 20000;
+enum int maxTries = 10000000;
 
 struct Sampler(Vertex, int dim)
 {
@@ -95,30 +86,28 @@ public:
         // gcTimer.reset;
 
         w.writeln('#'.repeat(80));
-        w.writefln("# %s", Clock.currTime.to!DateTime);
-        w.writefln("# usec/move (moves) : %s", mt);
-        // w.writefln("# usec/move (GC)    : %s", gt);
-        w.writefln("# usec/move total   : %s", tt);
+        w.writefln("# %s  |  usec/move : %s", Clock.currTime.to!DateTime, tt);
 
         w.writeln("#", '-'.repeat(79));
-        w.writefln("# fVector              : %s", manifold.fVector);
-        w.writefln("# number of facets     : %s (target: %s)",
-            manifold.fVector.back, numFacetsTarget);
-        w.writefln("# average hinge-degree : %s (target: %s)",
-            manifold.meanHingeDegree, hingeDegreeTarget);
+        w.writefln("# fVector           : %s", manifold.fVector);
+        w.writefln("# average degree    : %s",
+            (dim+1).iota.map!(dim => manifold.meanDegree(dim)));
+        w.writefln("# std dev in degree : %s",
+            (dim+1).iota.map!(dim => manifold.degreeVariance(dim).sqrt));
 
         auto vp = this.volumePenalty;
         auto gcp = this.globalCurvaturePenalty;
         auto lcp = this.localCurvaturePenalty;
 
         w.writeln("#", '-'.repeat(79));
-        w.writefln("# number of facets penalty : %e = %f * %e",
+        w.writefln("# number of facets penalty (A): %e = %f * %e",
             numFacetsCoef * vp, numFacetsCoef, vp);
-        w.writefln("# mean hinge-degee penalty : %e = %f * %e",
+        w.writefln("# mean hinge-degee penalty (B): %e = %f * %e",
             numHingesCoef * gcp, numHingesCoef, gcp);
-        w.writefln("# var hinge-degree penalty : %e = %f * %e",
+        w.writefln("# var hinge-degree penalty (C): %e = %f * %e",
             hingeDegreeVarCoef * lcp, hingeDegreeVarCoef, lcp);
-        w.writefln("#          TOTAL OBJECTIVE : %e", this.objective);
+        w.writefln("#             TOTAL OBJECTIVE : %e %s %e", this.objective,
+            "Raw A + Raw B :", vp + gcp);
 
         w.writeln("#", '-'.repeat(79));
         w.writeln("# MOVE   : DONE  /  TRIED");
@@ -126,6 +115,13 @@ public:
             i + 1, dim + 1 - i, acceptCount[i], tryCount[i]));
         w.writefln("# TOTALS : %s / %s", acceptCount[].sum, tryCount[].sum);        
     }
+
+    void columnReport(Writer)(auto ref Writer w)
+    {
+
+    }
+
+
 }
 
 real volumePenalty(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
@@ -151,7 +147,7 @@ real localCurvaturePenalty(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
     immutable numH = s.manifold.fVector[dim - 2];
     immutable hPerF = dim * (dim + 1) / 2;
 
-    immutable sqDeg = s.manifold.totSqrDegree;
+    immutable sqDeg = s.manifold.totalSquareDegree(dim - 2);
     immutable real degTarget = hPerF * numF / numH.to!real;
 
     import std.math : modf;
@@ -202,9 +198,7 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         s.manifold.doPachnerImpl(move, coMove);
         ++s.tryCount[dim + 1 - move.walkLength];
 
-        real newObj = s.objective;
-
-        real deltaObj = newObj - oldObj;
+        real deltaObj = s.objective - oldObj;
         if ((deltaObj < 0) || (uniform01 < exp(-deltaObj))) // ACCEPT MOVE
         {
             ++s.acceptCount[dim + 1 - move.walkLength];
