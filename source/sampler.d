@@ -45,15 +45,19 @@ static immutable real[17] flatDegreeInDim = [
 //-------------------------------- SETTINGS ------------------------------------
 // TO DO: make setting setting a coef to 0.0 disable un-needed code
 
-enum int numFacetsTarget = 10000;
-enum real hingeDegreeTarget = flatDegreeInDim[3];
+enum int numFacetsTarget = 20000;
+enum real hingeDegreeTarget = flatDegreeInDim[4];
 
 enum real numFacetsCoef = 0.01;
-enum real numHingesCoef = 0.01;
-enum real hingeDegreeVarCoef = 0.0;
+enum real numHingesCoef = 0.05;
+enum real hingeDegreeVarCoef = 0.05;
 
-enum int triesPerReport = 20000;
-enum int maxTries = 10000000;
+enum int triesPerReport = 200000;
+enum int maxTries = 50000000;
+
+enum int triesPerCollect = 1000;
+
+enum useHingeMoves = true;
 
 struct Sampler(Vertex, int dim)
 {
@@ -65,8 +69,6 @@ private:
     ulong[dim + 1] tryCount;
     ulong[dim + 1] acceptCount;
 
-    StopWatch moveTimer;
-    StopWatch outputTimer;
     StopWatch timer;
 public:
     this(Manifold!(dim, Vertex) initialManifold)
@@ -78,12 +80,6 @@ public:
     {
         auto tt = timer.peek.total!"usecs" / real(triesPerReport);
         timer.reset;
-
-        auto mt = moveTimer.peek.total!"usecs" / real(triesPerReport);
-        moveTimer.reset;
-
-        // auto gt = gcTimer.peek.total!"usecs" / real(triesPerReport);
-        // gcTimer.reset;
 
         w.writeln('#'.repeat(80));
         w.writefln("# %s  |  usec/move : %s", Clock.currTime.to!DateTime, tt);
@@ -171,9 +167,8 @@ real objective(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
 
 void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
 {
-    // GC.disable;
+    GC.disable;
     s.timer.start;
-    // s.moveTimer.start;
     while (s.tryCount[].sum < maxTries)
     {
         assert(s.unusedVertices.all!(v => !s.manifold.contains([v])));
@@ -219,11 +214,16 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         //--------------------------- MAKE REPORT ----------------------------
         if (s.tryCount[].sum % triesPerReport == 0)
         {
-            s.moveTimer.stop;
-            scope(exit) s.moveTimer.start;
-
             () @trusted {s.report(stdout);} ();
             s.timer.reset;
+        }
+
+        //------------------------- COLLECT GARBAGE --------------------------
+        if (s.tryCount[].sum % triesPerCollect == 0)
+        {
+            GC.enable;
+            GC.collect;
+            GC.disable;
         }
     }
 }
