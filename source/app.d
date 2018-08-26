@@ -8,9 +8,8 @@ else
 
         import sampler;
 
-        import manifold : Manifold, standardSphereFacets;
-        auto m = Manifold!3(standardSphereFacets(3));
-        auto s = Sampler!(int, 3)(m);
+        import manifold : standardSphere;
+        auto s = Sampler!(int, 3)(standardSphere!3);
         s.sample;
 
         // ProfilerStop();
