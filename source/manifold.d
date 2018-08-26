@@ -965,13 +965,9 @@ real degreeVariance(Vertex, int mfdDim)(const ref Manifold!(mfdDim, Vertex) mfd,
         return 0;   // No variance in ridge and facet dimension
     }
 
-    immutable nFacets = mfd.fVector.back;
-    immutable nSimps = mfd.fVector[dim];
-    immutable simpsPerFacet = binomial(mfdDim + 1, dim + 1);
-    immutable totDeg = simpsPerFacet * nFacets;
     immutable meanDeg = mfd.meanDegree(dim);
-    immutable sqrDeg = mfd.totalSquareDegree(dim);
-    return (sqrDeg - 2 * meanDeg * totDeg + meanDeg^^2)/nSimps; 
+    immutable meanSqrDeg = mfd.totalSquareDegree(dim) / real(mfd.fVector[dim]);
+    return meanSqrDeg - meanDeg^^2;
 }
 
 
