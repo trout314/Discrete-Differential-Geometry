@@ -1,7 +1,7 @@
 import algorithms : canFind, eulerCharacteristic, is2Sphere, isCircle,
     isConnected, isPureOfDim, join;
 import fluent.asserts;
-import simplicial_complex : fVector, SimplicialComplex, assertValidSimplex, loadSimplicialComplex;
+import simplicial_complex : fVector, simplicialComplex, SimplicialComplex, assertValidSimplex, loadSimplicialComplex;
 import std.algorithm : all, any, copy, canFind, each, equal, filter, find, joiner,
     map, maxElement, sort, sum, uniq;
 import std.conv : to;
@@ -33,8 +33,8 @@ private:
     alias RidgeLink = StackArray!(Vertex, 2);
     RidgeLink[Ridge] ridgeLinks;
 
-    size_t[dimension_ + 1] numSimplices;   
-    ulong totalSquaredHingeDegree;
+    size_t[dimension_ + 1] numSimplices;
+    ulong[dimension - 1] totSqrDegrees;
 
     //--------------- Helper Functions ---------------
     static NSimplex toNSimp(R)(R range)
@@ -102,12 +102,10 @@ public:
 
         numSimplices[] = simpComp.fVector[];
 
-        static if(dimension >= 2)
+        foreach(d; 0 .. dimension - 1)
         {
-            totalSquaredHingeDegree = simplices(dimension - 2)
-                .map!(s => this.degree(s)^^2).sum;
+            totSqrDegrees[d] = simplices(d).map!(s => this.degree(s)^^2).sum;
         }
-
 
         // Sanity checking. TO DO: More checking!
         // foreach(ridge; simplices(dimension - 1))
@@ -179,9 +177,9 @@ public:
             auto simplex = toNSimp(simplex_);
             ++degreeMap[simplex];
         
-            if(simplex.length == dimension - 1)
+            if(simplex.length <= dimension - 1)
             {
-                totalSquaredHingeDegree += 2*degreeMap[simplex] - 1;
+                totSqrDegrees[simplex.length - 1] += 2*degreeMap[simplex] - 1;
             }
         
             if(simplex.length == dimension)
@@ -234,9 +232,9 @@ public:
 
             --degreeMap[simplex];
 
-            if(simplex.length == dimension - 1)
+            if(simplex.length <= dimension - 1)
             {
-                totalSquaredHingeDegree -= 2*degreeMap[simplex] - 1;
+                totSqrDegrees[simplex.length - 1] -= 2*degreeMap[simplex] - 1;
             }
 
             if((simplex.length == dimension) && (degreeMap[simplex] == 1))
@@ -303,12 +301,6 @@ public:
     }
 
     alias asSimplicialComplex this;
-
-    auto totSqrDegree() const
-    {
-        return totalSquaredHingeDegree;
-    }
-
 }
 
 /*******************************************************************************
@@ -441,7 +433,7 @@ void doPachner(Vertex, int dim)(
 ///
 @Name("doPachner 1 -> (dim + 1)") @safe unittest
 {
-    auto m = Manifold!2(standardSphereFacets(2));
+    auto m = standardSphere!2;
     m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
     
     m.doPachner([1,2,3], 4);
@@ -504,7 +496,7 @@ void doPachner(Vertex, int dim)(
 ///
 @Name("doPachner (general)") unittest
 {
-    auto m = Manifold!2(standardSphereFacets(2));
+    auto m = standardSphere!2;
     m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
     
     m.doPachner([1,2,3], 4);
@@ -587,33 +579,52 @@ auto coCenter(Vertex, int dim)(
 }
 
 // TO DO: Separate unittesting for findCoCenter
-// TO DO: Use standardSphereFacets below in appropriate places
+
+/******************************************************************************
+Returns the "standard" triangulation of a sphere of the given dimension. This
+is just the boundary of the simplex of one higher dimension.
+*/
+Manifold!(dim, int) standardSphere(int dim)()
+{
+    static assert(dim >= 1);
+    return Manifold!(dim, int)(iota(dim + 2).subsetsOfSize(dim + 1));
+}
+///
+@Name("standardSphere") unittest
+{
+    standardSphere!1.facets.should.containOnly(
+        [[0,1], [1,2], [0,2]]); 
+    standardSphere!2.facets.should.containOnly(
+        [[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
+    standardSphere!3.facets.should.containOnly(
+        [[0,1,2,3], [0,1,2,4], [0,1,3,4], [0,2,3,4],[1,2,3,4]]);
+}
 
 /*******************************************************************************
 Returns a lazy range that goes through the facets of the "standard" sphere
 of dimension `dim`. This manifold is just the boundary if the "standard"
 (dim+1)-simplex [0,1,2, ... (dim+1)].
 */
-auto standardSphereFacets(int dim)
-{
-    assert(dim >= 1);
-    return iota(dim + 2).subsetsOfSize(dim + 1).map!array;
-}
-///
-@Name("standardSphereFacets") @safe unittest
-{
-    standardSphereFacets(2).should.containOnly(
-        [[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
+// auto standardSphereFacets(int dim)
+// {
+//     assert(dim >= 1);
+//     return iota(dim + 2).subsetsOfSize(dim + 1).map!array;
+// }
+// ///
+// @Name("standardSphereFacets") @safe unittest
+// {
+//     standardSphereFacets(2).should.containOnly(
+//         [[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
 
-    auto s = Manifold!2(standardSphereFacets(2));
-    s.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
+//     auto s = Manifold!2(standardSphereFacets(2));
+//     s.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
 
-    foreach(dim; staticIota!(1,9))
-    {
-        immutable m = Manifold!dim(standardSphereFacets(dim));
-        assert(m.numFacets == dim + 2);
-    }
-}
+//     foreach(dim; staticIota!(1,9))
+//     {
+//         immutable m = Manifold!dim(standardSphereFacets(dim));
+//         assert(m.numFacets == dim + 2);
+//     }
+// }
 
 ///
 @Name("facets(dim) (pure nothrow @nogc @safe)") pure @safe unittest
@@ -827,7 +838,7 @@ auto movesAtFacet(Vertex, int dim)(
     are valid. */    
     foreach(dim; staticIota!(1,4))
     {
-        immutable sphere = Manifold!dim(standardSphereFacets(dim));
+        immutable sphere = standardSphere!dim;
         foreach(f; sphere.facets)
         {
             sphere.movesAtFacet(f).should.containOnly([f.array]);
@@ -878,7 +889,7 @@ Manifold!(dimension, Vertex) loadManifold(int dimension, Vertex = int)(string fi
 }
 
 ///
-unittest
+@Name("loadManifold") unittest
 {
     auto m = loadManifold!2(
         "data/manifold_sampler_unittest_load.dat");
@@ -890,76 +901,80 @@ unittest
         "data/manifold_sampler_unittest_bad_load.dat"));
 }
 
-// /******************************************************************************
-// * Saves a simplicial complex to a file specified by fileName.
-// */
-// void saveSimplicialComplexTo(Vertex)(SimplicialComplex!Vertex sc, string fileName)
-// {
-//     auto saveFile = File(fileName, "w"); // Open in write-only mode
-//     saveFile.writeln("# created ", Clock.currTime.to!DateTime);
-//     saveFile.write(sc);
-// }
+/******************************************************************************
+Saves a manifold to a file specified by fileName.
+*/
+void saveTo(int dimension, Vertex = int)(const ref Manifold!(dimension, Vertex) mfd, string fileName)
+{
+    auto saveFile = File(fileName, "w"); // Open in write-only mode
+    saveFile.write(mfd.asSimplicialComplex);
+}
 
-// ///
-// unittest
-// {
-//     import manifold : standardSphereFacets;
-//     auto fileName = "data/manifold_sampler_unittest_save.dat";
-//     auto sc = simplicialComplex([[1,2],[3],[2,4,5], [2,4,6]]);
-//     sc.saveSimplicialComplexTo(fileName);
-//     auto loaded = loadSimplicialComplexFrom(fileName);
-//     assert(loaded == sc);
-// }
+///
+@Name("saveTo") unittest
+{
+    auto fileName = "data/manifold_sampler_unittest_save.dat";
+    auto sphere = standardSphere!4;
+    sphere.saveTo(fileName);
+    Manifold!4 loadedSphere = loadManifold!4(fileName);
+    assert(loadedSphere == sphere);
+}
 
-//     try
-//     {
-//         auto loaded = Manifold!dim(facets.parse!(Simplex[]));
-//         return loaded;
-//     }
-//     catch (Exception ex)
-//     {
-//         ex.msg ~= "\n\n\t ERROR: encountered malformed facet list in initial manifold triangulation file: "
-//             ~ fileName ~ "\n";
-//         throw ex;
-//     }
-// }
-// ///
-// unittest
-// {
+/******************************************************************************
+Returns the mean degree of simplices of the given dimension 'dim'
+*/
+real meanDegree(Vertex, int mfdDim)(const ref Manifold!(mfdDim, Vertex) mfd, int dim)
+{
+    assert(dim >= 0);
+    assert(dim <= mfdDim);
+    immutable nSimps = mfd.fVector[dim];
+    immutable nFacets = mfd.fVector.back;
+    immutable simpsPerFacet = binomial(mfdDim + 1, dim + 1);
+    return simpsPerFacet * nFacets / real(nSimps);
+}
 
-//     auto manifold = loadManifold!2("data/manifold_sampler_unittest_load.dat");
-//     auto expectedManifold = Manifold!2([[0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4,
-//             5], [0, 5, 6], [0, 6, 1], [1, 2, 6], [2, 3, 5], [2, 5, 6], [3, 4, 5]]);
-//     assert(manifold == expectedManifold);
+/******************************************************************************
+Returns total (degree(s))^^2 for all simplices s of given dimension 'dim'.
+*/
+ulong totalSquareDegree(Vertex, int mfdDim)(const ref Manifold!(mfdDim, Vertex) mfd, int dim)
+{
+    assert(dim >= 0);
+    assert(dim <= mfd.dimension);
+    if(dim == mfdDim - 1)
+    {
+        // All codimension-1 simplices (ridges) have degree 2
+        return 4 * mfd.numSimplices[dim];
+    }
+    else if(dim == mfdDim)
+    {
+        // All facets have degree 1
+        return mfd.numSimplices[dim];
+    }
+    return mfd.totSqrDegrees[dim];
+}
 
-//     assertThrown(loadManifold!2("data/manifold_sampler_unittest_bad_load.dat"));
-// }
+/******************************************************************************
+Returns the variance in the degree of simplices of the given dimension 'dim'
+*/
+real degreeVariance(Vertex, int mfdDim)(const ref Manifold!(mfdDim, Vertex) mfd, int dim)
+{
+    assert(dim >= 0);
+    assert(dim <= mfdDim);
+    if(dim >= mfdDim - 1)
+    {
+        return 0;   // No variance in ridge and facet dimension
+    }
 
-// /******************************************************************************
-// * Saves a manifold to file specified by fileName.
-// */
-// void saveTo(size_t dimension)(Manifold!dimension manifold, string fileName)
-// {
-//     auto saveFile = File(fileName, "w"); // Open in write-only mode
+    immutable nFacets = mfd.fVector.back;
+    immutable nSimps = mfd.fVector[dim];
+    immutable simpsPerFacet = binomial(mfdDim + 1, dim + 1);
+    immutable totDeg = simpsPerFacet * nFacets;
+    immutable meanDeg = mfd.meanDegree(dim);
+    immutable sqrDeg = mfd.totalSquareDegree(dim);
+    return (sqrDeg - 2 * meanDeg * totDeg + meanDeg^^2)/nSimps; 
+}
 
-//     saveFile.writeln("# created ", Clock.currTime.to!DateTime);
-//     saveFile.write("[");
-//     foreach (record; manifold.facetRecords[0 .. $ - 1])
-//     {
-//         saveFile.write(record.facet, ",");
-//     }
-//     saveFile.writeln(manifold.facetRecords.back.facet, "]");
-// }
-// ///
-// unittest
-// {
 
-//     auto fileName = "data/manifold_sampler_unittest_save.dat";
-//     auto sphere = Manifold!4(standardSphere(4));
-//     sphere.saveTo(fileName);
-//     Manifold!4 loadedSphere = loadManifold!4(fileName);
-//     assert(loadedSphere == sphere);
-// }
 
 // unittest
 // {
