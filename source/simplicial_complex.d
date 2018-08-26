@@ -967,11 +967,6 @@ public:
     }();
 }
 
-unittest 
-{
-    auto x = simplicialComplex([[1,2],[2,3], [3,4]]);
-}
-
 class BadSimpCompLoad : Exception
 {
     this(string msg, string file = __FILE__, size_t line = __LINE__) {
@@ -1002,7 +997,7 @@ SimplicialComplex!Vertex loadSimplicialComplex(Vertex = int)(string fileName)
 }
 
 ///
-unittest
+@Name("loadSimplicialComplex") unittest
 {
     auto sc = loadSimplicialComplex(
         "data/manifold_sampler_unittest_load.dat");
@@ -1017,7 +1012,7 @@ unittest
 /******************************************************************************
 * Saves a simplicial complex to a file specified by fileName.
 */
-void saveSimplicialComplex(Vertex)(SimplicialComplex!Vertex sc, string fileName)
+void saveTo(Vertex)(SimplicialComplex!Vertex sc, string fileName)
 {
     auto saveFile = File(fileName, "w"); // Open in write-only mode
     saveFile.writeln("# created ", Clock.currTime.to!DateTime);
@@ -1025,12 +1020,11 @@ void saveSimplicialComplex(Vertex)(SimplicialComplex!Vertex sc, string fileName)
 }
 
 ///
-unittest
+@Name("saveTo") unittest
 {
-    import manifold : standardSphereFacets;
     auto fileName = "data/simplicial_complex_unittest_save.dat";
     auto sc = simplicialComplex([[1,2],[3],[2,4,5], [2,4,6]]);
-    sc.saveSimplicialComplex(fileName);
+    sc.saveTo(fileName);
     auto loaded = loadSimplicialComplex(fileName);
     assert(loaded == sc);
 }
