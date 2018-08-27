@@ -13,7 +13,7 @@ import std.range : array, back, chain, empty, front, iota, popBack, popFront, re
     save, walkLength;
 import std.stdio : write, writefln, writeln, stdout;
 import unit_threaded : Name;
-import utility : subsetsOfSize, subsets;
+import utility : subsetsOfSize, subsets, toStaticArray;
 
 import core.memory : GC;
 import std.datetime.systime : Clock;
@@ -46,14 +46,14 @@ static immutable real[17] flatDegreeInDim = [
 // TO DO: make setting setting a coef to 0.0 disable un-needed code
 
 enum int numFacetsTarget = 20000;
-enum real hingeDegreeTarget = flatDegreeInDim[4];
+enum real hingeDegreeTarget = flatDegreeInDim[3];
 
 enum real numFacetsCoef = 0.01;
 enum real numHingesCoef = 0.05;
 enum real hingeDegreeVarCoef = 0.05;
 
-enum int triesPerReport = 200000;
-enum int maxTries = 50000000;
+enum int triesPerReport = 100000;
+enum int maxTries = 1000000;
 
 enum int triesPerCollect = 1000;
 
@@ -179,8 +179,12 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
             s.unusedVertices ~= s.manifold.fVector[0].to!int;
         }
 
-        auto facet = s.manifold.randomFacetOfDim(dim).array;
+        // auto facet = s.manifold.randomFacetOfDim(dim).array;
+
+        auto facet_ = s.manifold.randomFacetOfDim(dim).toStaticArray!(dim + 1);
+        auto facet = facet_[];
         auto moves = s.manifold.movesAtFacet(facet).map!array.array;
+
         auto choiceIndx = moves.map!(m => 1.0L / (dim - m.walkLength + 2)).array.dice;
         auto move = moves[choiceIndx];
 
@@ -214,7 +218,7 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         //--------------------------- MAKE REPORT ----------------------------
         if (s.tryCount[].sum % triesPerReport == 0)
         {
-            () @trusted {s.report(stdout);} ();
+            s.report(stdout);
             s.timer.reset;
         }
 
