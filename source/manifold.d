@@ -954,6 +954,28 @@ ulong totalSquareDegree(Vertex, int mfdDim)(const ref Manifold!(mfdDim, Vertex) 
     }
     return mfd.totSqrDegrees[dim];
 }
+///
+@Name("totalSquareDegree") unittest
+{
+    foreach(dim; staticIota!(1, 8))
+    {
+        auto m = standardSphere!dim;
+        foreach(d; 0 .. dim + 1)
+        {
+            // (dim + 2) choose (d + 1) faces of dimension d
+            // each with degree (dim - d + 1)
+            m.totalSquareDegree(d).should.equal(
+                binomial(dim + 2, d + 1) * (dim - d + 1)^^2);
+        }
+    }
+
+    auto pyramid = Manifold!2(
+        [[0,1,2], [0,2,3], [0,1,3], [1,2,4], [2,3,4], [1,3,4]]);
+
+    pyramid.totalSquareDegree(0).should.equal(2 * 3^^2 + 3 * 4^^2);
+    pyramid.totalSquareDegree(1).should.equal(9 * 2^^2);
+    pyramid.totalSquareDegree(2).should.equal(6 * 1^^2);
+}
 
 /******************************************************************************
 Returns the variance in the degree of simplices of the given dimension 'dim'
@@ -982,7 +1004,6 @@ real degreeVariance(Vertex, int mfdDim)(const ref Manifold!(mfdDim, Vertex) mfd,
 
     auto pyramid = Manifold!2(
         [[0,1,2], [0,2,3], [0,1,3], [1,2,4], [2,3,4], [1,3,4]]);
-
 
     // pyramid has two vertices with deg(v)=3 and three vertices with deg(v)=4
     real md0 = pyramid.meanDegree(0);
