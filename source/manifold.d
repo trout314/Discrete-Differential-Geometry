@@ -602,32 +602,6 @@ Manifold!(dim, int) standardSphere(int dim)()
         [[0,1,2,3], [0,1,2,4], [0,1,3,4], [0,2,3,4],[1,2,3,4]]);
 }
 
-/*******************************************************************************
-Returns a lazy range that goes through the facets of the "standard" sphere
-of dimension `dim`. This manifold is just the boundary if the "standard"
-(dim+1)-simplex [0,1,2, ... (dim+1)].
-*/
-// auto standardSphereFacets(int dim)
-// {
-//     assert(dim >= 1);
-//     return iota(dim + 2).subsetsOfSize(dim + 1).map!array;
-// }
-// ///
-// @Name("standardSphereFacets") @safe unittest
-// {
-//     standardSphereFacets(2).should.containOnly(
-//         [[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
-
-//     auto s = Manifold!2(standardSphereFacets(2));
-//     s.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
-
-//     foreach(dim; staticIota!(1,9))
-//     {
-//         immutable m = Manifold!dim(standardSphereFacets(dim));
-//         assert(m.numFacets == dim + 2);
-//     }
-// }
-
 ///
 @Name("facets(dim) (pure nothrow @nogc @safe)") pure @safe unittest
 {
