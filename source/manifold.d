@@ -934,6 +934,25 @@ real meanDegree(Vertex, int mfdDim)(const ref Manifold!(mfdDim, Vertex) mfd, int
     immutable simpsPerFacet = binomial(mfdDim + 1, dim + 1);
     return simpsPerFacet * nFacets / real(nSimps);
 }
+///
+@Name("meanDegree") unittest
+{
+    foreach(dim; staticIota!(1, 8))
+    {
+        auto m = standardSphere!dim;
+        assert((dim + 1).iota.all!(d => m.meanDegree(d) == (dim - d + 1)));
+    }
+
+    auto pyramid = Manifold!2(
+        [[0,1,2], [0,2,3], [0,1,3], [1,2,4], [2,3,4], [1,3,4]]);
+
+    // pyramid has two vertices with deg(v)=3 and three vertices with deg(v)=4
+    real md0 = pyramid.meanDegree(0);
+    real epsilon = 1e-20;
+    assert(md0.approxEqual((2 * 3 + 3 * 4)/5.0, epsilon));
+    assert(pyramid.meanDegree(1).approxEqual(2.0, epsilon));
+    assert(pyramid.meanDegree(2).approxEqual(1.0, epsilon));
+}
 
 /******************************************************************************
 Returns total (degree(s))^^2 for all simplices s of given dimension 'dim'.
@@ -999,19 +1018,17 @@ real degreeVariance(Vertex, int mfdDim)(const ref Manifold!(mfdDim, Vertex) mfd,
     foreach(dim; staticIota!(1, 8))
     {
         auto m = standardSphere!dim;
-        assert(dim.iota.all!(d => m.degreeVariance(d) == 0));
+        assert((dim+1).iota.all!(d => m.degreeVariance(d) == 0));
     }
+
+    // pyramid has two vertices with deg(v)=3 and three vertices with deg(v)=4
 
     auto pyramid = Manifold!2(
         [[0,1,2], [0,2,3], [0,1,3], [1,2,4], [2,3,4], [1,3,4]]);
 
-    // pyramid has two vertices with deg(v)=3 and three vertices with deg(v)=4
+    
     real md0 = pyramid.meanDegree(0);
     real epsilon = 1e-20;
-    assert(md0.approxEqual((2 * 3 + 3 * 4)/5.0, epsilon));
-    assert(pyramid.meanDegree(1).approxEqual(2.0, epsilon));
-    assert(pyramid.meanDegree(2).approxEqual(1.0, epsilon));
-
     assert(pyramid.degreeVariance(0)
         .approxEqual((2 * (3 - md0)^^2 + 3 * (4 - md0)^^2)/5.0, epsilon));
 
