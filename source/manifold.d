@@ -947,9 +947,8 @@ real meanDegree(Vertex, int mfdDim)(const ref Manifold!(mfdDim, Vertex) mfd, int
         [[0,1,2], [0,2,3], [0,1,3], [1,2,4], [2,3,4], [1,3,4]]);
 
     // pyramid has two vertices with deg(v)=3 and three vertices with deg(v)=4
-    real md0 = pyramid.meanDegree(0);
     real epsilon = 1e-20;
-    assert(md0.approxEqual((2 * 3 + 3 * 4)/5.0, epsilon));
+    assert(pyramid.meanDegree(0).approxEqual((2 * 3 + 3 * 4)/5.0, epsilon));
     assert(pyramid.meanDegree(1).approxEqual(2.0, epsilon));
     assert(pyramid.meanDegree(2).approxEqual(1.0, epsilon));
 }
@@ -1022,11 +1021,9 @@ real degreeVariance(Vertex, int mfdDim)(const ref Manifold!(mfdDim, Vertex) mfd,
     }
 
     // pyramid has two vertices with deg(v)=3 and three vertices with deg(v)=4
-
     auto pyramid = Manifold!2(
         [[0,1,2], [0,2,3], [0,1,3], [1,2,4], [2,3,4], [1,3,4]]);
 
-    
     real md0 = pyramid.meanDegree(0);
     real epsilon = 1e-20;
     assert(pyramid.degreeVariance(0)
@@ -1089,25 +1086,16 @@ unittest
     mfd.writeln;
 }
 
+@Name("fVector") unittest
+{
+    // fVector should be (9 choose 1), (9 choose 2), ... , (9 choose 8)
+    assert(standardSphere!7.fVector == [9, 9 * 8 / 2, 9 * 8 * 7 / (3 * 2),
+            9 * 8 * 7 * 6 / (4 * 3 * 2), 9 * 8 * 7 * 6 / (4 * 3 * 2),
+            (9 * 8 * 7) / (3 * 2), (9 * 8) / 2, 9]);
 
-// unittest
-// {
+    auto hyperbolicDodecahedral = loadManifold!3(
+        "data/manifold_sampler_unittest_dodecahedral.dat");
 
-//     auto octahedron = Manifold!2([[0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 1],
-//             [5, 1, 2], [5, 2, 3], [5, 3, 4], [5, 4, 1]]);
-
-//     assert(octahedron.fVector == [6, 12, 8]);
-
-//     auto sphere7 = Manifold!7(standardSphere(7));
-
-//     // fVector should be (9 choose 1), (9 choose 2), ... , (9 choose 8)
-//     assert(sphere7.fVector == [9, 9 * 8 / 2, 9 * 8 * 7 / (3 * 2),
-//             9 * 8 * 7 * 6 / (4 * 3 * 2), 9 * 8 * 7 * 6 / (4 * 3 * 2),
-//             (9 * 8 * 7) / (3 * 2), (9 * 8) / 2, 9]);
-
-//     auto hyperbolicDodecahedral = loadManifold!3("data/manifold_sampler_unittest_dodecahedral.dat");
-
-//     // TO DO: Get reference for this...
-//     assert(hyperbolicDodecahedral.fVector == [21, 190, 338, 169]);
-
-// }
+    // TO DO: Get reference for this...
+    assert(hyperbolicDodecahedral.fVector == [21, 190, 338, 169]);
+}
