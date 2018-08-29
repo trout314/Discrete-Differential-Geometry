@@ -9,11 +9,14 @@ import std.exception : assertThrown;
 import std.range : array, back, chain, ElementType, empty, enumerate, front, iota,
     isInputRange, popFront, save, walkLength;
 import unit_threaded : Name;
-import utility : binomial, isSubsetOf, SmallMap, StackArray, staticIota, subsets, subsetsOfSize,
+import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf, isSubsetOf, nGonTriangs, SmallMap, StackArray, staticIota, subsets, subsetsOfSize,
     throwsWithMsg, toImmutStaticArray, toStackArray, toStaticArray;
-import std.stdio : File;
+import std.stdio : File, writeln;
 import std.typecons : Flag, No, Yes;
 import std.math : approxEqual;
+
+alias isIRof = isInputRangeOf;
+alias isIRofIRof = isInputRangeOfInputRangeOf;
 
 //dfmt off
 /*******************************************************************************
@@ -39,21 +42,18 @@ private:
     ulong[dimension - 1] totSqrDegrees;
 
     //--------------- Helper Functions ---------------
-    static NSimplex toNSimp(R)(R range)
-    if (isInputRange!R && is(ElementType!R : Vertex_))
+    static NSimplex toNSimp(R)(R range) if (isIRof!(R, Vertex_))
     {
         return range.toStackArray!(Vertex_, dimension + 1, R);
     }
 
-    static Ridge toRidge(R)(R range)
-    if (isInputRange!R && is(ElementType!R : Vertex_))
+    static Ridge toRidge(R)(R range) if (isIRof!(R, Vertex_))
     {
         return range.toStaticArray!dimension;
     }
 
     alias Facet = Vertex[dimension_ + 1];
-    static Facet toFacet(R)(R range)
-    if (isInputRange!R && is(ElementType!R : Vertex_))
+    static Facet toFacet(R)(R range) if (isIRof!(R, Vertex_))
     {
         return range.toStaticArray!(dimension_ + 1);
     }
@@ -67,10 +67,9 @@ public:
     static assert(dimension >= 1, "dimension must be at least one, but got "
         ~ "dimension " ~ dimension.to!string);
 
-    /// We can initialize the manifold from a range of ranges of vertices
-    this(F)(F initialFacets)
-    if (isInputRange!F && isInputRange!(ElementType!F)
-        && is(ElementType!(ElementType!F) : Vertex))
+    /// We can initialize the manifold from an input range of input ranges
+    /// of vertices
+    this(F)(F initialFacets) if(isIRofIRof!(F, const(Vertex)))
     {
         initialFacets.each!(f => this.insertFacet(f));
 
@@ -128,8 +127,7 @@ public:
     /***************************************************************************
     Returns true if and only if the given simplex is in the manifold
     */
-    bool contains(S)(S simplex) const
-    if (isInputRange!S && is(ElementType!S : Vertex))
+    bool contains(S)(S simplex) const if (isIRof!(S, const(Vertex)))
     {
         assert(this.simpComp.facets.any!(f => simplex.isSubsetOf(f))
             == !((toNSimp(simplex) in degreeMap) is null));
@@ -140,8 +138,7 @@ public:
     /***************************************************************************
     Returns the degree of a simplex in the simplicial complex.
     */
-    size_t degree(S)(S simplex) const
-    if (isInputRange!S && is(ElementType!S : Vertex))
+    size_t degree(S)(S simplex) const if (isIRof!(S, const(Vertex)))
     {
         assert(this.contains(simplex));
         assert(degreeMap[toNSimp(simplex)] == star(simplex).walkLength);
@@ -160,8 +157,7 @@ public:
 
     // Special version of insertFacet to update tracked info
     // (EXCEPT numSimplices, which is updated after each pachner move)
-    private void insertFacet(F)(F facet_)
-    if (isInputRange!F && is(ElementType!F : Vertex))
+    private void insertFacet(F)(F facet_) if (isIRof!(F, Vertex))
     {       
         assert(facet_.walkLength == dimension + 1,
             "facet has wrong dimension");
@@ -214,8 +210,7 @@ public:
     }
 
     // Special version of removeFacet to update tracked info.
-    private void removeFacet(F)(F facet_)
-    if (isInputRange!F && is(ElementType!F : Vertex))
+    private void removeFacet(F)(F facet_) if (isIRof!(F, Vertex))
     {
         assert(facet_.walkLength == dimension + 1);
 
@@ -295,7 +290,6 @@ public:
         debug writeln("\tridgeLinks: ", ridgeLinks);        
     }
 
-
     /// We provide access to the manifold as a simplicial complex
     ref const(SimplicialComplex!Vertex) asSimplicialComplex() const pure nothrow @nogc @safe 
     {
@@ -309,16 +303,16 @@ public:
 Returns a list of all the possible pachner moves for the given manifold
 */
 const(Vertex)[][] pachnerMoves(Vertex, int dim)(
-    const ref Manifold!(dim, Vertex) manifold)
+    const ref Manifold!(dim, Vertex) mfd)
 {
     const(Vertex)[][] result;
-    foreach(simp_, deg; manifold.degreeMap)
+    foreach(simp_, deg; mfd.degreeMap)
     {
         auto simp = simp_[];
-        if(deg == manifold.dimension + 2 - simp.walkLength)
+        if(deg == mfd.dimension + 2 - simp.walkLength)
         {
-            auto coCenter = manifold.findCoCenter(simp);
-            if(coCenter.empty || (!manifold.contains(coCenter)))
+            auto coCenter = mfd.findCoCenter(simp);
+            if(coCenter.empty || (!mfd.contains(coCenter)))
             {
                 result ~= simp.dup;
             }
@@ -424,10 +418,11 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
 Does a pachner move of type 1 -> (dim + 1) with the new vertex given by
 the user.
 */
-void doPachner(Vertex, int dim)(
+void doPachner(Vertex, int dim, C)(
     ref Manifold!(dim, Vertex) manifold,
-    const(Vertex)[] centerFacet,
+    C centerFacet,
     const(Vertex) newVertex)
+if (isIRof!(C, const(Vertex)))
 {
     assert(centerFacet.walkLength == manifold.dimension + 1);
     manifold.doPachnerImpl(centerFacet, [newVertex]);
@@ -455,9 +450,10 @@ void doPachner(Vertex, int dim)(
 Does a pachner move which replaces the star of the given simplex. This is a
 move of type (dim + 2 - center.length) -> center.length
 */
-void doPachner(Vertex, int dim)(
+void doPachner(Vertex, int dim, C)(
     ref Manifold!(dim, Vertex) manifold,
-    const(Vertex)[] center)
+    C center)
+if (isIRof!(C, const(Vertex)))
 {
     // TO DO: Better error
     assert(manifold.pachnerMoves.canFind(center), "bad pachner move");
@@ -511,11 +507,12 @@ void doPachner(Vertex, int dim)(
 }
 
 // Factor out the common code for the two types of doPachner
-void doPachnerImpl(Vertex, int dim)(
+void doPachnerImpl(Vertex, int dim, C, D)(
     ref Manifold!(dim, Vertex) manifold,
-    const(Vertex)[] center,
-    const(Vertex)[] coCenter_
+    C center,
+    D coCenter_
 )
+if (isIRof!(C, const(Vertex)) && isIRof!(D, const(Vertex)))
 {
     assert(manifold.pachnerMoves.canFind(center), "bad pachner move");
     immutable centerDim = center.walkLength.to!int - 1;
@@ -544,10 +541,11 @@ void doPachnerImpl(Vertex, int dim)(
 
 // TO DO: Implement 4->4 moves (Important!)
 
-auto findCoCenter(Vertex, int dim)(
+auto findCoCenter(Vertex, int dim, C)(
     const ref Manifold!(dim, Vertex) manifold,
-    const(Vertex)[] center
+    C center
 )
+if (isIRof!(C, const(Vertex)))
 {
     assert(manifold.contains(center));
     return manifold.link(center).joiner.array.dup.sort.uniq.array;
@@ -557,14 +555,15 @@ auto findCoCenter(Vertex, int dim)(
 Returns the coCenter for the Pachner move with given center. For efficiency we
 also need to know a facet with face center.
 */
-auto coCenter(Vertex, int dim)(
-    const ref Manifold!(dim, Vertex) manifold,
-    const(Vertex)[] center,
-    const(Vertex)[] facet
+auto coCenter(Vertex, int dim, C, F)(
+    const ref Manifold!(dim, Vertex) mfd,
+    C center,
+    F facet
 )
+if (isIRof!(C, const(Vertex)) && isIRof!(F, const(Vertex)))
 {
-    assert(manifold.contains(facet));
-    assert(manifold.contains(center));
+    assert(mfd.contains(facet));
+    assert(mfd.contains(center));
     assert(center.isSubsetOf(facet));
     
     // The coCenter of a facet is a new vertex not in the manifold.
@@ -572,11 +571,11 @@ auto coCenter(Vertex, int dim)(
 
     // TO DO: Clean this up!
     auto ridges = facet.subsetsOfSize(dim)
-        .filter!(r => center.isSubsetOf(r)).map!(r => manifold.toRidge(r));
-    auto coCenterVerts = ridges.map!(r => manifold.ridgeLinks[r][])
+        .filter!(r => center.isSubsetOf(r)).map!(r => mfd.toRidge(r));
+    auto coCenterVerts = ridges.map!(r => mfd.ridgeLinks[r][])
         .array.joiner.array.dup.sort.uniq.array;
 
-    assert(coCenterVerts.equal(manifold.findCoCenter(center)));
+    assert(coCenterVerts.equal(mfd.findCoCenter(center)));
     return coCenterVerts;
 }
 
@@ -791,24 +790,19 @@ auto modifyFVector(size_t[] fVector_, size_t centerLength)
 Returns a range containing the valid pachner moves whose center is a face of
 the given facet
 */
-auto movesAtFacet(Vertex, int dim)(
-    const ref Manifold!(dim, Vertex) manifold,
-    const(Vertex)[] facet
-)
+auto movesAtFacet(Vertex, int dim, F)(
+    const ref Manifold!(dim, Vertex) mfd,
+    F facet)
+if (isIRof!(F, const(Vertex)))
 {
-    alias m = manifold;  
-
     return facet.subsets.map!array.filter!(
         center => (center.walkLength == dim + 1) 
-            || (m.degree(center) == dim + 2 - center.walkLength 
-                && !m.contains(m.coCenter(center, facet))));
+            || (mfd.degree(center) == dim + 2 - center.walkLength 
+                && !mfd.contains(mfd.coCenter(center, facet))));
 }
 ///
 @Name("movesAtFacet") unittest
 {
-    auto emptyMfd = Manifold!3();
-    assert(emptyMfd.movesAtFacet([]).empty);
-
     /* If the manifold is the boundary of a simplex (i.e. a sphere with the
     minimum number of facets) then only the type 1 -> (dim + 1) Pachner moves
     are valid. */    
@@ -858,10 +852,10 @@ auto movesAtFacet(Vertex, int dim)(
 * Returns a manifold loaded from the file specified by fileName. If fileName
 * is the empty string, the returned manifold is the standard sphere.
 */
-Manifold!(dimension, Vertex) loadManifold(int dimension, Vertex = int)(string fileName)
+Manifold!(dim, Vertex) loadManifold(int dim, Vertex = int)(string fileName)
 {
     SimplicialComplex!Vertex sc = loadSimplicialComplex!Vertex(fileName);
-    return Manifold!(dimension, Vertex)(sc.facets.map!array.array);
+    return Manifold!(dim, Vertex)(sc.facets);
 }
 
 ///
@@ -880,7 +874,9 @@ Manifold!(dimension, Vertex) loadManifold(int dimension, Vertex = int)(string fi
 /******************************************************************************
 Saves a manifold to a file specified by fileName.
 */
-void saveTo(int dimension, Vertex = int)(const ref Manifold!(dimension, Vertex) mfd, string fileName)
+void saveTo(int dimension, Vertex = int)(
+    const ref Manifold!(dimension, Vertex) mfd,
+    string fileName)
 {
     auto saveFile = File(fileName, "w"); // Open in write-only mode
     saveFile.write(mfd.asSimplicialComplex);
@@ -899,7 +895,9 @@ void saveTo(int dimension, Vertex = int)(const ref Manifold!(dimension, Vertex) 
 /******************************************************************************
 Returns the mean degree of simplices of the given dimension 'dim'
 */
-real meanDegree(Vertex, int mfdDim)(const ref Manifold!(mfdDim, Vertex) mfd, int dim)
+real meanDegree(Vertex, int mfdDim)(
+    const ref Manifold!(mfdDim, Vertex) mfd,
+    int dim)
 {
     assert(dim >= 0);
     assert(dim <= mfdDim);
@@ -930,7 +928,9 @@ real meanDegree(Vertex, int mfdDim)(const ref Manifold!(mfdDim, Vertex) mfd, int
 /******************************************************************************
 Returns total (degree(s))^^2 for all simplices s of given dimension 'dim'.
 */
-ulong totalSquareDegree(Vertex, int mfdDim)(const ref Manifold!(mfdDim, Vertex) mfd, int dim)
+ulong totalSquareDegree(Vertex, int mfdDim)(
+    const ref Manifold!(mfdDim, Vertex) mfd,
+    int dim)
 {
     assert(dim >= 0);
     assert(dim <= mfd.dimension);
@@ -972,7 +972,9 @@ ulong totalSquareDegree(Vertex, int mfdDim)(const ref Manifold!(mfdDim, Vertex) 
 /******************************************************************************
 Returns the variance in the degree of simplices of the given dimension 'dim'
 */
-real degreeVariance(Vertex, int mfdDim)(const ref Manifold!(mfdDim, Vertex) mfd, int dim)
+real degreeVariance(Vertex, int mfdDim)(
+    const ref Manifold!(mfdDim, Vertex) mfd,
+    int dim)
 {
     assert(dim >= 0);
     assert(dim <= mfdDim);
@@ -1016,13 +1018,9 @@ void doHingeMove(Vertex, int dim, H, K)(
     ref Manifold!(dim, Vertex) manifold,
     H hinge_,
     K linkVertices_,
-    int diskIndx
-)
-if (isInputRange!H && is(ElementType!H : Vertex)
-    && isInputRange!K && is(ElementType!K : Vertex))
+    int diskIndx)
+if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
 {
-    import utility : nGonTriangs;
-
     auto hinge = hinge_.toStaticArray!(dim - 1);
 
     // TO DO: Decide what to do about this magic constant 7
@@ -1032,8 +1030,6 @@ if (isInputRange!H && is(ElementType!H : Vertex)
     immutable deg = manifold.degree(hinge_).to!int;
     assert(diskIndx < deg.nGonTriangs.walkLength);
     auto diskFacets = deg.nGonTriangs[diskIndx];
-
-    import std.stdio : writeln;
     SimplicialComplex!(Vertex, 2) disk;
     foreach(triangle; diskFacets)
     {
@@ -1041,8 +1037,13 @@ if (isInputRange!H && is(ElementType!H : Vertex)
         triangle.map!(indx => linkVertices[indx]).writeln;
         disk.insertFacet(triangle.map!(indx => linkVertices[indx]));
     }
-    disk.writeln;
 
+    // None of the "internal" edges can already be in manifold
+    assert(disk.simplices(1)
+        .filter!(edge => disk.star(edge).walkLength == 2)
+        .all!(edge => !manifold.contains(edge)));
+
+    
 }
 
 unittest
@@ -1073,3 +1074,4 @@ unittest
     // TO DO: Get reference for this...
     assert(hyperbolicDodecahedral.fVector == [21, 190, 338, 169]);
 }
+
