@@ -13,11 +13,15 @@ import std.range : array, chunks, dropExactly, ElementType, empty, enumerate,
     front, iota, isForwardRange, isInputRange, isOutputRange, popFront, put, save, walkLength, zip;
 import unit_threaded : Name;
 import utility : isSubsetOf, SmallMap, StackArray, subsets,
-    subsetsOfSize, throwsWithMsg;
+    subsetsOfSize, throwsWithMsg, isInputRangeOf, isInputRangeOfInputRangeOf;
 import std.stdio : File;
 import std.typecons : Flag, Yes, No;
 
 import std.stdio : writeln;
+import std.traits : Unqual;
+
+alias isIRof = isInputRangeOf;
+alias isIRofIRof = isInputRangeOfInputRangeOf;
 
 /// Basic Functionality
 @Name("doc tests") /* pure */ @safe unittest
@@ -308,11 +312,10 @@ public:
     alias Vertex = Vertex_;
 
     /***************************************************************************
-    Construct a simplicial complex from a range of ranges with element type
-    implicitly convertible to Vertex
+    Construct a simplicial complex from an input range of input ranges with
+    element type implicitly convertible to Vertex
     */
-    this(R)(R facets) if (isInputRange!R && isInputRange!(ElementType!R) 
-        && is(ElementType!(ElementType!R) : Vertex))
+    this(R)(R facets) if (isIRofIRof!(R, const(Vertex)))
     {
         facets.each!(f => this.insertFacet(f));
     }
@@ -330,7 +333,7 @@ public:
     complex.
     */
     void insertFacet(Flag!"checkForFacetFaces" checkForFacetFaces = Yes.checkForFacetFaces, S)(S simplex)
-    if (isInputRange!S && is(ElementType!S : Vertex))
+    if (isIRof!(S, const(Vertex)))
     {
         NSimplex simplex_ = toNSimp(simplex);
         int dim = simplex_.length.to!int - 1;
@@ -373,7 +376,7 @@ public:
     Removes an existing facet of the simplicial complex a facet (given as an 
     input range of vertices)
     */
-    void removeFacet(S)(S simplex) if (isInputRange!S && is(ElementType!S : Vertex))
+    void removeFacet(S)(S simplex) if (isIRof!(S, const(Vertex)))
     {
         NSimplex simplex_ = toNSimp(simplex);
 
@@ -438,7 +441,7 @@ public:
     Returns the star of the given simplex a forward range of arrays of vertices
     giving the facets.
     */
-    auto link(S)(S simplex) const if (isInputRange!S && is(ElementType!S : Vertex))
+    auto link(S)(S simplex) const if (isIRof!(S, const(Vertex)))
     {
         assert(this.contains(simplex), "expected a simplex in the simplicial complex");
         return LinkRange!Vertex(StarRange!Vertex(simplex, this.facets));
@@ -448,7 +451,7 @@ public:
     Returns the star of the given simplex a forward range of arrays of vertices
     giving the facets.
     */ 
-    auto star(S)(S simplex) const if (isInputRange!S && is(ElementType!S : Vertex))
+    auto star(S)(S simplex) const if (isIRof!(S, const(Vertex)))
     {
         return StarRange!Vertex(simplex, this.facets);
     }
@@ -457,8 +460,7 @@ public:
     Returns true if the given simplex is in this simplicial complex and false
     otherwise.
     */
-    bool contains(S)(S simplex) const
-    if (isInputRange!S && is(ElementType!S : Vertex))
+    bool contains(S)(S simplex) const if (isIRof!(S, const(Vertex)))
     {
         return this.facets.any!(f => simplex.isSubsetOf(f));
     }
@@ -467,8 +469,7 @@ public:
     Returns true if the given simplex is a facet in this simplicial complex and
     false otherwise.
     */
-    bool containsFacet(F)(F facet) const
-    if (isInputRange!F && is(ElementType!F : Vertex))
+    bool containsFacet(F)(F facet) const if (isIRof!(F, const(Vertex)))
     {
         return cast(bool) (toNSimp(facet) in indexOfFacet);
     }
@@ -656,9 +657,10 @@ size_t[] fVector(Vertex)(const ref SimplicialComplex!Vertex sc)
 Helper function template returning a newly constructed simplicial complex from
 an array of facets (given as arrays of vertices.)
 */
-SimplicialComplex!Vertex simplicialComplex(Vertex)(const(Vertex)[][] initialFacets)
+auto simplicialComplex(F)(F initialFacets)
+if (isInputRange!F && isInputRange!(ElementType!F))
 {
-    return SimplicialComplex!Vertex(initialFacets);
+    return SimplicialComplex!(Unqual!(ElementType!(ElementType!F)))(initialFacets);
 }
 ///
 @Name("simplicialComplex") @safe unittest
