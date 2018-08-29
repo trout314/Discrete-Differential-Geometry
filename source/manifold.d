@@ -573,7 +573,7 @@ if (isIRof!(C, const(Vertex)) && isIRof!(F, const(Vertex)))
     auto ridges = facet.subsetsOfSize(dim)
         .filter!(r => center.isSubsetOf(r)).map!(r => mfd.toRidge(r));
     auto coCenterVerts = ridges.map!(r => mfd.ridgeLinks[r][])
-        .array.joiner.array.dup.sort.uniq.array;
+        .joiner.array.dup.sort.uniq.array;
 
     assert(coCenterVerts.equal(mfd.findCoCenter(center)));
     return coCenterVerts;
