@@ -1541,3 +1541,66 @@ int[][][] nGonTriangs(int n)
 
     // TO DO: More tests!
 }
+
+/******************************************************************************
+template evaluating to true if T is an input range with element type
+implicitly convertible to E. TO DO: maybe a more general facility for this?
+*/
+template isInputRangeOf(T, E)
+{
+    enum isInputRangeOf = isInputRange!T && is(ElementType!T : E);
+}
+///
+@Name("isInputRangeOf") unittest
+{
+    alias AI = int[];
+    alias ACI = const(int)[];
+    static assert(isInputRangeOf!(AI, const(int)));
+    static assert(isInputRangeOf!(ACI, const(int)));
+    static assert(isInputRangeOf!(AI, int));
+    static assert(isInputRangeOf!(ACI, int));
+
+    alias API = int*[];
+    alias ACPI = const(int*)[];
+    static assert(isInputRangeOf!(API, const(int*)));
+    static assert(isInputRangeOf!(ACPI, const(int*)));
+    static assert(isInputRangeOf!(API, int*));
+    static assert(!isInputRangeOf!(ACPI, int*));
+
+    alias R = typeof(5.iota);
+    static assert(isInputRangeOf!(R, int));
+    static assert(isInputRangeOf!(R, uint));
+    static assert(!isInputRangeOf!(R, string));
+}
+
+/******************************************************************************
+template evaluating to true if T is an input range of input ranges of types
+implicitly convertible to E. TO DO: maybe a more general facility for this?
+*/
+template isInputRangeOfInputRangeOf(T, E)
+{
+    enum isInputRangeOfInputRangeOf = isInputRange!T && isInputRange!(ElementType!T)
+        && is(ElementType!(ElementType!T) : E);
+}
+///
+@Name("isInputRangeOfInputRangeOf") unittest
+{
+    alias AAI = int[][];
+    alias AACI = const(int)[][];
+    static assert(isInputRangeOfInputRangeOf!(AAI, const(int)));
+    static assert(isInputRangeOfInputRangeOf!(AACI, const(int)));
+    static assert(isInputRangeOfInputRangeOf!(AAI, int));
+    static assert(isInputRangeOfInputRangeOf!(AACI, int));
+
+    alias AAPI = int*[][];
+    alias AACPI = const(int*)[][];
+    static assert(isInputRangeOfInputRangeOf!(AAPI, const(int*)));
+    static assert(isInputRangeOfInputRangeOf!(AACPI, const(int*)));
+    static assert(isInputRangeOfInputRangeOf!(AAPI, int*));
+    static assert(!isInputRangeOfInputRangeOf!(AACPI, int*));
+
+    alias RoR = typeof(5.iota.map!(k => k.iota));
+    static assert(isInputRangeOfInputRangeOf!(RoR, int));
+    static assert(isInputRangeOfInputRangeOf!(RoR, uint));
+    static assert(!isInputRangeOfInputRangeOf!(RoR, string));
+}
