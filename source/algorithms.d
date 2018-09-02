@@ -8,7 +8,11 @@ import std.range : array, empty, enumerate, front, iota, popFront, save,
 import unit_threaded : Name;
 import utility : subsetsOfSize, throwsWithMsg;
 import fluent.asserts;
+import utility : isInputRangeOfInputRangeOf;
 
+
+
+alias isIRofIRof = isInputRangeOfInputRangeOf;
 
 /*******************************************************************************
 Returns true if the given manifold is orientable and false otherwise.
@@ -445,7 +449,7 @@ bool isConnected(Vertex)(const auto ref SimplicialComplex!Vertex sc)
 /*******************************************************************************
 Decide if a simplicial complex is pure of dimension `d`
 */
-bool isPureOfDim(Vertex)(const auto ref SimplicialComplex!Vertex sc, int d)
+bool isPureOfDim(Vertex, int maxDim)(const auto ref SimplicialComplex!(Vertex, maxDim) sc, int d)
 {
     assert(d >= 0, "expected a non-negative dimension");
     return sc.facets(d).walkLength == sc.numFacets;
@@ -522,8 +526,8 @@ bool isOrientableSurfaceOfGenus(Vertex)(const auto ref SimplicialComplex!Vertex 
 /***************************************************************************
 Returns the join of two simplicial complexes
 */
-auto join(Vertex)(const SimplicialComplex!Vertex sc1, 
-                  const SimplicialComplex!Vertex sc2)
+auto join(Vertex, int maxDim1, int maxDim2)(const SimplicialComplex!(Vertex, maxDim1) sc1, 
+                  const SimplicialComplex!(Vertex, maxDim2) sc2)
 {
     const(Vertex)[][] result;
     foreach(f1; sc1.facets)
@@ -535,7 +539,8 @@ auto join(Vertex)(const SimplicialComplex!Vertex sc1,
         }
     }
 
-    return SimplicialComplex!Vertex(result);
+    // TO DO: Make this SimplicialComplex!(Vertex, maxDim1 + maxDim2 + 1);
+    return SimplicialComplex!(Vertex, maxDim1 + maxDim2 + 1)(result);
 }
 ///
 @Name("join") @safe unittest
@@ -551,3 +556,24 @@ auto join(Vertex)(const SimplicialComplex!Vertex sc1,
     assert(join(sc1, emptyComplex).facets.empty);
 }
 
+/***************************************************************************
+Returns the join of two simplicial complexes
+*/
+auto joinSeq(Vertex = int, F1, F2)(F1 facets1, F2 facets2)
+if (isIRofIRof!(F1, const(Vertex)) && isIRofIRof!(F2, const(Vertex))) 
+{
+    import std.algorithm : cartesianProduct, merge;
+    return cartesianProduct(facets1, facets2).map!(pair =>
+        merge(pair[0], pair[1]));
+}
+///
+@Name("joinSeq") unittest
+{
+    auto f1 = [[1,2],[3]];
+    auto f2 = [[4,5,6], [7,8], [9]];
+    joinSeq(f1, f2).map!array.should.containOnly(
+        [[1, 2, 4, 5, 6], [1, 2, 7, 8], [1, 2, 9],
+         [3, 4, 5, 6], [3, 7, 8], [3, 9]]);
+    
+    // TO DO: More tests...
+}
