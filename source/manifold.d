@@ -517,23 +517,25 @@ if (isIRof!(C, const(Vertex)) && isIRof!(D, const(Vertex)))
     assert(manifold.pachnerMoves.canFind(center), "bad pachner move");
     immutable centerDim = center.walkLength.to!int - 1;
     immutable coCenterDim = coCenter_.walkLength.to!int - 1;
-    alias SC = SimplicialComplex!Vertex;
+    import algorithms : joinSeq;
 
     auto oldPiece = (coCenterDim == 0)
-        ? SC([center])
-        : join(SC(coCenter_.subsetsOfSize(coCenterDim)), SC([center]));
-    assert(oldPiece.isPureOfDim(dim));
-    assert(manifold.star(center).map!array.array.sort
-        .equal!equal(oldPiece.facets.map!array.array.sort));
+        ? [center]
+        : joinSeq(coCenter_.subsetsOfSize(coCenterDim), [center]).map!array.array;
 
     auto newPiece = (centerDim == 0)
-        ? SC([coCenter_])
-        : join(SC(center.subsetsOfSize(centerDim)), SC([coCenter_]));
-    assert(newPiece.isPureOfDim(dim));
-    assert(newPiece.facets.walkLength + oldPiece.facets.walkLength == dim + 2);
+        ? [coCenter_]
+        : joinSeq(center.subsetsOfSize(centerDim), [coCenter_]).map!array.array;
 
-    oldPiece.facets.each!(f => manifold.removeFacet(f));
-    newPiece.facets.each!(f => manifold.insertFacet(f));
+    alias SC = SimplicialComplex!(Vertex, dim);
+    assert(SC(oldPiece).isPureOfDim(dim));
+    assert(SC(newPiece).isPureOfDim(dim));
+    assert(newPiece.walkLength + oldPiece.walkLength == dim + 2);
+    assert(manifold.star(center).map!array.array.sort
+        .equal!equal(oldPiece.map!array.array.sort));
+
+    oldPiece.each!(f => manifold.removeFacet(f));
+    newPiece.each!(f => manifold.insertFacet(f));
     manifold.numSimplices.modifyFVector(center.length);
 
     // TO DO: Do sanity checking for manifold
@@ -1021,6 +1023,7 @@ void doHingeMove(Vertex, int dim, H, K)(
     int diskIndx)
 if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
 {
+    assert(dim >= 2);
     auto hinge = hinge_.toStaticArray!(dim - 1);
 
     // TO DO: Decide what to do about this magic constant 7
@@ -1033,9 +1036,7 @@ if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
     SimplicialComplex!(Vertex, 2) disk;
     foreach(triangle; diskFacets)
     {
-        triangle.writeln;
-        triangle.map!(indx => linkVertices[indx]).writeln;
-        disk.insertFacet(triangle.map!(indx => linkVertices[indx]));
+        disk.insertFacet(triangle.map!(i => linkVertices[i]));
     }
 
     // None of the "internal" edges can already be in manifold
@@ -1043,6 +1044,11 @@ if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
         .filter!(edge => disk.star(edge).walkLength == 2)
         .all!(edge => !manifold.contains(edge)));
 
+    auto hingeBoundary = SimplicialComplex!(Vertex, dim - 2)(
+        hinge_.subsetsOfSize(dim - 2));
+
+    auto newPiece = join(hingeBoundary, disk);
+    assert(newPiece.isPureOfDim(dim));
     
 }
 
