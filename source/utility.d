@@ -744,7 +744,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
 {
     immutable setSize = set.walkLength;
 
-    assert(subsetSize > 0, "subset size must be positive");
+    assert(subsetSize >= 0, "subset size must be non-negative");
     assert(subsetSize <= setSize, "subset size must be at most the size of the set");
     assert(setSize <= 31, "subset size must be at most 31");
 
@@ -854,6 +854,9 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
 
     [1].subsetsOfSize(1).map!array.should.containOnly([[1]]);
 
+    0.iota.subsetsOfSize(0).map!array.should.containOnly([[]]);
+    assert(iota(3).subsetsOfSize(0).front.empty);
+
     3.iota.subsetsOfSize(1).map!array.should.containOnly([[0], [1], [2]]);
     3.iota.subsetsOfSize(2).map!array.should.containOnly([[0, 1], [0, 2], [1, 2]]);
     3.iota.subsetsOfSize(3).map!array.should.containOnly([[0, 1, 2]]);
@@ -865,7 +868,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
 ///
 @Name("subsetsOfSize (errors)") pure nothrow @system unittest
 {
-    [1,2].subsetsOfSize(-1).throwsWithMsg("subset size must be positive");
+    [1,2].subsetsOfSize(-1).throwsWithMsg("subset size must be non-negative");
     3.iota.subsetsOfSize(4).throwsWithMsg("subset size must be at most the size of the set");
     40.iota.subsetsOfSize(32).throwsWithMsg("subset size must be at most 31");
 }
