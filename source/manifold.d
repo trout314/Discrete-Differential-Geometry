@@ -1030,6 +1030,8 @@ void doHingeMove(Vertex, int dim, H, K)(
     int diskIndx)
 if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
 {
+    static assert(dim >= 3,
+        "no hinge moves in dimension less than 3");
     assert(dim >= 2);
     auto hingeBuffer = hinge_.toStaticArray!(dim - 1);
     auto hinge = hingeBuffer[];
@@ -1072,22 +1074,39 @@ if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
     oldPiece.each!(f => manifold.removeFacet(f));
     newPiece.each!(f => manifold.insertFacet(f));
 
-    // TO DO: IMPORTANT! Make needed modifications to fVector
+    // Modify fVector, start with simplices removed
+    manifold.numSimplices[dim] -= deg;
+    manifold.numSimplices[dim - 1] -= deg;
+    manifold.numSimplices[dim - 2] -= 1;
+
+    // Now we add in the new simplices
+    foreach(d; 3 .. dim)
+    {
+       manifold.numSimplices[d] 
+        += binomial(dim - 1, d - 3) * (deg - 2)
+        + binomial(dim - 1, d - 2) * (deg - 3);
+    }
+    manifold.numSimplices[2] += (dim - 1) * (deg - 3) + (deg - 2);
+    manifold.numSimplices[1] += (deg - 3);
+    manifold.numSimplices[dim] += (dim - 1) * (deg - 2);
+    
+
+    assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
 }
 
 unittest
 {
-    auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
-        [2,3,5], [3,4,5], [1,4,5]]);
+    auto octahedron = [[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
+        [2,3,5], [3,4,5], [1,4,5]];
     
-    auto twoPts = simplicialComplex([[7], [8]]);
-    auto suspension = octahedron.asSimplicialComplex.join(twoPts);
-    auto mfd = Manifold!3(suspension.facets);
+    auto twoPts = [[6], [7]];
+    auto mfd = Manifold!3(productUnion(octahedron, twoPts));
 
-    import std.stdio : writeln;
-    mfd.writeln;
-    mfd.doHingeMove([0,7], [1,2,3,4], 1);
-    mfd.writeln;
+    mfd.doHingeMove([0,6], [1,2,3,4], 1);
+    mfd.facets.should.containOnly([[1, 4, 5, 7], [0, 1, 2, 7], [1, 4, 5, 6],
+        [0, 2, 3, 7], [3, 4, 5, 7], [0, 3, 4, 7], [3, 4, 5, 6], [0, 1, 4, 7],
+        [1, 2, 5, 6], [1, 2, 5, 7], [2, 3, 5, 6], [2, 3, 5, 7],[0, 1, 2, 4],
+        [0, 2, 3, 4], [1, 2, 4, 6], [2, 3, 4, 6]]);
 }
 
 @Name("fVector") unittest
