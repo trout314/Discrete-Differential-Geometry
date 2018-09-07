@@ -6,14 +6,17 @@ import std.algorithm : all, any, copy, canFind, each, equal, filter, find, joine
     map, maxElement, sort, sum, uniq;
 import std.conv : to;
 import std.exception : assertThrown;
-import std.range : array, back, chain, ElementType, empty, enumerate, front, iota,
-    isInputRange, popFront, save, walkLength;
+import std.range : array, back, chain, chunks, cycle, ElementType, empty, enumerate, front, iota,
+    isInputRange, only, popFront, save, slide, take, walkLength;
 import unit_threaded : Name;
-import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf, isSubsetOf, nGonTriangs, SmallMap, StackArray, staticIota, subsets, subsetsOfSize,
-    throwsWithMsg, toImmutStaticArray, toStackArray, toStaticArray;
+import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf, isSubsetOf, nGonTriangs, productUnion, SmallMap,
+    StackArray, staticIota, subsets, subsetsOfSize, throwsWithMsg, toImmutStaticArray, toStackArray, toStaticArray;
 import std.stdio : File, writeln;
 import std.typecons : Flag, No, Yes;
 import std.math : approxEqual;
+
+import std.stdio : writeln;
+
 
 alias isIRof = isInputRangeOf;
 alias isIRofIRof = isInputRangeOfInputRangeOf;
@@ -510,38 +513,42 @@ if (isIRof!(C, const(Vertex)))
 void doPachnerImpl(Vertex, int dim, C, D)(
     ref Manifold!(dim, Vertex) manifold,
     C center,
-    D coCenter_
+    D coCenter
 )
 if (isIRof!(C, const(Vertex)) && isIRof!(D, const(Vertex)))
 {
     assert(manifold.pachnerMoves.canFind(center), "bad pachner move");
-    immutable centerDim = center.walkLength.to!int - 1;
-    immutable coCenterDim = coCenter_.walkLength.to!int - 1;
-    import algorithms : joinSeq;
+ 
+    // Buffer for holding vertices in center (followed by coCenter)
+    const(Vertex)[(dim + 2)] cBuffer = chain(center, coCenter)
+        .toStaticArray!(dim + 2);
+ 
+    immutable cenLen = center.walkLength;
+    immutable coCenLen = (dim + 2) - cenLen;
+    assert(coCenLen == coCenter.walkLength);
+    auto center_ = cBuffer[0 .. cenLen];
+    auto coCenter_ = cBuffer[cenLen .. $];
 
-    auto oldPiece = (coCenterDim == 0)
-        ? [center]
-        : joinSeq(coCenter_.subsetsOfSize(coCenterDim), [center]).map!array.array;
+    immutable centerDim = cast(int) cenLen - 1;
+    immutable coCenterDim = cast(int) coCenLen - 1;
 
-    auto newPiece = (centerDim == 0)
-        ? [coCenter_]
-        : joinSeq(center.subsetsOfSize(centerDim), [coCenter_]).map!array.array;
+    auto oldPiece = productUnion(coCenter_.subsetsOfSize(coCenterDim), center_.only);
+    auto newPiece = productUnion(center_.subsetsOfSize(centerDim), coCenter_.only);
 
     alias SC = SimplicialComplex!(Vertex, dim);
+    alias MFD = Manifold!(dim, Vertex);
     assert(SC(oldPiece).isPureOfDim(dim));
     assert(SC(newPiece).isPureOfDim(dim));
-    assert(newPiece.walkLength + oldPiece.walkLength == dim + 2);
+    assert(MFD(chain(oldPiece, newPiece)).numFacets == dim + 2);
     assert(manifold.star(center).map!array.array.sort
         .equal!equal(oldPiece.map!array.array.sort));
 
     oldPiece.each!(f => manifold.removeFacet(f));
     newPiece.each!(f => manifold.insertFacet(f));
-    manifold.numSimplices.modifyFVector(center.length);
+    manifold.numSimplices.modifyFVector(cenLen);
 
     // TO DO: Do sanity checking for manifold
 }
-
-// TO DO: Implement 4->4 moves (Important!)
 
 auto findCoCenter(Vertex, int dim, C)(
     const ref Manifold!(dim, Vertex) manifold,
@@ -1024,32 +1031,48 @@ void doHingeMove(Vertex, int dim, H, K)(
 if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
 {
     assert(dim >= 2);
-    auto hinge = hinge_.toStaticArray!(dim - 1);
+    auto hingeBuffer = hinge_.toStaticArray!(dim - 1);
+    auto hinge = hingeBuffer[];
 
     // TO DO: Decide what to do about this magic constant 7
     // (It comes from nGonTriangs only supporting up to 7-gon.)
-    auto linkVertices = linkVertices_.toStaticArray!7;
+    auto deg = manifold.degree(hinge).to!int;
+    auto linkVerticesBuff = linkVertices_.toStaticArray!7;
+    auto linkVertices = linkVerticesBuff[0 .. deg];
 
-    immutable deg = manifold.degree(hinge_).to!int;
+    // TO DO: Get rid of allocations here!
+    auto linkEdges = chain(linkVertices[], linkVertices.front.only)
+        .slide(2).take(deg).joiner.array;
+    deg.iota.each!(indx => linkEdges[2*indx .. 2*(indx + 1)].sort);
+
     assert(diskIndx < deg.nGonTriangs.walkLength);
     auto diskFacets = deg.nGonTriangs[diskIndx];
-    SimplicialComplex!(Vertex, 2) disk;
-    foreach(triangle; diskFacets)
+
+    auto oldPiece = productUnion(hinge.only, linkEdges.chunks(2));
+    auto newPiece = productUnion(
+        hinge.subsetsOfSize(dim - 2),
+        diskFacets.map!(f => f.map!(i => linkVertices[i])));
+
+    version(unittest)
     {
-        disk.insertFacet(triangle.map!(i => linkVertices[i]));
+        alias SC = SimplicialComplex!(Vertex, dim);
+        auto disk = SC(diskFacets);
+
+        // None of the "internal" edges can already be in manifold
+        assert(disk.simplices(1)
+            .filter!(edge => disk.star(edge).walkLength == 2)
+            .all!(edge => !manifold.contains(edge)));
+
+        assert(SC(newPiece).isPureOfDim(dim));   
+        assert(SC(oldPiece).isPureOfDim(dim));
+        assert(manifold.star(hinge).map!array.array.sort
+            .equal!equal(oldPiece.map!array.array.sort));
     }
 
-    // None of the "internal" edges can already be in manifold
-    assert(disk.simplices(1)
-        .filter!(edge => disk.star(edge).walkLength == 2)
-        .all!(edge => !manifold.contains(edge)));
+    oldPiece.each!(f => manifold.removeFacet(f));
+    newPiece.each!(f => manifold.insertFacet(f));
 
-    auto hingeBoundary = SimplicialComplex!(Vertex, dim - 2)(
-        hinge_.subsetsOfSize(dim - 2));
-
-    auto newPiece = join(hingeBoundary, disk);
-    assert(newPiece.isPureOfDim(dim));
-    
+    // TO DO: IMPORTANT! Make needed modifications to fVector
 }
 
 unittest
