@@ -1,8 +1,7 @@
 import core.bitop : popcnt;
 import fluent.asserts;
-import std.algorithm : all, canFind, copy, each, equal, filter, find, fold, joiner, map,
-    sort, sum, uniq;
-    
+import std.algorithm : all, canFind, cartesianProduct, copy, each, equal, filter, find, fold, joiner, map, merge,
+    sort, sum, uniq;  
 import std.conv : to;
 import std.exception : enforce, assertThrown;
 import std.format : format;
@@ -1021,6 +1020,29 @@ template staticIota(int begin, int end)
     alias seq2 = staticIota!(1, 5);
     alias func = (a, b, c, d) => a + b + c + d;
     static assert(func(seq2) == 10);
+}
+
+
+/***************************************************************************
+TO DO: docs...
+*/
+auto productUnion(Vertex = int, R1, R2)(R1 range1, R2 range2)
+if (isInputRangeOfInputRangeOf!(R1, const(Vertex)) 
+    && isInputRangeOfInputRangeOf!(R2, const(Vertex))) 
+{
+    return cartesianProduct(range1, range2).map!(pair =>
+        merge(pair[0], pair[1]));
+}
+///
+@Name("productUnion") unittest
+{
+    auto f1 = [[1,2],[3]];
+    auto f2 = [[4,5,6], [7,8], [9]];
+    productUnion(f1, f2).map!array.should.containOnly(
+        [[1, 2, 4, 5, 6], [1, 2, 7, 8], [1, 2, 9],
+         [3, 4, 5, 6], [3, 7, 8], [3, 9]]);
+    
+    // TO DO: More tests...
 }
 
 /*******************************************************************************
