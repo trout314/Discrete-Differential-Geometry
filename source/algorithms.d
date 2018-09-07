@@ -555,25 +555,3 @@ auto join(Vertex, int maxDim1, int maxDim2)(const SimplicialComplex!(Vertex, max
     auto emptyComplex = SimplicialComplex!()();
     assert(join(sc1, emptyComplex).facets.empty);
 }
-
-/***************************************************************************
-Returns the join of two simplicial complexes
-*/
-auto joinSeq(Vertex = int, F1, F2)(F1 facets1, F2 facets2)
-if (isIRofIRof!(F1, const(Vertex)) && isIRofIRof!(F2, const(Vertex))) 
-{
-    import std.algorithm : cartesianProduct, merge;
-    return cartesianProduct(facets1, facets2).map!(pair =>
-        merge(pair[0], pair[1]));
-}
-///
-@Name("joinSeq") unittest
-{
-    auto f1 = [[1,2],[3]];
-    auto f2 = [[4,5,6], [7,8], [9]];
-    joinSeq(f1, f2).map!array.should.containOnly(
-        [[1, 2, 4, 5, 6], [1, 2, 7, 8], [1, 2, 9],
-         [3, 4, 5, 6], [3, 7, 8], [3, 9]]);
-    
-    // TO DO: More tests...
-}
