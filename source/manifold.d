@@ -328,8 +328,7 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
 
     Manifold!2([[1,2,3]]).throwsWithMsg(
         "found a ridge with degree not equal to 2, " 
-        ~ "found a hinge whose link is not a circle, "
-        ~ "found ridge in ridgeLinks whose link doesn't contain 2 vertices");
+        ~ "found a hinge whose link is not a circle");
 
     Manifold!2([[1,2,3], [1,2,4], [1,3,4], [2,3,4], [1,5,6], [1,5,7], [1,6,7],
         [5,6,7]]).throwsWithMsg("found a hinge whose link is not a circle");
@@ -1233,7 +1232,8 @@ string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
 
     static if(dim >= 1)
     {
-        if(!mfd.simplices(dim - 1).all!(s => mfd.degree(s) == 2))
+        if(!mfd.simplices(dim - 1).all!(
+            s => mfd.simpComp.star(s).walkLength == 2))
         {
             problems ~= "found a ridge with degree not equal to 2";
         }
@@ -1241,7 +1241,7 @@ string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
 
     static if(dim >= 2)
     {
-        if(!mfd.simplices(dim - 2).all!(s => SC(mfd.link(s)).isCircle))
+        if(!mfd.simplices(dim - 2).all!(s => SC(mfd.simpComp.link(s)).isCircle))
         {
             problems ~= "found a hinge whose link is not a circle";
         }
@@ -1249,7 +1249,7 @@ string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
 
     static if(dim >= 3)
     {
-        if(!mfd.simplices(dim - 3).all!(s => SC(mfd.link(s)).is2Sphere))
+        if(!mfd.simplices(dim - 3).all!(s => SC(mfd.simpComp.link(s)).is2Sphere))
         {
             problems ~= "found a codimension-3 simplex whose link is not a 2-sphere";
         }
@@ -1283,11 +1283,8 @@ string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
     }
     done:
 
-    foreach(pair; mfd.degreeMap.byKeyValue)
+    foreach(simplex; mfd.degreeMap.byKey)
     {
-        auto simplex = pair.key;
-        auto deg = pair.value;
-
         if(!mfd.simpComp.contains(simplex[]))
         {
             problems ~= "found a simplex in degreeMap that is not in simpComp";
@@ -1297,29 +1294,62 @@ string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
 
     foreach(pair; mfd.degreeMap.byKeyValue)
     {
-        auto simplex = pair.key;
+        auto simplex = pair.key[];
         auto deg = pair.value;
 
-        if(deg != mfd.simpComp.star(simplex[]).walkLength)
+        if(deg != mfd.simpComp.star(simplex).walkLength)
         {
-            problems ~= "found simplex in degreeMap with incorrect degree";
+            problems ~= "found a simplex in degreeMap with incorrect degree";
             break;
         }
     }
-
 
     foreach(pair; mfd.ridgeLinks.byKeyValue)
     {
-        auto ridge = pair.key;
-        auto link = pair.value;
+        auto ridge = pair.key[];
+        auto link = pair.value[];
 
-        if(link[].walkLength != 2)
+        if(link.walkLength != mfd.simpComp.star(ridge).walkLength)
         {
-            problems ~= "found ridge in ridgeLinks whose link doesn't contain 2 vertices";
+            problems ~= "found a ridge in ridgeLinks whose link has incorrect number of vertices";
             break;
         }
     }
-   
+
+    foreach(pair; mfd.ridgeLinks.byKeyValue)
+    {
+        auto ridge = pair.key[];
+        auto link = pair.value[];
+
+        // TO DO: Clean this up!
+        if(link.array != mfd.simpComp.link(ridge).map!array.array.joiner.array.dup.sort.array)
+        {
+            problems ~= "found a ridge in ridgeLinks whose link has the wrong vertices";
+            break;
+        }
+    }
+
+    foreach(pair; mfd.ridgeLinks.byKeyValue)
+    {
+        auto ridge = pair.key[];
+        auto link = pair.value[];
+
+        if(!mfd.simpComp.contains(ridge))
+        {
+            problems ~= "found a ridge in ridgeLinks that is not in simpComp";
+            break;
+        }
+    }
+
+    foreach(ridge; mfd.simpComp.simplices(dim - 1))
+    {
+        if(mfd.toRidge(ridge) !in mfd.ridgeLinks)
+        {
+            problems ~= "found a ridge in simpComp that is not in ridgeLinks";
+            break;
+        }
+    }
+
     return problems;
 }
 ///
