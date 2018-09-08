@@ -75,50 +75,14 @@ public:
     this(F)(F initialFacets) if(isIRofIRof!(F, const(Vertex)))
     {
         initialFacets.each!(f => this.insertFacet(f));
-
-        assert(this.isPureOfDim(dimension),
-            "not all facets have the correct dimension");
-
-        assert(this.isConnected,
-            "facets do not define a connected simplicial complex");
-
-        static if(dimension >= 1)
-        {
-            assert(simplices(dimension - 1).all!(s => degree(s) == 2),
-                "found a ridge with degree not equal to 2");
-        }
-
-        static if(dimension >= 2)
-        {
-            // TO DO: Figure out why we need "this.link" below (low priority)
-            assert(simplices(dimension - 2).all!(
-                s => SimpComp(this.link(s)).isCircle),
-                "found a hinge whose link is not a circle");
-        }
-
-        static if(dimension >= 3)
-        {
-            // TO DO: Figure out why we need "this.link" below (low priority)
-            assert(simplices(dimension - 3).all!(
-                s => SimpComp(this.link(s)).is2Sphere),
-                "found a codimension-3 simplex whose link is not a 2-sphere");
-        }
-
         numSimplices[] = simpComp.fVector[];
-
         foreach(d; 0 .. dimension - 1)
         {
             totSqrDegrees[d] = simplices(d).map!(s => this.degree(s)^^2).sum;
         }
 
-        // Sanity checking. TO DO: More checking!
-        // foreach(ridge; simplices(dimension - 1))
-        // {
-        //     auto ridgeVertices = ridge.to!(Vertex[dimension]);
-        //     Vertex[2] linkInManifoldAA = ridgeLinks[ridgeVertices];
-        //     Vertex[] linkFromSimpComp = simpComp.link(ridge).map!(s => s.front).array.dup.sort;
-        // }
-
+        assert(this.findProblems.empty, 
+            this.findProblems.joiner(", ").array.to!string);
     }
 
     this(this) pure @safe
@@ -362,10 +326,10 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
 {
     Manifold!2([[1,2,3,4]]).throwsWithMsg("facet has wrong dimension");
 
-    // TO DO: Improve this test! The simplicial complex defined by given facets
-    // has additional things wrong with it than simply a non deg-2 ridge 
     Manifold!2([[1,2,3]]).throwsWithMsg(
-        "found a ridge with degree not equal to 2");
+        "found a ridge with degree not equal to 2, " 
+        ~ "found a hinge whose link is not a circle, "
+        ~ "found ridge in ridgeLinks whose link doesn't contain 2 vertices");
 
     Manifold!2([[1,2,3], [1,2,4], [1,3,4], [2,3,4], [1,5,6], [1,5,7], [1,6,7],
         [5,6,7]]).throwsWithMsg("found a hinge whose link is not a circle");
@@ -1249,3 +1213,118 @@ unittest
     assert(hyperbolicDodecahedral.fVector == [21, 190, 338, 169]);
 }
 
+string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
+{
+    alias SC = SimplicialComplex!Vertex;
+    string[] problems;
+
+    // TO DO: Create a findProblems function for simplicial complexes
+    // and check that here
+
+    if(!mfd.simpComp.isPureOfDim(dim))
+    {
+        problems ~= "not all facets have the correct dimension";
+    }
+    
+    if(!mfd.simpComp.isConnected)
+    {
+        problems ~= "facets do not define a connected simplicial complex";
+    }
+
+    static if(dim >= 1)
+    {
+        if(!mfd.simplices(dim - 1).all!(s => mfd.degree(s) == 2))
+        {
+            problems ~= "found a ridge with degree not equal to 2";
+        }
+    }
+
+    static if(dim >= 2)
+    {
+        if(!mfd.simplices(dim - 2).all!(s => SC(mfd.link(s)).isCircle))
+        {
+            problems ~= "found a hinge whose link is not a circle";
+        }
+    }
+
+    static if(dim >= 3)
+    {
+        if(!mfd.simplices(dim - 3).all!(s => SC(mfd.link(s)).is2Sphere))
+        {
+            problems ~= "found a codimension-3 simplex whose link is not a 2-sphere";
+        }
+    }
+
+    if(mfd.numSimplices[] != mfd.simpComp.fVector[])
+    {
+        problems ~= "number of simplices incorrect";        
+    }
+
+    foreach(d; 0 .. dim - 1)
+    {
+        auto correct = mfd.simplices(d).map!(s => mfd.degree(s)^^2).sum;
+        if(mfd.totSqrDegrees[d] != correct)
+        {
+            problems ~= "found incorrect total squared degree";
+            break;
+        }
+    }
+
+    foreach(d; 0 .. dim + 1)
+    {
+        foreach(s; mfd.simpComp.simplices(d))
+        {
+            if(mfd.toNSimp(s) !in mfd.degreeMap)
+            {
+                problems ~= "found a simplex in simpComp that is not in degreeMap";
+                goto done;
+            }
+        }
+    }
+    done:
+
+    foreach(pair; mfd.degreeMap.byKeyValue)
+    {
+        auto simplex = pair.key;
+        auto deg = pair.value;
+
+        if(!mfd.simpComp.contains(simplex[]))
+        {
+            problems ~= "found a simplex in degreeMap that is not in simpComp";
+            break;
+        }
+    }
+
+    foreach(pair; mfd.degreeMap.byKeyValue)
+    {
+        auto simplex = pair.key;
+        auto deg = pair.value;
+
+        if(deg != mfd.simpComp.star(simplex[]).walkLength)
+        {
+            problems ~= "found simplex in degreeMap with incorrect degree";
+            break;
+        }
+    }
+
+
+    foreach(pair; mfd.ridgeLinks.byKeyValue)
+    {
+        auto ridge = pair.key;
+        auto link = pair.value;
+
+        if(link[].walkLength != 2)
+        {
+            problems ~= "found ridge in ridgeLinks whose link doesn't contain 2 vertices";
+            break;
+        }
+    }
+   
+    return problems;
+}
+///
+unittest
+{
+    auto m = standardSphere!3;
+    assert(m.findProblems.empty);
+}
