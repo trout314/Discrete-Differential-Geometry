@@ -343,9 +343,7 @@ public:
             "expected a simplex not already in the simplicial complex");
 
         /* We must remove any existing facets which are faces of the inserted
-        facet. Also, we need independent copies of the facets to remove.
-        TO DO: Create version w/ template arg that says skips this?
-        NOTE: This is what is responsible for function allocating a closure!  */
+        facet. Also, we need independent copies of the facets to remove. */
 
         static if(checkForFacetFaces)
         {
@@ -393,7 +391,6 @@ public:
         copy(facetVertices[dim][$ - dim - 1  .. $],
              facetVertices[dim][indx .. indx + dim + 1]);
 
-        // TO DO: Remove the need for .idup here. Custom AA type?
         indexOfFacet[toNSimp(facetVertices[dim][$ - dim - 1  .. $])] = indx;
 
         facetVertices[dim] = facetVertices[dim][0 .. $ - dim - 1];
@@ -597,8 +594,6 @@ public:
     assert(count > 35);
     assert(count < 65);
 }
-
-// TO DO: randomFacetsOfDim error unittests?
 
 ///
 @Name("containsFacet") pure @safe unittest
