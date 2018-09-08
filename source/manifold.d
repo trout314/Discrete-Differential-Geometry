@@ -1064,14 +1064,14 @@ if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
     // Now, add in the new simplices to the stored fVector
     manifold.numSimplices[1] += (deg - 3);  // # edges in disk
     manifold.numSimplices[2] += (deg - 2);  // # triangles in disk
-    
-    foreach(d; 2 .. dim)
+
+    // (# 0-simplices in bdry(hinge)) * (# 1-simplices in disk)
+    manifold.numSimplices[2] += (dim - 1) * (deg - 3);
+
+    foreach(d; 3 .. dim)
     {
         // (# (d - 3)-simplices in bdry(hinge)) * (# 2-simplices in disk)
-        if(d >= 3)
-        {
-            manifold.numSimplices[d] += binomial(dim - 1, d - 2) * (deg - 2);            
-        }
+        manifold.numSimplices[d] += binomial(dim - 1, d - 2) * (deg - 2);            
 
         // (# (d - 2)-simplices in bdry(hinge)) * (# 1-simplices in disk)
         manifold.numSimplices[d] += binomial(dim - 1, d - 1) * (deg - 3);
@@ -1144,13 +1144,13 @@ if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
     manifold.numSimplices[1] -= (deg - 3);  // # edges in disk
     manifold.numSimplices[2] -= (deg - 2);  // # triangles in disk
     
-    foreach(d; 2 .. dim)
+    // (# 0-simplices in bdry(hinge)) * (# 1-simplices in disk)
+    manifold.numSimplices[2] -= (dim - 1) * (deg - 3);
+
+    foreach(d; 3 .. dim)
     {
         // (# (d - 3)-simplices in bdry(hinge)) * (# 2-simplices in disk)
-        if(d >= 3)
-        {
-            manifold.numSimplices[d] -= binomial(dim - 1, d - 2) * (deg - 2);            
-        }
+        manifold.numSimplices[d] -= binomial(dim - 1, d - 2) * (deg - 2);            
 
         // (# (d - 2)-simplices in bdry(hinge)) * (# 1-simplices in disk)
         manifold.numSimplices[d] -= binomial(dim - 1, d - 1) * (deg - 3);
@@ -1322,7 +1322,7 @@ string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
         auto link = pair.value[];
 
         // TO DO: Clean this up!
-        if(link.array != mfd.simpComp.link(ridge).map!array.array.joiner.array.dup.sort.array)
+        if(link.array != mfd.simpComp.link(ridge).joiner.array.dup.sort.array)
         {
             problems ~= "found a ridge in ridgeLinks whose link has the wrong vertices";
             break;
