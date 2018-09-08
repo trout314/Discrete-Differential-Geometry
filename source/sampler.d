@@ -1,5 +1,5 @@
 import algorithms : eulerCharacteristic;
-import manifold : coCenter, degreeVariance, movesAtFacet, Manifold, standardSphere, totalSquareDegree, doPachnerImpl, meanDegree;
+import manifold : coCenter, degreeVariance, findProblems, movesAtFacet, Manifold, standardSphere, totalSquareDegree, doPachnerImpl, meanDegree;
 import simplicial_complex : fVector;
 import std.algorithm : all, each, filter, joiner, map, max, maxElement, sum;
 import std.conv : to;
@@ -45,24 +45,25 @@ static immutable real[17] flatDegreeInDim = [
 //-------------------------------- SETTINGS ------------------------------------
 // TO DO: make setting setting a coef to 0.0 disable un-needed code
 
-enum int numFacetsTarget = 20000;
+enum int numFacetsTarget = 100;
 enum real hingeDegreeTarget = flatDegreeInDim[3];
 
 enum real numFacetsCoef = 0.01;
 enum real numHingesCoef = 0.05;
 enum real hingeDegreeVarCoef = 0.05;
 
-enum int triesPerReport = 100000;
+enum int triesPerReport = 200;
 enum int maxTries = 1000000;
 
 enum int triesPerCollect = 1000;
+enum int triesPerProblemCheck = 1000;
 
 enum useHingeMoves = true;
 
 struct Sampler(Vertex, int dim)
 {
 private:
-    Manifold!(dim, Vertex) manifold;
+    Manifold!(dim, Vertex) manifold_;
     const(Vertex)[] unusedVertices;
 
     // tryCount[j] counts j + 1 -> dim + 1 - j moves tried
@@ -73,9 +74,14 @@ private:
 public:
     this(Manifold!(dim, Vertex) initialManifold)
     {
-        manifold = initialManifold;
+        manifold_ = initialManifold;
     }
-    
+
+    ref const(Manifold!(dim, Vertex)) manifold()() const
+    {
+        return manifold_;
+    }
+
     void report(Writer)(auto ref Writer w)
     {
         auto tt = timer.peek.total!"usecs" / real(triesPerReport);
@@ -171,30 +177,28 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
     s.timer.start;
     while (s.tryCount[].sum < maxTries)
     {
-        assert(s.unusedVertices.all!(v => !s.manifold.contains([v])));
+        assert(s.unusedVertices.all!(v => !s.manifold_.contains([v])));
         if(s.unusedVertices.empty)
         {
             /* If no unused vertices then next unused vertex label
             is just the number of vertices. */
-            s.unusedVertices ~= s.manifold.fVector[0].to!int;
+            s.unusedVertices ~= s.manifold_.fVector[0].to!int;
         }
 
-        // auto facet = s.manifold.randomFacetOfDim(dim).array;
-
-        auto facet_ = s.manifold.randomFacetOfDim(dim).toStaticArray!(dim + 1);
+        auto facet_ = s.manifold_.randomFacetOfDim(dim).toStaticArray!(dim + 1);
         auto facet = facet_[];
-        auto moves = s.manifold.movesAtFacet(facet).map!array.array;
+        auto moves = s.manifold_.movesAtFacet(facet).map!array.array;
 
         auto choiceIndx = moves.map!(m => 1.0L / (dim - m.walkLength + 2)).array.dice;
         auto move = moves[choiceIndx];
 
         auto coMove = (move.walkLength == dim + 1) 
             ? [s.unusedVertices.back] 
-            : s.manifold.coCenter(move, facet);
+            : s.manifold_.coCenter(move, facet);
 
         real oldObj = s.objective;
 
-        s.manifold.doPachnerImpl(move, coMove);
+        s.manifold_.doPachnerImpl(move, coMove);
         ++s.tryCount[dim + 1 - move.walkLength];
 
         real deltaObj = s.objective - oldObj;
@@ -212,7 +216,7 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         }
         else                                                // REJECT MOVE
         {
-            s.manifold.doPachnerImpl(coMove, move);
+            s.manifold_.doPachnerImpl(coMove, move);
         }
 
         //--------------------------- MAKE REPORT ----------------------------
@@ -228,6 +232,15 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
             GC.enable;
             GC.collect;
             GC.disable;
+        }
+
+        //------------------------- COLLECT GARBAGE --------------------------
+        if (s.tryCount[].sum % triesPerProblemCheck == 0)
+        {
+            write("checking for problems! ...");
+            assert(s.manifold.findProblems.empty, 
+                s.manifold.findProblems.joiner(", ").array.to!string);
+            writeln("ok!");
         }
     }
 }
