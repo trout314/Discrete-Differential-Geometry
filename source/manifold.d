@@ -15,7 +15,7 @@ import std.stdio : File, writeln;
 import std.typecons : Flag, No, Yes;
 import std.math : approxEqual;
 
-import std.stdio : writeln;
+import std.stdio : writeln, writefln;
 
 
 alias isIRof = isInputRangeOf;
@@ -1030,6 +1030,13 @@ void doHingeMove(Vertex, int dim, H, K)(
     int diskIndx)
 if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
 {
+    // TO DO: Clean this up!
+
+    // "------- start doHingeMove -------".writeln;
+    // "  numSimplices  : %s\n  simp comp fvec: %s".writefln(
+    //     manifold.numSimplices, manifold.asSimplicialComplex.fVector);
+    assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
+
     static assert(dim >= 3,
         "no hinge moves in dimension less than 3");
     assert(dim >= 2);
@@ -1072,24 +1079,131 @@ if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
     }
 
     oldPiece.each!(f => manifold.removeFacet(f));
-    newPiece.each!(f => manifold.insertFacet(f));
+    // "------- removed oldPiece -------".writeln;
+    // "  numSimplices  : %s\n  simp comp fvec: %s".writefln(
+    //     manifold.numSimplices, manifold.asSimplicialComplex.fVector);
 
     // Modify fVector, start with simplices removed
-    manifold.numSimplices[dim] -= deg;
-    manifold.numSimplices[dim - 1] -= deg;
-    manifold.numSimplices[dim - 2] -= 1;
+    manifold.numSimplices[dim] -= deg;      // (# 1-simplices in Lk(hinge)) * (1 hinge) 
+    manifold.numSimplices[dim - 1] -= deg;  // (# 0-simplices in Lk(hinge)) * (1 hinge)
+    manifold.numSimplices[dim - 2] -= 1;    // 1 hinge
 
-    // Now we add in the new simplices
-    foreach(d; 3 .. dim)
-    {
-       manifold.numSimplices[d] 
-        += binomial(dim - 1, d - 3) * (deg - 2)
-        + binomial(dim - 1, d - 2) * (deg - 3);
-    }
-    manifold.numSimplices[2] += (dim - 1) * (deg - 3) + (deg - 2);
-    manifold.numSimplices[1] += (deg - 3);
-    manifold.numSimplices[dim] += (dim - 1) * (deg - 2);
+    // "------- updated after oldPiece -------".writeln;
+    // "  numSimplices  : %s\n  simp comp fvec: %s".writefln(
+    //     manifold.numSimplices, manifold.asSimplicialComplex.fVector);
+    assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
+
+    newPiece.each!(f => manifold.insertFacet(f));
+    // "------- added newPiece -------".writeln;
+    // "  numSimplices  : %s\n  simp comp fvec: %s".writefln(
+    //     manifold.numSimplices, manifold.asSimplicialComplex.fVector);
+
+    // Now, add in the new simplices to the stored fVector
+    manifold.numSimplices[1] += (deg - 3);  // # edges in disk
+    manifold.numSimplices[2] += (deg - 2);  // # triangles in disk
     
+    foreach(d; 2 .. dim)
+    {
+        // (# (d - 3)-simplices in bdry(hinge)) * (# 2-simplices in disk)
+        if(d >= 3)
+        {
+            manifold.numSimplices[d] += binomial(dim - 1, d - 2) * (deg - 2);            
+        }
+
+        // (# (d - 2)-simplices in bdry(hinge)) * (# 1-simplices in disk)
+        manifold.numSimplices[d] += binomial(dim - 1, d - 1) * (deg - 3);
+    }
+
+    // (# (dim - 2)-simplices in bdry(hinge))
+    manifold.numSimplices[dim] += (dim - 1) * (deg - 2);
+
+    // "------- updated after newPiece -------".writeln;
+    // "  numSimplices  : %s\n  simp comp fvec: %s".writefln(
+    //     manifold.numSimplices, manifold.asSimplicialComplex.fVector);
+    assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
+}
+
+
+/******************************************************************************
+Does the 'diskIndx'-th hinge move associated at 'hinge'. Must give the
+link of this hinge as `hingeLink`
+*/
+void undoHingeMove(Vertex, int dim, H, K)(
+    ref Manifold!(dim, Vertex) manifold,
+    H hinge_,
+    K linkVertices_,
+    int diskIndx)
+if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
+{
+    // TO DO: Clean this up!
+    assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
+
+    static assert(dim >= 3,
+        "no hinge moves in dimension less than 3");
+    assert(dim >= 2);
+    auto hingeBuffer = hinge_.toStaticArray!(dim - 1);
+    auto hinge = hingeBuffer[];
+
+    // TO DO: Decide what to do about this magic constant 7
+    // (It comes from nGonTriangs only supporting up to 7-gon.)
+    auto deg = linkVertices_.walkLength.to!int;
+    auto linkVerticesBuff = linkVertices_.toStaticArray!7;
+    auto linkVertices = linkVerticesBuff[0 .. deg];
+
+    // TO DO: Get rid of allocations here!
+    auto linkEdges = chain(linkVertices[], linkVertices.front.only)
+        .slide(2).take(deg).joiner.array;
+    deg.iota.each!(indx => linkEdges[2*indx .. 2*(indx + 1)].sort);
+
+    assert(diskIndx < deg.nGonTriangs.walkLength);
+    auto diskFacets = deg.nGonTriangs[diskIndx];
+
+    auto newPiece = productUnion(hinge.only, linkEdges.chunks(2));
+    auto oldPiece = productUnion(
+        hinge.subsetsOfSize(dim - 2),
+        diskFacets.map!(f => f.map!(i => linkVertices[i])));
+
+    version(unittest)
+    {
+        alias SC = SimplicialComplex!(Vertex, dim);
+        auto disk = SC(diskFacets.map!(f => f.map!(i => linkVertices[i])));
+
+        // None of the "internal" edges can already be in manifold
+        assert(disk.facets.all!(f => manifold.contains(f)));
+
+        assert(SC(newPiece).isPureOfDim(dim));   
+        assert(SC(oldPiece).isPureOfDim(dim));
+    }
+
+    oldPiece.each!(f => manifold.removeFacet(f));
+
+    // STUFF REMOVED
+    manifold.numSimplices[1] -= (deg - 3);  // # edges in disk
+    manifold.numSimplices[2] -= (deg - 2);  // # triangles in disk
+    
+    foreach(d; 2 .. dim)
+    {
+        // (# (d - 3)-simplices in bdry(hinge)) * (# 2-simplices in disk)
+        if(d >= 3)
+        {
+            manifold.numSimplices[d] -= binomial(dim - 1, d - 2) * (deg - 2);            
+        }
+
+        // (# (d - 2)-simplices in bdry(hinge)) * (# 1-simplices in disk)
+        manifold.numSimplices[d] -= binomial(dim - 1, d - 1) * (deg - 3);
+    }
+
+    // (# (dim - 2)-simplices in bdry(hinge))
+    manifold.numSimplices[dim] -= (dim - 1) * (deg - 2);
+
+    assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
+
+    newPiece.each!(f => manifold.insertFacet(f));
+
+    // STUFF ADDED
+    manifold.numSimplices[dim] += deg;      // (# 1-simplices in Lk(hinge)) * (1 hinge) 
+    manifold.numSimplices[dim - 1] += deg;  // (# 0-simplices in Lk(hinge)) * (1 hinge)
+    manifold.numSimplices[dim - 2] += 1;    // 1 hinge
 
     assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
 }
@@ -1107,6 +1221,18 @@ unittest
         [0, 2, 3, 7], [3, 4, 5, 7], [0, 3, 4, 7], [3, 4, 5, 6], [0, 1, 4, 7],
         [1, 2, 5, 6], [1, 2, 5, 7], [2, 3, 5, 6], [2, 3, 5, 7],[0, 1, 2, 4],
         [0, 2, 3, 4], [1, 2, 4, 6], [2, 3, 4, 6]]);
+
+    mfd.undoHingeMove([0,6], [1,2,3,4], 1);
+    mfd.facets.should.containOnly(productUnion(octahedron, twoPts).map!array);
+
+    auto twoOtherPts = [[8], [9]];
+    auto mfd4 = Manifold!4(
+        productUnion(productUnion(octahedron, twoPts), twoOtherPts));
+
+    mfd4.doHingeMove([0,6,8], [1,2,3,4], 1);
+    mfd4.undoHingeMove([0,6,8], [1,2,3,4], 1);
+    mfd4.facets.should.containOnly(productUnion(
+        productUnion(octahedron, twoPts), twoOtherPts).map!array);    
 }
 
 @Name("fVector") unittest
