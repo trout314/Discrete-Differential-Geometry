@@ -994,10 +994,6 @@ void doHingeMove(Vertex, int dim, H, K)(
 if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
 {
     // TO DO: Clean this up!
-
-    // "------- start doHingeMove -------".writeln;
-    // "  numSimplices  : %s\n  simp comp fvec: %s".writefln(
-    //     manifold.numSimplices, manifold.asSimplicialComplex.fVector);
     assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
 
     static assert(dim >= 3,
@@ -1042,24 +1038,15 @@ if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
     }
 
     oldPiece.each!(f => manifold.removeFacet(f));
-    // "------- removed oldPiece -------".writeln;
-    // "  numSimplices  : %s\n  simp comp fvec: %s".writefln(
-    //     manifold.numSimplices, manifold.asSimplicialComplex.fVector);
 
     // Modify fVector, start with simplices removed
     manifold.numSimplices[dim] -= deg;      // (# 1-simplices in Lk(hinge)) * (1 hinge) 
     manifold.numSimplices[dim - 1] -= deg;  // (# 0-simplices in Lk(hinge)) * (1 hinge)
     manifold.numSimplices[dim - 2] -= 1;    // 1 hinge
 
-    // "------- updated after oldPiece -------".writeln;
-    // "  numSimplices  : %s\n  simp comp fvec: %s".writefln(
-    //     manifold.numSimplices, manifold.asSimplicialComplex.fVector);
     assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
 
     newPiece.each!(f => manifold.insertFacet(f));
-    // "------- added newPiece -------".writeln;
-    // "  numSimplices  : %s\n  simp comp fvec: %s".writefln(
-    //     manifold.numSimplices, manifold.asSimplicialComplex.fVector);
 
     // Now, add in the new simplices to the stored fVector
     manifold.numSimplices[1] += (deg - 3);  // # edges in disk
@@ -1077,12 +1064,9 @@ if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
         manifold.numSimplices[d] += binomial(dim - 1, d - 1) * (deg - 3);
     }
 
-    // (# (dim - 2)-simplices in bdry(hinge))
+    // (# (dim - 2)-simplices in bdry(hinge)) * (# 2-simplices in disk)
     manifold.numSimplices[dim] += (dim - 1) * (deg - 2);
 
-    // "------- updated after newPiece -------".writeln;
-    // "  numSimplices  : %s\n  simp comp fvec: %s".writefln(
-    //     manifold.numSimplices, manifold.asSimplicialComplex.fVector);
     assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
 }
 
@@ -1156,7 +1140,7 @@ if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
         manifold.numSimplices[d] -= binomial(dim - 1, d - 1) * (deg - 3);
     }
 
-    // (# (dim - 2)-simplices in bdry(hinge))
+    // (# (dim - 2)-simplices in bdry(hinge)) * (# 2-simplices in disk)
     manifold.numSimplices[dim] -= (dim - 1) * (deg - 2);
 
     assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
