@@ -1,5 +1,5 @@
 import algorithms : eulerCharacteristic;
-import manifold : coCenter, degreeVariance, findProblems, movesAtFacet, Manifold, standardSphere, totalSquareDegree, doPachnerImpl, meanDegree;
+import manifold : coCenter, degreeVariance, findProblems, movesAtFacet, Manifold, standardSphere, totalSquareDegree, doPachner, meanDegree;
 import simplicial_complex : fVector;
 import std.algorithm : all, each, filter, joiner, map, max, maxElement, sum;
 import std.conv : to;
@@ -198,7 +198,7 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
 
         real oldObj = s.objective;
 
-        s.manifold_.doPachnerImpl(move, coMove);
+        s.manifold_.doPachner(move, coMove);
         ++s.tryCount[dim + 1 - move.walkLength];
 
         real deltaObj = s.objective - oldObj;
@@ -216,7 +216,7 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         }
         else                                                // REJECT MOVE
         {
-            s.manifold_.doPachnerImpl(coMove, move);
+            s.manifold_.doPachner(coMove, move);
         }
 
         //--------------------------- MAKE REPORT ----------------------------
