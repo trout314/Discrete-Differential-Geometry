@@ -303,7 +303,7 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
     tetrahedron.pachnerMoves.should.containOnly(
         [[1, 2, 3], [1, 2, 4], [1, 3, 4], [2, 3, 4]]);
 
-    tetrahedron.doPachner([1,2,3], 5);
+    tetrahedron.doPachner([1,2,3], [5]);
 
     // TO DO: FINISH CHECKS!
     // octahedron.doPachner([1,2]);
@@ -370,74 +370,6 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
         [1, 2], [0, 4], [0, 2], [2, 5], [3, 5], [3, 4]]);
 }
 
-/*******************************************************************************
-Does a pachner move of type 1 -> (dim + 1) with the new vertex given by
-the user.
-*/
-void doPachner(Vertex, int dim, C)(
-    ref Manifold!(dim, Vertex) manifold,
-    C centerFacet,
-    const(Vertex) newVertex)
-if (isIRof!(C, const(Vertex)))
-{
-    assert(centerFacet.walkLength == manifold.dimension + 1);
-    manifold.doPachnerImpl(centerFacet, [newVertex]);
-}
-///
-@Name("doPachner 1 -> (dim + 1)") @safe unittest
-{
-    auto m = standardSphere!2;
-    m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
-    
-    m.doPachner([1,2,3], 4);
-    m.facets.should.containOnly(
-        [[0,1,2],[0,1,3], [0,2,3], [1,2,4], [1,3,4], [2,3,4]]);
-
-    m.doPachner([0,2,3], 7);
-    m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,7],
-        [0,3,7], [1,2,4], [1,3,4], [2,3,4], [2,3,7]]);
-
-    m.doPachner([7]);
-    m.doPachner([4]);
-    m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
-}
-
-/*******************************************************************************
-Does a pachner move which replaces the star of the given simplex. This is a
-move of type (dim + 2 - center.length) -> center.length
-*/
-void doPachner(Vertex, int dim, C)(
-    ref Manifold!(dim, Vertex) manifold,
-    C center)
-if (isIRof!(C, const(Vertex)))
-{
-    // TO DO: Better error
-    assert(manifold.pachnerMoves.canFind(center), "bad pachner move");
-
-    auto coCenter = manifold.findCoCenter(center);
-    assert(!coCenter.empty);
-
-    manifold.doPachnerImpl(center, coCenter);
-}
-///
-@Name("doPachner n -> (dim + 2 - n), 1 < n < dim + 2") @safe unittest
-{
-    auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4],
-        [1,2,5], [2,3,5], [3,4,5], [1,4,5]]);
-
-    octahedron.doPachner([1,2]);
-    octahedron.degree([0]).should.equal(5);
-    octahedron.degree([5]).should.equal(5);
-    octahedron.degree([1]).should.equal(3);
-    octahedron.degree([2]).should.equal(3);
-
-    // We can undo the 2->2 move
-    octahedron.doPachner([0,5]);
-    assert(octahedron.simplices(0).all!(s => octahedron.degree(s) == 4));
-
-    octahedron.doPachner([0,1,2], 99);
-    octahedron.doPachner([99]);
-}
 // NOTE: The following unittest cannot be @safe since throwsWithMsg 
 // catches an Error
 ///
@@ -445,25 +377,60 @@ if (isIRof!(C, const(Vertex)))
 {
     // Can't do 2->2 move on the boundary of a 3-simplex
     auto m = Manifold!2([[1,2,3],[1,2,4], [1,3,4], [2,3,4]]);   
-    m.doPachner([1,2]).throwsWithMsg("bad pachner move");
+    m.doPachner([1,2], [3,4]).throwsWithMsg("bad pachner move");
 }
 ///
-@Name("doPachner (general)") unittest
+@Name("doPachner") unittest
 {
     auto m = standardSphere!2;
     m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
     
-    m.doPachner([1,2,3], 4);
-    m.doPachner([1,2]);
+    m.doPachner([1,2,3], [4]);
     m.facets.should.containOnly(
+        [[0,1,2],[0,1,3], [0,2,3], [1,2,4], [1,3,4], [2,3,4]]);
+
+    m.doPachner([0,2,3], [7]);
+    m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,7],
+        [0,3,7], [1,2,4], [1,3,4], [2,3,4], [2,3,7]]);
+
+    m.doPachner([7],[0,2,3]);
+    m.doPachner([4],[1,2,3]);
+    m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
+
+
+    auto n = standardSphere!2;
+    n.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
+    
+    n.doPachner([1,2,3], [4]);
+    n.doPachner([1,2], [0,4]);
+    n.facets.should.containOnly(
         [[0,1,3], [0,1,4], [0,2,3], [0,2,4], [1,3,4], [2,3,4]]);
-    m.doPachner([0,4]);
-    m.doPachner([4]);
-    m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);      
+    n.doPachner([0,4], [1,2]);
+    n.doPachner([4], [1,2,3]);
+    n.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);      
+
+    auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4],
+        [1,2,5], [2,3,5], [3,4,5], [1,4,5]]);
+
+    octahedron.doPachner([1,2],[0,5]);
+    octahedron.degree([0]).should.equal(5);
+    octahedron.degree([5]).should.equal(5);
+    octahedron.degree([1]).should.equal(3);
+    octahedron.degree([2]).should.equal(3);
+
+    // We can undo the 2->2 move
+    octahedron.doPachner([0,5], [1,2]);
+    assert(octahedron.simplices(0).all!(s => octahedron.degree(s) == 4));
+
+    octahedron.doPachner([0,1,2], [99]);
+    octahedron.doPachner([99], [0,1,2]);
 }
 
-// Factor out the common code for the two types of doPachner
-void doPachnerImpl(Vertex, int dim, C, D)(
+/******************************************************************************
+Do a bistellar move replacing the star(center) with star(coCenter)
+TO DO: Better docs here!
+*/
+void doPachner(Vertex, int dim, C, D)(
     ref Manifold!(dim, Vertex) manifold,
     C center,
     D coCenter
