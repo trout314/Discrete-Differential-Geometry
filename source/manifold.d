@@ -247,16 +247,6 @@ public:
         assert(!this.simpComp.containsFacet(facet));
     }
 
-    private void printDiagnosticReport() const
-    {
-        import std.stdio : writeln;
-        debug writeln("dimension: ", dimension);
-        debug writeln("\tSComp: ", this.asSimplicialComplex.facets);
-        debug writeln("numSimplices: ", numSimplices);
-        debug writeln("\tdegreeMap: ", degreeMap);
-        debug writeln("\tridgeLinks: ", ridgeLinks);        
-    }
-
     /// We provide access to the manifold as a simplicial complex
     ref const(SimplicialComplex!Vertex) asSimplicialComplex() const pure nothrow @nogc @safe 
     {
