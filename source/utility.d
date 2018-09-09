@@ -643,7 +643,7 @@ bool hasOneAtBit(uint x, size_t pos) pure nothrow @nogc @safe
     7.hasOneAtBit(32).throwsWithMsg("bad bit position");
 }
 
-auto subsetFromUint(R)(R set, uint whichToKeep) if (isInputRange!R)
+private auto subsetFromUint(R)(R set, uint whichToKeep) if (isInputRange!R)
 {
     assert(whichToKeep < (1 << set.walkLength),
             "1 bits found in positions not corresponsing to elements in set");
@@ -1120,11 +1120,13 @@ private:
     T[maxLength] data;
     size_t currentLength;
 public:
+    /// Returns the currently used length
     auto length() const
     {
         return currentLength;
     }
 
+    /// Sets length, additional elements are .init initialized
     auto length(size_t newLength)
     {
         assert(newLength <= maxLength, "new length must be at most max length");
@@ -1141,6 +1143,7 @@ public:
 
     @disable void opBinary(string op : "~")(T[]){}
 
+    /// Append an element
     T opOpAssign(string op : "~")(T itemToAppend)
     {
         assert(currentLength < maxLength, "StackArray at maximum length. cannot append");
@@ -1148,6 +1151,7 @@ public:
         return data[currentLength - 1] = itemToAppend;
     }
 
+    /// Concatenate with a slice
     T[] opOpAssign(string op : "~")(T[] sliceToConcatenate)
     {
         assert(currentLength + sliceToConcatenate.length <= maxLength,
@@ -1157,16 +1161,19 @@ public:
         return data[start .. currentLength] = sliceToConcatenate[];
     }
 
+    /// Remove all elements
     void clear()
     {
         length = 0;
     }
 
+    /// Get a slice of the stored data
     inout(T)[] opSlice() inout
     {
         return data[0 .. currentLength];
     }
 
+    /// Access stored element at indx
     ref inout(T) opIndex(size_t indx) inout
     {
         return data[indx];
@@ -1328,8 +1335,8 @@ ulong binomial(ulong n, ulong k) pure nothrow @nogc @safe
     assert(binomial(5, 5) == 1);
 
     // A few larger tests, answers verified with Mathematica
-    assert(binomial(20, 10) == 184756);
-    assert(binomial(17, 7) == 19448);
+    assert(binomial(20, 10) == 184_756);
+    assert(binomial(17, 7) == 19_448);
 }
 
 /******************************************************************************
