@@ -46,17 +46,17 @@ static immutable real[17] flatDegreeInDim = [
 // TO DO: make setting setting a coef to 0.0 disable un-needed code
 
 enum int numFacetsTarget = 100;
-enum real hingeDegreeTarget = flatDegreeInDim[3];
+enum real hingeDegreeTarget = flatDegreeInDim[4];
 
 enum real numFacetsCoef = 0.01;
 enum real numHingesCoef = 0.05;
 enum real hingeDegreeVarCoef = 0.05;
 
-enum int triesPerReport = 200;
+enum int triesPerReport = 100;
 enum int maxTries = 1000000;
 
 enum int triesPerCollect = 1000;
-enum int triesPerProblemCheck = 1000;
+enum int triesPerProblemCheck = 200;
 
 enum useHingeMoves = true;
 
