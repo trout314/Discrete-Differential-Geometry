@@ -972,8 +972,8 @@ real degreeVariance(Vertex, int mfdDim)(
     auto pyramid = Manifold!2(
         [[0,1,2], [0,2,3], [0,1,3], [1,2,4], [2,3,4], [1,3,4]]);
 
-    real md0 = pyramid.meanDegree(0);
-    real epsilon = 1e-20;
+    immutable real md0 = pyramid.meanDegree(0);
+    immutable real epsilon = 1e-20;
     assert(pyramid.degreeVariance(0)
         .approxEqual((2 * (3 - md0)^^2 + 3 * (4 - md0)^^2)/5.0, epsilon));
 
@@ -998,13 +998,12 @@ if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
 
     static assert(dim >= 3,
         "no hinge moves in dimension less than 3");
-    assert(dim >= 2);
     auto hingeBuffer = hinge_.toStaticArray!(dim - 1);
     auto hinge = hingeBuffer[];
 
     // TO DO: Decide what to do about this magic constant 7
     // (It comes from nGonTriangs only supporting up to 7-gon.)
-    auto deg = manifold.degree(hinge).to!int;
+    auto deg = linkVertices_.walkLength.to!int;
     auto linkVerticesBuff = linkVertices_.toStaticArray!7;
     auto linkVertices = linkVerticesBuff[0 .. deg];
 
@@ -1087,7 +1086,6 @@ if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
 
     static assert(dim >= 3,
         "no hinge moves in dimension less than 3");
-    assert(dim >= 2);
     auto hingeBuffer = hinge_.toStaticArray!(dim - 1);
     auto hinge = hingeBuffer[];
 
@@ -1115,7 +1113,7 @@ if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
         alias SC = SimplicialComplex!(Vertex, dim);
         auto disk = SC(diskFacets.map!(f => f.map!(i => linkVertices[i])));
 
-        // None of the "internal" edges can already be in manifold
+        // All of the disk should be in manifold
         assert(disk.facets.all!(f => manifold.contains(f)));
 
         assert(SC(newPiece).isPureOfDim(dim));   
@@ -1163,6 +1161,7 @@ unittest
     auto twoPts = [[6], [7]];
     auto mfd = Manifold!3(productUnion(octahedron, twoPts));
 
+    assert(mfd.hasValidHingeMove([1,2,3,4], 1));
     mfd.doHingeMove([0,6], [1,2,3,4], 1);
     mfd.facets.should.containOnly([[1, 4, 5, 7], [0, 1, 2, 7], [1, 4, 5, 6],
         [0, 2, 3, 7], [3, 4, 5, 7], [0, 3, 4, 7], [3, 4, 5, 6], [0, 1, 4, 7],
@@ -1180,6 +1179,38 @@ unittest
     mfd4.undoHingeMove([0,6,8], [1,2,3,4], 1);
     mfd4.facets.should.containOnly(productUnion(
         productUnion(octahedron, twoPts), twoOtherPts).map!array);    
+}
+
+bool hasValidHingeMove(Vertex, int dim, K)(
+    ref const(Manifold!(dim, Vertex)) manifold,
+    K linkVertices_,
+    int diskIndx)
+if (isIRof!(K, const(Vertex)))
+{
+    static assert(dim >= 3,
+        "no hinge moves in dimension less than 3");
+
+    // TO DO: Decide what to do about this magic constant 7
+    // (It comes from nGonTriangs only supporting up to 7-gon.)
+    auto deg = linkVertices_.walkLength.to!int;
+    auto linkVerticesBuff = linkVertices_.toStaticArray!7;
+    auto linkVertices = linkVerticesBuff[0 .. deg];
+
+    // TO DO: Get rid of allocations here!
+    auto linkEdges = chain(linkVertices[], linkVertices.front.only)
+        .slide(2).take(deg).joiner.array;
+    deg.iota.each!(indx => linkEdges[2*indx .. 2*(indx + 1)].sort);
+
+    assert(diskIndx < deg.nGonTriangs.walkLength);
+    auto diskFacets = deg.nGonTriangs[diskIndx];
+
+    auto disk = SimplicialComplex!(Vertex, 2)(
+            diskFacets.map!(f => f.map!(i => linkVertices[i])));
+
+    // None of the "internal" edges can already be in manifold
+    return disk.simplices(1)
+        .filter!(edge => disk.star(edge).walkLength == 2)
+        .all!(edge => !manifold.contains(edge));
 }
 
 @Name("fVector") unittest
@@ -1313,12 +1344,9 @@ string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
         }
     }
 
-    foreach(pair; mfd.ridgeLinks.byKeyValue)
+    foreach(ridge; mfd.ridgeLinks.byKey)
     {
-        auto ridge = pair.key[];
-        auto link = pair.value[];
-
-        if(!mfd.simpComp.contains(ridge))
+        if(!mfd.simpComp.contains(ridge[]))
         {
             problems ~= "found a ridge in ridgeLinks that is not in simpComp";
             break;
