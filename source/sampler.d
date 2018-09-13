@@ -13,7 +13,7 @@ import std.range : array, back, chain, empty, enumerate, front, iota, popBack, p
     save, walkLength;
 import std.stdio : write, writefln, writeln, stdout;
 import unit_threaded : Name;
-import utility : subsetsOfSize, subsets, toStaticArray;
+import utility : subsetsOfSize, subsets, toStaticArray, StackArray;
 
 import core.memory : GC;
 import std.datetime.systime : Clock;
@@ -192,28 +192,30 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         {
             PossibleBistellarMove,
             PossibleHingeMove,
-            NoMove
         }
 
-        Status[2^^(dim + 1) - 1] faceStatus;
-        foreach(indx, face; facet.subsets.map!array.enumerate)
+        struct MoveRecord
+        {
+            Status moveStatus;
+            typeof(facet.subsets.front()) move;
+        }
+
+        StackArray!(MoveRecord, 2^^(dim + 1) - 1) moves_;
+        foreach(face; facet.subsets)
         {
             auto fDim = face.walkLength - 1;
-            if ((fDim == dim) || (s.manifold.degree(face) == dim + 1 - fDim))
+            // TO DO: Get rid of allocations here!
+            if ((fDim == dim) || (s.manifold.degree(face.array) == dim + 1 - fDim))
             {
-                faceStatus[indx] = Status.PossibleBistellarMove;
+                moves_ ~= MoveRecord(Status.PossibleBistellarMove, face);
             }
             // TO DO: Get rid of magic constant here. It's max deg hinge move.
-            else if ((fDim == dim - 2) && s.manifold.degree(face) <= 7)
+            else if ((fDim == dim - 2) && s.manifold.degree(face.array) <= 7)
             {
-                faceStatus[indx] = Status.PossibleHingeMove;
-            }
-            else
-            {
-                faceStatus[indx] = Status.NoMove;
+                moves_ ~= MoveRecord(Status.PossibleHingeMove, face);
             }
         }   
-        writeln(faceStatus);
+        writeln(moves_);
                
 
 
