@@ -9,7 +9,7 @@ import std.datetime.stopwatch : StopWatch;
 // import std.format : format, formattedWrite;
 import std.math : exp, sqrt;
 import std.random : choice, dice, rndGen, uniform, uniform01;
-import std.range : array, back, chain, empty, front, iota, popBack, popFront, repeat,
+import std.range : array, back, chain, empty, enumerate, front, iota, popBack, popFront, repeat,
     save, walkLength;
 import std.stdio : write, writefln, writeln, stdout;
 import unit_threaded : Name;
@@ -187,8 +187,38 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
 
         auto facet_ = s.manifold_.randomFacetOfDim(dim).toStaticArray!(dim + 1);
         auto facet = facet_[];
-        auto moves = s.manifold_.movesAtFacet(facet).map!array.array;
 
+        enum Status
+        {
+            PossibleBistellarMove,
+            PossibleHingeMove,
+            NoMove
+        }
+
+        Status[2^^(dim + 1) - 1] faceStatus;
+        foreach(indx, face; facet.subsets.map!array.enumerate)
+        {
+            auto fDim = face.walkLength - 1;
+            if ((fDim == dim) || (s.manifold.degree(face) == dim + 1 - fDim))
+            {
+                faceStatus[indx] = Status.PossibleBistellarMove;
+            }
+            // TO DO: Get rid of magic constant here. It's max deg hinge move.
+            else if ((fDim == dim - 2) && s.manifold.degree(face) <= 7)
+            {
+                faceStatus[indx] = Status.PossibleHingeMove;
+            }
+            else
+            {
+                faceStatus[indx] = Status.NoMove;
+            }
+        }   
+        writeln(faceStatus);
+               
+
+
+        //---------------------------------------------------------------------
+        auto moves = s.manifold_.movesAtFacet(facet).map!array.array;
         auto choiceIndx = moves.map!(m => 1.0L / (dim - m.walkLength + 2)).array.dice;
         auto move = moves[choiceIndx];
 
@@ -234,7 +264,7 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
             GC.disable;
         }
 
-        //------------------------- COLLECT GARBAGE --------------------------
+        //----------------------- CHECK FOR PROBLEMS ----------------------- 
         if (s.tryCount[].sum % triesPerProblemCheck == 0)
         {
             write("checking for problems! ...");
