@@ -13,7 +13,7 @@ import std.range : array, back, chain, empty, enumerate, front, iota, popBack, p
     save, walkLength;
 import std.stdio : write, writefln, writeln, stdout;
 import unit_threaded : Name;
-import utility : subsetsOfSize, subsets, toStaticArray, StackArray;
+import utility : subsetsOfSize, subsets, toStackArray, toStaticArray, StackArray;
 
 import core.memory : GC;
 import std.datetime.systime : Clock;
@@ -188,7 +188,7 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         auto facet_ = s.manifold_.randomFacetOfDim(dim).toStaticArray!(dim + 1);
         auto facet = facet_[];
 
-        enum Status
+        enum MoveKind
         {
             PossibleBistellarMove,
             PossibleHingeMove,
@@ -196,28 +196,36 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
 
         struct MoveRecord
         {
-            Status moveStatus;
+            MoveKind moveKind;
+            real moveWeight;
             typeof(facet.subsets.front()) move;
         }
 
         StackArray!(MoveRecord, 2^^(dim + 1) - 1) moves_;
-        foreach(face; facet.subsets)
+        foreach(f; facet.subsets)
         {
-            auto fDim = face.walkLength - 1;
-            // TO DO: Get rid of allocations here!
-            if ((fDim == dim) || (s.manifold.degree(face.array) == dim + 1 - fDim))
+            auto face_ = f.toStackArray!(Vertex, dim + 1);
+            auto face = face_[];
+            auto fDim = face.length - 1;
+            auto fDeg = s.manifold.degree(face);
+            if ((fDim == dim) || (fDeg == dim + 1 - fDim))
             {
-                moves_ ~= MoveRecord(Status.PossibleBistellarMove, face);
+                moves_ ~= MoveRecord(
+                    MoveKind.PossibleBistellarMove,
+                    1.0L / (dim - fDim + 1),
+                    f);
             }
             // TO DO: Get rid of magic constant here. It's max deg hinge move.
-            else if ((fDim == dim - 2) && s.manifold.degree(face.array) <= 7)
+            else if ((fDim == dim - 2) && s.manifold.degree(face) <= 7)
             {
-                moves_ ~= MoveRecord(Status.PossibleHingeMove, face);
+                moves_ ~= MoveRecord(
+                    MoveKind.PossibleHingeMove,
+                    1.0L / s.manifold.degree(face),
+                    f);
             }
-        }   
-        writeln(moves_);
-               
-
+        }
+        auto mv = moves_[].map!(m => m.moveWeight).dice;
+        writeln(moves_[mv]);
 
         //---------------------------------------------------------------------
         auto moves = s.manifold_.movesAtFacet(facet).map!array.array;
