@@ -3,7 +3,7 @@ import algorithms : canFind, eulerCharacteristic, is2Sphere, isCircle,
 import fluent.asserts;
 import simplicial_complex : fVector, simplicialComplex, SimplicialComplex, assertValidSimplex, loadSimplicialComplex;
 import std.algorithm : all, any, copy, canFind, each, equal, filter, find, joiner,
-    map, maxElement, sort, sum, uniq;
+    map, maxElement, setDifference, merge, sort, sum, uniq;
 import std.conv : to;
 import std.exception : assertThrown;
 import std.range : array, back, chain, chunks, cycle, ElementType, empty, enumerate, front, iota,
@@ -1326,4 +1326,63 @@ unittest
 {
     auto m = standardSphere!3;
     assert(m.findProblems.empty);
+}
+
+/******************************************************************************
+Rerturns the vertices in the link. [v_1, v_2, v_3 ... v_deg] where the edges
+in the link are [v_1, v_2], [v_2, v_3], ... [v_deg, v_1]
+*/
+auto linkVerticesAtHinge(int dim, Vertex, S, F)(
+    const ref Manifold!(dim, Vertex) mfd,
+    S hinge,
+    F facet)
+if (isIRof!(S, const(Vertex)) && isIRof!(F, const(Vertex)))
+{
+    assert(mfd.contains(hinge));
+    assert(mfd.contains(facet));
+    assert(hinge.isSubsetOf(facet));
+
+    auto verticesFound = setDifference(facet, hinge).array;
+    auto finalVertex = verticesFound.front;
+
+    auto facet_ = facet.array;
+    
+    auto done = false;
+    do
+    {
+        Vertex nextVertex;
+
+        auto ridgeLink = mfd.ridgeLinks[
+            mfd.toRidge(merge(hinge, verticesFound.back.only))][];
+        assert(ridgeLink.length == 2);
+
+        if(ridgeLink.front == verticesFound[$ - 2])
+        {
+            nextVertex = ridgeLink.back;
+        }
+        else
+        {
+            nextVertex = ridgeLink.front;
+        }
+
+        if (nextVertex != finalVertex)
+        {
+            verticesFound ~= nextVertex;
+        }
+        else
+        {
+            done = true;
+        }
+    }
+    while (!done);
+
+    return verticesFound;
+}
+///
+unittest
+{
+    auto m = standardSphere!3;
+    assert(m.linkVerticesAtHinge([0,1],[0,1,2,3]).equal([2,3,4]));
+
+    // TO DO: More tests...
 }
