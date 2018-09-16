@@ -188,20 +188,20 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         auto facet_ = s.manifold_.randomFacetOfDim(dim).toStaticArray!(dim + 1);
         auto facet = facet_[];
 
-        enum MoveKind
+        enum Kind
         {
-            PossibleBistellarMove,
-            PossibleHingeMove,
+            bistellar,
+            hinge,
         }
 
-        struct MoveRecord
+        struct Move
         {
-            MoveKind moveKind;
+            Kind moveKind;
             real moveWeight;
             typeof(facet.subsets.front()) move;
         }
 
-        StackArray!(MoveRecord, 2^^(dim + 1) - 1) moves_;
+        StackArray!(Move, 2^^(dim + 1) - 1) moves_;
         foreach(f; facet.subsets)
         {
             auto face_ = f.toStackArray!(Vertex, dim + 1);
@@ -210,18 +210,12 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
             auto fDeg = s.manifold.degree(face);
             if ((fDim == dim) || (fDeg == dim + 1 - fDim))
             {
-                moves_ ~= MoveRecord(
-                    MoveKind.PossibleBistellarMove,
-                    1.0L / (dim - fDim + 1),
-                    f);
+                moves_ ~= Move(Kind.bistellar, 1.0L / (dim - fDim + 1), f);
             }
             // TO DO: Get rid of magic constant here. It's max deg hinge move.
-            else if ((fDim == dim - 2) && s.manifold.degree(face) <= 7)
+            else if ((fDim == dim - 2) && fDeg <= 7)
             {
-                moves_ ~= MoveRecord(
-                    MoveKind.PossibleHingeMove,
-                    1.0L / s.manifold.degree(face),
-                    f);
+                moves_ ~= Move(Kind.hinge, 1.0L / fDeg, f);
             }
         }
         auto mv = moves_[].map!(m => m.moveWeight).dice;
