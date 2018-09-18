@@ -1169,6 +1169,8 @@ if (isIRof!(K, const(Vertex)))
         .filter!(edge => disk.star(edge).walkLength == 2)
         .all!(edge => !manifold.contains(edge));
 }
+// TO DO: unittests!
+
 
 @Name("fVector") unittest
 {
@@ -1385,4 +1387,30 @@ unittest
     assert(m.linkVerticesAtHinge([0,1],[0,1,2,3]).equal([2,3,4]));
 
     // TO DO: More tests...
+}
+
+size_t[] degreeHistogram(Vertex, int mfdDim)(
+    auto ref const(Manifold!(mfdDim, Vertex)) mfd,
+    size_t dim)
+{
+    auto degData = mfd.degreeMap.byKeyValue
+        .filter!(p => p.key.length == dim + 1);
+
+    size_t[] histogram;
+    foreach(p; degData)
+    {
+        if (p.value > histogram.length)
+        {
+            histogram.length = p.value;
+        }
+        ++histogram[p.value - 1];
+    }
+
+    return histogram;
+}
+///
+unittest
+{
+    auto m = standardSphere!3;
+    4.iota.each!(k => m.degreeHistogram(k).writeln);
 }
