@@ -1,7 +1,7 @@
 import algorithms : eulerCharacteristic;
-import manifold : coCenter, degreeVariance, findProblems, movesAtFacet, Manifold, standardSphere, totalSquareDegree, doPachner, meanDegree;
+import manifold : coCenter, degreeHistogram, degreeVariance, findProblems, hasValidHingeMove, movesAtFacet, Manifold, standardSphere, totalSquareDegree, doPachner, meanDegree;
 import simplicial_complex : fVector;
-import std.algorithm : all, each, filter, joiner, map, max, maxElement, sum;
+import std.algorithm : all, each, filter, joiner, map, max, min, maxElement, sum;
 import std.conv : to;
 import std.datetime : Duration, msecs;
 import std.datetime.date : DateTime;
@@ -45,18 +45,18 @@ static immutable real[17] flatDegreeInDim = [
 //-------------------------------- SETTINGS ------------------------------------
 // TO DO: make setting setting a coef to 0.0 disable un-needed code
 
-enum int numFacetsTarget = 100;
-enum real hingeDegreeTarget = flatDegreeInDim[4];
+enum int numFacetsTarget = 10000;
+enum real hingeDegreeTarget = flatDegreeInDim[3];
 
 enum real numFacetsCoef = 0.01;
-enum real numHingesCoef = 0.05;
-enum real hingeDegreeVarCoef = 0.05;
+enum real numHingesCoef = 0.0;
+enum real hingeDegreeVarCoef = 0.0;
 
-enum int triesPerReport = 100;
-enum int maxTries = 1000000;
+enum int triesPerReport = 100000;
+enum int maxTries = 100000000;
 
 enum int triesPerCollect = 1000;
-enum int triesPerProblemCheck = 200;
+enum int triesPerProblemCheck = 1_000_000;
 
 enum useHingeMoves = true;
 
@@ -115,7 +115,26 @@ public:
         w.writeln("# MOVE   : DONE  /  TRIED");
         iota(dim + 1).each!(i => w.writefln("# %s -> %s : %s / %s",
             i + 1, dim + 1 - i, acceptCount[i], tryCount[i]));
-        w.writefln("# TOTALS : %s / %s", acceptCount[].sum, tryCount[].sum);        
+        w.writefln("# TOTALS : %s / %s", acceptCount[].sum, tryCount[].sum);
+
+        auto hist = this.manifold.degreeHistogram(this.manifold.dimension - 2);
+
+        auto maxBar = 100;
+        auto maxDeg = 16;
+        auto maxDegBin = hist.maxElement;
+        auto normedHist = hist.map!(freq => real(freq) / maxDegBin);
+        writeln("degree | frequency");
+        foreach(bin; 2 .. min(normedHist.length, maxDeg))
+        {
+            auto nAst = (maxBar * normedHist[bin]).to!int;
+            "%6s | %s".writefln(bin + 1, '*'.repeat(nAst));
+        }
+        if (normedHist.length >= maxDeg)
+        {
+            auto tailFreq = real(hist[maxDeg .. $].sum) / maxDegBin;
+            auto nAst = (maxBar * tailFreq).to!int;
+            " >= %s | %s".writefln(maxDeg + 1, '*'.repeat(nAst));
+        }
     }
 
     void columnReport(Writer)(auto ref Writer w)
@@ -188,6 +207,7 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         auto facet_ = s.manifold_.randomFacetOfDim(dim).toStaticArray!(dim + 1);
         auto facet = facet_[];
 
+        /*
         enum Kind
         {
             bistellar,
@@ -196,9 +216,9 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
 
         struct Move
         {
-            Kind moveKind;
-            real moveWeight;
-            typeof(facet.subsets.front()) move;
+            Kind kind;
+            real weight;
+            typeof(facet.subsets.front()) center;
         }
 
         StackArray!(Move, 2^^(dim + 1) - 1) moves_;
@@ -218,8 +238,45 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
                 moves_ ~= Move(Kind.hinge, 1.0L / fDeg, f);
             }
         }
-        auto mv = moves_[].map!(m => m.moveWeight).dice;
-        writeln(moves_[mv]);
+        
+        size_t mIndx;
+        auto doMove = {};
+        auto undoMove = {};
+        Move mv;
+
+        while(true)
+        {
+            mIndx = moves_[].map!(m => m.weight).dice;
+            mv = moves_[mIndx];
+
+            if(mv.kind == Kind.bistellar)
+            {
+                auto coMove = (mv.walkLength == dim + 1) 
+                        ? [s.unusedVertices.back] 
+                        : s.manifold_.coCenter(move, facet);
+
+                if(!s.manifold.contains(coMove))
+                {
+                    doMove = {s.manifold_.doPachner(mv.center, facet); };
+                    undoMove = { s.manifold_.doPachner(coMove, facet); };
+                    break;
+                }
+                else
+                {
+                    // remove invalid move
+                    moves_[mIndx] = moves_.back;
+                    moves_.popBack;
+                }
+            }
+            else
+            {
+                assert(mv.kind == Kind.hinge);
+                break;
+            }
+        }
+        */
+        
+
 
         //---------------------------------------------------------------------
         auto moves = s.manifold_.movesAtFacet(facet).map!array.array;
@@ -271,10 +328,8 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         //----------------------- CHECK FOR PROBLEMS ----------------------- 
         if (s.tryCount[].sum % triesPerProblemCheck == 0)
         {
-            write("checking for problems! ...");
             assert(s.manifold.findProblems.empty, 
                 s.manifold.findProblems.joiner(", ").array.to!string);
-            writeln("ok!");
         }
     }
 }
