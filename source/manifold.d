@@ -1453,4 +1453,6 @@ unittest
     mfd.undoHingeMove([0,6], [1,2,3,4], x);
     mfd.facets.map!array.should.containOnly(
         productUnion(octahedron, twoPts).map!array);
+
+    // TO DO: More tests, test for -1 return
 }
