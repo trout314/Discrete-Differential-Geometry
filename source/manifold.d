@@ -1411,6 +1411,9 @@ size_t[] degreeHistogram(Vertex, int mfdDim)(
 ///
 unittest
 {
+    // TO DO: More tests...
+
     auto m = standardSphere!3;
-    4.iota.each!(k => m.degreeHistogram(k).writeln);
+    assert(4.iota.map!(k => m.degreeHistogram(k)).equal!equal(
+        [[0,0,0,5], [0,0,10], [0,10], [5]]));
 }
