@@ -4,7 +4,8 @@ Work in progress. Symbolic math package for discrete differential geometry compu
 
 - [x] abstract simplicial complex type
 - [x] combinatorial *n*-manifold type
-
+- [x] algorithms for simplicial complexes
+    - [x] connected components
 * abstract simplicial complex type
 * combinatorial *n*-manifold type
 * Metropolis-Hastings sampling via Pachner moves and user-given objective
