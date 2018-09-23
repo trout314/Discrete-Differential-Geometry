@@ -439,7 +439,7 @@ void doPachner(Vertex, int dim, C, D)(
 )
 if (isIRof!(C, const(Vertex)) && isIRof!(D, const(Vertex)))
 {
-    assert(manifold.pachnerMoves.canFind(center), "bad pachner move");
+    assert(manifold.pachnerMoves.canFind(center.array), "bad pachner move");
  
     // Buffer for holding vertices in center (followed by coCenter)
     const(Vertex)[(dim + 2)] cBuffer = chain(center, coCenter)
@@ -506,7 +506,7 @@ if (isIRof!(C, const(Vertex)) && isIRof!(F, const(Vertex)))
     auto coCenterVerts = ridges.map!(r => mfd.ridgeLinks[r][])
         .joiner.array.dup.sort.uniq.array;
 
-    assert(coCenterVerts.equal(mfd.findCoCenter(center)));
+    assert(coCenterVerts.equal(mfd.findCoCenter(center.array)));
     return coCenterVerts;
 }
 
@@ -977,7 +977,7 @@ if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
     auto oldPiece = productUnion(hinge.only, linkEdges.chunks(2));
     auto newPiece = productUnion(
         hinge.subsetsOfSize(dim - 2),
-        diskFacets.map!(f => f.map!(i => linkVertices[i])));
+        diskFacets.map!(f => f.map!(i => linkVertices[i]).array.sort));
 
     alias SC = SimplicialComplex!(Vertex, dim);
     assert(SC(newPiece).isPureOfDim(dim));   
@@ -1055,12 +1055,12 @@ if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
     auto newPiece = productUnion(hinge.only, linkEdges.chunks(2));
     auto oldPiece = productUnion(
         hinge.subsetsOfSize(dim - 2),
-        diskFacets.map!(f => f.map!(i => linkVertices[i])));
+        diskFacets.map!(f => f.map!(i => linkVertices[i]).array.sort));
 
     version(unittest)
     {
         alias SC = SimplicialComplex!(Vertex, dim);
-        auto disk = SC(diskFacets.map!(f => f.map!(i => linkVertices[i])));
+        auto disk = SC(diskFacets.map!(f => f.map!(i => linkVertices[i]).array.sort));
 
         // All of the disk should be in manifold
         assert(disk.facets.all!(f => manifold.contains(f)));
@@ -1154,7 +1154,7 @@ if (isIRof!(K, const(Vertex)))
     auto diskFacets = deg.nGonTriangs[diskIndx];
 
     auto disk = SimplicialComplex!(Vertex, 2)(
-            diskFacets.map!(f => f.map!(i => linkVertices[i])));
+            diskFacets.map!(f => f.map!(i => linkVertices[i]).array.sort));
 
     // None of the "internal" edges can already be in manifold
     return disk.simplices(1)
@@ -1411,11 +1411,13 @@ unittest
 }
 
 /******************************************************************************
-Do a random hinge move. If non is possible, it returns -1. Otherwise, it
-returns the disk index (i.e. which triangulation of the disk was used).
+Choose a random hinge move. If none is possible, returns -1. Otherwise, returns
+the index of the triangulation in nGonTriangs for the chosen move. The vertices
+of the disk are given by linkVertices_ and these should be the link of hinge_
+in the manifold `mfd`
 */
-int doRandomHingeMove(Vertex, int dim, H, K)(
-    ref Manifold!(dim, Vertex) mfd,
+int getRandomHingeMove(Vertex, int dim, H, K)(
+    const ref Manifold!(dim, Vertex) mfd,
     H hinge_,
     K linkVertices_)
 if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
@@ -1435,7 +1437,6 @@ if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
         indx = uniform(0, possibleDisks.length.to!int);
     }
 
-    mfd.doHingeMove(hinge_, linkVertices_, indx);
     return indx;
 }
 ///
@@ -1447,9 +1448,10 @@ unittest
     auto twoPts = [[6], [7]];
     auto mfd = Manifold!3(productUnion(octahedron, twoPts));
 
-    auto x = mfd.doRandomHingeMove([0,6], [1,2,3,4]);
+    auto x = mfd.getRandomHingeMove([0,6], [1,2,3,4]);
     assert(x != -1); // both possible hinge moves should be valid
     assert(x == 0 || x == 1); // only two moves possible
+    mfd.doHingeMove([0,6], [1,2,3,4], x);
     mfd.undoHingeMove([0,6], [1,2,3,4], x);
     mfd.facets.map!array.should.containOnly(
         productUnion(octahedron, twoPts).map!array);
