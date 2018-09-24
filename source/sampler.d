@@ -48,17 +48,17 @@ static immutable real[17] flatDegreeInDim = [
 // TO DO: make setting setting a coef to 0.0 disable un-needed code
 
 enum int numFacetsTarget = 16000;
-enum real hingeDegreeTarget = flatDegreeInDim[3];
+enum real hingeDegreeTarget = flatDegreeInDim[4] + 0.05;
 
 enum real numFacetsCoef = 0.01;
-enum real numHingesCoef = 0.0;
-enum real hingeDegreeVarCoef = 0.0;
+enum real numHingesCoef = 0.01;
+enum real hingeDegreeVarCoef = 0.01;
 
 enum int triesPerReport = 100_000;
 enum int maxTries = 100_000_000;
 
 enum int triesPerCollect = 1_000;
-enum int triesPerProblemCheck = 1_000_000;
+enum int triesPerProblemCheck = 50_000_000;
 
 enum useHingeMoves = true;
 
@@ -121,70 +121,51 @@ public:
         w.write("#", '-'.repeat(11), " Bistellar Moves ", '-'.repeat(11));
         w.writeln("-|", '-'.repeat(12), " Hinge Moves ", '-'.repeat(13));
 
-        // w.writeln("# MOVE   :       DONE /      TRIED");
         foreach(i; 0 .. dim + 1)
         {
-            w.writef("# %2s→ %2-s : %13,s / %13,s |",
+            w.writef("# %2s→ %2-s : %13,d / %13,d |",
                 i + 1, dim + 1 - i, bistellarAccepts[i], bistellarTries[i]);
             if (i < hingeAccepts.length)
             {
-                w.writefln(" %2s→ %2-s : %12,s / %13,s ",
+                w.writef(" %2s→ %2-s : %12,s / %13,s ",
                 i + 4, (i + 2)*(dim - 1), hingeAccepts[i], hingeTries[i]);
             }
-            else
-            {
-                w.writeln;
-            }
+            w.writeln;
         }
 
-        // iota(dim + 1).each!(i => w.writefln("# %2s→ %2-s : %10,s / %10,s",
-        //     i + 1, dim + 1 - i, bistellarAccepts[i], bistellarTries[i]));
-        // w.writefln("# TOTALS : %10,s / %10,s", bistellarAccepts[].sum, bistellarTries[].sum);
+        auto hist = this.manifold.degreeHistogram(this.manifold.dimension - 3);
 
-        // w.writeln("#", '-'.repeat(79));
-        // w.writeln("# MOVE   : DONE  /  TRIED");
-        // iota(4).each!(i => w.writefln("# deg %s : %10s / %10s",
-        //     i + 4, hingeAccepts[i], hingeTries[i]));
-        // w.writefln("# TOTALS : %10,s / %10,s", hingeAccepts[].sum, hingeTries[].sum);
+        auto maxBar = 25;
+        auto maxDeg = 50;
+        auto tail = (hist.length >= maxDeg) ? hist[maxDeg .. $].sum : 0;
+        auto maxDegBin = max(hist.maxElement, tail);
 
-
-        auto hist = this.manifold.degreeHistogram(this.manifold.dimension - 2);
-
-        auto maxBar = 68;
-        auto maxDeg = 16;
-        auto maxDegBin = hist.maxElement;
         auto normedHist = hist.map!(freq => real(freq) / maxDegBin);
-        writeln("# degree | frequency");
-        foreach(bin; 2 .. maxDeg)
+        writeln("# degree");
+        static immutable bars = ['▏','▎','▍','▌','▋','▊','▉','█'];
+        foreach(bin; iota(3, maxDeg, 2))
         {
+            "# %5s ".writef(bin + 1);
             if(bin < normedHist.length)
             {
-                auto nAst = (maxBar * normedHist[bin]).to!int;
-                "# %6s | %s".writef(bin + 1, '*'.repeat(nAst));
-
-                if ((normedHist[bin] > 0) && (nAst == 0))
+                auto nEighths = (maxBar * normedHist[bin] * 8.0).to!int;
+                bars.back.repeat(nEighths / 8).write;
+                if (normedHist[bin] > 0)
                 {
-                    ".".writeln;
-                }
-                else
-                {
-                    writeln;
-
+                    bars[nEighths % 8].write;
                 }
             }
-            else
-            {
-                "# %6s |".writefln(bin + 1);
-            }
+            writeln;
         }
+
         if (normedHist.length >= maxDeg)
         {
-            auto tailFreq = real(hist[maxDeg .. $].sum) / maxDegBin;
-            auto nAst = (maxBar * tailFreq).to!int;
-            "#  >= %s | %s".writef(maxDeg + 1, '*'.repeat(nAst));
-            if ((tailFreq > 0) && (nAst == 0))
+            auto tailFreq = real(tail) / maxDegBin;
+            auto nEighths = (maxBar * tailFreq * 8.0).to!int;
+            "# >= %s %s".writef(maxDeg + 1, bars.back.repeat(nEighths / 8));
+            if (tailFreq > 0)
             {
-                ".".writeln;
+                writeln(bars[nEighths % 8]);
             }
             else
             {
@@ -193,7 +174,7 @@ public:
         }
         else
         {
-            "#  >= %s | ".writefln(maxDeg + 1);
+            "# >= %2s ".writefln(maxDeg + 1);
         }
     }
 
@@ -255,8 +236,11 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
     GC.disable;
     s.timer.start;
 
-    while ((s.bistellarTries[].sum + s.hingeTries[].sum) < maxTries)
+    size_t numMovesTried;
+    while (numMovesTried < maxTries)
     {
+        numMovesTried = s.bistellarTries[].sum + s.hingeTries[].sum;
+
         assert(s.unusedVertices.all!(v => !s.manifold.contains(v.only)));
         if(s.unusedVertices.empty)
         {
@@ -427,28 +411,32 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
             );
         }
 
-        // (s.bistellarTries[].sum + s.hingeTries[].sum).writeln;
-        //--------------------------- MAKE REPORT ----------------------------
-        if ((s.bistellarTries[].sum + s.hingeTries[].sum) % triesPerReport == 0)
+        //----------------------- CHECK FOR PROBLEMS ----------------------- 
+        if (numMovesTried % triesPerProblemCheck == 0)
         {
-            s.report(stdout);
-            s.timer.reset;
+            auto problems = s.manifold.findProblems;
+            if (!problems.empty)
+            {
+                problems.each!writeln;
+                assert(0);
+            }
         }
 
         //------------------------- COLLECT GARBAGE --------------------------
-        if ((s.bistellarTries[].sum + s.hingeTries[].sum) % triesPerCollect == 0)
+        if (numMovesTried % triesPerCollect == 0)
         {
             GC.enable;
             GC.collect;
             GC.disable;
         }
 
-        //----------------------- CHECK FOR PROBLEMS ----------------------- 
-        if ((s.bistellarTries[].sum + s.hingeTries[].sum) % triesPerProblemCheck == 0)
+        //--------------------------- MAKE REPORT ----------------------------
+        if (numMovesTried % triesPerReport == 0)
         {
-            assert(s.manifold.findProblems.empty, 
-                s.manifold.findProblems.joiner(", ").array.to!string);
+            s.report(stdout);
+            s.timer.reset;
         }
+
     }
 }
 
