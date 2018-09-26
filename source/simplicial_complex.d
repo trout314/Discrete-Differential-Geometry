@@ -4,13 +4,16 @@ import fluent.asserts : should;
 import std.algorithm : all, any, canFind, chunkBy, copy, countUntil, each,
     equal, filter, find, findAdjacent, isSorted, joiner, map, maxElement,
     setDifference, sort, sum, uniq;
+
+import std.algorithm.searching : findSplit;
+
 import std.conv : to, parse;
 import std.datetime.systime : Clock;
 import std.datetime.date : DateTime;
 import std.exception : assertThrown;
 import std.random : uniform;
 import std.range : array, chunks, dropExactly, ElementType, empty, enumerate, 
-    front, iota, isForwardRange, isInputRange, isOutputRange, popFront, put, save, walkLength, zip;
+    front, iota, isForwardRange, isInputRange, isOutputRange, only, popFront, put, save, walkLength, zip;
 import unit_threaded : Name;
 import utility : isSubsetOf, SmallMap, StackArray, subsets,
     subsetsOfSize, throwsWithMsg, isInputRangeOf, isInputRangeOfInputRangeOf;
@@ -977,7 +980,11 @@ Returns a simplicial complex loaded from the file specified by fileName.
 SimplicialComplex!Vertex loadSimplicialComplex(Vertex = int)(string fileName)
 {
     auto facetString = File(fileName, "r").byLineCopy
-        .filter!(line => line.front != '#').joiner.array;   
+        .filter!(line => line.front != '#').joiner.array;
+
+    // accidentally have '#' at end of some files. only include part before
+    // and '#' characters
+    facetString = facetString.findSplit('#'.only)[0];
 
     Vertex[][] facets;
     try
