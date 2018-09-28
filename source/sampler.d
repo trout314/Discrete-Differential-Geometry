@@ -47,18 +47,19 @@ static immutable real[17] flatDegreeInDim = [
 //-------------------------------- SETTINGS ------------------------------------
 // TO DO: make setting setting a coef to 0.0 disable un-needed code
 
-enum int numFacetsTarget = 16000;
-enum real hingeDegreeTarget = flatDegreeInDim[4] + 0.05;
+enum int numFacetsTarget = 40_000;
+enum real hingeDegreeTarget = flatDegreeInDim[3];
 
 enum real numFacetsCoef = 0.01;
-enum real numHingesCoef = 0.01;
-enum real hingeDegreeVarCoef = 0.01;
+enum real numHingesCoef = 0.05;
+enum real hingeDegreeVarCoef = 0.3;
 
-enum int triesPerReport = 100_000;
-enum int maxTries = 100_000_000;
+enum int triesPerReport = 50_000;
+enum int maxTries = 10_000_000;
 
 enum int triesPerCollect = 1_000;
-enum int triesPerProblemCheck = 50_000_000;
+
+enum int triesPerProblemCheck = 100_000_000;
 
 enum useHingeMoves = true;
 
@@ -78,6 +79,24 @@ private:
     ulong[4] hingeAccepts;
 
     StopWatch timer;
+
+    enum historyLength = 38;
+    static struct History
+    {
+        size_t[dim + 1][historyLength] numSimplices;
+        real[dim + 1][historyLength] meanDegree;
+        real[dim + 1][historyLength] stdDevDegree;
+        real[historyLength] objective;
+
+        void advance() {
+            foreach(list; History.tupleof)
+            {
+                iota(1, list.length).each!(
+                    i => list[$ - i] = list[$ - i - 1]);
+            }
+        }
+    }
+    History history;
 public:
     this(Manifold!(dim, Vertex) initialManifold)
     {
@@ -97,6 +116,7 @@ public:
         w.writeln('#'.repeat(80));
         w.writefln("# %s  |  usec/move : %s", Clock.currTime.to!DateTime, tt);
 
+
         w.writeln("#", '-'.repeat(79));
         w.writefln("# fVector           : %s", manifold.fVector);
         w.writefln("# average degree    : %s",
@@ -109,18 +129,39 @@ public:
         auto lcp = this.localCurvaturePenalty;
 
         w.writeln("#", '-'.repeat(79));
-        w.writefln("# number of facets penalty (A): %e = %f * %e",
+        w.writefln("# facets penalty  : %.4e = %.4f * %.4e",
             numFacetsCoef * vp, numFacetsCoef, vp);
-        w.writefln("# mean hinge-degee penalty (B): %e = %f * %e",
+        w.writefln("# hinges penalty  : %.4e = %.4f * %.4e",
             numHingesCoef * gcp, numHingesCoef, gcp);
-        w.writefln("# var hinge-degree penalty (C): %e = %f * %e",
+        w.writefln("# var deg penalty : %.4e = %.4f * %.4e",
             hingeDegreeVarCoef * lcp, hingeDegreeVarCoef, lcp);
-        w.writefln("#             TOTAL OBJECTIVE : %e %s %e", this.objective,
-            "Raw A + Raw B :", vp + gcp);
+        w.writef("# TOTAL OBJECTIVE : %.4e ", this.objective);
+                
+        w.write("  history: ");
+        foreach(i; 0 .. history.objective.length)
+        {
+            auto compareTo = this.objective;
+            if (history.objective[i] < compareTo)
+            {
+                w.write("+");
+            }
+            else if (history.objective[i] > compareTo)
+            {
+                w.write("-");
+            }
+            else if (history.objective[i] == compareTo)
+            {
+                w.write("=");
+            }
+            else
+            {
+                w.write("X");
+            }
+        }
+        w.writeln;
 
         w.write("#", '-'.repeat(11), " Bistellar Moves ", '-'.repeat(11));
         w.writeln("-|", '-'.repeat(12), " Hinge Moves ", '-'.repeat(13));
-
         foreach(i; 0 .. dim + 1)
         {
             w.writef("# %2s→ %2-s : %13,d / %13,d |",
@@ -132,58 +173,115 @@ public:
             }
             w.writeln;
         }
+        w.writef("#  TOTAL : %13,d / %13,d |", bistellarAccepts[].sum, bistellarTries[].sum);
+        w.writefln("  TOTAL : %12,s / %13,s ", hingeAccepts[].sum, hingeTries[].sum);
 
-        auto hist = this.manifold.degreeHistogram(this.manifold.dimension - 3);
+        auto maxBins = 24;
+        auto maxDeg2 = 2 + maxBins;
+        auto maxDeg3 = 2 + 2*maxBins;
 
-        auto maxBar = 25;
-        auto maxDeg = 50;
-        auto tail = (hist.length >= maxDeg) ? hist[maxDeg .. $].sum : 0;
-        auto maxDegBin = max(hist.maxElement, tail);
+        auto hist2 = this.manifold.degreeHistogram(this.manifold.dimension - 2);
+        auto maxBar2 = 35;
+        auto tail2 = (hist2.length >= 2 + maxDeg2) ? hist2[maxDeg2 .. $].sum : 0;
+        auto maxDegBin2 = max(hist2.maxElement, tail2);
+        auto normedHist2 = hist2.map!(freq => real(freq) / maxDegBin2);
 
-        auto normedHist = hist.map!(freq => real(freq) / maxDegBin);
-        writeln("# degree");
+        auto hist3 = this.manifold.degreeHistogram(this.manifold.dimension - 3);
+        auto maxBar3 = 34;
+        auto tail3 = (hist3.length >= maxDeg3) ? hist3[maxDeg3 .. $].sum : 0;
+        auto maxDegBin3 = max(hist3.maxElement, tail3);
+        auto normedHist3 = hist3.map!(freq => real(freq) / maxDegBin3);
+
+        w.write("#", "---- Codimension-2 Degree Histogram ----");
+        w.writeln("|", "--- Codimension-3 Degree Histogram ---");
         static immutable bars = ['▏','▎','▍','▌','▋','▊','▉','█'];
-        foreach(bin; iota(3, maxDeg, 2))
+        foreach(bin; iota(0, maxBins))
         {
-            "# %5s ".writef(bin + 1);
-            if(bin < normedHist.length)
+            w.writef("# %2s ", bin + 3);
+            if(bin + 2 < normedHist2.length)
             {
-                auto nEighths = (maxBar * normedHist[bin] * 8.0).to!int;
-                bars.back.repeat(nEighths / 8).write;
-                if (normedHist[bin] > 0)
+                auto nEighths = (maxBar2 * normedHist2[bin + 2] * 8.0).to!int;
+                auto bar = bars.back.repeat(nEighths / 8).array;
+                if (nEighths % 8 > 0)
                 {
-                    bars[nEighths % 8].write;
+                    bar ~= bars[nEighths % 8];
                 }
-            }
-            writeln;
-        }
-
-        if (normedHist.length >= maxDeg)
-        {
-            auto tailFreq = real(tail) / maxDegBin;
-            auto nEighths = (maxBar * tailFreq * 8.0).to!int;
-            "# >= %s %s".writef(maxDeg + 1, bars.back.repeat(nEighths / 8));
-            if (tailFreq > 0)
-            {
-                writeln(bars[nEighths % 8]);
+                w.writef("%-*s", maxBar2, bar);
             }
             else
             {
-                writeln;
+                w.write(' '.repeat(maxBar2));
             }
+            w.write(" | ");
+            w.writef("%2s ", 4 + bin * 2);
+            if((3 + bin * 2) < normedHist3.length)
+            {
+                auto nEighths = (maxBar3 * normedHist3[3 + bin * 2] * 8.0).to!int;
+                auto bar = bars.back.repeat(nEighths / 8).array;
+                if (nEighths % 8 > 0)
+                {
+                    bar ~= bars[nEighths % 8];
+                }
+                w.writef("%-*s", maxBar3, bar);
+            }
+            else
+            {
+                w.write(' '.repeat(maxBar3));
+            }
+            w.writeln;
+        }
+
+        w.write("#  > ");
+        auto tailFreq2 = real(tail2) / maxDegBin2;
+        auto nEighths2 = (maxBar2 * tailFreq2 * 8.0).to!int;
+        auto bar2 = bars.back.repeat(nEighths2 / 8).array;
+        if (nEighths2 % 8 > 0)
+        {
+            bar2 ~= bars[nEighths2 % 8];
+        }
+
+        auto tailFreq3 = real(tail3) / maxDegBin3;
+        auto nEighths3 = (maxBar3 * tailFreq3 * 8.0).to!int;
+        auto bar3 = bars.back.repeat(nEighths3 / 8).array;
+        if (nEighths3 % 8 > 0)
+        {
+            bar3 ~= bars[nEighths3 % 8];
+        }
+
+        if (tailFreq2 > 0)
+        {
+            w.writef("%-*s", maxBar2, bar2);
         }
         else
         {
-            "# >= %2s ".writefln(maxDeg + 1);
+            w.write(' '.repeat(maxBar2));
         }
+        w.write(" |  > ");
+
+        if (tailFreq3 > 0)
+        {
+            w.writef("%-*s", maxBar3, bar3);
+        }
+        else
+        {
+            w.write(' '.repeat(maxBar3));
+        }
+        w.writeln;
+
+        history.advance;
+        history.numSimplices.front = manifold.fVector;
+        history.meanDegree.front = (dim + 1).iota.map!(
+            d => manifold.meanDegree(d)).toStaticArray!(dim + 1);
+
+        history.stdDevDegree.front = (dim + 1).iota.map!(
+            d => manifold.degreeVariance(d).sqrt).toStaticArray!(dim + 1);
+        history.objective.front = this.objective;
     }
 
     void columnReport(Writer)(auto ref Writer w)
     {
 
     }
-
-
 }
 
 real volumePenalty(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
