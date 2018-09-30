@@ -47,19 +47,19 @@ static immutable real[17] flatDegreeInDim = [
 //-------------------------------- SETTINGS ------------------------------------
 // TO DO: make setting setting a coef to 0.0 disable un-needed code
 
-enum int numFacetsTarget = 40_000;
+enum int numFacetsTarget = 100;
 enum real hingeDegreeTarget = flatDegreeInDim[3];
 
 enum real numFacetsCoef = 0.01;
-enum real numHingesCoef = 0.05;
-enum real hingeDegreeVarCoef = 0.3;
+enum real numHingesCoef = 0.0;
+enum real hingeDegreeVarCoef = 0.0;
 
-enum int triesPerReport = 50_000;
-enum int maxTries = 10_000_000;
+enum int triesPerReport = 100;
+enum int maxTries = 1000;
 
-enum int triesPerCollect = 1_000;
+enum int triesPerCollect = 500;
 
-enum int triesPerProblemCheck = 100_000_000;
+enum int triesPerProblemCheck = 500;
 
 enum useHingeMoves = true;
 
@@ -114,21 +114,21 @@ public:
         timer.reset;
 
         w.writeln('#'.repeat(80));
-        w.writefln("# %s  |  usec/move : %s", Clock.currTime.to!DateTime, tt);
+        w.writefln("# %s  #  usec/move : %s", Clock.currTime.to!DateTime, tt);
 
 
-        w.writeln("#", '-'.repeat(79));
-        w.writefln("# fVector           : %s", manifold.fVector);
-        w.writefln("# average degree    : %s",
+        w.writeln('#'.repeat(80));
+        w.writefln("# num simplices  : %s", manifold.fVector);
+        w.writefln("# mean degree    : %s",
             (dim+1).iota.map!(dim => manifold.meanDegree(dim)));
-        w.writefln("# std dev in degree : %s",
+        w.writefln("# std dev degree : %s",
             (dim+1).iota.map!(dim => manifold.degreeVariance(dim).sqrt));
 
         auto vp = this.volumePenalty;
         auto gcp = this.globalCurvaturePenalty;
         auto lcp = this.localCurvaturePenalty;
 
-        w.writeln("#", '-'.repeat(79));
+        w.writeln('#'.repeat(80));
         w.writefln("# facets penalty  : %.4e = %.4f * %.4e",
             numFacetsCoef * vp, numFacetsCoef, vp);
         w.writefln("# hinges penalty  : %.4e = %.4f * %.4e",
@@ -160,11 +160,11 @@ public:
         }
         w.writeln;
 
-        w.write("#", '-'.repeat(11), " Bistellar Moves ", '-'.repeat(11));
-        w.writeln("-|", '-'.repeat(12), " Hinge Moves ", '-'.repeat(13));
+        w.write('#'.repeat(12), " Bistellar Moves ", '#'.repeat(11));
+        w.writeln('#'.repeat(14), " Hinge Moves ", '#'.repeat(13));
         foreach(i; 0 .. dim + 1)
         {
-            w.writef("# %2s→ %2-s : %13,d / %13,d |",
+            w.writef("# %2s→ %2-s : %13,d / %13,d #",
                 i + 1, dim + 1 - i, bistellarAccepts[i], bistellarTries[i]);
             if (i < hingeAccepts.length)
             {
@@ -173,7 +173,7 @@ public:
             }
             w.writeln;
         }
-        w.writef("#  TOTAL : %13,d / %13,d |", bistellarAccepts[].sum, bistellarTries[].sum);
+        w.writef("#  TOTAL : %13,d / %13,d #", bistellarAccepts[].sum, bistellarTries[].sum);
         w.writefln("  TOTAL : %12,s / %13,s ", hingeAccepts[].sum, hingeTries[].sum);
 
         auto maxBins = 24;
@@ -192,8 +192,8 @@ public:
         auto maxDegBin3 = max(hist3.maxElement, tail3);
         auto normedHist3 = hist3.map!(freq => real(freq) / maxDegBin3);
 
-        w.write("#", "---- Codimension-2 Degree Histogram ----");
-        w.writeln("|", "--- Codimension-3 Degree Histogram ---");
+        w.write("##### Codimension-2 Degree Histogram ####");
+        w.writeln("#### Codimension-3 Degree Histogram ###");
         static immutable bars = ['▏','▎','▍','▌','▋','▊','▉','█'];
         foreach(bin; iota(0, maxBins))
         {
@@ -212,7 +212,7 @@ public:
             {
                 w.write(' '.repeat(maxBar2));
             }
-            w.write(" | ");
+            w.write(" # ");
             w.writef("%2s ", 4 + bin * 2);
             if((3 + bin * 2) < normedHist3.length)
             {
@@ -256,7 +256,7 @@ public:
         {
             w.write(' '.repeat(maxBar2));
         }
-        w.write(" |  > ");
+        w.write(" #  > ");
 
         if (tailFreq3 > 0)
         {
@@ -350,6 +350,7 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         auto facet_ = s.manifold_.randomFacetOfDim(dim).toStaticArray!(dim + 1);
         auto facet = facet_[];
 
+
         struct BistellarMove
         {
             double weight;
@@ -369,7 +370,7 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         }
 
         alias Move_ = Algebraic!(BistellarMove, HingeMove);
-        StackArray!(Move_, 2^^(dim + 1) - 1) movesNew_;
+        StackArray!(Move_, 2^^(dim + 1) - 1) moves;
 
         foreach(f; facet.subsets)
         {
@@ -379,16 +380,18 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
             auto fDeg = s.manifold.degree(face);
             if ((fDim == dim) || (fDeg == dim + 1 - fDim))
             {
-                movesNew_ ~= Move_(BistellarMove());
-                movesNew_.back.peek!BistellarMove.weight = 1.0 / (dim - fDim + 1);
-                movesNew_.back.peek!BistellarMove.center = f;
+                moves ~= Move_(BistellarMove());
+                auto m_ = moves.back.peek!BistellarMove;
+                m_.weight = 1.0 / (dim - fDim + 1);
+                m_.center = f;
             }
             // TO DO: Get rid of magic constant here. It's max deg hinge move.
             else if ((fDim == dim - 2) && fDeg <= 7 && useHingeMoves)
             {
-                movesNew_ ~= Move_(HingeMove());
-                movesNew_.back.peek!HingeMove.weight = 1.0L / fDeg;
-                movesNew_.back.peek!HingeMove.hinge = f;
+                moves ~= Move_(HingeMove());
+                auto m_ = moves.back.peek!HingeMove;
+                m_.weight = 1.0L / fDeg;
+                m_.hinge = f;
             }
         }
         
@@ -397,14 +400,14 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         bool done = false;
         while(!done)     // Choose a move involving the facet
         {
-            mIndx_ = movesNew_[].map!(_ => _.visit!(m => m.weight)).dice;
+            mIndx_ = moves[].map!(_ => _.visit!(m => m.weight)).dice;
             bool moveInvalid = false;
 
             // TO DO: Why can't I get ref access to work here?!
-            movesNew_[mIndx_].visit!(
+            moves[mIndx_].visit!(
                 (BistellarMove m)
                 {
-                    auto m_ = movesNew_[mIndx_].peek!BistellarMove;
+                    auto m_ = moves[mIndx_].peek!BistellarMove;
                     if(m_.center.walkLength == dim + 1)
                     {
                         // (dim + 1) -> 1 moves are always valid
@@ -444,7 +447,7 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
                 },
                 (HingeMove m)
                 {
-                    auto m_ = movesNew_[mIndx_].peek!HingeMove;
+                    auto m_ = moves[mIndx_].peek!HingeMove;
 
                     auto lnkVerts = s.manifold.linkVerticesAtHinge(m_.hinge, facet);
                     auto indx = s.manifold.getRandomHingeMove(m_.hinge.array.dup, lnkVerts.array.dup);
@@ -469,8 +472,8 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
             if(moveInvalid)
             {
                 assert(!done);
-                movesNew_[mIndx_] = movesNew_.back;
-                movesNew_.length = movesNew_.length - 1;
+                moves[mIndx_] = moves.back;
+                moves.length = moves.length - 1;
             }
         }
 
@@ -479,10 +482,10 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
 
         if ((deltaObj > 0) && (uniform01 > exp(-deltaObj))) // REJECT MOVE
         {
-            movesNew_[mIndx_].visit!(
+            moves[mIndx_].visit!(
                 (BistellarMove m)
                 {
-                    auto m_ = movesNew_[mIndx_].peek!BistellarMove;            
+                    auto m_ = moves[mIndx_].peek!BistellarMove;            
                     s.manifold_.doPachner(m.coCenter.array, m.center.array);
                     --s.bistellarAccepts[dim + 1 - m_.center.walkLength];
                     if (m.center.walkLength == 1)
@@ -500,9 +503,9 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
                     assert(!m.hingeLink.empty);
                     assert(!m.diskIndex_ >= 0);
                     
-                    auto m_ = movesNew_[mIndx_].peek!HingeMove;
+                    auto m_ = moves[mIndx_].peek!HingeMove;
 
-                    s.manifold_.undoHingeMove(m.hinge.array.dup, m.hingeLink.array.dup, m.diskIndex_);
+                    s.manifold_.undoHingeMove(m_.hinge, m_.hingeLink, m_.diskIndex_);
                     --s.hingeAccepts[m_.hingeLink.walkLength - 4];
                 },
                 () {assert(0, "move type not implemented");}
@@ -512,12 +515,14 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         //----------------------- CHECK FOR PROBLEMS ----------------------- 
         if (numMovesTried % triesPerProblemCheck == 0)
         {
+            "checking for problems ... ".write;
             auto problems = s.manifold.findProblems;
             if (!problems.empty)
             {
                 problems.each!writeln;
                 assert(0);
             }
+            "done".writeln;
         }
 
         //------------------------- COLLECT GARBAGE --------------------------
