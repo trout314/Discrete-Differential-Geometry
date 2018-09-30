@@ -17,6 +17,7 @@ import std.math : approxEqual;
 
 import std.stdio : writeln, writefln;
 
+import std.traits : Unqual;
 import std.random : uniform;
 
 
@@ -963,12 +964,12 @@ if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
     // TO DO: Decide what to do about this magic constant 7
     // (It comes from nGonTriangs only supporting up to 7-gon.)
     auto deg = linkVertices_.walkLength.to!int;
-    auto linkVerticesBuff = linkVertices_.toStaticArray!7;
+    Unqual!Vertex[7] linkVerticesBuff = linkVertices_.toStaticArray!7;
     auto linkVertices = linkVerticesBuff[0 .. deg];
 
-    // TO DO: Get rid of allocations here!
-    auto linkEdges = chain(linkVertices[], linkVertices.front.only)
-        .slide(2).take(deg).joiner.array;
+    auto linkEdgeBuffer = chain(linkVertices[], linkVertices.front.only)
+        .slide(2).take(deg).joiner.toStackArray!(Unqual!Vertex, 14);
+    auto linkEdges = linkEdgeBuffer[];
     deg.iota.each!(indx => linkEdges[2*indx .. 2*(indx + 1)].sort);
 
     assert(diskIndx < deg.nGonTriangs.walkLength);
@@ -977,7 +978,7 @@ if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
     auto oldPiece = productUnion(hinge.only, linkEdges.chunks(2));
     auto newPiece = productUnion(
         hinge.subsetsOfSize(dim - 2),
-        diskFacets.map!(f => f.map!(i => linkVertices[i]).array.sort));
+        diskFacets.map!(f => f.map!(i => linkVertices[i]).array.dup.sort));
 
     alias SC = SimplicialComplex!(Vertex, dim);
     assert(SC(newPiece).isPureOfDim(dim));   
@@ -1041,33 +1042,34 @@ if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
     // TO DO: Decide what to do about this magic constant 7
     // (It comes from nGonTriangs only supporting up to 7-gon.)
     auto deg = linkVertices_.walkLength.to!int;
-    auto linkVerticesBuff = linkVertices_.toStaticArray!7;
+    Unqual!Vertex[7] linkVerticesBuff = linkVertices_.toStaticArray!7;
     auto linkVertices = linkVerticesBuff[0 .. deg];
 
-    // TO DO: Get rid of allocations here!
-    auto linkEdges = chain(linkVertices[], linkVertices.front.only)
-        .slide(2).take(deg).joiner.array;
+    auto linkEdgeBuffer = chain(linkVertices[], linkVertices.front.only)
+        .slide(2).take(deg).joiner.toStackArray!(Unqual!Vertex, 14);
+    auto linkEdges = linkEdgeBuffer[];
     deg.iota.each!(indx => linkEdges[2*indx .. 2*(indx + 1)].sort);
 
     assert(diskIndx < deg.nGonTriangs.walkLength);
-    auto diskFacets = deg.nGonTriangs[diskIndx];
+
+    auto diskFacetsBuffer = deg.nGonTriangs[diskIndx]
+        .joiner.map!(i => linkVertices[i])
+        .toStackArray!(Unqual!Vertex, (7 - 2) * 3);
+    foreach(indx; 0 .. deg - 2)
+    {
+        diskFacetsBuffer[][3*indx .. 3*indx + 3].sort;
+    }
+
+    auto diskFacets = diskFacetsBuffer[].chunks(3);
 
     auto newPiece = productUnion(hinge.only, linkEdges.chunks(2));
-    auto oldPiece = productUnion(
-        hinge.subsetsOfSize(dim - 2),
-        diskFacets.map!(f => f.map!(i => linkVertices[i]).array.sort));
+    auto oldPiece = productUnion(hinge.subsetsOfSize(dim - 2), diskFacets);
 
-    version(unittest)
-    {
-        alias SC = SimplicialComplex!(Vertex, dim);
-        auto disk = SC(diskFacets.map!(f => f.map!(i => linkVertices[i]).array.sort));
-
-        // All of the disk should be in manifold
-        assert(disk.facets.all!(f => manifold.contains(f)));
-
-        assert(SC(newPiece).isPureOfDim(dim));   
-        assert(SC(oldPiece).isPureOfDim(dim));
-    }
+    // All of the disk should be in manifold
+    assert(diskFacets.all!(f => manifold.contains(f)));
+    alias SC = SimplicialComplex!(Vertex, dim);
+    assert(SC(newPiece).isPureOfDim(dim));   
+    assert(SC(oldPiece).isPureOfDim(dim));
 
     oldPiece.each!(f => manifold.removeFacet(f));
 
@@ -1139,22 +1141,30 @@ if (isIRof!(K, const(Vertex)))
     static assert(dim >= 3,
         "no hinge moves in dimension less than 3");
 
-    // TO DO: Decide what to do about this magic constant 7
+    // TO DO: Decide what to do about this magic constantS 7, 14
     // (It comes from nGonTriangs only supporting up to 7-gon.)
     auto deg = linkVertices_.walkLength.to!int;
-    auto linkVerticesBuff = linkVertices_.toStaticArray!7;
+    Unqual!Vertex[7] linkVerticesBuff = linkVertices_.toStaticArray!7;
     auto linkVertices = linkVerticesBuff[0 .. deg];
 
-    // TO DO: Get rid of allocations here!
-    auto linkEdges = chain(linkVertices[], linkVertices.front.only)
-        .slide(2).take(deg).joiner.array;
+    auto linkEdgeBuffer = chain(linkVertices[], linkVertices.front.only)
+        .slide(2).take(deg).joiner.toStackArray!(Unqual!Vertex, 14);
+    auto linkEdges = linkEdgeBuffer[];
     deg.iota.each!(indx => linkEdges[2*indx .. 2*(indx + 1)].sort);
 
     assert(diskIndx < deg.nGonTriangs.walkLength);
-    auto diskFacets = deg.nGonTriangs[diskIndx];
+    auto diskFacetsBuffer = deg.nGonTriangs[diskIndx]
+        .joiner.map!(i => linkVertices[i])
+        .toStackArray!(Unqual!Vertex, (7 - 2) * 3);
+    foreach(indx; 0 .. deg - 2)
+    {
+        diskFacetsBuffer[][3*indx .. 3*indx + 3].sort;
+    }
+    auto diskFacets = diskFacetsBuffer[].chunks(3);
 
-    auto disk = SimplicialComplex!(Vertex, 2)(
-            diskFacets.map!(f => f.map!(i => linkVertices[i]).array.sort));
+    // TO DO: rework this to avoid creating simplicial complex
+    // (and allocating of course!)
+    auto disk = SimplicialComplex!(Vertex, 2)(diskFacets);
 
     // None of the "internal" edges can already be in manifold
     return disk.simplices(1)
