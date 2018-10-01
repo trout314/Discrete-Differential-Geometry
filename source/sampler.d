@@ -47,19 +47,20 @@ static immutable real[17] flatDegreeInDim = [
 //-------------------------------- SETTINGS ------------------------------------
 // TO DO: make setting setting a coef to 0.0 disable un-needed code
 
-enum int numFacetsTarget = 100;
+enum int numFacetsTarget = 22_627;
 enum real hingeDegreeTarget = flatDegreeInDim[3];
 
 enum real numFacetsCoef = 0.01;
-enum real numHingesCoef = 0.0;
-enum real hingeDegreeVarCoef = 0.0;
+enum real numHingesCoef = 0.01;
+enum real hingeDegreeVarCoef = 0.1;
 
-enum int triesPerReport = 100;
-enum int maxTries = 1000;
+enum int triesPerReport = 100_000;
+enum int maxTries = 100_000_000;
 
 enum int triesPerCollect = 500;
 
-enum int triesPerProblemCheck = 500;
+enum bool checkForProblems = false; 
+enum int triesPerProblemCheck = 200_000_000;
 
 enum useHingeMoves = true;
 
@@ -513,16 +514,19 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         }
 
         //----------------------- CHECK FOR PROBLEMS ----------------------- 
-        if (numMovesTried % triesPerProblemCheck == 0)
+        static if (checkForProblems)
         {
-            "checking for problems ... ".write;
-            auto problems = s.manifold.findProblems;
-            if (!problems.empty)
+            if (numMovesTried % triesPerProblemCheck == 0)
             {
-                problems.each!writeln;
-                assert(0);
+                "checking for problems ... ".write;
+                auto problems = s.manifold.findProblems;
+                if (!problems.empty)
+                {
+                    problems.each!writeln;
+                    assert(0);
+                }
+                "done".writeln;
             }
-            "done".writeln;
         }
 
         //------------------------- COLLECT GARBAGE --------------------------
