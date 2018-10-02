@@ -5,11 +5,12 @@ import matplotlib.pyplot as plt
 from random import choice
 from math import sqrt
 
-filenames = ['edge_graph_S3_16k_VGL_L01_diam14.dat',
-	'edge_graph_S3_23k_VGL_L01_diam12.dat',
-	'edge_graph_S3_32k_VGL_L01_diam17.dat',
-	'edge_graph_S3_64k_VGL_L01_diam16.dat',
-	'edge_graph_S3_91k_VGL_L01.dat']
+filenames = ['edge_graph_S3_16k_V.dat',
+	'edge_graph_S3_16k_VG_diam6.dat',
+	'edge_graph_S3_16k_VGL_L01_diam14.dat']
+
+#filenames = ['edge_graph_S3_64k_VGL_L03_diam16.dat',
+#	'edge_graph_S3_128k_VGL_L03_diam17.dat']
 
 lists = []
 
@@ -20,9 +21,12 @@ for filename in filenames:
 
 	distances = []
 
-	for i in range(100000):
+	samples = 100000
+	for i in range(samples):
 		node1 = choice(list(g.nodes))
 		node2 = choice(list(g.nodes))
+		while (node1 == node2):
+			node2 = choice(list(g.nodes))
 		distances.append(nx.shortest_path_length(g, node1, node2))	
 
 	nDist = float(len(distances))
@@ -35,16 +39,44 @@ for filename in filenames:
 	lists.append(distances)
 
 
-fig, axes = plt.subplots(nrows=5, ncols=1)
-ax0, ax1, ax2, ax3, ax4 = axes.flatten()
+font = {'family' : 'sans-serif',
+        'weight' : 'normal',
+        'size'   : 14}
 
-ax0.hist(lists[0], bins=range(12), align='right')
-ax0.set_title("d(v, w) for random vertices v, w")
+plt.rc('font', **font)
 
-ax1.hist(lists[1], bins=range(14), align='right')
-ax2.hist(lists[2], bins=range(14), align='right')
-ax3.hist(lists[3], bins=range(14), align='right')
-ax4.hist(lists[4], bins=range(14), align='right')
+fig, axes = plt.subplots(nrows=3, ncols=1)
+ax0, ax1, ax2 = axes.flatten()
+plt.figure(num=1, figsize=(8, 6))
+
+maxBins = 12
+myBins = range(1, maxBins)
+
+x = ax0.hist(lists[0], bins=myBins, align='right')
+ax0.set_title("distance $d(v,w)$ for {} randomly chosen $v$, $w$".format(samples))
+ax0.set_xticks(myBins)
+ax0.set_ylim([0, max(x[0])*1.1])
+ax0.text(0.57, 0.50, 'volume: 64,000 ' + r'($\alpha = 0.01)$', transform=ax0.transAxes, fontsize=11)
+
+x = ax1.hist(lists[1], bins=myBins, align='right')
+ax1.set_xticks(myBins)
+ax1.set_ylim([0, max(x[0])*1.1])
+ax1.text(0.57, 0.50, 'volume: 64,000 ' + r'($\alpha = 0.01$)' + '\nmean edge degree: 5.1 ' + r'($\beta = 0.01$)', transform=ax1.transAxes, fontsize=11)
+
+x = ax2.hist(lists[2], bins=myBins, align='right')
+ax2.set_xticks(myBins)
+ax2.set_ylim([0, max(x[0])*1.1])
+ax2.text(0.57, 0.50, 'volume: 64,000 ' + r'($\alpha = 0.01$)' + '\nmean edge degree: 5.1 ' + r'($\beta = 0.01$)' + '\nminimize edge deg var ' + r'($\gamma = 0.1$)', transform=ax2.transAxes, fontsize=11)
+
+fig.text(0.02, 0.5, 'count', ha='center', va='center', rotation='vertical')
+
+
+every_nth = 2
+for ax in [ax0, ax1, ax2]:
+	for n, label in enumerate(ax.yaxis.get_ticklabels()):
+    		if n % every_nth != 0:
+        		label.set_visible(False)
 
 plt.savefig('testfig.png')
+plt.show()
 
