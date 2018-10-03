@@ -15,6 +15,7 @@ import std.range : array, back, chain, empty, enumerate, front, iota, only, popB
 import std.stdio : write, writef, writefln, writeln, stdout;
 import unit_threaded : Name;
 import utility : subsetsOfSize, subsets, toStackArray, toStaticArray, StackArray;
+import std.format : format;
 
 import core.memory : GC;
 import std.datetime.systime : Clock;
@@ -47,15 +48,15 @@ static immutable real[17] flatDegreeInDim = [
 //-------------------------------- SETTINGS ------------------------------------
 // TO DO: make setting setting a coef to 0.0 disable un-needed code
 
-enum int numFacetsTarget = 22_627;
+enum int numFacetsTarget = 10_000;
 enum real hingeDegreeTarget = flatDegreeInDim[3];
 
 enum real numFacetsCoef = 0.01;
 enum real numHingesCoef = 0.01;
-enum real hingeDegreeVarCoef = 0.1;
+enum real hingeDegreeVarCoef = 0.4;
 
 enum int triesPerReport = 100_000;
-enum int maxTries = 100_000_000;
+enum int maxTries = 10_000_000;
 
 enum int triesPerCollect = 500;
 
@@ -81,10 +82,9 @@ private:
 
     StopWatch timer;
 
-    enum historyLength = 38;
+    enum historyLength = 40;
     static struct History
     {
-        size_t[dim + 1][historyLength] numSimplices;
         real[dim + 1][historyLength] meanDegree;
         real[dim + 1][historyLength] stdDevDegree;
         real[historyLength] objective;
@@ -97,7 +97,10 @@ private:
             }
         }
     }
+
+    DateTime startTime;
     History history;
+
 public:
     this(Manifold!(dim, Vertex) initialManifold)
     {
@@ -111,94 +114,96 @@ public:
 
     void report(Writer)(auto ref Writer w)
     {
+        enum width = 103;
+        auto maxBins = 29;
+        auto maxBar2 = 45;
+        auto maxBar3 = 45;
+
+
         auto tt = timer.peek.total!"usecs" / real(triesPerReport);
         timer.reset;
 
-        w.writeln('#'.repeat(80));
-        w.writefln("# %s  #  usec/move : %s", Clock.currTime.to!DateTime, tt);
+        w.writeln('╔', '═'.repeat(32), '╦', '═'.repeat(23), '╦', '═'.repeat(44), '╗');
+        w.writefln("║  move accept fraction : %5.3f  ║  usec/move : %7.0-f  ║  started : %30-s  ║",
+            double(bistellarAccepts[].sum + hingeAccepts[].sum)/(bistellarTries[].sum + hingeTries[].sum),
+            tt, this.startTime.to!string);
+        w.writeln('╠', '═'.repeat(32), '╩', '═'.repeat(23), '╩', '═'.repeat(44), '╣');
 
-
-        w.writeln('#'.repeat(80));
-        w.writefln("# num simplices  : %s", manifold.fVector);
-        w.writefln("# mean degree    : %s",
+        alias formatStrings = (string rest) => 
+            r"%(%" ~ ((width - dim - 21)/(dim + 1)).to!string ~ rest ~ r"┊ %) ║";
+        w.writefln("║ dimension      : " ~ formatStrings("s"), (dim+1).iota);
+        w.writefln("║ num simplices  : " ~ formatStrings(",d"), manifold.fVector);
+        w.writefln("║ mean degree    : " ~ formatStrings(".2f"),
             (dim+1).iota.map!(dim => manifold.meanDegree(dim)));
-        w.writefln("# std dev degree : %s",
+        w.writefln("║ std dev degree : " ~ formatStrings(".2f"),
             (dim+1).iota.map!(dim => manifold.degreeVariance(dim).sqrt));
+        w.writefln("║ mean history   : " ~ formatStrings("s"), 5.repeat(dim+1));
+        w.writefln("║ std dev hist.  : " ~ formatStrings("s"), 5.repeat(dim+1));
 
         auto vp = this.volumePenalty;
         auto gcp = this.globalCurvaturePenalty;
         auto lcp = this.localCurvaturePenalty;
 
-        w.writeln('#'.repeat(80));
-        w.writefln("# facets penalty  : %.4e = %.4f * %.4e",
+        w.writeln('╠', '═'.repeat(width-2), '╣');
+        w.writefln("║ facets  : %.4e = %.4f * %.4e",
             numFacetsCoef * vp, numFacetsCoef, vp);
-        w.writefln("# hinges penalty  : %.4e = %.4f * %.4e",
+        w.writefln("║ hinges  : %.4e = %.4f * %.4e",
             numHingesCoef * gcp, numHingesCoef, gcp);
-        w.writefln("# var deg penalty : %.4e = %.4f * %.4e",
+        w.writefln("║ var deg : %.4e = %.4f * %.4e",
             hingeDegreeVarCoef * lcp, hingeDegreeVarCoef, lcp);
-        w.writef("# TOTAL OBJECTIVE : %.4e ", this.objective);
-                
-        w.write("  history: ");
-        foreach(i; 0 .. history.objective.length)
-        {
-            auto compareTo = this.objective;
-            if (history.objective[i] < compareTo)
-            {
-                w.write("+");
-            }
-            else if (history.objective[i] > compareTo)
-            {
-                w.write("-");
-            }
-            else if (history.objective[i] == compareTo)
-            {
-                w.write("=");
-            }
-            else
-            {
-                w.write("X");
-            }
-        }
+        w.writef("║ TOTAL   : %.4e history: ", this.objective);
+        w.writeHistory(this.objective, this.history.objective);
         w.writeln;
 
-        w.write('#'.repeat(12), " Bistellar Moves ", '#'.repeat(11));
-        w.writeln('#'.repeat(14), " Hinge Moves ", '#'.repeat(13));
+        w.writeln('╠', '═'.repeat(width-2), '╣');
+        w.write("║ Bistellar Move   Accept              Try    %    ║");
+        w.writeln(" Hinge Move       Accept              Try    %    ║");
         foreach(i; 0 .. dim + 1)
         {
-            w.writef("# %2s→ %2-s : %13,d / %13,d #",
-                i + 1, dim + 1 - i, bistellarAccepts[i], bistellarTries[i]);
+            auto accepts = "%14,d".format(bistellarAccepts[i]);
+            auto tries = "%14,d".format(bistellarTries[i]);
+            w.writef("║ %2s→ %2-s : %14s / %14s (%5.3f) ║",
+                i + 1, dim + 1 - i, accepts, tries,
+                double(bistellarAccepts[i])/bistellarTries[i]);
             if (i < hingeAccepts.length)
             {
-                w.writef(" %2s→ %2-s : %12,s / %13,s ",
-                i + 4, (i + 2)*(dim - 1), hingeAccepts[i], hingeTries[i]);
+            accepts = "%14,d".format(hingeAccepts[i]);
+            tries = "%14,d".format(hingeTries[i]);
+            w.writef(" %2s→ %2-s : %14s / %14s (%5.3f) ║",
+                i + 4, (i + 2)*(dim - 1), accepts, tries,
+                double(hingeAccepts[i])/hingeTries[i]);
             }
             w.writeln;
         }
-        w.writef("#  TOTAL : %13,d / %13,d #", bistellarAccepts[].sum, bistellarTries[].sum);
-        w.writefln("  TOTAL : %12,s / %13,s ", hingeAccepts[].sum, hingeTries[].sum);
+        w.writef("║ TOTAL  : %14,d / %14,d (%5.3f) ║",
+            bistellarAccepts[].sum, bistellarTries[].sum,
+            double(bistellarAccepts[].sum)/bistellarTries[].sum);
+        w.writefln(" TOTAL  : %14,d / %14,d (%5.3f) ║",
+            hingeAccepts[].sum, hingeTries[].sum,
+            double(hingeAccepts[].sum)/hingeTries[].sum);
+        w.writeln('╠', '═'.repeat((width-2)/2), '╬', '═'.repeat((width-2)/2),'╣');
 
-        auto maxBins = 24;
         auto maxDeg2 = 2 + maxBins;
         auto maxDeg3 = 2 + 2*maxBins;
 
         auto hist2 = this.manifold.degreeHistogram(this.manifold.dimension - 2);
-        auto maxBar2 = 35;
         auto tail2 = (hist2.length >= 2 + maxDeg2) ? hist2[maxDeg2 .. $].sum : 0;
         auto maxDegBin2 = max(hist2.maxElement, tail2);
         auto normedHist2 = hist2.map!(freq => real(freq) / maxDegBin2);
 
         auto hist3 = this.manifold.degreeHistogram(this.manifold.dimension - 3);
-        auto maxBar3 = 34;
         auto tail3 = (hist3.length >= maxDeg3) ? hist3[maxDeg3 .. $].sum : 0;
         auto maxDegBin3 = max(hist3.maxElement, tail3);
         auto normedHist3 = hist3.map!(freq => real(freq) / maxDegBin3);
 
-        w.write("##### Codimension-2 Degree Histogram ####");
-        w.writeln("#### Codimension-3 Degree Histogram ###");
+        auto space = ' '.repeat((width - 67)/4);
+        w.writefln("║ %s%s%s ║ %s%s%s ║",
+            space, "Codimension-2 Degree Histogram", space,
+            space, "Codimension-3 Degree Histogram", space);
         static immutable bars = ['▏','▎','▍','▌','▋','▊','▉','█'];
         foreach(bin; iota(0, maxBins))
         {
-            w.writef("# %2s ", bin + 3);
+            w.writef("║ %2s ", bin + 3);
             if(bin + 2 < normedHist2.length)
             {
                 auto nEighths = (maxBar2 * normedHist2[bin + 2] * 8.0).to!int;
@@ -213,7 +218,7 @@ public:
             {
                 w.write(' '.repeat(maxBar2));
             }
-            w.write(" # ");
+            w.write(" ║ ");
             w.writef("%2s ", 4 + bin * 2);
             if((3 + bin * 2) < normedHist3.length)
             {
@@ -229,10 +234,10 @@ public:
             {
                 w.write(' '.repeat(maxBar3));
             }
-            w.writeln;
+            w.writeln(" ║");
         }
 
-        w.write("#  > ");
+        w.write("║  > ");
         auto tailFreq2 = real(tail2) / maxDegBin2;
         auto nEighths2 = (maxBar2 * tailFreq2 * 8.0).to!int;
         auto bar2 = bars.back.repeat(nEighths2 / 8).array;
@@ -257,7 +262,7 @@ public:
         {
             w.write(' '.repeat(maxBar2));
         }
-        w.write(" #  > ");
+        w.write(" ║  > ");
 
         if (tailFreq3 > 0)
         {
@@ -267,10 +272,10 @@ public:
         {
             w.write(' '.repeat(maxBar3));
         }
-        w.writeln;
+        w.writeln(" ║");
+        w.writeln('╚', '═'.repeat((width-2)/2), '╩', '═'.repeat((width-2)/2), '╝');
 
         history.advance;
-        history.numSimplices.front = manifold.fVector;
         history.meanDegree.front = (dim + 1).iota.map!(
             d => manifold.meanDegree(d)).toStaticArray!(dim + 1);
 
@@ -284,6 +289,31 @@ public:
 
     }
 }
+
+void writeHistory(Writer, Value, size_t historyLength)(auto ref Writer w, Value currentVal,
+    Value[historyLength] records)
+{
+    foreach(i; 0 .. historyLength)
+    {
+        if (records[i] < currentVal)
+        {
+            w.write("+");
+        }
+        else if (records[i] > currentVal)
+        {
+            w.write("-");
+        }
+        else if (records[i] == currentVal)
+        {
+            w.write("=");
+        }
+        else
+        {
+            w.write("X");
+        }
+    }
+}
+
 
 real volumePenalty(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
 {
@@ -333,8 +363,9 @@ real objective(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
 void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
 {
     GC.disable;
+    s.startTime = Clock.currTime.to!DateTime;
     s.timer.start;
-
+    
     size_t numMovesTried;
     while (numMovesTried < maxTries)
     {
