@@ -35,7 +35,7 @@ else
         auto s = Sampler!(int, 3)(standardSphere!3);
         s.sample;
 
-        auto ending = "test.dat";
+        auto ending = "S3_32k_V1e-2_G1e-2_L5e-1_A.dat";
         
         auto fileName = "mfd_" ~ ending;
         s.manifold.saveTo(fileName);

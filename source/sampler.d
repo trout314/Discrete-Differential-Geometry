@@ -48,20 +48,24 @@ static immutable real[17] flatDegreeInDim = [
 //-------------------------------- SETTINGS ------------------------------------
 // TO DO: make setting setting a coef to 0.0 disable un-needed code
 
-enum int numFacetsTarget = 10_000;
+enum int numFacetsTarget = 32_000;
 enum real hingeDegreeTarget = flatDegreeInDim[3];
 
 enum real numFacetsCoef = 0.01;
 enum real numHingesCoef = 0.01;
-enum real hingeDegreeVarCoef = 0.4;
+
+enum real hingeDegreeVarCoef = 0.5;
+// cap deg var scaled penalty at max other scaled penalty
+enum bool capDegVarPenalty = false;
+enum real hingeDegVarAllowance = 0.6;   // set to 0.0 to disable
 
 enum int triesPerReport = 100_000;
-enum int maxTries = 10_000_000;
+enum int maxTries = 100_000_000;
 
 enum int triesPerCollect = 500;
 
 enum bool checkForProblems = false; 
-enum int triesPerProblemCheck = 200_000_000;
+enum int triesPerProblemCheck = 500_000_000;
 
 enum useHingeMoves = true;
 
@@ -133,9 +137,9 @@ public:
             r"%(%" ~ ((width - dim - 21)/(dim + 1)).to!string ~ rest ~ r"┊ %) ║";
         w.writefln("║ dimension      : " ~ formatStrings("s"), (dim+1).iota);
         w.writefln("║ num simplices  : " ~ formatStrings(",d"), manifold.fVector);
-        w.writefln("║ mean degree    : " ~ formatStrings(".2f"),
+        w.writefln("║ mean degree    : " ~ formatStrings(".3f"),
             (dim+1).iota.map!(dim => manifold.meanDegree(dim)));
-        w.writefln("║ std dev degree : " ~ formatStrings(".2f"),
+        w.writefln("║ std dev degree : " ~ formatStrings(".3f"),
             (dim+1).iota.map!(dim => manifold.degreeVariance(dim).sqrt));
         w.writefln("║ mean history   : " ~ formatStrings("s"), 5.repeat(dim+1));
         w.writefln("║ std dev hist.  : " ~ formatStrings("s"), 5.repeat(dim+1));
@@ -343,21 +347,40 @@ real localCurvaturePenalty(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
 
     import std.math : modf;
 
-    real _; // dummy for integer part
-    immutable real x = degTarget.modf(_);   // fractional part
-    immutable real minPenalty = (x - x^^2) * numH;
+    real minPenalty;
+    static if (hingeDegVarAllowance > 0.0)
+    {
+        minPenalty = hingeDegVarAllowance * numH;
+    }
+    else
+    {
+        real _; // dummy for integer part
+        immutable real x = degTarget.modf(_);   // fractional part
+        minPenalty = (x - x^^2) * numH;
+    }
 
     // TO DO: Refer to arxiv paper for this!
-    return (degTarget^^2 * numH - 2*degTarget*hPerF*numF + sqDeg) - minPenalty;
+    auto ans = (degTarget^^2 * numH - 2*degTarget*hPerF*numF + sqDeg) - minPenalty; 
+    return (ans > 0) ? ans : 0;
 }
 // TO DO: unittests!
 
 
 real objective(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
 {
-    return numFacetsCoef * s.volumePenalty
-        + numHingesCoef * s.globalCurvaturePenalty
-        + hingeDegreeVarCoef * s.localCurvaturePenalty;
+    auto volPen = numFacetsCoef * s.volumePenalty;
+    auto gcPen = numHingesCoef * s.globalCurvaturePenalty;
+    auto lcPen = hingeDegreeVarCoef * s.localCurvaturePenalty;
+    auto maxVGCpen = max(volPen, gcPen);
+
+    static if (capDegVarPenalty)
+    {
+        return volPen + gcPen + (lcPen > maxVGCpen) ? maxVGCpen : lcPen;
+    }
+    else
+    {
+        return volPen + gcPen + lcPen;
+    }
 }
 
 void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
