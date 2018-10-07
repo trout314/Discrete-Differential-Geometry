@@ -83,9 +83,6 @@ public:
         {
             totSqrDegrees[d] = simplices(d).map!(s => this.degree(s)^^2).sum;
         }
-
-        assert(this.findProblems.empty, 
-            this.findProblems.joiner(", ").array.to!string);
     }
 
     this(this) pure @safe
