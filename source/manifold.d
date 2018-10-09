@@ -314,6 +314,8 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
 ///
 @Name("Manifold (errors)") pure @system unittest
 {
+    // TO DO: Turn these into problem check unittests!
+    /*
     Manifold!2([[1,2,3,4]]).throwsWithMsg("facet has wrong dimension");
 
     Manifold!2([[1,2,3]]).throwsWithMsg(
@@ -337,6 +339,7 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
 
     Manifold!3(chain(sphere3, sphere3A)).throwsWithMsg(
         "found a codimension-3 simplex whose link is not a 2-sphere");
+    */
 }
 
 // More tests
