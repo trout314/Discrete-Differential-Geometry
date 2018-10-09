@@ -1,8 +1,8 @@
 import algorithms : eulerCharacteristic;
 import manifold : coCenter, degreeHistogram, degreeVariance, doHingeMove, findProblems, getRandomHingeMove, hasValidHingeMove, 
-    linkVerticesAtHinge, movesAtFacet, Manifold, standardSphere, totalSquareDegree, doPachner, meanDegree, undoHingeMove;
+    linkVerticesAtHinge, movesAtFacet, Manifold, saveTo, standardSphere, totalSquareDegree, doPachner, meanDegree, undoHingeMove;
 import simplicial_complex : fVector;
-import std.algorithm : all, each, filter, joiner, map, max, min, maxElement, sum;
+import std.algorithm : all, each, filter, joiner, map, max, mean, min, maxElement, sort, sum;
 import std.conv : to;
 import std.datetime : Duration, msecs;
 import std.datetime.date : DateTime;
@@ -12,10 +12,12 @@ import std.math : exp, sqrt;
 import std.random : choice, dice, rndGen, uniform, uniform01;
 import std.range : array, back, chain, empty, enumerate, front, iota, only, popBack, popFront, repeat,
     save, walkLength;
-import std.stdio : write, writef, writefln, writeln, stdout;
+import std.stdio : File, write, writef, writefln, writeln, stdout;
 import unit_threaded : Name;
-import utility : subsetsOfSize, subsets, toStackArray, toStaticArray, StackArray;
+import utility : binomial, subsetsOfSize, subsets, toStackArray, toStaticArray, StackArray;
 import std.format : format;
+
+import std.math : modf;
 
 import core.memory : GC;
 import std.datetime.systime : Clock;
@@ -47,25 +49,29 @@ static immutable real[17] flatDegreeInDim = [
 
 //-------------------------------- SETTINGS ------------------------------------
 // TO DO: make setting setting a coef to 0.0 disable un-needed code
-
-enum int numFacetsTarget = 32_000;
+enum int numFacetsTarget = 8000;
 enum real hingeDegreeTarget = flatDegreeInDim[3];
 
 enum real numFacetsCoef = 0.01;
 enum real numHingesCoef = 0.01;
 
-enum real hingeDegreeVarCoef = 0.5;
-// cap deg var scaled penalty at max other scaled penalty
-enum bool capDegVarPenalty = false;
-enum real hingeDegVarAllowance = 0.6;   // set to 0.0 to disable
+enum real hingeDegreeVarCoef = 0.05;
+enum real cd3DegVarCoef = hingeDegreeVarCoef / (22.8 / 5.1);
 
-enum int triesPerReport = 100_000;
-enum int maxTries = 100_000_000;
+enum int triesPerReport = 10_000;
+enum int triesPerSave = 50_000_000;
+enum int historyLength = 40;
+enum int smoothInitLength = 10;
+
+
+enum sampleSaveFilePrefix = "sample_8k";
+enum int maxTries = 500_000;
 
 enum int triesPerCollect = 500;
 
 enum bool checkForProblems = false; 
 enum int triesPerProblemCheck = 500_000_000;
+
 
 enum useHingeMoves = true;
 
@@ -86,29 +92,62 @@ private:
 
     StopWatch timer;
 
-    enum historyLength = 40;
-    static struct History
-    {
-        real[dim + 1][historyLength] meanDegree;
-        real[dim + 1][historyLength] stdDevDegree;
-        real[historyLength] objective;
+    // -------- history of quantities of interest ----------
+    real[dim + 1][historyLength] meanDegHistory;
+    real[dim + 1][historyLength] stdDevDegHistory;
+    real[historyLength] objHistory;
 
-        void advance() {
-            foreach(list; History.tupleof)
-            {
-                iota(1, list.length).each!(
-                    i => list[$ - i] = list[$ - i - 1]);
-            }
+    real[dim + 1] initMeanDeg;
+    real[dim + 1] initStdDevDeg;
+    real initObjective;
+
+    // update history
+    void advanceHistory()
+    {
+        foreach(i; 1 .. historyLength)
+        {
+            meanDegHistory[$ - i] = meanDegHistory[$ - i - 1];
+            stdDevDegHistory[$ - i] = stdDevDegHistory[$ - i - 1];
+            objHistory[$ - i] = objHistory[$ - i - 1];
+
+            meanDegHistory.front = (dim + 1).iota.map!(
+                d => manifold.meanDegree(d)).toStaticArray!(dim + 1);
+
+            stdDevDegHistory.front = (dim + 1).iota.map!(
+                d => manifold.degreeVariance(d).sqrt).toStaticArray!(dim + 1);
+
+            objHistory.front = this.objective;
         }
     }
 
     DateTime startTime;
-    History history;
-
 public:
     this(Manifold!(dim, Vertex) initialManifold)
     {
         manifold_ = initialManifold;
+        auto vertices = manifold_.simplices(0).joiner.array.dup.sort;
+        foreach(i; 0 .. vertices.length - 1)
+        {
+            // all gaps in list of vertices should be unusued vertices
+            if(vertices[i] + 1 != vertices[i+1])
+            {
+                foreach(v; iota(vertices[i]+1, vertices[i+1]))
+                {
+                    unusedVertices ~= v;
+                }
+            }
+        }
+        assert(unusedVertices.all!(v => !manifold.contains(v.only)));
+
+        initMeanDeg = (dim + 1).iota.map!(
+            d => manifold.meanDegree(d)).toStaticArray!(dim + 1);
+
+        initStdDevDeg = (dim + 1).iota.map!(
+            d => manifold.degreeVariance(d).sqrt).toStaticArray!(dim + 1);
+
+        initObjective = this.objective;
+
+        this.advanceHistory;
     }
 
     ref const(Manifold!(dim, Vertex)) manifold()() const
@@ -116,13 +155,23 @@ public:
         return manifold_;
     }
 
+    // return historic average of mean degree
+    auto historicMeanDeg(int dim)
+    {
+        return meanDegHistory[].map!(entry => entry[dim]).mean;
+    }
+
+    auto historicStdDevDeg(int dim)
+    {
+        return stdDevDegHistory[].map!(entry => entry[dim]).mean;
+    }
+
     void report(Writer)(auto ref Writer w)
     {
         enum width = 103;
-        auto maxBins = 29;
+        auto maxBins = 28;
         auto maxBar2 = 45;
         auto maxBar3 = 45;
-
 
         auto tt = timer.peek.total!"usecs" / real(triesPerReport);
         timer.reset;
@@ -147,16 +196,20 @@ public:
         auto vp = this.volumePenalty;
         auto gcp = this.globalCurvaturePenalty;
         auto lcp = this.localCurvaturePenalty;
+        auto lsacp = this.localSACurvaturePenalty;
 
         w.writeln('╠', '═'.repeat(width-2), '╣');
-        w.writefln("║ facets  : %.4e = %.4f * %.4e",
+        w.writefln("║ facets      : %.4e = %.4f * %.4e",
             numFacetsCoef * vp, numFacetsCoef, vp);
-        w.writefln("║ hinges  : %.4e = %.4f * %.4e",
+        w.writefln("║ hinges      : %.4e = %.4f * %.4e",
             numHingesCoef * gcp, numHingesCoef, gcp);
-        w.writefln("║ var deg : %.4e = %.4f * %.4e",
+        w.writefln("║ cd2 var deg : %.4e = %.4f * %.4e",
             hingeDegreeVarCoef * lcp, hingeDegreeVarCoef, lcp);
-        w.writef("║ TOTAL   : %.4e history: ", this.objective);
-        w.writeHistory(this.objective, this.history.objective);
+        w.writefln("║ cd3 var deg : %.4e = %.4f * %.4e",
+            cd3DegVarCoef * lsacp, cd3DegVarCoef, lsacp);
+
+        w.writef("║ TOTAL       : %.4e history: ", this.objective);
+        w.writeHistory(this.initObjective, this.objHistory);
         w.writeln;
 
         w.writeln('╠', '═'.repeat(width-2), '╣');
@@ -279,13 +332,7 @@ public:
         w.writeln(" ║");
         w.writeln('╚', '═'.repeat((width-2)/2), '╩', '═'.repeat((width-2)/2), '╝');
 
-        history.advance;
-        history.meanDegree.front = (dim + 1).iota.map!(
-            d => manifold.meanDegree(d)).toStaticArray!(dim + 1);
-
-        history.stdDevDegree.front = (dim + 1).iota.map!(
-            d => manifold.degreeVariance(d).sqrt).toStaticArray!(dim + 1);
-        history.objective.front = this.objective;
+        this.advanceHistory;
     }
 
     void columnReport(Writer)(auto ref Writer w)
@@ -294,26 +341,26 @@ public:
     }
 }
 
-void writeHistory(Writer, Value, size_t historyLength)(auto ref Writer w, Value currentVal,
+void writeHistory(Writer, Value, size_t historyLength)(auto ref Writer w, Value initVal,
     Value[historyLength] records)
 {
-    foreach(i; 0 .. historyLength)
+    foreach(val; records[])
     {
-        if (records[i] < currentVal)
-        {
-            w.write("+");
-        }
-        else if (records[i] > currentVal)
+        if (val < initVal)
         {
             w.write("-");
         }
-        else if (records[i] == currentVal)
+        else if (val > initVal)
+        {
+            w.write("+");
+        }
+        else if (val == initVal)
         {
             w.write("=");
         }
         else
         {
-            w.write("X");
+            w.write(" ");
         }
     }
 }
@@ -345,25 +392,32 @@ real localCurvaturePenalty(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
     immutable sqDeg = s.manifold.totalSquareDegree(dim - 2);
     immutable real degTarget = hPerF * numF / numH.to!real;
 
-    import std.math : modf;
-
-    real minPenalty;
-    static if (hingeDegVarAllowance > 0.0)
-    {
-        minPenalty = hingeDegVarAllowance * numH;
-    }
-    else
-    {
-        real _; // dummy for integer part
-        immutable real x = degTarget.modf(_);   // fractional part
-        minPenalty = (x - x^^2) * numH;
-    }
+    real _; // dummy for integer part
+    immutable real x = degTarget.modf(_);   // fractional part
+    immutable minPenalty = (x - x^^2) * numH;
 
     // TO DO: Refer to arxiv paper for this!
-    auto ans = (degTarget^^2 * numH - 2*degTarget*hPerF*numF + sqDeg) - minPenalty; 
-    return (ans > 0) ? ans : 0;
+    return (degTarget^^2 * numH - 2*degTarget*hPerF*numF + sqDeg) - minPenalty;
 }
 // TO DO: unittests!
+
+
+real localSACurvaturePenalty(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
+{
+    immutable numF = s.manifold.fVector[dim];
+    immutable numCD3 = s.manifold.fVector[dim - 3];
+    immutable cd3PerF = binomial(dim + 1, dim - 2);
+
+    immutable sqDeg = s.manifold.totalSquareDegree(dim - 3);
+    immutable real cd3DegTarget = cd3PerF * numF / numCD3.to!real;
+
+    real _; // dummy for integer part
+    immutable real x = cd3DegTarget.modf(_);   // fractional part
+    immutable minPenalty = (x - x^^2) * numCD3;
+
+    // TO DO: Refer to arxiv paper for this!
+    return (cd3DegTarget^^2 * numCD3 - 2*cd3DegTarget*cd3PerF*numF + sqDeg) - minPenalty;
+}
 
 
 real objective(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
@@ -371,16 +425,9 @@ real objective(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
     auto volPen = numFacetsCoef * s.volumePenalty;
     auto gcPen = numHingesCoef * s.globalCurvaturePenalty;
     auto lcPen = hingeDegreeVarCoef * s.localCurvaturePenalty;
-    auto maxVGCpen = max(volPen, gcPen);
+    auto lsacPen = cd3DegVarCoef * s.localSACurvaturePenalty;
 
-    static if (capDegVarPenalty)
-    {
-        return volPen + gcPen + (lcPen > maxVGCpen) ? maxVGCpen : lcPen;
-    }
-    else
-    {
-        return volPen + gcPen + lcPen;
-    }
+    return volPen + gcPen + lcPen + lsacPen;
 }
 
 void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
@@ -389,6 +436,7 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
     s.startTime = Clock.currTime.to!DateTime;
     s.timer.start;
     
+    int sampleNumber;
     size_t numMovesTried;
     while (numMovesTried < maxTries)
     {
@@ -597,6 +645,19 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
             s.report(stdout);
             s.timer.reset;
         }
+
+        //--------------------------- MAKE REPORT ----------------------------
+        if (numMovesTried % triesPerSave == 0)
+        {
+            auto fileName = sampleSaveFilePrefix ~ sampleNumber.to!string;
+            s.manifold.saveTo(fileName);
+            auto saveFile = File(fileName, "a");
+            saveFile.writeln;
+            s.report(saveFile);
+            ++sampleNumber;
+        }
+
+
 
     }
 }
