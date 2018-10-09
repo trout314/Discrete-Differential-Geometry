@@ -982,9 +982,10 @@ SimplicialComplex!Vertex loadSimplicialComplex(Vertex = int)(string fileName)
     auto facetString = File(fileName, "r").byLineCopy
         .filter!(line => line.front != '#').joiner.array;
 
-    // accidentally have '#' at end of some files. only include part before
-    // and '#' characters
+    // accidentally have '#' or '╔' at end of the manifold facet line on some
+    // files. Only include the part before any of these characters
     facetString = facetString.findSplit('#'.only)[0];
+    facetString = facetString.findSplit('╔'.only)[0];
 
     Vertex[][] facets;
     try
