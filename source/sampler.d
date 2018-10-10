@@ -8,9 +8,9 @@ import std.datetime : Duration, msecs;
 import std.datetime.date : DateTime;
 import std.datetime.stopwatch : StopWatch;
 // import std.format : format, formattedWrite;
-import std.math : exp, sqrt;
+import std.math : exp, sqrt, isNaN;
 import std.random : choice, dice, rndGen, uniform, uniform01;
-import std.range : array, back, chain, empty, enumerate, front, iota, only, popBack, popFront, repeat,
+import std.range : array, back, chain, empty, enumerate, front, iota, only, popBack, popFront, repeat, retro,
     save, walkLength;
 import std.stdio : File, write, writef, writefln, writeln, stdout;
 import unit_threaded : Name;
@@ -23,6 +23,7 @@ import core.memory : GC;
 import std.datetime.systime : Clock;
 
 import std.variant : Algebraic, visit, tryVisit;
+import dstats.regress : linearRegress;
 
 
 // I wish we could compute these, but acos dosn't work at compile time. These
@@ -49,8 +50,8 @@ static immutable real[17] flatDegreeInDim = [
 
 //-------------------------------- SETTINGS ------------------------------------
 // TO DO: make setting setting a coef to 0.0 disable un-needed code
-enum int numFacetsTarget = 8000;
-enum real hingeDegreeTarget = flatDegreeInDim[3];
+enum int numFacetsTarget = 32_000;
+enum real hingeDegreeTarget = 2*flatDegreeInDim[3] - 5.12517;
 
 enum real numFacetsCoef = 0.01;
 enum real numHingesCoef = 0.01;
@@ -58,20 +59,19 @@ enum real numHingesCoef = 0.01;
 enum real hingeDegreeVarCoef = 0.05;
 enum real cd3DegVarCoef = hingeDegreeVarCoef / (22.8 / 5.1);
 
-enum int triesPerReport = 10_000;
-enum int triesPerSave = 50_000_000;
-enum int historyLength = 40;
-enum int smoothInitLength = 10;
+enum tenthSweepsPerHistory = 5;
+enum int historyLength = 20;
 
+enum sweepsPerFileReport = 2;
+enum tenthSweepsPerSave = 200;
+enum maxSweeps = 120;
 
-enum sampleSaveFilePrefix = "sample_8k";
-enum int maxTries = 500_000;
+enum sampleSaveFilePrefix = "S3_32k_V1e-2_G1e-2_LSA5e-2_offset_sample";
 
 enum int triesPerCollect = 500;
-
+enum triesPerStdoutReport = 50_000;
 enum bool checkForProblems = false; 
-enum int triesPerProblemCheck = 500_000_000;
-
+enum int sweepsPerProblemCheck = 500_000_000;
 
 enum useHingeMoves = true;
 
@@ -90,34 +90,32 @@ private:
     ulong[4] hingeTries;
     ulong[4] hingeAccepts;
 
+    ulong tenthSweeps;    // 1 tenthSweep = 0.1 accepted move / facet
     StopWatch timer;
 
     // -------- history of quantities of interest ----------
+    size_t[dim + 1][historyLength] fVecHistory;
     real[dim + 1][historyLength] meanDegHistory;
     real[dim + 1][historyLength] stdDevDegHistory;
     real[historyLength] objHistory;
-
-    real[dim + 1] initMeanDeg;
-    real[dim + 1] initStdDevDeg;
-    real initObjective;
 
     // update history
     void advanceHistory()
     {
         foreach(i; 1 .. historyLength)
         {
+            fVecHistory[$ - i] = fVecHistory[$ - i - 1];
             meanDegHistory[$ - i] = meanDegHistory[$ - i - 1];
             stdDevDegHistory[$ - i] = stdDevDegHistory[$ - i - 1];
             objHistory[$ - i] = objHistory[$ - i - 1];
-
-            meanDegHistory.front = (dim + 1).iota.map!(
-                d => manifold.meanDegree(d)).toStaticArray!(dim + 1);
-
-            stdDevDegHistory.front = (dim + 1).iota.map!(
-                d => manifold.degreeVariance(d).sqrt).toStaticArray!(dim + 1);
-
-            objHistory.front = this.objective;
         }
+
+        fVecHistory.front = manifold.fVector;
+        meanDegHistory.front = (dim + 1).iota.map!(
+            d => manifold.meanDegree(d)).toStaticArray!(dim + 1);
+        stdDevDegHistory.front = (dim + 1).iota.map!(
+            d => manifold.degreeVariance(d).sqrt).toStaticArray!(dim + 1);
+        objHistory.front = this.objective;
     }
 
     DateTime startTime;
@@ -138,14 +136,6 @@ public:
             }
         }
         assert(unusedVertices.all!(v => !manifold.contains(v.only)));
-
-        initMeanDeg = (dim + 1).iota.map!(
-            d => manifold.meanDegree(d)).toStaticArray!(dim + 1);
-
-        initStdDevDeg = (dim + 1).iota.map!(
-            d => manifold.degreeVariance(d).sqrt).toStaticArray!(dim + 1);
-
-        initObjective = this.objective;
 
         this.advanceHistory;
     }
@@ -168,18 +158,39 @@ public:
 
     void report(Writer)(auto ref Writer w)
     {
+        auto numMovesTried = bistellarTries[].sum + hingeTries[].sum;
+        auto numMovesAccepted = bistellarAccepts[].sum + hingeAccepts[].sum;
+        double acceptFrac = double(numMovesAccepted) / numMovesTried;       
+
         enum width = 103;
-        auto maxBins = 28;
+        auto maxBins = 24;
         auto maxBar2 = 45;
         auto maxBar3 = 45;
 
-        auto tt = timer.peek.total!"usecs" / real(triesPerReport);
-        timer.reset;
+        // TO DO: Make this less hacky!
+        auto tt = timer.peek.total!"usecs" / double(numMovesTried);
+
+        w.writefln("sweeps: %s", tenthSweeps / 10.0);
+
+        foreach(d; 0 .. dim - 1)
+        {
+
+            w.writef("mean degree in dimension %2s : %s",
+                d, manifold.meanDegree(d));
+            auto degHist = meanDegHistory[d];
+            w.writeRegression!degHist;
+
+            w.writef("std dev degree in dimension %2s : %s",
+                d, manifold.degreeVariance(d).sqrt);
+            auto degStdDev = meanDegHistory[].map!(x => x[d].sqrt).array;
+            w.writeRegression!degStdDev;
+
+        }
+
 
         w.writeln('╔', '═'.repeat(32), '╦', '═'.repeat(23), '╦', '═'.repeat(44), '╗');
         w.writefln("║  move accept fraction : %5.3f  ║  usec/move : %7.0-f  ║  started : %30-s  ║",
-            double(bistellarAccepts[].sum + hingeAccepts[].sum)/(bistellarTries[].sum + hingeTries[].sum),
-            tt, this.startTime.to!string);
+            acceptFrac, tt, this.startTime.to!string);
         w.writeln('╠', '═'.repeat(32), '╩', '═'.repeat(23), '╩', '═'.repeat(44), '╣');
 
         alias formatStrings = (string rest) => 
@@ -190,8 +201,6 @@ public:
             (dim+1).iota.map!(dim => manifold.meanDegree(dim)));
         w.writefln("║ std dev degree : " ~ formatStrings(".3f"),
             (dim+1).iota.map!(dim => manifold.degreeVariance(dim).sqrt));
-        w.writefln("║ mean history   : " ~ formatStrings("s"), 5.repeat(dim+1));
-        w.writefln("║ std dev hist.  : " ~ formatStrings("s"), 5.repeat(dim+1));
 
         auto vp = this.volumePenalty;
         auto gcp = this.globalCurvaturePenalty;
@@ -199,20 +208,27 @@ public:
         auto lsacp = this.localSACurvaturePenalty;
 
         w.writeln('╠', '═'.repeat(width-2), '╣');
-        w.writefln("║ facets      : %.4e = %.4f * %.4e",
-            numFacetsCoef * vp, numFacetsCoef, vp);
-        w.writefln("║ hinges      : %.4e = %.4f * %.4e",
-            numHingesCoef * gcp, numHingesCoef, gcp);
-        w.writefln("║ cd2 var deg : %.4e = %.4f * %.4e",
-            hingeDegreeVarCoef * lcp, hingeDegreeVarCoef, lcp);
-        w.writefln("║ cd3 var deg : %.4e = %.4f * %.4e",
-            cd3DegVarCoef * lsacp, cd3DegVarCoef, lsacp);
+        w.writeln("║", "  Component", ' '.repeat(7), "Raw",
+            ' '.repeat(8), "Coef", ' '.repeat(7), "Value",
+            ' '.repeat(5), "Δ/Sweep", ' '.repeat(5), "P-value",
+            ' '.repeat(4), "║");
+        
 
-        w.writef("║ TOTAL       : %.4e history: ", this.objective);
-        w.writeHistory(this.initObjective, this.objHistory);
-        w.writeln;
 
-        w.writeln('╠', '═'.repeat(width-2), '╣');
+        w.writefln("║ facets      : %.4e * %.4f = %.4e ┊",
+            vp, numFacetsCoef, numFacetsCoef * vp);
+        w.writefln("║ hinges      : %.4e * %.4f = %.4e ┊",
+            gcp, numHingesCoef, numHingesCoef * gcp);
+        w.writefln("║ cd2 var deg : %.4e * %.4f = %.4e ┊",
+            lcp, hingeDegreeVarCoef, hingeDegreeVarCoef * lcp);
+        w.writefln("║ cd3 var deg : %.4e * %.4f = %.4e ┊",
+            lsacp, cd3DegVarCoef,  cd3DegVarCoef * lsacp);
+        w.writef("║                             TOTAL : %.4e ┊",
+            this.objective);
+        w.writeRegression!objHistory;
+
+
+        w.writeln('╠', '═'.repeat((width-2)/2), '╦', '═'.repeat((width-2)/2),'╣');
         w.write("║ Bistellar Move   Accept              Try    %    ║");
         w.writeln(" Hinge Move       Accept              Try    %    ║");
         foreach(i; 0 .. dim + 1)
@@ -331,8 +347,6 @@ public:
         }
         w.writeln(" ║");
         w.writeln('╚', '═'.repeat((width-2)/2), '╩', '═'.repeat((width-2)/2), '╝');
-
-        this.advanceHistory;
     }
 
     void columnReport(Writer)(auto ref Writer w)
@@ -341,30 +355,27 @@ public:
     }
 }
 
-void writeHistory(Writer, Value, size_t historyLength)(auto ref Writer w, Value initVal,
-    Value[historyLength] records)
+void writeRegression(alias history, Writer)(auto ref Writer w)
 {
-    foreach(val; records[])
+    import std.traits : isFloatingPoint;
+    static if (isFloatingPoint!(typeof(history[].front)))
     {
-        if (val < initVal)
-        {
-            w.write("-");
-        }
-        else if (val > initVal)
-        {
-            w.write("+");
-        }
-        else if (val == initVal)
-        {
-            w.write("=");
-        }
-        else
-        {
-            w.write(" ");
-        }
+        auto filteredHist = history[].filter!(
+            val => !val.isNaN).array;
     }
+    else
+    {
+        auto filteredHist = history[].filter!(
+            val => val != 0).array;
+    }
+    
+    auto nSweepsHistory = historyLength.iota.retro.map!(
+        i => (1.0 / 10) * i);
+    auto result = linearRegress(filteredHist, nSweepsHistory, 1.repeat);
+    w.writefln(" %.1e ┊ %.1e ║",
+        result.betas.front,
+        result.p.front);
 }
-
 
 real volumePenalty(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
 {
@@ -437,10 +448,17 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
     s.timer.start;
     
     int sampleNumber;
-    size_t numMovesTried;
-    while (numMovesTried < maxTries)
+
+    while (s.tenthSweeps / 10 < maxSweeps)
     {
-        numMovesTried = s.bistellarTries[].sum + s.hingeTries[].sum;
+        size_t numMovesTried = s.bistellarTries[].sum + s.hingeTries[].sum;
+        size_t numMovesAccepted = s.bistellarAccepts[].sum + s.hingeAccepts[].sum;
+        bool tenthSweepsIncreased = false;
+        if (10 * numMovesAccepted / s.manifold.fVector[dim] > s.tenthSweeps)
+        {
+            s.tenthSweeps = 10 * numMovesAccepted / s.manifold.fVector[dim];
+            tenthSweepsIncreased = true;
+        }
 
         assert(s.unusedVertices.all!(v => !s.manifold.contains(v.only)));
         if(s.unusedVertices.empty)
@@ -576,6 +594,7 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
             {
                 assert(!done);
                 moves[mIndx_] = moves.back;
+                assert(moves.length > 0);
                 moves.length = moves.length - 1;
             }
         }
@@ -615,10 +634,52 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
             );
         }
 
+        //--------------------------- MAKE REPORT ----------------------------
+        if (numMovesTried % triesPerStdoutReport == 0)
+        {
+            s.report(stdout);
+        }
+
+        //----------------------- WRITE TO DATA FILE --------------------------
+        if (tenthSweepsIncreased
+            && ((s.tenthSweeps / 10) % sweepsPerFileReport == 0))
+        {
+            // TO DO: Implement this!
+        }
+
+        //----------------------- SAVE CURRENT MANIFOLD ----------------------
+        if (tenthSweepsIncreased
+            && (s.tenthSweeps % tenthSweepsPerSave == 0))
+        {
+            auto fileName = sampleSaveFilePrefix ~ sampleNumber.to!string;
+            s.manifold.saveTo(fileName);
+            auto saveFile = File(fileName, "a");
+            saveFile.writeln;
+            s.report(saveFile);
+            ++sampleNumber;
+        }
+
+        //----------------------- RECORD HISTORY --------------------------
+        if (tenthSweepsIncreased 
+            && (s.tenthSweeps % tenthSweepsPerHistory == 0))
+        {
+            // TO DO: Implement this!
+            s.advanceHistory;
+        }
+
+        //------------------------- COLLECT GARBAGE --------------------------
+        if (numMovesTried % triesPerCollect == 0)
+        {
+            GC.enable;
+            GC.collect;
+            GC.disable;
+        }
+
         //----------------------- CHECK FOR PROBLEMS ----------------------- 
         static if (checkForProblems)
         {
-            if (numMovesTried % triesPerProblemCheck == 0)
+            if (tenthSweepsIncreased
+                && ((s.tenthSweeps / 10) % sweepsPerProblemCheck == 0))
             {
                 "checking for problems ... ".write;
                 auto problems = s.manifold.findProblems;
@@ -630,35 +691,6 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
                 "done".writeln;
             }
         }
-
-        //------------------------- COLLECT GARBAGE --------------------------
-        if (numMovesTried % triesPerCollect == 0)
-        {
-            GC.enable;
-            GC.collect;
-            GC.disable;
-        }
-
-        //--------------------------- MAKE REPORT ----------------------------
-        if (numMovesTried % triesPerReport == 0)
-        {
-            s.report(stdout);
-            s.timer.reset;
-        }
-
-        //--------------------------- MAKE REPORT ----------------------------
-        if (numMovesTried % triesPerSave == 0)
-        {
-            auto fileName = sampleSaveFilePrefix ~ sampleNumber.to!string;
-            s.manifold.saveTo(fileName);
-            auto saveFile = File(fileName, "a");
-            saveFile.writeln;
-            s.report(saveFile);
-            ++sampleNumber;
-        }
-
-
-
     }
 }
 

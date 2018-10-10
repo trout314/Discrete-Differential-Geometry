@@ -149,7 +149,7 @@ else
         auto s = Sampler!(int, dim)(mfd);
         s.sample;
 
-        auto start = "8k_test";
+        auto start = "S3_32k_V1e-2_G1e-2_LSA5e-2_offset";
 
         auto fileName = start ~ ".mfd";
         s.manifold.saveTo(fileName);
@@ -168,4 +168,21 @@ else
         }
 
     }
+
+    // Test linear regression
+    // void main()
+    // {
+    //     import std.algorithm, std.stdio, std.range;
+    //     import dstats.regress;
+
+    //     auto nBeers = [1.0,2.0,3.0,5.0,7.0,16.0,23.0];
+    //     auto programmingSkill = [1.0,2.1,2.9,4.5,7.2,15.2,22.0];
+
+    //     // Using default confidence interval:
+    //     auto results = linearRegress(programmingSkill, nBeers, repeat(1));
+
+    //     results.betas.front.writeln;
+    //     results.writeln;
+
+    // }
 }
