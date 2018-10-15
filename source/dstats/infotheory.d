@@ -257,7 +257,7 @@ struct ObsEnt(T...) {
 
 // Whether we can use StackTreeAA, or whether we have to use a regular AA for
 // entropy.
-private template NeedsHeap(T) {
+template NeedsHeap(T) {
     static if(!hasIndirections!(ForeachType!(T))) {
         enum bool NeedsHeap = false;
     } else static if(isArray!(T)) {
@@ -551,244 +551,244 @@ For those looking for hard numbers, this seems to be on the order of 10x
 faster than the generic implementations according to my quick and dirty
 benchmarks.
 */
-struct DenseInfoTheory {
-    private uint nBin;
+// struct DenseInfoTheory {
+//     private uint nBin;
 
-    // Saves space and makes things cache efficient by using the smallest
-    // integer width necessary for binning.
-    double selectSize(alias fun, T...)(T args) {
-        static if(allSatisfy!(hasLength, T)) {
-            immutable len = args[0].length;
+//     // Saves space and makes things cache efficient by using the smallest
+//     // integer width necessary for binning.
+//     double selectSize(alias fun, T...)(T args) {
+//         static if(allSatisfy!(hasLength, T)) {
+//             immutable len = args[0].length;
 
-            if(len <= ubyte.max) {
-                return fun!ubyte(args);
-            } else if(len <= ushort.max) {
-                return fun!ushort(args);
-            } else {
-                return fun!uint(args);
-            }
+//             if(len <= ubyte.max) {
+//                 return fun!ubyte(args);
+//             } else if(len <= ushort.max) {
+//                 return fun!ushort(args);
+//             } else {
+//                 return fun!uint(args);
+//             }
 
-            // For now, assume that noone is going to have more than
-            // 4 billion observations.
-        } else {
-            return fun!uint(args);
-        }
-    }
+//             // For now, assume that noone is going to have more than
+//             // 4 billion observations.
+//         } else {
+//             return fun!uint(args);
+//         }
+//     }
 
-    /**
-    Constructs a DenseInfoTheory object for nBin bins.  The values taken by
-    each observation must then be on the interval [0, nBin$(RPAREN).
-    */
-    this(uint nBin) {
-        this.nBin = nBin;
-    }
+//     /**
+//     Constructs a DenseInfoTheory object for nBin bins.  The values taken by
+//     each observation must then be on the interval [0, nBin$(RPAREN).
+//     */
+//     this(uint nBin) {
+//         this.nBin = nBin;
+//     }
 
-    /**
-    Computes the entropy of a set of observations.  Note that, for this
-    function, the joint() function can be used to compute joint entropies
-    as long as each individual range contains only integers on [0, nBin$(RPAREN).
-    */
-    double entropy(R)(R range) if(isIterable!R) {
-        return selectSize!entropyImpl(range);
-    }
+//     /**
+//     Computes the entropy of a set of observations.  Note that, for this
+//     function, the joint() function can be used to compute joint entropies
+//     as long as each individual range contains only integers on [0, nBin$(RPAREN).
+//     */
+//     double entropy(R)(R range) if(isIterable!R) {
+//         return selectSize!entropyImpl(range);
+//     }
 
-    private double entropyImpl(Uint, R)(R range) {
-        auto alloc = newRegionAllocator();
-        uint n = 0;
+//     private double entropyImpl(Uint, R)(R range) {
+//         auto alloc = newRegionAllocator();
+//         uint n = 0;
 
-        static if(is(typeof(range._jointRanges))) {
-            // Compute joint entropy.
-            immutable nRanges = range._jointRanges.length;
-            auto counts = alloc.uninitializedArray!(Uint[])(nBin ^^ nRanges);
-            counts[] = 0;
+//         static if(is(typeof(range._jointRanges))) {
+//             // Compute joint entropy.
+//             immutable nRanges = range._jointRanges.length;
+//             auto counts = alloc.uninitializedArray!(Uint[])(nBin ^^ nRanges);
+//             counts[] = 0;
 
-            Outer:
-            while(true) {
-                uint multiplier = 1;
-                uint index = 0;
+//             Outer:
+//             while(true) {
+//                 uint multiplier = 1;
+//                 uint index = 0;
 
-                foreach(ti, Unused; typeof(range._jointRanges)) {
-                    if(range._jointRanges[ti].empty) break Outer;
-                    immutable rFront = range._jointRanges[ti].front;
-                    assert(rFront < nBin);  // Enforce is too costly here.
+//                 foreach(ti, Unused; typeof(range._jointRanges)) {
+//                     if(range._jointRanges[ti].empty) break Outer;
+//                     immutable rFront = range._jointRanges[ti].front;
+//                     assert(rFront < nBin);  // Enforce is too costly here.
 
-                    index += multiplier * cast(uint) rFront;
-                    range._jointRanges[ti].popFront();
-                    multiplier *= nBin;
-                }
+//                     index += multiplier * cast(uint) rFront;
+//                     range._jointRanges[ti].popFront();
+//                     multiplier *= nBin;
+//                 }
 
-                counts[index]++;
-                n++;
-            }
+//                 counts[index]++;
+//                 n++;
+//             }
 
-            return entropyCounts(counts, n);
-        } else {
-            auto counts = alloc.uninitializedArray!(Uint[])(nBin);
+//             return entropyCounts(counts, n);
+//         } else {
+//             auto counts = alloc.uninitializedArray!(Uint[])(nBin);
 
-            counts[] = 0;
-            foreach(elem; range) {
-                counts[elem]++;
-                n++;
-            }
+//             counts[] = 0;
+//             foreach(elem; range) {
+//                 counts[elem]++;
+//                 n++;
+//             }
 
-            return entropyCounts(counts, n);
-        }
-    }
+//             return entropyCounts(counts, n);
+//         }
+//     }
 
-    /// I(x; y)
-    double mutualInfo(R1, R2)(R1 x, R2 y)
-    if(isIterable!R1 && isIterable!R2) {
-        return selectSize!mutualInfoImpl(x, y);
-    }
+//     /// I(x; y)
+//     double mutualInfo(R1, R2)(R1 x, R2 y)
+//     if(isIterable!R1 && isIterable!R2) {
+//         return selectSize!mutualInfoImpl(x, y);
+//     }
 
-    private double mutualInfoImpl(Uint, R1, R2)(R1 x, R2 y) {
-        auto alloc = newRegionAllocator();
-        auto joint = alloc.uninitializedArray!(Uint[])(nBin * nBin);
-        auto margx = alloc.uninitializedArray!(Uint[])(nBin);
-        auto margy = alloc.uninitializedArray!(Uint[])(nBin);
-        joint[] = 0;
-        margx[] = 0;
-        margy[] = 0;
-        uint n;
+//     private double mutualInfoImpl(Uint, R1, R2)(R1 x, R2 y) {
+//         auto alloc = newRegionAllocator();
+//         auto joint = alloc.uninitializedArray!(Uint[])(nBin * nBin);
+//         auto margx = alloc.uninitializedArray!(Uint[])(nBin);
+//         auto margy = alloc.uninitializedArray!(Uint[])(nBin);
+//         joint[] = 0;
+//         margx[] = 0;
+//         margy[] = 0;
+//         uint n;
 
-        while(!x.empty && !y.empty) {
-            immutable xFront = cast(uint) x.front;
-            immutable yFront = cast(uint) y.front;
-            assert(xFront < nBin);
-            assert(yFront < nBin);
+//         while(!x.empty && !y.empty) {
+//             immutable xFront = cast(uint) x.front;
+//             immutable yFront = cast(uint) y.front;
+//             assert(xFront < nBin);
+//             assert(yFront < nBin);
 
-            joint[xFront * nBin + yFront]++;
-            margx[xFront]++;
-            margy[yFront]++;
-            n++;
-            x.popFront();
-            y.popFront();
-        }
+//             joint[xFront * nBin + yFront]++;
+//             margx[xFront]++;
+//             margy[yFront]++;
+//             n++;
+//             x.popFront();
+//             y.popFront();
+//         }
 
-        auto ret = entropyCounts(margx, n) + entropyCounts(margy, n) -
-            entropyCounts(joint, n);
-        return max(0, ret);
-    }
+//         auto ret = entropyCounts(margx, n) + entropyCounts(margy, n) -
+//             entropyCounts(joint, n);
+//         return max(0, ret);
+//     }
 
-    /**
-    Calculates the P-value for I(X; Y) assuming x and y both have supports
-    of [0, nBin$(RPAREN).  The P-value is calculated using a Chi-Square approximation.
-    It is asymptotically correct, but is approximate for finite sample size.
+//     /**
+//     Calculates the P-value for I(X; Y) assuming x and y both have supports
+//     of [0, nBin$(RPAREN).  The P-value is calculated using a Chi-Square approximation.
+//     It is asymptotically correct, but is approximate for finite sample size.
 
-    Parameters:
-    mutualInfo:  I(x; y), in bits
-    n:  The number of samples used to calculate I(x; y)
-    */
-    double mutualInfoPval(double mutualInfo, double n) {
-        immutable df = (nBin - 1) ^^ 2;
+//     Parameters:
+//     mutualInfo:  I(x; y), in bits
+//     n:  The number of samples used to calculate I(x; y)
+//     */
+//     double mutualInfoPval(double mutualInfo, double n) {
+//         immutable df = (nBin - 1) ^^ 2;
 
-        immutable testStat = mutualInfo * 2 * LN2 * n;
-        return chiSquareCDFR(testStat, df);
-    }
+//         immutable testStat = mutualInfo * 2 * LN2 * n;
+//         return chiSquareCDFR(testStat, df);
+//     }
 
-    /// H(X | Y)
-    double condEntropy(R1, R2)(R1 x, R2 y)
-    if(isIterable!R1 && isIterable!R2) {
-        return selectSize!condEntropyImpl(x, y);
-    }
+//     /// H(X | Y)
+//     double condEntropy(R1, R2)(R1 x, R2 y)
+//     if(isIterable!R1 && isIterable!R2) {
+//         return selectSize!condEntropyImpl(x, y);
+//     }
 
-    private double condEntropyImpl(Uint, R1, R2)(R1 x, R2 y) {
-        auto alloc = newRegionAllocator();
-        auto joint = alloc.uninitializedArray!(Uint[])(nBin * nBin);
-        auto margy = alloc.uninitializedArray!(Uint[])(nBin);
-        joint[] = 0;
-        margy[] = 0;
-        uint n;
+//     private double condEntropyImpl(Uint, R1, R2)(R1 x, R2 y) {
+//         auto alloc = newRegionAllocator();
+//         auto joint = alloc.uninitializedArray!(Uint[])(nBin * nBin);
+//         auto margy = alloc.uninitializedArray!(Uint[])(nBin);
+//         joint[] = 0;
+//         margy[] = 0;
+//         uint n;
 
-        while(!x.empty && !y.empty) {
-            immutable xFront = cast(uint) x.front;
-            immutable yFront = cast(uint) y.front;
-            assert(xFront < nBin);
-            assert(yFront < nBin);
+//         while(!x.empty && !y.empty) {
+//             immutable xFront = cast(uint) x.front;
+//             immutable yFront = cast(uint) y.front;
+//             assert(xFront < nBin);
+//             assert(yFront < nBin);
 
-            joint[xFront * nBin + yFront]++;
-            margy[yFront]++;
-            n++;
-            x.popFront();
-            y.popFront();
-        }
+//             joint[xFront * nBin + yFront]++;
+//             margy[yFront]++;
+//             n++;
+//             x.popFront();
+//             y.popFront();
+//         }
 
-        auto ret = entropyCounts(joint, n) - entropyCounts(margy, n);
-        return max(0, ret);
-    }
+//         auto ret = entropyCounts(joint, n) - entropyCounts(margy, n);
+//         return max(0, ret);
+//     }
 
-    /// I(X; Y | Z)
-    double condMutualInfo(R1, R2, R3)(R1 x, R2 y, R3 z)
-    if(allSatisfy!(isIterable, R1, R2, R3)) {
-        return selectSize!condMutualInfoImpl(x, y, z);
-    }
+//     /// I(X; Y | Z)
+//     double condMutualInfo(R1, R2, R3)(R1 x, R2 y, R3 z)
+//     if(allSatisfy!(isIterable, R1, R2, R3)) {
+//         return selectSize!condMutualInfoImpl(x, y, z);
+//     }
 
-    private double condMutualInfoImpl(Uint, R1, R2, R3)(R1 x, R2 y, R3 z) {
-        auto alloc = newRegionAllocator();
-        immutable nBinSq = nBin * nBin;
-        auto jointxyz = alloc.uninitializedArray!(Uint[])(nBin * nBin * nBin);
-        auto jointxz = alloc.uninitializedArray!(Uint[])(nBinSq);
-        auto jointyz = alloc.uninitializedArray!(Uint[])(nBinSq);
-        auto margz = alloc.uninitializedArray!(Uint[])(nBin);
-        jointxyz[] = 0;
-        jointxz[] = 0;
-        jointyz[] = 0;
-        margz[] = 0;
-        uint n = 0;
+//     private double condMutualInfoImpl(Uint, R1, R2, R3)(R1 x, R2 y, R3 z) {
+//         auto alloc = newRegionAllocator();
+//         immutable nBinSq = nBin * nBin;
+//         auto jointxyz = alloc.uninitializedArray!(Uint[])(nBin * nBin * nBin);
+//         auto jointxz = alloc.uninitializedArray!(Uint[])(nBinSq);
+//         auto jointyz = alloc.uninitializedArray!(Uint[])(nBinSq);
+//         auto margz = alloc.uninitializedArray!(Uint[])(nBin);
+//         jointxyz[] = 0;
+//         jointxz[] = 0;
+//         jointyz[] = 0;
+//         margz[] = 0;
+//         uint n = 0;
 
-        while(!x.empty && !y.empty && !z.empty) {
-            immutable xFront = cast(uint) x.front;
-            immutable yFront = cast(uint) y.front;
-            immutable zFront = cast(uint) z.front;
-            assert(xFront < nBin);
-            assert(yFront < nBin);
-            assert(zFront < nBin);
+//         while(!x.empty && !y.empty && !z.empty) {
+//             immutable xFront = cast(uint) x.front;
+//             immutable yFront = cast(uint) y.front;
+//             immutable zFront = cast(uint) z.front;
+//             assert(xFront < nBin);
+//             assert(yFront < nBin);
+//             assert(zFront < nBin);
 
-            jointxyz[xFront * nBinSq + yFront * nBin + zFront]++;
-            jointxz[xFront * nBin + zFront]++;
-            jointyz[yFront * nBin + zFront]++;
-            margz[zFront]++;
-            n++;
+//             jointxyz[xFront * nBinSq + yFront * nBin + zFront]++;
+//             jointxz[xFront * nBin + zFront]++;
+//             jointyz[yFront * nBin + zFront]++;
+//             margz[zFront]++;
+//             n++;
 
-            x.popFront();
-            y.popFront();
-            z.popFront();
-        }
+//             x.popFront();
+//             y.popFront();
+//             z.popFront();
+//         }
 
-        auto ret = entropyCounts(jointxz, n) - entropyCounts(jointxyz, n) -
-            entropyCounts(margz, n) + entropyCounts(jointyz, n);
-        return max(0, ret);
-    }
-}
+//         auto ret = entropyCounts(jointxz, n) - entropyCounts(jointxyz, n) -
+//             entropyCounts(margz, n) + entropyCounts(jointyz, n);
+//         return max(0, ret);
+//     }
+// }
 
-unittest {
-    auto dense = DenseInfoTheory(3);
-    auto a = [0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2];
-    auto b = [1, 2, 2, 2, 0, 0, 1, 1, 1, 1, 0, 0];
-    auto c = [1, 1, 1, 1, 2, 2, 2, 2, 0, 0, 0, 0];
+// unittest {
+//     auto dense = DenseInfoTheory(3);
+//     auto a = [0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2];
+//     auto b = [1, 2, 2, 2, 0, 0, 1, 1, 1, 1, 0, 0];
+//     auto c = [1, 1, 1, 1, 2, 2, 2, 2, 0, 0, 0, 0];
 
-    assert(entropy(a) == dense.entropy(a));
-    assert(entropy(b) == dense.entropy(b));
-    assert(entropy(c) == dense.entropy(c));
-    assert(entropy(joint(a, c)) == dense.entropy(joint(c, a)));
-    assert(entropy(joint(a, b)) == dense.entropy(joint(a, b)));
-    assert(entropy(joint(c, b)) == dense.entropy(joint(c, b)));
+//     assert(entropy(a) == dense.entropy(a));
+//     assert(entropy(b) == dense.entropy(b));
+//     assert(entropy(c) == dense.entropy(c));
+//     assert(entropy(joint(a, c)) == dense.entropy(joint(c, a)));
+//     assert(entropy(joint(a, b)) == dense.entropy(joint(a, b)));
+//     assert(entropy(joint(c, b)) == dense.entropy(joint(c, b)));
 
-    assert(condEntropy(a, c) == dense.condEntropy(a, c));
-    assert(condEntropy(a, b) == dense.condEntropy(a, b));
-    assert(condEntropy(c, b) == dense.condEntropy(c, b));
+//     assert(condEntropy(a, c) == dense.condEntropy(a, c));
+//     assert(condEntropy(a, b) == dense.condEntropy(a, b));
+//     assert(condEntropy(c, b) == dense.condEntropy(c, b));
 
-    alias approxEqual ae;
-    assert(ae(mutualInfo(a, c), dense.mutualInfo(c, a)));
-    assert(ae(mutualInfo(a, b), dense.mutualInfo(a, b)));
-    assert(ae(mutualInfo(c, b), dense.mutualInfo(c, b)));
+//     alias approxEqual ae;
+//     assert(ae(mutualInfo(a, c), dense.mutualInfo(c, a)));
+//     assert(ae(mutualInfo(a, b), dense.mutualInfo(a, b)));
+//     assert(ae(mutualInfo(c, b), dense.mutualInfo(c, b)));
 
-    assert(ae(condMutualInfo(a, b, c), dense.condMutualInfo(a, b, c)));
-    assert(ae(condMutualInfo(a, c, b), dense.condMutualInfo(a, c, b)));
-    assert(ae(condMutualInfo(b, c, a), dense.condMutualInfo(b, c, a)));
+//     assert(ae(condMutualInfo(a, b, c), dense.condMutualInfo(a, b, c)));
+//     assert(ae(condMutualInfo(a, c, b), dense.condMutualInfo(a, c, b)));
+//     assert(ae(condMutualInfo(b, c, a), dense.condMutualInfo(b, c, a)));
 
-    // Test P-value stuff.
-    immutable pDense = dense.mutualInfoPval(dense.mutualInfo(a, b), a.length);
-    immutable pNotDense = gTestObs(a, b).p;
-    assert(approxEqual(pDense, pNotDense));
-}
+//     // Test P-value stuff.
+//     immutable pDense = dense.mutualInfoPval(dense.mutualInfo(a, b), a.length);
+//     immutable pNotDense = gTestObs(a, b).p;
+//     assert(approxEqual(pDense, pNotDense));
+// }
