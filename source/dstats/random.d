@@ -359,7 +359,6 @@ unittest {
     writeln("\tStdev Expected:  ??  Observed:  ", stdev(observ));
     writeln("\tKurtosis Expected:  ??  Observed:  ", kurtosis(observ));
     writeln("\tSkewness Expected:  ??  Observed:  ", skewness(observ));
-    delete observ;
 }
 
 ///
@@ -381,7 +380,6 @@ unittest {
     writeln("\tStdev Expected:  ", sqrt(2 * df), "  Observed:  ", stdev(observ));
     writeln("\tKurtosis Expected:  ", 12 / df, "  Observed:  ", kurtosis(observ));
     writeln("\tSkewness Expected:  ", sqrt(8 / df), "  Observed:  ", skewness(observ));
-    delete observ;
 }
 
 ///
@@ -463,7 +461,6 @@ unittest {
             "  Observed:  ", kurtosis(observ));
     writeln("\tSkewness Expected:  ", 1 / sqrt(lambda),
             "  Observed:  ", skewness(observ));
-    delete observ;
 }
 
 ///
@@ -698,7 +695,6 @@ unittest {
                 "  Observed:  ", kurtosis(observ));
         writeln("\tSkewness Expected:  ", (1 - 2 * p) / (sqrt(n * p * (1 - p))),
                 "  Observed:  ", skewness(observ));
-        delete observ;
     }
 
     testBinom(1000, 0.6);
@@ -820,7 +816,6 @@ unittest {
                 "  Observed:  ", stdev(observ));
         writeln("\tKurtosis Expected:  ?? Observed:  ", kurtosis(observ));
         writeln("\tSkewness Expected:  ", hyperSkew(n1, n2, n), "  Observed:  ", skewness(observ));
-        delete observ;
     }
 
     testHyper(4, 5, 2);
@@ -871,7 +866,6 @@ unittest {
                 "  Observed:  ", kurtosis(observ));
         writeln("\tSkewness Expected:  ", (2 - p) / sqrt(1 - p),
                 "  Observed:  ", skewness(observ));
-        delete observ;
     }
 
     testGeom(0.1);
@@ -908,7 +902,6 @@ unittest {
             "  Observed:  ", kurtosis(observ));
     writeln("\tSkewness Expected:  ", (2 - p) / sqrt(n * (1 - p)),
             "  Observed:  ", skewness(observ));
-    delete observ;
 }
 
 ///
@@ -932,7 +925,6 @@ unittest {
     writeln("\tStdev Expected:  1.414  Observed:  ", stdev(observ));
     writeln("\tKurtosis Expected:  3  Observed:  ", kurtosis(observ));
     writeln("\tSkewness Expected:  0  Observed:  ", skewness(observ));
-    delete observ;
 }
 
 ///
@@ -954,7 +946,6 @@ unittest {
     writeln("\tStdev Expected:  0.5  Observed:  ", stdev(observ));
     writeln("\tKurtosis Expected:  6  Observed:  ", kurtosis(observ));
     writeln("\tSkewness Expected:  2  Observed:  ", skewness(observ));
-    delete observ;
 }
 
 private double stdGamma(RGen = Random)(double shape, ref RGen gen) {
@@ -1016,7 +1007,6 @@ unittest {
     writeln("\tStdev Expected:  0.866  Observed:  ", stdev(observ));
     writeln("\tKurtosis Expected:  2  Observed:  ", kurtosis(observ));
     writeln("\tSkewness Expected:  1.15  Observed:  ", skewness(observ));
-    delete observ;
 }
 
 ///
@@ -1084,7 +1074,6 @@ unittest {
         writeln("\tStdev Expected:  ", betaStdev(a, b), "  Observed:  ", summ.stdev);
         writeln("\tKurtosis Expected:  ", betaKurtosis(a, b), "  Observed:  ", summ.kurtosis);
         writeln("\tSkewness Expected:  ", betaSkew(a, b), "  Observed:  ", summ.skewness);
-        delete observ;
     }
 
     testBeta(0.5, 0.7);
@@ -1110,7 +1099,6 @@ unittest {
     writeln("\tStdev Expected:  ", PI * PI * 3, " Observed:  ", stdev(observ));
     writeln("\tKurtosis Expected:  1.2  Observed:  ", kurtosis(observ));
     writeln("\tSkewness Expected:  0  Observed:  ", skewness(observ));
-    delete observ;
 }
 
 ///
@@ -1149,7 +1137,6 @@ unittest {
     elem = rWeibull(2.0L, 3.0L);
     auto ksRes = ksTest(observ, parametrize!(weibullCDF)(2.0, 3.0));
     writeln("100k samples from weibull(2, 3):  K-S P-val:  ", ksRes.p);
-    delete observ;
 }
 
 ///
