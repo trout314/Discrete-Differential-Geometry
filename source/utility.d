@@ -14,6 +14,27 @@ import unit_threaded : Name;
 
 //dfmt off
 
+// I wish we could compute these, but acos dosn't work at compile time. These
+// come from wolfram alpha input: Table[N[2 Pi/ArcCos[1/k],30],{k, 2, 16}]
+static immutable real[17] flatDegreeInDim = [
+    real.nan,   // Not applicable in dimension zero!
+    2.00000000000000000000000000000,
+    6.00000000000000000000000000000,
+    5.10429931211954041318017937918,
+    4.76679212271567770016331231084,
+    4.58814743301323607389345550261,
+    4.47728161419381561316532718870,
+    4.40168886795573189523776294354,
+    4.34681580829256787810763853238,
+    4.30515772121519709317292314208,
+    4.27244785078781511448809296727,
+    4.24607958792781091933915226732,
+    4.22436998865935854222871451330,
+    4.20618365430421015310353357902,
+    4.19072666439811610044839625288,
+    4.17742710626470998673691504053,
+    4.16586250565979517934736897387];
+
 /*******************************************************************************
 Checks if items of type T can be compared with the less-than operation. Note 
 that this means all other comparison operations are also valid, per dlang rules 
