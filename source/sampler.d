@@ -55,7 +55,7 @@ struct Parameters
     bool useHingeMoves = true;
 
     int dtPerHistory = 20;
-    enum historyLength = 30;
+    enum historyLength = 20;
 }
 
 private struct Objective
@@ -176,23 +176,6 @@ public:
                 * (manifold.fVector.back / acceptFrac).to!ulong;
         }
         timer.reset;
-
-        foreach(d; 0 .. dim - 1)
-        {
-
-            w.writef("mean degree in dimension %2s : %s",
-                d, manifold.meanDegree(d));
-            auto degHist = meanDegHistory[d];
-            w.writeRegression(degHist, params.dt);
-            w.writeln;
-
-            w.writef("std dev degree in dimension %2s : %s",
-                d, manifold.degreeVariance(d).sqrt);
-            auto degStdDev = meanDegHistory[].map!(x => x[d].sqrt).array;
-            w.writeRegression(degStdDev, params.dt);
-            w.writeln;
-        }
-
 
         w.writeln('╔', '═'.repeat(24), '╦', '═'.repeat(30), '╦', '═'.repeat(22),
             '╦', '═'.repeat(22), '╗');
@@ -526,19 +509,25 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
     int sampleNumber;
     auto dtIncThreshold = (s.params.dt * s.params.numFacetsTarget).to!ulong;
     assert(dtIncThreshold > 0);
-    while (s.dtElapsed * s.params.dt < s.params.maxSweeps)
+    auto doneSampling = false;
+    while (!doneSampling)
     {
+        if(s.dtElapsed * s.params.dt >= s.params.maxSweeps)
+        {
+            doneSampling = true;
+        }
+
         size_t numMovesTried = s.bistellarTries[].sum + s.hingeTries[].sum;
         size_t numMovesAccepted = s.bistellarAccepts[].sum + s.hingeAccepts[].sum;
         
         bool dtIncreased = false;
-        if (dtIncThreshold == numMovesAccepted)
+        if (numMovesAccepted == dtIncThreshold)
         {
             ++s.dtElapsed;
             dtIncreased = true;
-            dtIncThreshold = numMovesAccepted +
-                (s.params.dt * s.manifold.fVector.back).to!ulong;
-            assert(dtIncThreshold >= numMovesAccepted);
+            dtIncThreshold = ((s.dtElapsed + 1) 
+                * s.params.dt * s.params.numFacetsTarget).to!ulong;
+            assert(dtIncThreshold > numMovesAccepted);
         }
 
         assert(s.unusedVertices.all!(v => !s.manifold.contains(v.only)));
@@ -598,8 +587,8 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         
         real oldObj = s.objective;
         size_t mIndx_;
-        bool done = false;
-        while(!done)     // Choose a move involving the facet
+        bool doneChoosingMove = false;
+        while(!doneChoosingMove)     // Choose a move involving the facet
         {
             mIndx_ = moves[].map!(_ => _.visit!(m => m.weight)).dice;
             bool moveInvalid = false;
@@ -612,7 +601,7 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
                     if(m_.center.walkLength == dim + 1)
                     {
                         // (dim + 1) -> 1 moves are always valid
-                        done = true;
+                        doneChoosingMove = true;
                         m_.coCenter = [s.unusedVertices.back];
                     }
                     else
@@ -622,7 +611,7 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
                         if(!s.manifold.contains(coMove))
                         {
                             m_.coCenter = coMove;
-                            done = true;
+                            doneChoosingMove = true;
                         }
                         else
                         {
@@ -630,7 +619,7 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
                         }
                     }
 
-                    if (done)
+                    if (doneChoosingMove)
                     {
                         s.manifold_.doPachner(m_.center.array, m_.coCenter.array);
 
@@ -659,7 +648,7 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
                         s.manifold_.doHingeMove(m_.hinge.array.dup, m_.hingeLink.array.dup, m_.diskIndex_);
                         ++s.hingeTries[m_.hingeLink.walkLength - 4];
                         ++s.hingeAccepts[m_.hingeLink.walkLength - 4];
-                        done = true;
+                        doneChoosingMove = true;
                     }
                     else            // No hinge move was valid
                     {
@@ -672,7 +661,7 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
 
             if(moveInvalid)
             {
-                assert(!done);
+                assert(!doneChoosingMove);
                 moves[mIndx_] = moves.back;
                 assert(moves.length > 0);
                 moves.length = moves.length - 1;
@@ -715,22 +704,33 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         }
 
         //--------------------------- MAKE REPORT ----------------------------
-        if (numMovesTried % s.params.triesPerStdoutReport == 0)
+        if ((numMovesTried % s.params.triesPerStdoutReport == 0)
+            || doneSampling)
         {
             s.report(stdout);
         }
 
         //----------------------- WRITE TO DATA FILE --------------------------
-        if (dtIncreased && (s.dtElapsed % s.params.dtPerFileReport == 0))
+        if ((dtIncreased && (s.dtElapsed % s.params.dtPerFileReport == 0))
+            || doneSampling)
         {
             // TO DO: Implement this!
         }
 
         //----------------------- SAVE CURRENT MANIFOLD ----------------------
-        if (dtIncreased && (s.dtElapsed % s.params.dtPerSave == 0))
+        if ((dtIncreased && (s.dtElapsed % s.params.dtPerSave == 0))
+            || doneSampling)
         {
-            auto prefix = s.params.saveFilePrefix 
-                ~ sampleNumber.to!string;
+            string prefix;
+            if (doneSampling)
+            {
+                prefix = s.params.saveFilePrefix ~ "_final";
+            }
+            else
+            {
+                prefix = s.params.saveFilePrefix ~ sampleNumber.to!string;
+            }
+
             auto mfdFileName = prefix ~ ".mfd";
             auto graphFileName = prefix ~ ".edge_graph";
 
