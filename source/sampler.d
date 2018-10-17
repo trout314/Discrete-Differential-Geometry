@@ -404,9 +404,34 @@ public:
         w.writeln('╚', '═'.repeat((width-2)/2), '╩', '═'.repeat((width-2)/2), '╝');
     }
 
-    void columnReport(Writer)(auto ref Writer w)
+    void columnReport(Writer)(auto ref Writer w, string separator = ",")
     {
+        static wroteColumnLabels = false;
 
+        if (!wroteColumnLabels)
+        {
+            w.write("sweeps", separator);
+            w.write((dim+1).iota.map!(d => "num_simps_dim%s".format(d)).joiner(separator));
+            w.write(separator);
+            w.write((dim+1).iota.map!(d => "tot_sqr_deg_dim%s".format(d)).joiner(separator));
+            w.write(separator);
+            w.write((dim+1).iota.map!(d => "mean_deg_dim%s".format(d)).joiner(separator));
+            w.write(separator);
+            w.writeln((dim+1).iota.map!(d => "stddev_deg_dim%s".format(d)).joiner(separator));
+            wroteColumnLabels = true;
+        }
+
+        w.write(dtElapsed * params.dt, separator);
+        w.write(manifold.fVector.map!(to!string).joiner(separator));
+        w.write(separator);
+        w.write((dim + 1).iota.map!(d =>
+            manifold.totalSquareDegree(d).to!string).joiner(separator));
+        w.write(separator);
+        w.write((dim + 1).iota.map!(d =>
+            manifold.meanDegree(d).to!string).joiner(separator));
+        w.write(separator);
+        w.writeln((dim + 1).iota.map!(d =>
+            manifold.degreeVariance(d).sqrt.to!string).joiner(separator));
     }
 }
 
@@ -714,7 +739,8 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         if ((dtIncreased && (s.dtElapsed % s.params.dtPerFileReport == 0))
             || doneSampling)
         {
-            // TO DO: Implement this!
+            auto file = File(s.params.saveFilePrefix ~ ".dat", "a");
+            s.columnReport(file);
         }
 
         //----------------------- SAVE CURRENT MANIFOLD ----------------------
@@ -746,7 +772,6 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         //----------------------- RECORD HISTORY --------------------------
         if (dtIncreased && (s.dtElapsed % s.params.dtPerHistory == 0))
         {
-            // TO DO: Implement this!
             s.advanceHistory;
         }
 
