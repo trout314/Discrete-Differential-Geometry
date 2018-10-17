@@ -413,24 +413,24 @@ public:
             w.write("sweeps", separator);
             w.write((dim+1).iota.map!(d => "num_simps_dim%s".format(d)).joiner(separator));
             w.write(separator);
-            w.write((dim+1).iota.map!(d => "tot_sqr_deg_dim%s".format(d)).joiner(separator));
+            w.write((dim - 1).iota.map!(d => "tot_sqr_deg_dim%s".format(d)).joiner(separator));
             w.write(separator);
-            w.write((dim+1).iota.map!(d => "mean_deg_dim%s".format(d)).joiner(separator));
+            w.write((dim - 1).iota.map!(d => "mean_deg_dim%s".format(d)).joiner(separator));
             w.write(separator);
-            w.writeln((dim+1).iota.map!(d => "stddev_deg_dim%s".format(d)).joiner(separator));
+            w.writeln((dim - 1).iota.map!(d => "stddev_deg_dim%s".format(d)).joiner(separator));
             wroteColumnLabels = true;
         }
 
         w.write(dtElapsed * params.dt, separator);
         w.write(manifold.fVector.map!(to!string).joiner(separator));
         w.write(separator);
-        w.write((dim + 1).iota.map!(d =>
+        w.write((dim - 1).iota.map!(d =>
             manifold.totalSquareDegree(d).to!string).joiner(separator));
         w.write(separator);
-        w.write((dim + 1).iota.map!(d =>
+        w.write((dim - 1).iota.map!(d =>
             manifold.meanDegree(d).to!string).joiner(separator));
         w.write(separator);
-        w.writeln((dim + 1).iota.map!(d =>
+        w.writeln((dim - 1).iota.map!(d =>
             manifold.degreeVariance(d).sqrt.to!string).joiner(separator));
     }
 }
