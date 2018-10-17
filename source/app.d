@@ -102,37 +102,36 @@ else
 
     //------------- SAMPLE MANIFOLDS BY OBJECTIVE  -----------------------
     void main(string[] args)
-    {
-        enum dim = 3;
-
-        import std.algorithm : each, findSplit;
-        import std.getopt : getopt, defaultGetoptPrinter;
-        import std.stdio : write, writeln, writefln, File;
-
+    {        
         import manifold : loadManifold, Manifold, findProblems, saveTo, saveEdgeGraphTo, standardSphere;
         import sampler : Parameters, sample, Sampler;
+        import std.algorithm : each, findSplit;
+        import std.conv : to;
+        import std.getopt : getopt, defaultGetoptPrinter;
+        import std.stdio : write, writeln, writefln, File;
         import std.datetime.stopwatch : StopWatch;
         import std.format : format;
         import std.range : empty;
         import std.uuid : randomUUID;
         import utility : flatDegreeInDim;
 
-        Parameters params;
+        enum dim = 3;
 
+        Parameters params;
         with (params)
         {
-            numFacetsTarget = 64_000;
+            numFacetsTarget = 4_000;
             hingeDegreeTarget = flatDegreeInDim[3];
             
             numFacetsCoef = 0.01;
             numHingesCoef = 0.01;
             hingeDegreeVarCoef = 0.05;
-            cd3DegVarCoef = hingeDegreeVarCoef / (22.8 / 5.1);
-            maxSweeps = 100;
+            cd3DegVarCoef = hingeDegreeVarCoef / 3;
+            maxSweeps = 10;
 
             // Time increment (in units of sweeps) used for finer-graned intervals
             dt = 0.1;
-            dtPerHistory = 5;
+            dtPerHistory = 10;
             // dtPerFileReport = 20;
             // dtPerSave = 1000;
 
@@ -143,7 +142,7 @@ else
             triesPerCollect = 500;
         }
 
-        writeln(randomUUID());
+        auto runID = randomUUID();
 
         // TO DO: add option to compute dual graph, filter nodes by
         // by various manifold properties etc
@@ -158,8 +157,11 @@ else
             helpInformation.options);
         }
 
-        auto filePrefix = mfdFile.findSplit(".mfd")[0];
-        params.saveFilePrefix = filePrefix ~ "_sample";
+        params.saveFilePrefix = mfdFile.findSplit(".mfd")[0];
+        if (params.saveFilePrefix.empty)
+        {
+            params.saveFilePrefix = runID.to!string[0..8];
+        }
 
         StopWatch timer;
         timer.start;
@@ -182,11 +184,6 @@ else
         auto s = Sampler!(int, dim)(mfd);
         s.setParameters(params);
         s.sample;
-
-        s.manifold.saveTo(filePrefix ~ "_final.mfd");
-        auto saveFile = File(filePrefix ~ "_final.mfd", "a");
-        s.report(saveFile);
-        s.manifold.saveEdgeGraphTo(filePrefix ~ "_final.edge_graph");
 
         foreach(d; 0 .. dim - 1)
         {
