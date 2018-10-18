@@ -410,7 +410,7 @@ public:
 
         if (!wroteColumnLabels)
         {
-            w.write("sweeps", separator);
+            w.write("num_moves_accepted", separator);
             w.write((dim+1).iota.map!(d => "num_simps_dim%s".format(d)).joiner(separator));
             w.write(separator);
             w.write((dim - 1).iota.map!(d => "tot_sqr_deg_dim%s".format(d)).joiner(separator));
@@ -421,7 +421,7 @@ public:
             wroteColumnLabels = true;
         }
 
-        w.write(dtElapsed * params.dt, separator);
+        w.write(bistellarAccepts[].sum + hingeAccepts[].sum, separator);
         w.write(manifold.fVector.map!(to!string).joiner(separator));
         w.write(separator);
         w.write((dim - 1).iota.map!(d =>
