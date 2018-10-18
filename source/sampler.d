@@ -408,18 +408,23 @@ public:
     {
         static wroteColumnLabels = false;
 
+        auto degHists = (dim - 1).iota.map!(d => manifold.degreeHistogram(d));
+
         if (!wroteColumnLabels)
         {
             w.write("num_moves_accepted", separator);
-            w.write((dim+1).iota.map!(d => "num_simps_dim%s".format(d)).joiner(separator));
+            w.write((dim + 1).iota.map!(d => "num_simps_dim%s".format(d)).joiner(separator));
             w.write(separator);
             w.write((dim - 1).iota.map!(d => "tot_sqr_deg_dim%s".format(d)).joiner(separator));
             w.write(separator);
             w.write((dim - 1).iota.map!(d => "mean_deg_dim%s".format(d)).joiner(separator));
             w.write(separator);
-            w.writeln((dim - 1).iota.map!(d => "stddev_deg_dim%s".format(d)).joiner(separator));
+            w.write((dim - 1).iota.map!(d => "stddev_deg_dim%s".format(d)).joiner(separator));
+            w.write(separator);
+            w.writeln((dim - 1).iota.map!(d => "deg_histogram_dim%s".format(d)).joiner(
+                separator ~ "XXX" ~ separator));
             wroteColumnLabels = true;
-        }
+        }        
 
         w.write(bistellarAccepts[].sum + hingeAccepts[].sum, separator);
         w.write(manifold.fVector.map!(to!string).joiner(separator));
@@ -430,8 +435,18 @@ public:
         w.write((dim - 1).iota.map!(d =>
             manifold.meanDegree(d).to!string).joiner(separator));
         w.write(separator);
-        w.writeln((dim - 1).iota.map!(d =>
+        w.write((dim - 1).iota.map!(d =>
             manifold.degreeVariance(d).sqrt.to!string).joiner(separator));
+        foreach(d; 0 .. dim - 1)
+        {
+            w.write(separator);
+            w.write(degHists[d].map!(to!string).joiner(separator));
+            if (d < dim - 2)
+            {
+                w.write(separator, "XXX");
+            }
+        }
+        w.writeln;
     }
 }
 
