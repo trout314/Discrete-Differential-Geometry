@@ -754,7 +754,8 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
             }
             else
             {
-                prefix = s.params.saveFilePrefix ~ sampleNumber.to!string;
+                prefix = s.params.saveFilePrefix ~ "_save" 
+                    ~ sampleNumber.to!string;
             }
 
             auto mfdFileName = prefix ~ ".mfd";
