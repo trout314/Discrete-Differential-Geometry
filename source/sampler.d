@@ -125,15 +125,17 @@ public:
     {
         manifold_ = initialManifold;
         auto vertices = manifold_.simplices(0).joiner.array.dup.sort;
+
+        // all gaps in list of vertices should be unusued vertices
+        if(vertices.front != 0)
+        {
+            unusedVertices ~= vertices.front.iota.array;
+        }
         foreach(i; 0 .. vertices.length - 1)
         {
-            // all gaps in list of vertices should be unusued vertices
             if(vertices[i] + 1 != vertices[i+1])
             {
-                foreach(v; iota(vertices[i]+1, vertices[i+1]))
-                {
-                    unusedVertices ~= v;
-                }
+                unusedVertices ~= iota(vertices[i]+1, vertices[i+1]).array;
             }
         }
         assert(unusedVertices.all!(v => !manifold.contains(v.only)));
@@ -823,6 +825,11 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
 
 @Name("sample") unittest
 {
+    auto mfd = Manifold!3([[11,12,13,14],[11,12,13,15],[11,12,14,15],[11,13,14,15],[12,13,14,15]]);
+    auto s = Sampler!(int, 3)(mfd);
+    import std.algorithm : canFind;
+    assert(11.iota.all!(i => s.unusedVertices.canFind(i)));
+    
     // TO DO: Tests!
 }
 
