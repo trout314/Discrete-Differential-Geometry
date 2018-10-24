@@ -120,22 +120,24 @@ else
         Parameters params;
         with (params)
         {
-            numFacetsTarget = 4_000;
+            saveFilePrefix = "S3_128k_V1e-2_TRY2";
+
+            numFacetsTarget = 128_000;
             hingeDegreeTarget = flatDegreeInDim[3];
             
             numFacetsCoef = 0.01;
-            numHingesCoef = 0.01;
-            hingeDegreeVarCoef = 0.05;
-            cd3DegVarCoef = hingeDegreeVarCoef / 3;
-            maxSweeps = 10;
+            numHingesCoef = 0.0;
+            hingeDegreeVarCoef = 0.0;
+            cd3DegVarCoef = 0.0;
+            maxSweeps = 150;
 
             // Time increment (in units of sweeps) used for finer-graned intervals
             dt = 0.1;
-            dtPerHistory = 10;
-            // dtPerFileReport = 20;
-            // dtPerSave = 1000;
+            dtPerHistory = 50;
+            dtPerFileReport = 50;
+            dtPerSave = 250;
 
-            triesPerStdoutReport = 50_000;
+            triesPerStdoutReport = 100_000;
 
             useHingeMoves = true;
             disableGC = true;
@@ -157,11 +159,11 @@ else
             helpInformation.options);
         }
 
-        params.saveFilePrefix = mfdFile.findSplit(".mfd")[0];
-        if (params.saveFilePrefix.empty)
-        {
-            params.saveFilePrefix = runID.to!string[0..8];
-        }
+        // params.saveFilePrefix = mfdFile.findSplit(".mfd")[0];
+        // if (params.saveFilePrefix.empty)
+        // {
+        //     params.saveFilePrefix = runID.to!string[0..8];
+        // }
 
         StopWatch timer;
         timer.start;
