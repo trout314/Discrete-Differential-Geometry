@@ -1,6 +1,5 @@
 import algorithms : eulerCharacteristic;
 import core.memory : GC;
-import dstats.regress : linearRegress;
 import manifold : coCenter, degreeHistogram, degreeVariance, doHingeMove, findProblems, getRandomHingeMove, hasValidHingeMove, 
     linkVerticesAtHinge, movesAtFacet, Manifold, saveEdgeGraphTo, saveTo, standardSphere, totalSquareDegree, doPachner, meanDegree, undoHingeMove;
 import simplicial_complex : fVector;
@@ -85,33 +84,6 @@ private:
 
     ulong dtElapsed;    // number of dt intervals elapsed (in sweeps)
     StopWatch timer;
-
-    // -------- history of quantities of interest ----------
-    size_t[dim + 1][params.historyLength] fVecHistory;
-    real[dim + 1][params.historyLength] meanDegHistory;
-    real[dim + 1][params.historyLength] stdDevDegHistory;
-
-    Objective[params.historyLength] objHistory;
-
-    // update history
-    void advanceHistory()
-    {
-        foreach(i; 1 .. params.historyLength)
-        {
-            fVecHistory[$ - i] = fVecHistory[$ - i - 1];
-            meanDegHistory[$ - i] = meanDegHistory[$ - i - 1];
-            stdDevDegHistory[$ - i] = stdDevDegHistory[$ - i - 1];
-            objHistory[$ - i] = objHistory[$ - i - 1];
-        }
-
-        fVecHistory.front = manifold.fVector;
-        meanDegHistory.front = (dim + 1).iota.map!(
-            d => manifold.meanDegree(d)).toStaticArray!(dim + 1);
-        stdDevDegHistory.front = (dim + 1).iota.map!(
-            d => manifold.degreeVariance(d).sqrt).toStaticArray!(dim + 1);
-        objHistory.front = this.objectiveParts;
-    }
-
     DateTime startTime;
 public:
     void setParameters(Parameters params_)
@@ -139,24 +111,11 @@ public:
             }
         }
         assert(unusedVertices.all!(v => !manifold.contains(v.only)));
-
-        this.advanceHistory;
     }
 
     ref const(Manifold!(dim, Vertex)) manifold()() const
     {
         return manifold_;
-    }
-
-    // return historic average of mean degree
-    auto historicMeanDeg(int dim)
-    {
-        return meanDegHistory[].map!(entry => entry[dim]).mean;
-    }
-
-    auto historicStdDevDeg(int dim)
-    {
-        return stdDevDegHistory[].map!(entry => entry[dim]).mean;
     }
 
     void report(Writer)(auto ref Writer w)
@@ -191,9 +150,8 @@ public:
         w.writeln('╠', '═'.repeat(24), '╩', '═'.repeat(9), '╦', '═'.repeat(20), '╩',
             '═'.repeat(20), "╦═╩", '═'.repeat(22), '╣');
 
-        auto nHistStored = objHistory[].filter!(x => !x.volPen.isNaN).walkLength;
-        w.writefln("║ start : %24-s ║ estimated end : %23-s ║ # regression pts : %3s ║",
-            this.startTime.to!string, "TO DO!", nHistStored);
+        w.writefln("║ start : %24-s ║ estimated end : %23-s ║",
+            this.startTime.to!string, "TO DO!");
         w.writeln('╠', '═'.repeat(34), '╩', '═'.repeat(41), '╩', '═'.repeat(24), '╣');
 
         alias formatStrings = (string rest) => 
@@ -204,24 +162,12 @@ public:
             (dim+1).iota.map!(dim => manifold.meanDegree(dim)));
 
         w.write("║                : ");
-        foreach(d; 0 .. dim - 1)
-        {
-            auto degHist = meanDegHistory[d];
-            w.write(" ");
-            w.writeRegression(degHist, params.dt);
-        }
         w.writeln(" ");
 
         w.writefln("║ std dev degree : " ~ formatStrings(".3f"),
             (dim+1).iota.map!(dim => manifold.degreeVariance(dim).sqrt));
 
         w.write("║                : ");
-        foreach(d; 0 .. dim - 1)
-        {
-            auto degStdDev = meanDegHistory[].map!(x => x[d].sqrt).array;
-            w.write(" ");
-            w.writeRegression(degStdDev, params.dt);
-        }
         w.writeln(" ");
 
         auto vp = this.volumePenalty;
@@ -239,9 +185,6 @@ public:
         {
             w.writef("║ facets      : %.4e * %.4f = %.4e ┊",
                 vp, params.numFacetsCoef, params.numFacetsCoef * vp);
-            auto hist = objHistory[0 .. nHistStored].map!(
-                x => params.numFacetsCoef * x.volPen).array;
-            w.writeRegression(hist, params.dt);
             w.writefln(" num facets   : %8,d ║", params.numFacetsTarget);
         }
 
@@ -249,9 +192,6 @@ public:
         {
             w.writef("║ hinges      : %.4e * %.4f = %.4e ┊",
                 gcp, params.numHingesCoef, params.numHingesCoef * gcp);
-            auto hist = objHistory[0 .. nHistStored].map!(
-                x => params.numHingesCoef * x.gcPen).array;
-            w.writeRegression(hist, params.dt);
             w.writefln(" hinge degree : %8.5f ║", params.hingeDegreeTarget);
         }
 
@@ -259,9 +199,6 @@ public:
         {
             w.writef("║ cd2 var deg : %.4e * %.4f = %.4e ┊",
                 lcp, params.hingeDegreeVarCoef, params.hingeDegreeVarCoef * lcp);
-            auto hist = objHistory[0 .. nHistStored].map!(
-                x => params.hingeDegreeVarCoef * x.lcPen).array;
-            w.writeRegression(hist, params.dt);
             w.writeln;
         }
 
@@ -269,20 +206,11 @@ public:
         {
             w.writef("║ cd3 var deg : %.4e * %.4f = %.4e ┊",
                 lsacp, params.cd3DegVarCoef,  params.cd3DegVarCoef * lsacp);
-            auto hist = objHistory[0 .. nHistStored].map!(
-                x => params.cd3DegVarCoef * x.lsacPen).array;
-            w.writeRegression(hist, params.dt);
             w.writeln;
         }
         w.writef("║                             TOTAL : %.4e ┊",
             this.objective);
 
-        auto totObjHist = objHistory[0 .. nHistStored].map!(
-            x => params.numFacetsCoef * x.volPen 
-                + params.numHingesCoef * x.gcPen
-                + params.hingeDegreeVarCoef * x.lcPen 
-                + params.cd3DegVarCoef * x.lsacPen).array;
-        w.writeRegression(totObjHist, params.dt);
         w.writeln;
 
         w.writeln('╠', '═'.repeat((width-2)/2), '╦', '═'.repeat((width-2)/2),'╣');
@@ -785,12 +713,6 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
 
             s.manifold.saveEdgeGraphTo(graphFileName);
             ++sampleNumber;
-        }
-
-        //----------------------- RECORD HISTORY --------------------------
-        if (dtIncreased && (s.dtElapsed % s.params.dtPerHistory == 0))
-        {
-            s.advanceHistory;
         }
 
         //------------------------- COLLECT GARBAGE --------------------------

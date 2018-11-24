@@ -186,15 +186,5 @@ else
         auto s = Sampler!(int, dim)(mfd);
         s.setParameters(params);
         s.sample;
-
-        foreach(d; 0 .. dim - 1)
-        {
-            "dim %s historic averages:".writefln(d);
-            "  mean deg. = %s".writefln(
-                s.historicMeanDeg(d));
-            "  std. dev. = %s".writefln(
-                s.historicStdDevDeg(d));
-        }
-
     }
 }
