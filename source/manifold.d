@@ -133,7 +133,8 @@ public:
         auto facet = facetBuffer[];
 
         facet.assertValidSimplex(dimension);
-        assert(toNSimp(facet) !in degreeMap);
+        assert(toNSimp(facet) !in degreeMap,
+            "tried to insert a facet already in the manifold");
 
         this.simpComp.insertFacet!(No.checkForFacetFaces)(facet);
 
@@ -314,32 +315,12 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
 ///
 @Name("Manifold (errors)") pure @system unittest
 {
-    // TO DO: Turn these into problem check unittests!
-    /*
     Manifold!2([[1,2,3,4]]).throwsWithMsg("facet has wrong dimension");
 
-    Manifold!2([[1,2,3]]).throwsWithMsg(
-        "found a ridge with degree not equal to 2, " 
-        ~ "found a hinge whose link is not a circle");
-
-    Manifold!2([[1,2,3], [1,2,4], [1,3,4], [2,3,4], [1,5,6], [1,5,7], [1,6,7],
-        [5,6,7]]).throwsWithMsg("found a hinge whose link is not a circle");
-
-    auto octahedron = [[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5], [2,3,5],
-        [3,4,5], [1,4,5]];
-
-    auto sphere = [[6,7,8], [6,7,9], [6,8,9], [7,8,9]];
-
-    Manifold!2(chain(octahedron, sphere)).throwsWithMsg(
-        "facets do not define a connected simplicial complex");
-
-    // These facets separately define 3-spheres, but share the vertex 1
-    auto sphere3 = [[1,2,3,4], [1,2,3,5], [1,2,4,5], [1,3,4,5], [2,3,4,5]];
-    auto sphere3A =[[1,6,7,8], [1,6,7,9], [1,6,8,9], [1,7,8,9], [6,7,8,9]];
-
-    Manifold!3(chain(sphere3, sphere3A)).throwsWithMsg(
-        "found a codimension-3 simplex whose link is not a 2-sphere");
-    */
+    auto sphere3 = [[1,2,3,4], [1,2,3,5], [1,2,4,5], [1,3,4,5], [2,3,4,5]];    
+    Manifold!3(chain(sphere3, sphere3)).throwsWithMsg(
+        "tried to insert a facet already in the manifold");
+    
 }
 
 // More tests
@@ -1328,8 +1309,39 @@ string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
 ///
 unittest
 {
-    auto m = standardSphere!3;
-    assert(m.findProblems.empty);
+    auto m3 = standardSphere!3;
+    assert(m3.findProblems.empty);
+
+    m3 = Manifold!3([[1,2,3,4]]);
+    m3.findProblems.should.containOnly([
+        "found a hinge whose link is not a circle",
+        "found a ridge with degree not equal to 2",
+        "found a codimension-3 simplex whose link is not a 2-sphere"
+    ]);
+
+    // These facets separately define 2-spheres, but share the vertex 1
+    auto sphere2a = [[1,2,3], [1,2,4], [1,3,4], [2,3,4]];
+    auto sphere2b = [[1,5,6], [1,5,7], [1,6,7], [5,6,7]];
+    auto m2 = Manifold!2(chain(sphere2a, sphere2b));
+    m2.findProblems.should.containOnly([
+        "found a hinge whose link is not a circle"
+    ]);
+
+    auto octahedron = [[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5], [2,3,5],
+        [3,4,5], [1,4,5]];
+    auto sphere = [[6,7,8], [6,7,9], [6,8,9], [7,8,9]];
+    m2 = Manifold!2(chain(octahedron, sphere));
+    m2.findProblems.should.containOnly([
+        "facets do not define a connected simplicial complex"
+    ]);
+
+    auto sphere3a = [[1,2,3,4], [1,2,3,5], [1,2,4,5], [1,3,4,5], [2,3,4,5]];
+    auto sphere3b =[[1,6,7,8], [1,6,7,9], [1,6,8,9], [1,7,8,9], [6,7,8,9]];
+
+    m3 = Manifold!3(chain(sphere3a, sphere3b));
+    m3.findProblems.should.containOnly([
+        "found a codimension-3 simplex whose link is not a 2-sphere"
+    ]);
 }
 
 /******************************************************************************
