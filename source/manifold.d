@@ -96,19 +96,21 @@ public:
     */
     bool contains(S)(S simplex) const if (isIRof!(S, const(Vertex)))
     {
-        assert(this.simpComp.facets.any!(f => simplex.isSubsetOf(f))
-            == !((toNSimp(simplex) in degreeMap) is null));
-
-        return !((toNSimp(simplex) in degreeMap) is null);
+        bool notInDegreeMap = (toNSimp(simplex) in degreeMap) is null;
+        assert(this.simpComp.contains(simplex) == !notInDegreeMap,
+            "simplices in degreeMap and internal simplicial complex disagree");
+        return !notInDegreeMap;
     }
 
     /***************************************************************************
-    Returns the degree of a simplex in the simplicial complex.
+    Returns the degree of a simplex in the manifold.
     */
     size_t degree(S)(S simplex) const if (isIRof!(S, const(Vertex)))
     {
-        assert(this.contains(simplex));
-        assert(degreeMap[toNSimp(simplex)] == star(simplex).walkLength);
+        assert(this.contains(simplex),
+            "called degree on a simplex not in the manifold");
+        assert(degreeMap[toNSimp(simplex)] == simpComp.star(simplex).walkLength,
+            "degree in degreeMap and internal simplicial complex disagree");
         return degreeMap[toNSimp(simplex)];
     }
 
@@ -1335,13 +1337,33 @@ unittest
         "facets do not define a connected simplicial complex"
     ]);
 
+    // These facets separately define 2-spheres, but share the vertex 1
     auto sphere3a = [[1,2,3,4], [1,2,3,5], [1,2,4,5], [1,3,4,5], [2,3,4,5]];
-    auto sphere3b =[[1,6,7,8], [1,6,7,9], [1,6,8,9], [1,7,8,9], [6,7,8,9]];
-
+    auto sphere3b = [[1,6,7,8], [1,6,7,9], [1,6,8,9], [1,7,8,9], [6,7,8,9]];
     m3 = Manifold!3(chain(sphere3a, sphere3b));
     m3.findProblems.should.containOnly([
         "found a codimension-3 simplex whose link is not a 2-sphere"
     ]);
+
+    // auto m1 = Manifold!1([[0,1],[1,2],[0,2],[0,3]]);
+    // m3.findProblems.map!array.should.containOnly([
+    //     "found a codimension-3 simplex whose link is not a 2-sphere"
+    // ]);
+
+
+    //---------------------------
+}
+
+unittest
+{
+    // auto m3 = standardSphere!3;
+    // m3.simpComp.insertFacet([5,6,7,8]);
+
+//    m3.simpComp.insertFacet([5,6,7]).throwsWithMsg("d");
+
+    // m3.findProblems.should.containOnly([
+    //     "hello!"
+    // ]);
 }
 
 /******************************************************************************

@@ -340,7 +340,7 @@ public:
     {
         NSimplex simplex_ = toNSimp(simplex);
         int dim = simplex_.length.to!int - 1;
-        assert(dim >= 0);
+        assert(dim >= 0, simplex_.length.to!string);
         simplex_[].assertValidSimplex(dim);
         assert(!this.contains(simplex),
             "expected a simplex not already in the simplicial complex");
