@@ -1,6 +1,5 @@
 import algorithms : canFind, eulerCharacteristic, is2Sphere, isCircle,
     isConnected, isPureOfDim, join;
-import fluent.asserts;
 import simplicial_complex : fVector, simplicialComplex, SimplicialComplex, assertValidSimplex, loadSimplicialComplex;
 import std.algorithm : all, any, copy, canFind, each, equal, filter, find, joiner,
     map, maxElement, setDifference, merge, sort, sum, uniq;
@@ -8,7 +7,7 @@ import std.conv : to;
 import std.exception : assertThrown;
 import std.range : array, back, chain, chunks, cycle, ElementType, empty, enumerate, front, iota,
     isInputRange, only, popBack, popFront, save, slide, take, walkLength;
-import unit_threaded : Name;
+import unit_threaded : Name, shouldEqual, shouldBeSameSetAs;
 import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf, isSubsetOf, nGonTriangs, productUnion, SmallMap,
     StackArray, staticIota, subsets, subsetsOfSize, throwsWithMsg, toImmutStaticArray, toStackArray, toStaticArray;
 import std.stdio : File, writeln;
@@ -290,20 +289,20 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
     static assert(octahedron.dimension == 2);
     static assert(is(octahedron.Vertex == int));
 
-    octahedron.fVector.should.equal([6UL,12,8]);
-    octahedron.eulerCharacteristic.should.equal(2);
+    octahedron.fVector.shouldEqual([6UL,12,8]);
+    octahedron.eulerCharacteristic.shouldEqual(2);
 
     auto tetrahedron = Manifold!2([[1,2,3], [1,2,4], [1,3,4], [2,3,4]]);
 
-    octahedron.star([1,2]).should.containOnly([[0,1,2], [1,2,5]]);    
+    octahedron.star([1,2]).shouldBeSameSetAs([[0,1,2], [1,2,5]]);    
 
-    octahedron.pachnerMoves.should.containOnly(
+    octahedron.pachnerMoves.shouldBeSameSetAs(
         [[0,1], [0,2], [0,3], [0,4], [1,2], [1,4],  // 1-simplices
          [1,5], [2,3], [2,5], [3,4], [3,5], [4,5],
          [0,1,2], [0,1,4], [0,2,3], [0,3,4],        // 2-simplices
          [1,2,5], [1,4,5], [2,3,5], [3,4,5]]);      
 
-    tetrahedron.pachnerMoves.should.containOnly(
+    tetrahedron.pachnerMoves.shouldBeSameSetAs(
         [[1, 2, 3], [1, 2, 4], [1, 3, 4], [2, 3, 4]]);
 
     tetrahedron.doPachner([1,2,3], [5]);
@@ -341,7 +340,7 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
     auto m = Manifold!2(
         [[1,2,3], [1,2,4], [1,3,4], [2,3,5], [2,4,5],[3,4,5]]);
 
-    m.pachnerMoves.should.containOnly([[1], [2, 3], [2, 3, 5],
+    m.pachnerMoves.shouldBeSameSetAs([[1], [2, 3], [2, 3, 5],
         [1, 3, 4], [1, 2, 3], [5], [2, 4, 5], [3, 4, 5], [1, 2, 4], [2, 4],
         [3, 4]]);
 
@@ -350,7 +349,7 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
     
     assert(octahedron.simplices(0).all!(s => octahedron.degree(s) == 4));
 
-    octahedron.pachnerMoves.should.containOnly(
+    octahedron.pachnerMoves.shouldBeSameSetAs(
         [[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5], [2,3,5], [3,4,5], [1,4,5],
         [2, 3], [0, 1], [1, 5], [4, 5], [0, 3], [1, 4],
         [1, 2], [0, 4], [0, 2], [2, 5], [3, 5], [3, 4]]);
@@ -369,40 +368,40 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
 @Name("doPachner") unittest
 {
     auto m = standardSphere!2;
-    m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
+    m.facets.shouldBeSameSetAs([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
     
     m.doPachner([1,2,3], [4]);
-    m.facets.should.containOnly(
+    m.facets.shouldBeSameSetAs(
         [[0,1,2],[0,1,3], [0,2,3], [1,2,4], [1,3,4], [2,3,4]]);
 
     m.doPachner([0,2,3], [7]);
-    m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,7],
+    m.facets.shouldBeSameSetAs([[0,1,2], [0,1,3], [0,2,7],
         [0,3,7], [1,2,4], [1,3,4], [2,3,4], [2,3,7]]);
 
     m.doPachner([7],[0,2,3]);
     m.doPachner([4],[1,2,3]);
-    m.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
+    m.facets.shouldBeSameSetAs([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
 
 
     auto n = standardSphere!2;
-    n.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
+    n.facets.shouldBeSameSetAs([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
     
     n.doPachner([1,2,3], [4]);
     n.doPachner([1,2], [0,4]);
-    n.facets.should.containOnly(
+    n.facets.shouldBeSameSetAs(
         [[0,1,3], [0,1,4], [0,2,3], [0,2,4], [1,3,4], [2,3,4]]);
     n.doPachner([0,4], [1,2]);
     n.doPachner([4], [1,2,3]);
-    n.facets.should.containOnly([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);      
+    n.facets.shouldBeSameSetAs([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);      
 
     auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4],
         [1,2,5], [2,3,5], [3,4,5], [1,4,5]]);
 
     octahedron.doPachner([1,2],[0,5]);
-    octahedron.degree([0]).should.equal(5);
-    octahedron.degree([5]).should.equal(5);
-    octahedron.degree([1]).should.equal(3);
-    octahedron.degree([2]).should.equal(3);
+    octahedron.degree([0]).shouldEqual(5);
+    octahedron.degree([5]).shouldEqual(5);
+    octahedron.degree([1]).shouldEqual(3);
+    octahedron.degree([2]).shouldEqual(3);
 
     // We can undo the 2->2 move
     octahedron.doPachner([0,5], [1,2]);
@@ -508,11 +507,11 @@ Manifold!(dim, int) standardSphere(int dim)()
 ///
 @Name("standardSphere") unittest
 {
-    standardSphere!1.facets.should.containOnly(
+    standardSphere!1.facets.shouldBeSameSetAs(
         [[0,1], [1,2], [0,2]]); 
-    standardSphere!2.facets.should.containOnly(
+    standardSphere!2.facets.shouldBeSameSetAs(
         [[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
-    standardSphere!3.facets.should.containOnly(
+    standardSphere!3.facets.shouldBeSameSetAs(
         [[0,1,2,3], [0,1,2,4], [0,1,3,4], [0,2,3,4],[1,2,3,4]]);
 }
 
@@ -675,30 +674,30 @@ auto modifyFVector(size_t[] fVector_, size_t centerLength)
     /* A 1 -> 4 move should give net: +1 vertices, +4 edges, +6 triangles,
     +3 tetrahdra */
     fVec.modifyFVector(4);
-    fVec.should.equal([1, 4, 6, 3]);
+    fVec.shouldEqual([1, 4, 6, 3]);
 
     /* A 2 -> 3 move should give net: +0 vertices, +1 edges, +2 triangles,
     +1 tetrahedra */
     fVec.modifyFVector(3);
-    fVec.should.equal([1,5,8,4]);
+    fVec.shouldEqual([1,5,8,4]);
 
     fVec.modifyFVector(2);    // 3 -> 2 move
     fVec.modifyFVector(1);    // 4 -> 1 move
 
     // Should be back where we started
-    fVec.should.equal([0,0,0,0]);
+    fVec.shouldEqual([0,0,0,0]);
 
     size_t[3] fVec2 = [0,0,0];
     fVec2.modifyFVector(2); // 2 -> 2 move
-    fVec2.should.equal([0,0,0]);
+    fVec2.shouldEqual([0,0,0]);
 
     fVec2.modifyFVector(3); // 1 -> 3 move
 
     // a 1 -> 3 move should give net: +1 vertices, +3 edges, +2 triangles
-    fVec2.should.equal([1, 3, 2]);
+    fVec2.shouldEqual([1, 3, 2]);
 
     fVec2.modifyFVector(1); // 3 -> 1 move
-    fVec2.should.equal([0,0,0]);
+    fVec2.shouldEqual([0,0,0]);
 }
 
 /******************************************************************************
@@ -726,37 +725,37 @@ if (isIRof!(F, const(Vertex)))
         immutable sphere = standardSphere!dim;
         foreach(f; sphere.facets)
         {
-            sphere.movesAtFacet(f).should.containOnly([f.array]);
+            sphere.movesAtFacet(f).shouldBeSameSetAs([f.array]);
         }
     }
 
     auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
         [2,3,5], [3,4,5], [1,4,5]]);
 
-    octahedron.movesAtFacet([0,1,2]).should.containOnly([
+    octahedron.movesAtFacet([0,1,2]).shouldBeSameSetAs([
         [0,1], [0,2], [1,2],    // 2 -> 2 moves
         [0,1,2]                 // 1 -> 3 move
     ]);
     
     foreach(f; octahedron.facets)
     {
-        octahedron.movesAtFacet(f).should.containOnly(
+        octahedron.movesAtFacet(f).shouldBeSameSetAs(
             chain([f.array], f.subsetsOfSize(2).map!array).array);
     }
     
     auto pyramid = Manifold!2(
         [[0,1,2], [0,2,3], [0,1,3], [1,2,4], [2,3,4], [1,3,4]]);
-    pyramid.movesAtFacet([0,1,2]).should.containOnly([
+    pyramid.movesAtFacet([0,1,2]).shouldBeSameSetAs([
         [0],                    // 3 -> 1 move
         [1,2],                  // 2 -> 2 move
         [0,1,2]                 // 1 -> 3 move
     ]);
-    pyramid.movesAtFacet([0,2,3]).should.containOnly([
+    pyramid.movesAtFacet([0,2,3]).shouldBeSameSetAs([
         [0],                    // 3 -> 1 move
         [2,3],                  // 2 -> 2 move
         [0,2,3]                 // 1 -> 3 move
     ]);
-    pyramid.movesAtFacet([1,3,4]).should.containOnly([
+    pyramid.movesAtFacet([1,3,4]).shouldBeSameSetAs([
         [4],                    // 3 -> 1 move
         [1,3],                  // 2 -> 2 move
         [1,3,4]                 // 1 -> 3 move
@@ -871,7 +870,7 @@ ulong totalSquareDegree(Vertex, int mfdDim)(
         {
             // (dim + 2) choose (d + 1) faces of dimension d
             // each with degree (dim - d + 1)
-            m.totalSquareDegree(d).should.equal(
+            m.totalSquareDegree(d).shouldEqual(
                 binomial(dim + 2, d + 1) * (dim - d + 1)^^2);
         }
     }
@@ -879,9 +878,9 @@ ulong totalSquareDegree(Vertex, int mfdDim)(
     auto pyramid = Manifold!2(
         [[0,1,2], [0,2,3], [0,1,3], [1,2,4], [2,3,4], [1,3,4]]);
 
-    pyramid.totalSquareDegree(0).should.equal(2 * 3^^2 + 3 * 4^^2);
-    pyramid.totalSquareDegree(1).should.equal(9 * 2^^2);
-    pyramid.totalSquareDegree(2).should.equal(6 * 1^^2);
+    pyramid.totalSquareDegree(0).shouldEqual(2 * 3^^2 + 3 * 4^^2);
+    pyramid.totalSquareDegree(1).shouldEqual(9 * 2^^2);
+    pyramid.totalSquareDegree(2).shouldEqual(6 * 1^^2);
 }
 
 /******************************************************************************
@@ -1097,13 +1096,13 @@ unittest
 
     assert(mfd.hasValidHingeMove([1,2,3,4], 1));
     mfd.doHingeMove([0,6], [1,2,3,4], 1);
-    mfd.facets.should.containOnly([[1, 4, 5, 7], [0, 1, 2, 7], [1, 4, 5, 6],
+    mfd.facets.shouldBeSameSetAs([[1, 4, 5, 7], [0, 1, 2, 7], [1, 4, 5, 6],
         [0, 2, 3, 7], [3, 4, 5, 7], [0, 3, 4, 7], [3, 4, 5, 6], [0, 1, 4, 7],
         [1, 2, 5, 6], [1, 2, 5, 7], [2, 3, 5, 6], [2, 3, 5, 7],[0, 1, 2, 4],
         [0, 2, 3, 4], [1, 2, 4, 6], [2, 3, 4, 6]]);
 
     mfd.undoHingeMove([0,6], [1,2,3,4], 1);
-    mfd.facets.should.containOnly(productUnion(octahedron, twoPts).map!array);
+    mfd.facets.shouldBeSameSetAs(productUnion(octahedron, twoPts).map!array);
 
     auto twoOtherPts = [[8], [9]];
     auto mfd4 = Manifold!4(
@@ -1111,7 +1110,7 @@ unittest
 
     mfd4.doHingeMove([0,6,8], [1,2,3,4], 1);
     mfd4.undoHingeMove([0,6,8], [1,2,3,4], 1);
-    mfd4.facets.should.containOnly(productUnion(
+    mfd4.facets.shouldBeSameSetAs(productUnion(
         productUnion(octahedron, twoPts), twoOtherPts).map!array);    
 }
 
@@ -1315,7 +1314,7 @@ unittest
     assert(m3.findProblems.empty);
 
     m3 = Manifold!3([[1,2,3,4]]);
-    m3.findProblems.should.containOnly([
+    m3.findProblems.shouldBeSameSetAs([
         "found a hinge whose link is not a circle",
         "found a ridge with degree not equal to 2",
         "found a codimension-3 simplex whose link is not a 2-sphere"
@@ -1325,7 +1324,7 @@ unittest
     auto sphere2a = [[1,2,3], [1,2,4], [1,3,4], [2,3,4]];
     auto sphere2b = [[1,5,6], [1,5,7], [1,6,7], [5,6,7]];
     auto m2 = Manifold!2(chain(sphere2a, sphere2b));
-    m2.findProblems.should.containOnly([
+    m2.findProblems.shouldBeSameSetAs([
         "found a hinge whose link is not a circle"
     ]);
 
@@ -1333,7 +1332,7 @@ unittest
         [3,4,5], [1,4,5]];
     auto sphere = [[6,7,8], [6,7,9], [6,8,9], [7,8,9]];
     m2 = Manifold!2(chain(octahedron, sphere));
-    m2.findProblems.should.containOnly([
+    m2.findProblems.shouldBeSameSetAs([
         "facets do not define a connected simplicial complex"
     ]);
 
@@ -1341,12 +1340,12 @@ unittest
     auto sphere3a = [[1,2,3,4], [1,2,3,5], [1,2,4,5], [1,3,4,5], [2,3,4,5]];
     auto sphere3b = [[1,6,7,8], [1,6,7,9], [1,6,8,9], [1,7,8,9], [6,7,8,9]];
     m3 = Manifold!3(chain(sphere3a, sphere3b));
-    m3.findProblems.should.containOnly([
+    m3.findProblems.shouldBeSameSetAs([
         "found a codimension-3 simplex whose link is not a 2-sphere"
     ]);
 
     // auto m1 = Manifold!1([[0,1],[1,2],[0,2],[0,3]]);
-    // m3.findProblems.map!array.should.containOnly([
+    // m3.findProblems.map!array.shouldBeSameSetAs([
     //     "found a codimension-3 simplex whose link is not a 2-sphere"
     // ]);
 
@@ -1361,7 +1360,7 @@ unittest
 
 //    m3.simpComp.insertFacet([5,6,7]).throwsWithMsg("d");
 
-    // m3.findProblems.should.containOnly([
+    // m3.findProblems.shouldBeSameSetAs([
     //     "hello!"
     // ]);
 }
@@ -1497,7 +1496,7 @@ unittest
     assert(x == 0 || x == 1); // only two moves possible
     mfd.doHingeMove([0,6], [1,2,3,4], x);
     mfd.undoHingeMove([0,6], [1,2,3,4], x);
-    mfd.facets.map!array.should.containOnly(
+    mfd.facets.map!array.shouldBeSameSetAs(
         productUnion(octahedron, twoPts).map!array);
 
     // TO DO: More tests, test for -1 return
