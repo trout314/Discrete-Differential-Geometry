@@ -1,5 +1,4 @@
 import core.bitop : popcnt;
-import fluent.asserts;
 import std.algorithm : all, canFind, cartesianProduct, copy, each, equal, filter, find, fold, joiner, map, merge,
     sort, sum, uniq;  
 import std.conv : to;
@@ -10,7 +9,7 @@ import std.range : array, back, popBack, chain, cycle, drop, ElementType, empty,
     iota, isForwardRange, isInputRange, popFront, repeat, retro, save, take,
     walkLength;
 import std.traits : lvalueOf, rvalueOf, hasAliasing, Unqual;
-import unit_threaded : Name;
+import unit_threaded : Name, shouldBeSameSetAs, shouldEqual;
 
 //dfmt off
 
@@ -862,27 +861,27 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
 ///
 @Name("subsetsOfSize") @safe unittest
 {
-    [1, 2, 3, 4].subsetsOfSize(1).map!array.should.containOnly([[1], [2], [3], [4]]);
+    [1, 2, 3, 4].subsetsOfSize(1).map!array.shouldBeSameSetAs([[1], [2], [3], [4]]);
 
-    [1, 2, 3, 4].subsetsOfSize(2).map!array.should.containOnly([[1, 2], [1, 3],
+    [1, 2, 3, 4].subsetsOfSize(2).map!array.shouldBeSameSetAs([[1, 2], [1, 3],
             [1, 4], [2, 3], [2, 4], [3, 4]]);
 
-    [1, 2, 3, 4].subsetsOfSize(3).map!array.should.containOnly([[1, 2, 3], [1, 2, 4],
+    [1, 2, 3, 4].subsetsOfSize(3).map!array.shouldBeSameSetAs([[1, 2, 3], [1, 2, 4],
         [1, 3, 4], [2, 3, 4]]);
 
-    [1, 2, 3, 4].subsetsOfSize(4).map!array.should.containOnly([[1, 2, 3, 4]]);
+    [1, 2, 3, 4].subsetsOfSize(4).map!array.shouldBeSameSetAs([[1, 2, 3, 4]]);
 
-    [1].subsetsOfSize(1).map!array.should.containOnly([[1]]);
+    [1].subsetsOfSize(1).map!array.shouldBeSameSetAs([[1]]);
 
-    0.iota.subsetsOfSize(0).map!array.should.containOnly([[]]);
+    0.iota.subsetsOfSize(0).map!array.shouldBeSameSetAs([[]]);
     assert(iota(3).subsetsOfSize(0).front.empty);
 
-    3.iota.subsetsOfSize(1).map!array.should.containOnly([[0], [1], [2]]);
-    3.iota.subsetsOfSize(2).map!array.should.containOnly([[0, 1], [0, 2], [1, 2]]);
-    3.iota.subsetsOfSize(3).map!array.should.containOnly([[0, 1, 2]]);
+    3.iota.subsetsOfSize(1).map!array.shouldBeSameSetAs([[0], [1], [2]]);
+    3.iota.subsetsOfSize(2).map!array.shouldBeSameSetAs([[0, 1], [0, 2], [1, 2]]);
+    3.iota.subsetsOfSize(3).map!array.shouldBeSameSetAs([[0, 1, 2]]);
 
-    iota(31).subsetsOfSize(1).walkLength.should.equal(31);
-    iota(10).subsetsOfSize(2).walkLength.should.equal(45);
+    iota(31).subsetsOfSize(1).walkLength.shouldEqual(31);
+    iota(10).subsetsOfSize(2).walkLength.shouldEqual(45);
 }
 
 ///
@@ -972,10 +971,10 @@ auto subsets(R)(R set) if (isInputRange!R)
 ///
 @Name("subsets") @safe unittest
 {
-    [1, 2, 3].subsets.map!array.should.containOnly([[1], [2], [3], [1, 2],
+    [1, 2, 3].subsets.map!array.shouldBeSameSetAs([[1], [2], [3], [1, 2],
             [1, 3], [2, 3], [1, 2, 3]]);
 
-    iota(1, 5).subsets.map!array.should.containOnly([[1], [2], [3], [4], [1, 2],
+    iota(1, 5).subsets.map!array.shouldBeSameSetAs([[1], [2], [3], [4], [1, 2],
             [1, 3], [1, 4], [2, 3], [2, 4], [3, 4], [1, 2, 3], [1, 2, 4],
             [1, 3, 4], [2, 3, 4], [1, 2, 3, 4]]);
 
@@ -1059,7 +1058,7 @@ if (isInputRangeOfInputRangeOf!(R1, const(Vertex))
 {
     auto f1 = [[1,2],[3]];
     auto f2 = [[4,5,6], [7,8], [9]];
-    productUnion(f1, f2).map!array.should.containOnly(
+    productUnion(f1, f2).map!array.shouldBeSameSetAs(
         [[1, 2, 4, 5, 6], [1, 2, 7, 8], [1, 2, 9],
          [3, 4, 5, 6], [3, 7, 8], [3, 9]]);
     
@@ -1439,12 +1438,12 @@ auto nGonSymmetries()(int n)
 ///
 @Name("nGonSymmetries") unittest
 {
-    3.nGonSymmetries.should.containOnly([
+    3.nGonSymmetries.shouldBeSameSetAs([
         [0,1,2], [1,2,0], [2,0,1],  // rotations
         [2,1,0], [0,2,1], [1,0,2]   // reflections
     ]);
 
-    4.nGonSymmetries.should.containOnly([
+    4.nGonSymmetries.shouldBeSameSetAs([
         [0,1,2,3], [1,2,3,0], [2,3,0,1], [3,0,1,2], // rotations
         [3,2,1,0], [0,3,2,1], [1,0,3,2], [2,1,0,3]  // reflections
     ]);
@@ -1460,10 +1459,10 @@ auto nGonRotations(int n)
 ///
 @Name("nGonRotations") unittest
 {
-    3.nGonRotations.should.containOnly([
+    3.nGonRotations.shouldBeSameSetAs([
         [0,1,2], [1,2,0], [2,0,1]
     ]);
-    4.nGonRotations.should.containOnly([
+    4.nGonRotations.shouldBeSameSetAs([
         [0,1,2,3], [1,2,3,0], [2,3,0,1], [3,0,1,2]
     ]);    
 }
@@ -1478,11 +1477,11 @@ auto nGonReflections(int n)
 ///
 @Name("nGonReflections") unittest
 {
-    3.nGonReflections.should.containOnly([
+    3.nGonReflections.shouldBeSameSetAs([
         [2,1,0], [0,2,1], [1,0,2]
     ]);
 
-    4.nGonReflections.should.containOnly([
+    4.nGonReflections.shouldBeSameSetAs([
         [3,2,1,0], [0,3,2,1], [1,0,3,2], [2,1,0,3]
     ]);        
 }
@@ -1554,15 +1553,15 @@ const(int)[][][] nGonTriangReps()(int n)
             auto interiorEdges = sc.simplices(1).filter!(
                 edge => sc.star(edge).walkLength == 2);
 
-            boundaryEdges.walkLength.should.equal(n);
-            interiorEdges.walkLength.should.equal(n - 3);
-            sc.simplices(2).walkLength.should.equal(n - 2);
+            boundaryEdges.walkLength.shouldEqual(n);
+            interiorEdges.walkLength.shouldEqual(n - 3);
+            sc.simplices(2).walkLength.shouldEqual(n - 2);
         
             auto nGonEdges = n.iota.map!(
                 k => (k < n - 1) ? [k, k + 1] : [0 , n - 1]);
-            boundaryEdges.should.containOnly(nGonEdges);
+            boundaryEdges.shouldBeSameSetAs(nGonEdges);
 
-            sc.simplices(0).map!front.should.containOnly(n.iota);
+            sc.simplices(0).map!front.shouldBeSameSetAs(n.iota);
         }
     }
 }
