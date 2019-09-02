@@ -7,7 +7,7 @@ import std.algorithm : all, any, copy, canFind, each, equal, filter, find,
 import std.conv : to;
 import std.exception : assertThrown;
 import std.range : array, back, chain, chunks, cycle, ElementType, empty,
-    enumerate, front, iota, isInputRange, only, popBack, popFront, save, slide, take, walkLength;
+    enumerate, front, iota, isInputRange, isOutputRange, only, popBack, popFront, put, save, slide, take, walkLength;
 import unit_threaded : Name, shouldEqual, shouldBeSameSetAs;
 import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf,
     isSubsetOf, nGonTriangs, productUnion, SmallMap, StackArray,
@@ -22,8 +22,19 @@ import std.stdio : writeln, writefln;
 import std.traits : Unqual;
 import std.random : uniform;
 
+
+import std.algorithm : copy, map;
+
 alias isIRof = isInputRangeOf;
 alias isIRofIRof = isInputRangeOfInputRangeOf;
+
+
+
+
+
+
+
+
 
 //dfmt off
 /*******************************************************************************
@@ -65,6 +76,9 @@ private:
         return range.toStaticArray!(dimension_ + 1);
     }
 public:
+    // TO DO: Make private
+    PachnerMove!(dimension_, Vertex_)[] pachnerMovesList;
+
     /// Dimension of the manifold
     static immutable dimension = dimension_;
 
@@ -84,12 +98,14 @@ public:
         {
             totSqrDegrees[d] = simplices(d).map!(s => this.degree(s)^^2).sum;
         }
+        pachnerMovesList = this.pachnerMoves;
     }
 
     this(this) pure @safe
     {
         ridgeLinks = ridgeLinks.dup;
         degreeMap = degreeMap.dup;
+        pachnerMovesList = pachnerMovesList.dup;
     }
 
     /***************************************************************************
@@ -145,6 +161,7 @@ public:
         {
             auto simplex = toNSimp(simplex_);
             ++degreeMap[simplex];
+
         
             if(simplex.length <= dimension - 1)
             {
@@ -179,6 +196,9 @@ public:
                 }
                 assert(ridge in ridgeLinks);
             }
+
+            // TO DO: remove or add (simplex, coCenter) to list
+            // of pachner moves if needed, due to degree change
         }
         assert(toNSimp(facet) in degreeMap);
     }
@@ -266,10 +286,10 @@ public:
 /*******************************************************************************
 Returns a list of all the possible pachner moves for the given manifold
 */
-const(Vertex)[][] pachnerMoves(Vertex, int dim)(
+PachnerMove!(dim, Vertex)[] pachnerMoves(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) mfd)
 {
-    const(Vertex)[][] result;
+    PachnerMove!(dim, Vertex)[] result;
     foreach(simp_, deg; mfd.degreeMap)
     {
         auto simp = simp_[];
@@ -278,12 +298,42 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
             auto coCenter = mfd.findCoCenter(simp);
             if(coCenter.empty || (!mfd.contains(coCenter)))
             {
-                result ~= simp.dup;
+                result ~= PachnerMove!(dim, Vertex)(simp, coCenter);
             }
         }           
     }
     return result;
 }
+
+struct PachnerMove(size_t dim, Vertex = int)
+{
+public:
+    alias coCenter = getCoCenter;
+    alias center = getCenter;
+
+    string toString()() const 
+    {
+        string result = (vertices.length - centerLen).to!string;
+        result ~= "->" ~ centerLen.to!string;
+        result ~= " center: " ~ vertices[0..centerLen].to!string();
+        result ~= " coCenter: " ~ vertices[centerLen..$].to!string();
+        return result;
+    }
+
+    this(S1,S2)(S1 center_, S2 coCenter_) if (isIRof!(S1, Vertex) && isIRof!(S2, Vertex))
+    {
+        centerLen = center_.length;
+        copy(center_, vertices[0..centerLen]);
+        copy(coCenter_, vertices[centerLen..$]);
+    }
+
+private:
+    size_t centerLen;
+    Vertex[dim+2] vertices;
+    const(Vertex)[] getCenter()() {return vertices[0..centerLen];}
+    const(Vertex)[] getCoCenter()() {return vertices[centerLen..$];}
+}
+
 
 ///
 @Name("Manifold doc tests") pure @safe unittest
@@ -301,13 +351,13 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
 
     octahedron.star([1,2]).shouldBeSameSetAs([[0,1,2], [1,2,5]]);    
 
-    octahedron.pachnerMoves.shouldBeSameSetAs(
+    octahedron.pachnerMoves.map!(mv => mv.center.array).shouldBeSameSetAs(
         [[0,1], [0,2], [0,3], [0,4], [1,2], [1,4],  // 1-simplices
          [1,5], [2,3], [2,5], [3,4], [3,5], [4,5],
          [0,1,2], [0,1,4], [0,2,3], [0,3,4],        // 2-simplices
          [1,2,5], [1,4,5], [2,3,5], [3,4,5]]);      
 
-    tetrahedron.pachnerMoves.shouldBeSameSetAs(
+    tetrahedron.pachnerMoves.map!(mv => mv.center.array).shouldBeSameSetAs(
         [[1, 2, 3], [1, 2, 4], [1, 3, 4], [2, 3, 4]]);
 
     tetrahedron.doPachner([1,2,3], [5]);
@@ -345,7 +395,7 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
     auto m = Manifold!2(
         [[1,2,3], [1,2,4], [1,3,4], [2,3,5], [2,4,5],[3,4,5]]);
 
-    m.pachnerMoves.shouldBeSameSetAs([[1], [2, 3], [2, 3, 5],
+    m.pachnerMoves.map!(mv => mv.center.array).shouldBeSameSetAs([[1], [2, 3], [2, 3, 5],
         [1, 3, 4], [1, 2, 3], [5], [2, 4, 5], [3, 4, 5], [1, 2, 4], [2, 4],
         [3, 4]]);
 
@@ -354,7 +404,7 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
     
     assert(octahedron.simplices(0).all!(s => octahedron.degree(s) == 4));
 
-    octahedron.pachnerMoves.shouldBeSameSetAs(
+    octahedron.pachnerMoves.map!(mv => mv.center.array).shouldBeSameSetAs(
         [[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5], [2,3,5], [3,4,5], [1,4,5],
         [2, 3], [0, 1], [1, 5], [4, 5], [0, 3], [1, 4],
         [1, 2], [0, 4], [0, 2], [2, 5], [3, 5], [3, 4]]);
@@ -427,7 +477,13 @@ void doPachner(Vertex, int dim, C, D)(
 )
 if (isIRof!(C, const(Vertex)) && isIRof!(D, const(Vertex)))
 {
-    assert(manifold.pachnerMoves.canFind(center.array), "bad pachner move");
+    if(coCenter.walkLength > 1)
+    {
+        auto pm = PachnerMove!(dim, Vertex)(center, coCenter);
+        assert(manifold.pachnerMoves.canFind(pm), "bad pachner move");
+    }
+    assert(manifold.contains(center));
+    assert(!manifold.contains(coCenter));
  
     // Buffer for holding vertices in center (followed by coCenter)
     const(Vertex)[(dim + 2)] cBuffer = chain(center, coCenter)
