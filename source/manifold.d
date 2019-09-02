@@ -281,7 +281,7 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
 }
 
 ///
-@Name("Manifold doc tests") @safe unittest
+@Name("Manifold doc tests") pure @safe unittest
 {
     auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
         [2,3,5], [3,4,5], [1,4,5]]);
@@ -335,7 +335,7 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
 }
 
 ///
-@Name("pachnerMoves") @safe unittest
+@Name("pachnerMoves") pure @safe unittest
 {
     auto m = Manifold!2(
         [[1,2,3], [1,2,4], [1,3,4], [2,3,5], [2,4,5],[3,4,5]]);
@@ -358,14 +358,14 @@ const(Vertex)[][] pachnerMoves(Vertex, int dim)(
 // NOTE: The following unittest cannot be @safe since throwsWithMsg 
 // catches an Error
 ///
-@Name("doPachner (errors)") @system unittest
+@Name("doPachner (errors)") pure @system unittest
 {
     // Can't do 2->2 move on the boundary of a 3-simplex
     auto m = Manifold!2([[1,2,3],[1,2,4], [1,3,4], [2,3,4]]);   
     m.doPachner([1,2], [3,4]).throwsWithMsg("bad pachner move");
 }
 ///
-@Name("doPachner") unittest
+@Name("doPachner") pure @safe unittest
 {
     auto m = standardSphere!2;
     m.facets.shouldBeSameSetAs([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
@@ -667,7 +667,7 @@ auto modifyFVector(size_t[] fVector_, size_t centerLength)
     }
 }
 ///
-@Name("modifyFVector") unittest
+@Name("modifyFVector") pure @safe unittest
 {
     size_t[4] fVec = [0,0,0,0];
 
@@ -715,7 +715,7 @@ if (isIRof!(F, const(Vertex)))
                 && !mfd.contains(mfd.coCenter(center, facet))));
 }
 ///
-@Name("movesAtFacet") unittest
+@Name("movesAtFacet") pure @safe unittest
 {
     /* If the manifold is the boundary of a simplex (i.e. a sphere with the
     minimum number of facets) then only the type 1 -> (dim + 1) Pachner moves
@@ -773,7 +773,7 @@ Manifold!(dim, Vertex) loadManifold(int dim, Vertex = int)(string fileName)
 }
 
 ///
-@Name("loadManifold") unittest
+@Name("loadManifold") @system unittest
 {
     auto m = loadManifold!2(
         "data/manifold_sampler_unittest_load.dat");
@@ -797,7 +797,7 @@ void saveTo(int dimension, Vertex = int)(
 }
 
 ///
-@Name("saveTo") unittest
+@Name("saveTo") @system unittest
 {
     auto fileName = "data/manifold_sampler_unittest_save.dat";
     auto sphere = standardSphere!4;
@@ -821,7 +821,7 @@ real meanDegree(Vertex, int mfdDim)(
     return simpsPerFacet * nFacets / real(nSimps);
 }
 ///
-@Name("meanDegree") unittest
+@Name("meanDegree") pure @safe unittest
 {
     foreach(dim; staticIota!(1, 8))
     {
@@ -861,7 +861,7 @@ ulong totalSquareDegree(Vertex, int mfdDim)(
     return mfd.totSqrDegrees[dim];
 }
 ///
-@Name("totalSquareDegree") unittest
+@Name("totalSquareDegree") pure @safe unittest
 {
     foreach(dim; staticIota!(1, 8))
     {
@@ -902,7 +902,7 @@ real degreeVariance(Vertex, int mfdDim)(
     return meanSqrDeg - meanDeg^^2;
 }
 ///
-@Name("degreeVariance") unittest
+@Name("degreeVariance") pure @safe unittest
 {
     foreach(dim; staticIota!(1, 8))
     {
@@ -968,7 +968,11 @@ if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
     assert(manifold.star(hinge).map!array.array.sort
         .equal!equal(oldPiece.map!array.array.sort));
 
-    oldPiece.each!(f => manifold.removeFacet(f));
+    foreach(f; oldPiece)
+    {
+        manifold.removeFacet(f);    
+    }
+    // oldPiece.each!(f => manifold.removeFacet(f));
 
     // Modify fVector, start with simplices removed
     manifold.numSimplices[dim] -= deg;      // (# 1-simplices in Lk(hinge)) * (1 hinge) 
@@ -1086,7 +1090,8 @@ if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
     assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
 }
 
-unittest
+///
+@Name("hinge moves") pure @safe unittest
 {
     auto octahedron = [[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
         [2,3,5], [3,4,5], [1,4,5]];
@@ -1156,18 +1161,20 @@ if (isIRof!(K, const(Vertex)))
 // TO DO: unittests!
 
 
-@Name("fVector") unittest
+@Name("fVector") @system unittest
 {
-    // fVector should be (9 choose 1), (9 choose 2), ... , (9 choose 8)
-    assert(standardSphere!7.fVector == [9, 9 * 8 / 2, 9 * 8 * 7 / (3 * 2),
-            9 * 8 * 7 * 6 / (4 * 3 * 2), 9 * 8 * 7 * 6 / (4 * 3 * 2),
-            (9 * 8 * 7) / (3 * 2), (9 * 8) / 2, 9]);
-
     auto hyperbolicDodecahedral = loadManifold!3(
         "data/manifold_sampler_unittest_dodecahedral.dat");
 
-    // TO DO: Get reference for this...
-    assert(hyperbolicDodecahedral.fVector == [21, 190, 338, 169]);
+    () pure @safe {
+        // fVector should be (9 choose 1), (9 choose 2), ... , (9 choose 8)
+        assert(standardSphere!7.fVector == [9, 9 * 8 / 2, 9 * 8 * 7 / (3 * 2),
+                9 * 8 * 7 * 6 / (4 * 3 * 2), 9 * 8 * 7 * 6 / (4 * 3 * 2),
+                (9 * 8 * 7) / (3 * 2), (9 * 8) / 2, 9]);
+
+        // TO DO: Get reference for this...
+        assert(hyperbolicDodecahedral.fVector == [21, 190, 338, 169]);
+    } ();
 }
 
 string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
@@ -1308,7 +1315,7 @@ string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
     return problems;
 }
 ///
-unittest
+@Name("findProblems") pure @safe unittest
 {
     auto m3 = standardSphere!3;
     assert(m3.findProblems.empty);
@@ -1353,7 +1360,7 @@ unittest
     //---------------------------
 }
 
-unittest
+pure @safe unittest
 {
     // auto m3 = standardSphere!3;
     // m3.simpComp.insertFacet([5,6,7,8]);
@@ -1416,7 +1423,7 @@ if (isIRof!(S, const(Vertex)) && isIRof!(F, const(Vertex)))
     return verticesFound;
 }
 ///
-unittest
+pure @safe unittest
 {
     auto m = standardSphere!3;
     assert(m.linkVerticesAtHinge([0,1],[0,1,2,3]).equal([2,3,4]));
