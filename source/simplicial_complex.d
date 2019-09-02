@@ -1,6 +1,6 @@
 import algorithms : connectedComponents, eulerCharacteristic,
     isCircle, isConnected,  isPureOfDim;
-import fluent.asserts : should;
+
 import std.algorithm : all, any, canFind, chunkBy, copy, countUntil, each,
     equal, filter, find, findAdjacent, isSorted, joiner, map, maxElement,
     setDifference, sort, sum, uniq;
@@ -14,7 +14,8 @@ import std.exception : assertThrown;
 import std.random : uniform;
 import std.range : array, chunks, dropExactly, ElementType, empty, enumerate, 
     front, iota, isForwardRange, isInputRange, isOutputRange, only, popFront, put, save, walkLength, zip;
-import unit_threaded : Name;
+import unit_threaded : Name, shouldBeSameSetAs, shouldEqual;
+
 import utility : isSubsetOf, SmallMap, StackArray, subsets,
     subsetsOfSize, throwsWithMsg, isInputRangeOf, isInputRangeOfInputRangeOf;
 import std.stdio : File;
@@ -27,7 +28,7 @@ alias isIRof = isInputRangeOf;
 alias isIRofIRof = isInputRangeOfInputRangeOf;
 
 /// Basic Functionality
-@Name("doc tests") /* pure */ @safe unittest
+@Name("doc tests") pure @safe unittest
 {
     // create an empty simplicial complex with vertices of default type `int`
     SimplicialComplex!() sc;
@@ -67,20 +68,19 @@ alias isIRofIRof = isInputRangeOfInputRangeOf;
 
     /* get the vertices in the facets, returned in order of increasing dimension
     and dictionary order within a dimension */
-    sc.facets.should.containOnly([[4,5], [5,6], [1,2,3], [2,3,4]]);
-    assert(sc.numFacets == 4);
+    sc.facets.shouldBeSameSetAs([[4,5], [5,6], [1,2,3], [2,3,4]]);
 
     // Can get a sorted array of all the facet simplices of a given dimension
     assert(sc.facets(0).empty);
-    sc.facets(1).should.containOnly([[4,5], [5,6]]);
-    sc.facets(2).should.containOnly([[1,2,3], [2,3,4]]);
+    sc.facets(1).shouldBeSameSetAs([[4,5], [5,6]]);
+    sc.facets(2).shouldBeSameSetAs([[1,2,3], [2,3,4]]);
     assert(sc.facets(3).empty);
 
     // Can get a sorted array of all the simplices of a given dimension
-    sc.simplices(0).should.containOnly([[1], [2], [3], [4], [5], [6]]);
-    sc.simplices(1).should.containOnly([[1,2], [1,3], [2,3], [2,4], [3,4], 
+    sc.simplices(0).shouldBeSameSetAs([[1], [2], [3], [4], [5], [6]]);
+    sc.simplices(1).shouldBeSameSetAs([[1,2], [1,3], [2,3], [2,4], [3,4], 
         [4,5], [5,6]]);
-    sc.simplices(2).should.containOnly(sc.facets(2));
+    sc.simplices(2).shouldBeSameSetAs(sc.facets(2));
     assert(sc.simplices(3).empty);
 
     // get the f-vector of the simplicial complex
@@ -94,22 +94,22 @@ alias isIRofIRof = isInputRangeOfInputRangeOf;
     assert(!sc.contains([4,6]));
 
     // get the star of a simplex an array of facets
-    sc.star([5]).should.containOnly([[4,5], [5,6]]);
-    sc.star([4]).should.containOnly([[4,5], [2,3,4]]);
-    sc.star([2,3]).should.containOnly([[1,2,3], [2,3,4]]);
+    sc.star([5]).shouldBeSameSetAs([[4,5], [5,6]]);
+    sc.star([4]).shouldBeSameSetAs([[4,5], [2,3,4]]);
+    sc.star([2,3]).shouldBeSameSetAs([[1,2,3], [2,3,4]]);
 
     /* get link of a simplex as list of facets. NOTE: map!array is needed here
     due to library bug. See https://github.com/gedaiu/fluent-asserts/issues/85 */
-    sc.link([5]).map!array.should.containOnly([[4], [6]]);
-    sc.link([4]).map!array.should.containOnly([[5], [2,3]]);
-    sc.link([2,3]).map!array.should.containOnly([[1], [4]]);
+    sc.link([5]).map!array.shouldBeSameSetAs([[4], [6]]);
+    sc.link([4]).map!array.shouldBeSameSetAs([[5], [2,3]]);
+    sc.link([2,3]).map!array.shouldBeSameSetAs([[1], [4]]);
 
     // can print out a simplicial complex
     assert(sc.toString == "[[4, 5], [5, 6], [1, 2, 3], [2, 3, 4]]");
 
     // can construct from a range of ranges of vertices
     auto sc5 = SimplicialComplex!()(iota(3).map!(i => iota(3*i, 3*i + 3)));
-    sc5.facets.should.containOnly([[0, 1, 2], [3, 4, 5], [6, 7, 8]]);
+    sc5.facets.shouldBeSameSetAs([[0, 1, 2], [3, 4, 5], [6, 7, 8]]);
 }
 
 ///
@@ -180,32 +180,32 @@ alias isIRofIRof = isInputRangeOfInputRangeOf;
     auto sc = SimplicialComplex!()();
     static assert(is(sc.Vertex == int)); // Default vertex type is int
 
-    sc.facets.empty.should.equal(true);
-    sc.numFacets.should.equal(0);
+    sc.facets.empty.shouldEqual(true);
+    sc.numFacets.shouldEqual(0);
   
     // ---------------------------- ADD SOME FACETS ----------------------------
     sc.insertFacet([1, 2]);
     sc.insertFacet([2, 3]);
     sc.insertFacet([3, 4, 5]);
     
-    sc.should.equal(sComp([[1,2], [2,3], [3,4,5]]));
+    sc.shouldEqual(sComp([[1,2], [2,3], [3,4,5]]));
 
     // -------------------------- TEST FUNCTIONALITY ---------------------------
-    sc.facets.walkLength.should.equal(3);
-    sc.numFacets.should.equal(3);
+    sc.facets.walkLength.shouldEqual(3);
+    sc.numFacets.shouldEqual(3);
 
-    sc.facets(0).empty.should.equal(true);
-    sc.facets(1).should.containOnly([[1, 2], [2, 3]]);
-    sc.facets(2).should.containOnly([[3, 4, 5]]);
+    sc.facets(0).empty.shouldEqual(true);
+    sc.facets(1).shouldBeSameSetAs([[1, 2], [2, 3]]);
+    sc.facets(2).shouldBeSameSetAs([[3, 4, 5]]);
 
-    sc.simplices(0).should.containOnly([[1], [2], [3], [4], [5]]);
-    sc.simplices(1).should.containOnly([[1, 2], [2, 3], [3, 4], [3, 5], [4, 5]]);
-    sc.simplices(2).should.containOnly([[3, 4, 5]]);
+    sc.simplices(0).shouldBeSameSetAs([[1], [2], [3], [4], [5]]);
+    sc.simplices(1).shouldBeSameSetAs([[1, 2], [2, 3], [3, 4], [3, 5], [4, 5]]);
+    sc.simplices(2).shouldBeSameSetAs([[3, 4, 5]]);
 
     foreach(d; iota(3, 16))
     {
-        sc.facets(d).empty.should.equal(true);
-        sc.simplices(d).empty.should.equal(true);
+        sc.facets(d).empty.shouldEqual(true);
+        sc.simplices(d).empty.shouldEqual(true);
     }
 }
 
@@ -213,36 +213,36 @@ alias isIRofIRof = isInputRangeOfInputRangeOf;
 {
     auto sc = SimplicialComplex!()();
     sc.insertFacet([1,2]);
-    sc.facets.should.containOnly([[1,2]]);
+    sc.facets.shouldBeSameSetAs([[1,2]]);
     sc.insertFacet([2,3,4]);
-    sc.facets.should.containOnly([[1,2], [2,3,4]]);
+    sc.facets.shouldBeSameSetAs([[1,2], [2,3,4]]);
     sc.insertFacet([1,5,6]);
-    sc.facets.should.containOnly([[1,2], [1,5,6], [2,3,4]]);
+    sc.facets.shouldBeSameSetAs([[1,2], [1,5,6], [2,3,4]]);
     sc.insertFacet([1,5,6,7]);
-    sc.facets.should.containOnly([[1,2], [2,3,4], [1,5,6,7]]);
+    sc.facets.shouldBeSameSetAs([[1,2], [2,3,4], [1,5,6,7]]);
 }
 
 @Name("insertFacet/removeFacet") @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [1,3], [1,4], [4,5,6]]);
 
-    sc.facets.should.containOnly([[1,2], [1,3], [1,4], [4,5,6]]);
+    sc.facets.shouldBeSameSetAs([[1,2], [1,3], [1,4], [4,5,6]]);
     sc.removeFacet([1,3]);
-    sc.facets.should.containOnly([[1,2], [1,4], [4,5,6]]);
+    sc.facets.shouldBeSameSetAs([[1,2], [1,4], [4,5,6]]);
     sc.removeFacet([1,2]);
-    sc.facets.should.containOnly([[1,4], [4,5,6]]);
+    sc.facets.shouldBeSameSetAs([[1,4], [4,5,6]]);
     sc.removeFacet([4,5,6]);
-    sc.facets.should.containOnly([[1,4]]);
+    sc.facets.shouldBeSameSetAs([[1,4]]);
     sc.removeFacet([1,4]);
     assert(sc.facets.empty);
 
     auto sc2 = simplicialComplex([[1,2,3], [1,2,4], [1,3,4], [2,3,4]]);
     sc2.removeFacet([1,2,3]);
-    sc2.facets.should.containOnly([[1,2,4], [1,3,4], [2,3,4]]);
+    sc2.facets.shouldBeSameSetAs([[1,2,4], [1,3,4], [2,3,4]]);
     sc2.insertFacet([1,2,5]);
     sc2.insertFacet([1,3,5]);
     sc2.insertFacet([2,3,5]);
-    sc2.facets.should.containOnly([[1,2,4], [1,2,5], [1,3,4], [1,3,5], [2,3,4],
+    sc2.facets.shouldBeSameSetAs([[1,2,4], [1,2,5], [1,3,4], [1,3,5], [2,3,4],
         [2,3,5]]);
 
     SimplicialComplex!int sc3;
@@ -664,7 +664,7 @@ if (isInputRange!F && isInputRange!(ElementType!F))
 @Name("simplicialComplex") @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,3], [3,4,5], [6,7,8]]);
-    sc.facets.should.containOnly([[1,2], [2,3], [3,4,5], [6,7,8]]);
+    sc.facets.shouldBeSameSetAs([[1,2], [2,3], [3,4,5], [6,7,8]]);
 
     assert(sc == simplicialComplex(sc.facets.array));
 
