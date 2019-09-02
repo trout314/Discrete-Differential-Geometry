@@ -1,15 +1,18 @@
 import algorithms : canFind, eulerCharacteristic, is2Sphere, isCircle,
     isConnected, isPureOfDim, join;
-import simplicial_complex : fVector, simplicialComplex, SimplicialComplex, assertValidSimplex, loadSimplicialComplex;
-import std.algorithm : all, any, copy, canFind, each, equal, filter, find, joiner,
-    map, maxElement, setDifference, merge, sort, sum, uniq;
+import simplicial_complex : fVector, simplicialComplex, SimplicialComplex,
+    assertValidSimplex, loadSimplicialComplex;
+import std.algorithm : all, any, copy, canFind, each, equal, filter, find,
+    joiner, map, maxElement, setDifference, merge, sort, sum, uniq;
 import std.conv : to;
 import std.exception : assertThrown;
-import std.range : array, back, chain, chunks, cycle, ElementType, empty, enumerate, front, iota,
-    isInputRange, only, popBack, popFront, save, slide, take, walkLength;
+import std.range : array, back, chain, chunks, cycle, ElementType, empty,
+    enumerate, front, iota, isInputRange, only, popBack, popFront, save, slide, take, walkLength;
 import unit_threaded : Name, shouldEqual, shouldBeSameSetAs;
-import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf, isSubsetOf, nGonTriangs, productUnion, SmallMap,
-    StackArray, staticIota, subsets, subsetsOfSize, throwsWithMsg, toImmutStaticArray, toStackArray, toStaticArray;
+import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf,
+    isSubsetOf, nGonTriangs, productUnion, SmallMap, StackArray,
+    staticIota, subsets, subsetsOfSize, throwsWithMsg, toImmutStaticArray,
+    toStackArray, toStaticArray;
 import std.stdio : File, writeln;
 import std.typecons : Flag, No, Yes;
 import std.math : approxEqual;
@@ -18,7 +21,6 @@ import std.stdio : writeln, writefln;
 
 import std.traits : Unqual;
 import std.random : uniform;
-
 
 alias isIRof = isInputRangeOf;
 alias isIRofIRof = isInputRangeOfInputRangeOf;
