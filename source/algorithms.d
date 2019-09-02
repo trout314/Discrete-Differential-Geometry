@@ -5,12 +5,9 @@ import std.algorithm : all, any, canFind, chunkBy, equal, filter, find,
 import std.conv : to;
 import std.range : array, empty, enumerate, front, iota, popFront, save,
     walkLength;
-import unit_threaded : Name;
+import unit_threaded : Name, shouldBeSameSetAs;
 import utility : subsetsOfSize, throwsWithMsg;
-import fluent.asserts;
 import utility : isInputRangeOfInputRangeOf;
-
-
 
 alias isIRofIRof = isInputRangeOfInputRangeOf;
 
@@ -548,7 +545,7 @@ auto join(Vertex, int maxDim1, int maxDim2)(const SimplicialComplex!(Vertex, max
     auto sc1 = simplicialComplex([[1,2], [2,3,4], [5]]);
     auto sc2 = simplicialComplex([[6,7], [8]]);
 
-    join(sc1, sc2).facets.array.should.containOnly([
+    join(sc1, sc2).facets.array.shouldBeSameSetAs([
         [5, 8], [1, 2, 8], [5, 6, 7],
         [1, 2, 6, 7], [2, 3, 4, 8], [2, 3, 4, 6, 7]]);
 
