@@ -442,7 +442,7 @@ auto binarySequences(size_t length, size_t numOnes)
             binarySequences(length - 1, numOnes - 1).map!(seq => [1] ~ seq)).array;
 }
 ///
-@Name("binarySequences") @safe pure unittest
+@Name("binarySequences") @safe pure nothrow unittest
 {
     assert(binarySequences(3, 0) == [[0, 0, 0]]);
     assert(binarySequences(3, 1) == [[0, 0, 1], [0, 1, 0], [1, 0, 0]]);
@@ -859,7 +859,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
     return SubsetsOfSizeRange((1 << subsetSize) - 1, set);
 }
 ///
-@Name("subsetsOfSize") @safe unittest
+@Name("subsetsOfSize") pure @safe unittest
 {
     [1, 2, 3, 4].subsetsOfSize(1).map!array.shouldBeSameSetAs([[1], [2], [3], [4]]);
 
@@ -969,7 +969,7 @@ auto subsets(R)(R set) if (isInputRange!R)
     return SubsetsRange(set, 1);
 }
 ///
-@Name("subsets") @safe unittest
+@Name("subsets") pure @safe unittest
 {
     [1, 2, 3].subsets.map!array.shouldBeSameSetAs([[1], [2], [3], [1, 2],
             [1, 3], [2, 3], [1, 2, 3]]);
@@ -997,7 +997,7 @@ auto subsets(R)(R set) if (isInputRange!R)
     // TO DO: Improve this test. Ugly...
 }
 
-@Name("subsets bug") unittest
+@Name("subsets bug") pure @safe unittest
 {
     auto set = [1,2,3];
    
@@ -1054,7 +1054,7 @@ if (isInputRangeOfInputRangeOf!(R1, const(Vertex))
         merge(pair[0], pair[1]));
 }
 ///
-@Name("productUnion") unittest
+@Name("productUnion") pure @safe unittest
 {
     auto f1 = [[1,2],[3]];
     auto f2 = [[4,5,6], [7,8], [9]];
@@ -1436,7 +1436,7 @@ auto nGonSymmetries()(int n)
     return chain(nGonRotations(n), nGonReflections(n));
 }
 ///
-@Name("nGonSymmetries") unittest
+@Name("nGonSymmetries") pure @safe unittest
 {
     3.nGonSymmetries.shouldBeSameSetAs([
         [0,1,2], [1,2,0], [2,0,1],  // rotations
@@ -1457,7 +1457,7 @@ auto nGonRotations(int n)
     return n.iota.map!(k => n.iota.cycle(k).take(n).array);
 }
 ///
-@Name("nGonRotations") unittest
+@Name("nGonRotations") pure @safe unittest
 {
     3.nGonRotations.shouldBeSameSetAs([
         [0,1,2], [1,2,0], [2,0,1]
@@ -1475,7 +1475,7 @@ auto nGonReflections(int n)
     return n.iota.map!(k => n.iota.cycle(k).take(n).retro.array);
 }
 ///
-@Name("nGonReflections") unittest
+@Name("nGonReflections") pure @safe unittest
 {
     3.nGonReflections.shouldBeSameSetAs([
         [2,1,0], [0,2,1], [1,0,2]
@@ -1530,7 +1530,7 @@ const(int)[][][] nGonTriangReps()(int n)
     assert(0, "unsupported nubmer of sides");
 }
 
-@Name("nGonTriangReps") unittest
+@Name("nGonTriangReps") pure @safe unittest
 {
     foreach(n; 3 .. 8)
     {
@@ -1580,7 +1580,7 @@ int[][][] nGonTriangs()(int n)
     return ans.sort.uniq.array;
 }
 ///
-@Name("nGonTriangs") unittest
+@Name("nGonTriangs") pure @safe unittest
 {
     // import std.stdio : writeln;
     // 7.nGonTriangs.each!writeln;
@@ -1603,7 +1603,7 @@ template isInputRangeOf(T, E)
     enum isInputRangeOf = isInputRange!T && is(ElementType!T : E);
 }
 ///
-@Name("isInputRangeOf") unittest
+@Name("isInputRangeOf") pure @safe unittest
 {
     alias AI = int[];
     alias ACI = const(int)[];
