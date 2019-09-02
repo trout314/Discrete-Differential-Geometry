@@ -113,25 +113,19 @@ alias isIRofIRof = isInputRangeOfInputRangeOf;
 }
 
 ///
-@Name("toHash (@safe nothrow)") @safe unittest
+@Name("toHash (@safe)") @safe unittest
 {
     auto sc1 = simplicialComplex([[4,5], [1,2,3], [2,3,4], [5,6]]);
-    auto sc2 = simplicialComplex([[4,5], [5,6], [2,3,4], [1,2,3]]);
-    
-    () nothrow @safe {
-        assert(sc1.toHash == sc2.toHash);
-    }();
+    auto sc2 = simplicialComplex([[4,5], [5,6], [2,3,4], [1,2,3]]);  
+    assert(sc1.toHash == sc2.toHash);   // Note: this isn't pure
 
     sc1.insertFacet([6,7]);
-
     // Note: this assert *could* fail, but useful check anyway!
-    () nothrow @safe {
-        assert(sc1.toHash != sc2.toHash);
-    }();
-}
+    assert(sc1.toHash != sc2.toHash);
+} 
 
 ///
-@Name("works as AA KeyType") @safe unittest
+@Name("works as AA KeyType") pure @safe unittest
 {
     int[SimplicialComplex!()] aa;
     auto sc1 = simplicialComplex([[4,5]]);
@@ -172,7 +166,7 @@ alias isIRofIRof = isInputRangeOfInputRangeOf;
     sc.facets(-1).throwsWithMsg("expected a non-negative dimension");
 }
 
-@Name("additional tests") @safe unittest
+@Name("additional tests") pure @safe unittest
 {
     alias sComp = simplicialComplex;
 
@@ -209,7 +203,7 @@ alias isIRofIRof = isInputRangeOfInputRangeOf;
     }
 }
 
-@Name("insertFacet") @safe unittest
+@Name("insertFacet") pure @safe unittest
 {
     auto sc = SimplicialComplex!()();
     sc.insertFacet([1,2]);
@@ -222,7 +216,7 @@ alias isIRofIRof = isInputRangeOfInputRangeOf;
     sc.facets.shouldBeSameSetAs([[1,2], [2,3,4], [1,5,6,7]]);
 }
 
-@Name("insertFacet/removeFacet") @safe unittest
+@Name("insertFacet/removeFacet") pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [1,3], [1,4], [4,5,6]]);
 
@@ -252,19 +246,15 @@ alias isIRofIRof = isInputRangeOfInputRangeOf;
     assert(sc3.facets.empty);
 }
 
-@Name("insertFacet!(No.checkForFacetFaces)") @safe unittest
+@Name("insertFacet!(No.checkForFacetFaces)") pure @safe unittest
 {
     SimplicialComplex!() sc;
     sc.insertFacet!(No.checkForFacetFaces)([1,2]);
     sc.insertFacet!(No.checkForFacetFaces)([3,4]);
+    sc.facets.shouldBeSameSetAs([[1,2],[3,4]]);
 
-    // TO DO: More tests here!
-
-    // sc.insertFacetRAW([3,4,5]);
-    // sc.insertFacetRAW([3,4,6]);
-
-    // import std.stdio : writeln;
-    // writeln(sc);
+    sc.insertFacet!(No.checkForFacetFaces)([2,3,5]);
+    sc.facets.shouldBeSameSetAs([[1,2],[3,4],[2,3,5]]);
 }
 
 /*******************************************************************************
@@ -573,7 +563,7 @@ public:
 }
 
 ///
-@Name("randomFacetOfDim") unittest
+@Name("randomFacetOfDim") @safe unittest
 {
     auto sc = simplicialComplex([[1,2,3]]);
     assert(sc.randomFacetOfDim(2) == [1,2,3]);
@@ -617,7 +607,7 @@ public:
     assert(!simplicialComplex([[1,2]]).containsFacet([2]));
 }
 
-@Name("opEquals (pure @safe)") pure @safe unittest
+@Name("opEquals (pure @safe nothrow)") pure @safe unittest
 {
     auto s1 = simplicialComplex([[1,2], [2,3,4]]);
     auto s2 = simplicialComplex([[1,3], [2,3,4]]);
@@ -625,7 +615,7 @@ public:
     auto s4 = simplicialComplex([[2,3,4], [1,2]]);
     auto s5 = simplicialComplex([[1,2], [2,3,4,5]]);
 
-    () pure @safe {
+    () pure @safe nothrow {
         assert(s1 != s2);
         assert(s2 != s3);
         assert(s1 != s3);
@@ -661,7 +651,7 @@ if (isInputRange!F && isInputRange!(ElementType!F))
     return SimplicialComplex!(Unqual!(ElementType!(ElementType!F)))(initialFacets);
 }
 ///
-@Name("simplicialComplex") @safe unittest
+@Name("simplicialComplex (pure @safe)") pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,3], [3,4,5], [6,7,8]]);
     sc.facets.shouldBeSameSetAs([[1,2], [2,3], [3,4,5], [6,7,8]]);
@@ -774,12 +764,12 @@ if (isInputRange!F && isInputRange!(ElementType!F))
 }
 
 ///
-@Name("removeFacet (pure /* nothrow @nogc */ @safe)") pure @safe unittest
+@Name("removeFacet (pure @safe)") pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,4,5]]);
     int[2] edge = [1,2];
 
-    () pure /* nothrow @nogc */ @safe {
+    () pure @safe {
         sc.removeFacet(edge[]);
     }();  
 }
@@ -1002,7 +992,7 @@ SimplicialComplex!Vertex loadSimplicialComplex(Vertex = int)(string fileName)
 }
 
 ///
-@Name("loadSimplicialComplex") unittest
+@Name("loadSimplicialComplex") @system unittest
 {
     auto sc = loadSimplicialComplex(
         "data/manifold_sampler_unittest_load.dat");
