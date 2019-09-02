@@ -957,6 +957,7 @@ public:
     }();
 }
 
+/// Exception thrown when loading a simplicial complex from a file fails
 class BadSimpCompLoad : Exception
 {
     this(string msg, string file = __FILE__, size_t line = __LINE__) {
