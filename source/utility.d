@@ -1432,7 +1432,7 @@ if (isInputRange!R)
 /******************************************************************************
 Returns the set of symmetries of the n-gon.
 */
-auto nGonSymmetries(int n)
+auto nGonSymmetries()(int n)
 {
     return chain(nGonRotations(n), nGonReflections(n));
 }
@@ -1491,7 +1491,7 @@ auto nGonReflections(int n)
 Returns the set distinct triangulations of the labelled n-gon [0,1, ... ,n-1]
 up to the action of the isometry group of the n-gon
 */
-const(int)[][][] nGonTriangReps(int n)
+const(int)[][][] nGonTriangReps()(int n)
 {
     if(n == 3)
     {
@@ -1567,7 +1567,7 @@ const(int)[][][] nGonTriangReps(int n)
     }
 }
 
-int[][][] nGonTriangs(int n)
+int[][][] nGonTriangs()(int n)
 {
     int[][][] ans;
     foreach(rep; nGonTriangReps(n))
