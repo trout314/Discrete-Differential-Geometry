@@ -146,7 +146,10 @@ public:
         
             if(simplex.length <= dimension - 1)
             {
-                totSqrDegrees[simplex.length - 1] += 2*degreeMap[simplex] - 1;
+                int i = simplex.length.to!int - 1;
+                assert(i >= 0);
+                assert(i < totSqrDegrees.length);
+                totSqrDegrees[i] += 2*degreeMap[simplex] - 1;
             }
         
             if(simplex.length == dimension)
@@ -1351,24 +1354,12 @@ string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
         "found a codimension-3 simplex whose link is not a 2-sphere"
     ]);
 
+    // TO DO: This test trips an internal assert. I don't want to remove
+    // the internal assert. Decide what to do...
+
     // auto m1 = Manifold!1([[0,1],[1,2],[0,2],[0,3]]);
-    // m3.findProblems.map!array.shouldBeSameSetAs([
-    //     "found a codimension-3 simplex whose link is not a 2-sphere"
-    // ]);
-
-
-    //---------------------------
-}
-
-pure @safe unittest
-{
-    // auto m3 = standardSphere!3;
-    // m3.simpComp.insertFacet([5,6,7,8]);
-
-//    m3.simpComp.insertFacet([5,6,7]).throwsWithMsg("d");
-
     // m3.findProblems.shouldBeSameSetAs([
-    //     "hello!"
+    //     "found ...."
     // ]);
 }
 
