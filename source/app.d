@@ -101,90 +101,120 @@ else
     // }
 
     //------------- SAMPLE MANIFOLDS BY OBJECTIVE  -----------------------
-    void main(string[] args)
-    {        
-        import manifold : loadManifold, Manifold, findProblems, saveTo, saveEdgeGraphTo, standardSphere;
-        import sampler : Parameters, sample, Sampler;
-        import std.algorithm : each, findSplit;
-        import std.conv : to;
-        import std.getopt : getopt, defaultGetoptPrinter;
-        import std.stdio : write, writeln, writefln, File;
-        import std.datetime.stopwatch : StopWatch;
-        import std.format : format;
-        import std.range : empty;
-        import std.uuid : randomUUID;
-        import utility : flatDegreeInDim;
+    // void main(string[] args)
+    // {        
+    //     import manifold : loadManifold, Manifold, findProblems, saveTo, saveEdgeGraphTo, standardSphere;
+    //     import sampler : Parameters, sample, Sampler;
+    //     import std.algorithm : each, findSplit;
+    //     import std.conv : to;
+    //     import std.getopt : getopt, defaultGetoptPrinter;
+    //     import std.stdio : write, writeln, writefln, File;
+    //     import std.datetime.stopwatch : StopWatch;
+    //     import std.format : format;
+    //     import std.range : empty;
+    //     import std.uuid : randomUUID;
+    //     import utility : flatDegreeInDim;
 
-        enum dim = 3;
+    //     enum dim = 3;
 
-        Parameters params;
-        with (params)
-        {
-            saveFilePrefix = "S3_128k_V1e-2_TRY2";
+    //     Parameters params;
+    //     with (params)
+    //     {
+    //         saveFilePrefix = "test";
 
-            numFacetsTarget = 128_000;
-            hingeDegreeTarget = flatDegreeInDim[3];
+    //         numFacetsTarget = 100;
+    //         hingeDegreeTarget = flatDegreeInDim[3];
             
-            numFacetsCoef = 0.01;
-            numHingesCoef = 0.0;
-            hingeDegreeVarCoef = 0.0;
-            cd3DegVarCoef = 0.0;
-            maxSweeps = 150;
+    //         numFacetsCoef = 0.01;
+    //         numHingesCoef = 0.0;
+    //         hingeDegreeVarCoef = 0.0;
+    //         cd3DegVarCoef = 0.0;
+    //         maxSweeps = 10;
 
-            // Time increment (in units of sweeps) used for finer-graned intervals
-            dt = 0.1;
-            dtPerHistory = 50;
-            dtPerFileReport = 50;
-            dtPerSave = 250;
+    //         // Time increment (in units of sweeps) used for finer-graned intervals
+    //         dt = 0.1;
+    //         dtPerHistory = 50;
+    //         dtPerFileReport = 50;
+    //         dtPerSave = 250;
 
-            triesPerStdoutReport = 100_000;
+    //         triesPerStdoutReport = 200;
 
-            useHingeMoves = true;
-            disableGC = true;
-            triesPerCollect = 500;
-        }
+    //         useHingeMoves = true;
+    //         disableGC = true;
+    //         triesPerCollect = 50;
+    //     }
 
-        auto runID = randomUUID();
+    //     auto runID = randomUUID();
 
-        // TO DO: add option to compute dual graph, filter nodes by
-        // by various manifold properties etc
+    //     // TO DO: add option to compute dual graph, filter nodes by
+    //     // by various manifold properties etc
 
-        string mfdFile;
-        auto helpInformation = getopt(args,
-            "manifoldFile|m", &mfdFile);
-        if (helpInformation.helpWanted)
+    //     string mfdFile;
+    //     auto helpInformation = getopt(args,
+    //         "manifoldFile|m", &mfdFile);
+    //     if (helpInformation.helpWanted)
+    //     {
+    //         // TO DO: some actual help info here!
+    //         defaultGetoptPrinter("TO DO: Help info",
+    //         helpInformation.options);
+    //     }
+
+    //     // params.saveFilePrefix = mfdFile.findSplit(".mfd")[0];
+    //     // if (params.saveFilePrefix.empty)
+    //     // {
+    //     //     params.saveFilePrefix = runID.to!string[0..8];
+    //     // }
+
+    //     StopWatch timer;
+    //     timer.start;
+    //     Manifold!dim mfd;
+    //     if (!mfdFile.empty)
+    //     {
+    //         "Loading manifold file: %s".writefln(mfdFile);
+    //         "... ".write;
+    //         mfd = loadManifold!dim(mfdFile);
+    //         "done. Took %s.".format(timer.peek)
+    //             .findSplit(",")[0].findSplit("and")[0].writeln;
+    //         timer.reset;
+    //     }
+    //     else
+    //     {
+    //         // TO DO: User chosen options from library of triangs
+    //         mfd = standardSphere!dim;
+    //     }
+
+    //     auto s = Sampler!(int, dim)(mfd);
+    //     s.setParameters(params);
+    //     s.sample;
+    // }
+
+    void main()
+    {
+        import std.stdio : writeln;
+        import manifold : Manifold, standardSphere, pachnerMoves, findCoCenter, PachnerMove;
+        import std.range : iota;
+
+        auto m = Manifold!2([[0,1,2],[0,1,3],[0,2,3],[1,2,4],[1,3,4],[2,3,4]]);
+
+        foreach(move; m.pachnerMovesList)
         {
-            // TO DO: some actual help info here!
-            defaultGetoptPrinter("TO DO: Help info",
-            helpInformation.options);
+            move.writeln;
         }
+        m.moveCenterIndx.writeln;
+        m.moveCoCenterIndices.writeln;
 
-        // params.saveFilePrefix = mfdFile.findSplit(".mfd")[0];
-        // if (params.saveFilePrefix.empty)
-        // {
-        //     params.saveFilePrefix = runID.to!string[0..8];
-        // }
+        // m.removeMovesWithCoCenter([1,2,3]);
+        // m.removeMovesWithCoCenter([0,4]);
+        m.removeMoveWithCenter([1,2]);
 
-        StopWatch timer;
-        timer.start;
-        Manifold!dim mfd;
-        if (!mfdFile.empty)
+        writeln;
+
+        foreach(move; m.pachnerMovesList)
         {
-            "Loading manifold file: %s".writefln(mfdFile);
-            "... ".write;
-            mfd = loadManifold!dim(mfdFile);
-            "done. Took %s.".format(timer.peek)
-                .findSplit(",")[0].findSplit("and")[0].writeln;
-            timer.reset;
+            move.writeln;
         }
-        else
-        {
-            // TO DO: User chosen options from library of triangs
-            mfd = standardSphere!dim;
-        }
+        m.moveCenterIndx.writeln;
+        m.moveCoCenterIndices.writeln;
 
-        auto s = Sampler!(int, dim)(mfd);
-        s.setParameters(params);
-        s.sample;
     }
 }

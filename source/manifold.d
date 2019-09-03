@@ -7,12 +7,12 @@ import std.algorithm : all, any, copy, canFind, each, equal, filter, find,
 import std.conv : to;
 import std.exception : assertThrown;
 import std.range : array, back, chain, chunks, cycle, ElementType, empty,
-    enumerate, front, iota, isInputRange, isOutputRange, only, popBack, popFront, put, save, slide, take, walkLength;
+    enumerate, front, iota, isInputRange, isOutputRange, only, popBack, popFront, put, replace, save, slide, take, walkLength, zip;
 import unit_threaded : Name, shouldEqual, shouldBeSameSetAs;
 import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf,
     isSubsetOf, nGonTriangs, productUnion, SmallMap, StackArray,
     staticIota, subsets, subsetsOfSize, throwsWithMsg, toImmutStaticArray,
-    toStackArray, toStaticArray;
+    toStackArray, toStaticArray, swapPop;
 import std.stdio : File, writeln;
 import std.typecons : Flag, No, Yes;
 import std.math : approxEqual;
@@ -78,6 +78,62 @@ private:
 public:
     // TO DO: Make private
     PachnerMove!(dimension_, Vertex_)[] pachnerMovesList;
+    size_t[Vertex[]] moveCenterIndx;
+    size_t[][Vertex[]] moveCoCenterIndices;
+
+    void removeMovesWithCoCenter(S)(S coCenter_) if (isIRof!(S, const(Vertex)))
+    {
+        auto toRemove = this.moveCoCenterIndices[coCenter_.array].array;
+        foreach(j; toRemove)
+        {
+            moveCenterIndx.remove(pachnerMovesList[j].center.array);
+        }
+        moveCoCenterIndices.remove(coCenter_.array);
+
+        size_t numToKeep = this.pachnerMovesList.length - toRemove.length;
+        
+        auto newMoveList = this.pachnerMovesList[0..numToKeep];
+        auto oldMoveList = this.pachnerMovesList[numToKeep..$];
+    
+        // need to swap out any moves we want removed with ones we want to keep
+        auto toEvict = toRemove.filter!(i => i < numToKeep);
+
+        // the ones we don't must exist in the tail
+        auto toRescue = iota(numToKeep, numToKeep + oldMoveList.length)
+            .filter!(i => !pachnerMovesList[i].coCenter.equal(coCenter_));
+
+        assert(toRescue.walkLength == toEvict.walkLength);
+        foreach(i,j; zip(toRescue, toEvict))
+        {
+            pachnerMovesList[j] = pachnerMovesList[i];
+            moveCenterIndx[pachnerMovesList[i].center.array] = j;
+            moveCoCenterIndices[pachnerMovesList[i].coCenter.array]
+                = moveCoCenterIndices[pachnerMovesList[i].coCenter.array].replace(i, j);
+        }
+
+        pachnerMovesList = newMoveList;
+    }
+
+    void removeMoveWithCenter(S)(S center_) if (isIRof!(S, const(Vertex)))
+    {
+        auto indx = this.moveCenterIndx[center_.array];
+        auto removedMove = pachnerMovesList[indx];
+        auto removedCoCen = removedMove.coCenter.array;
+
+        auto endIndx = pachnerMovesList.length - 1;
+        auto endMove = pachnerMovesList[endIndx];
+        auto endCen = endMove.center.array;
+        auto endCoCen = endMove.coCenter.array;
+
+        pachnerMovesList.swapPop(indx);
+
+        this.moveCenterIndx[endCen] = indx;
+        this.moveCoCenterIndices[endCoCen] = 
+            this.moveCoCenterIndices[endCoCen].replace(endIndx, indx);
+        this.moveCenterIndx.remove(center_);
+
+        // TO DO: AHA! Combine updates into update-on-doMove
+    }
 
     /// Dimension of the manifold
     static immutable dimension = dimension_;
@@ -99,6 +155,11 @@ public:
             totSqrDegrees[d] = simplices(d).map!(s => this.degree(s)^^2).sum;
         }
         pachnerMovesList = this.pachnerMoves;
+        foreach(indx, mv; pachnerMovesList.enumerate)
+        {
+            this.moveCenterIndx[mv.center.array] = indx;
+            this.moveCoCenterIndices[mv.coCenter.array] ~= indx;
+        }
     }
 
     this(this) pure @safe
@@ -196,9 +257,6 @@ public:
                 }
                 assert(ridge in ridgeLinks);
             }
-
-            // TO DO: remove or add (simplex, coCenter) to list
-            // of pachner moves if needed, due to degree change
         }
         assert(toNSimp(facet) in degreeMap);
     }
@@ -284,7 +342,8 @@ public:
 }
 
 /*******************************************************************************
-Returns a list of all the possible pachner moves for the given manifold
+Returns a list of all the possible pachner moves except for the 1->(dim+1) moves
+that are valid in this manifold. (Note that 1->(dim+1) moves are always valid.)
 */
 PachnerMove!(dim, Vertex)[] pachnerMoves(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) mfd)
@@ -292,15 +351,18 @@ PachnerMove!(dim, Vertex)[] pachnerMoves(Vertex, int dim)(
     PachnerMove!(dim, Vertex)[] result;
     foreach(simp_, deg; mfd.degreeMap)
     {
-        auto simp = simp_[];
-        if(deg == mfd.dimension + 2 - simp.walkLength)
+        if(simp_.length < dim + 1)
         {
-            auto coCenter = mfd.findCoCenter(simp);
-            if(coCenter.empty || (!mfd.contains(coCenter)))
+            auto simp = simp_[];
+            if(deg == mfd.dimension + 2 - simp.walkLength)
             {
-                result ~= PachnerMove!(dim, Vertex)(simp, coCenter);
+                auto coCenter = mfd.findCoCenter(simp);
+                if(coCenter.empty || (!mfd.contains(coCenter)))
+                {
+                    result ~= PachnerMove!(dim, Vertex)(simp, coCenter);
+                }
             }
-        }           
+        }
     }
     return result;
 }
@@ -330,8 +392,8 @@ public:
 private:
     size_t centerLen;
     Vertex[dim+2] vertices;
-    const(Vertex)[] getCenter()() {return vertices[0..centerLen];}
-    const(Vertex)[] getCoCenter()() {return vertices[centerLen..$];}
+    const(Vertex)[] getCenter()() const {return vertices[0..centerLen];}
+    const(Vertex)[] getCoCenter()() const {return vertices[centerLen..$];}
 }
 
 
@@ -353,13 +415,9 @@ private:
 
     octahedron.pachnerMoves.map!(mv => mv.center.array).shouldBeSameSetAs(
         [[0,1], [0,2], [0,3], [0,4], [1,2], [1,4],  // 1-simplices
-         [1,5], [2,3], [2,5], [3,4], [3,5], [4,5],
-         [0,1,2], [0,1,4], [0,2,3], [0,3,4],        // 2-simplices
-         [1,2,5], [1,4,5], [2,3,5], [3,4,5]]);      
+         [1,5], [2,3], [2,5], [3,4], [3,5], [4,5]]);      
 
-    tetrahedron.pachnerMoves.map!(mv => mv.center.array).shouldBeSameSetAs(
-        [[1, 2, 3], [1, 2, 4], [1, 3, 4], [2, 3, 4]]);
-
+    tetrahedron.pachnerMoves.map!(mv => mv.center.array).empty.shouldEqual(true);
     tetrahedron.doPachner([1,2,3], [5]);
 
     // TO DO: FINISH CHECKS!
@@ -395,9 +453,8 @@ private:
     auto m = Manifold!2(
         [[1,2,3], [1,2,4], [1,3,4], [2,3,5], [2,4,5],[3,4,5]]);
 
-    m.pachnerMoves.map!(mv => mv.center.array).shouldBeSameSetAs([[1], [2, 3], [2, 3, 5],
-        [1, 3, 4], [1, 2, 3], [5], [2, 4, 5], [3, 4, 5], [1, 2, 4], [2, 4],
-        [3, 4]]);
+    m.pachnerMoves.map!(mv => mv.center.array).shouldBeSameSetAs(
+        [[1], [5], [2, 3], [2, 4], [3, 4]]);
 
     auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4],
         [1,2,5], [2,3,5], [3,4,5], [1,4,5]]);
@@ -405,8 +462,7 @@ private:
     assert(octahedron.simplices(0).all!(s => octahedron.degree(s) == 4));
 
     octahedron.pachnerMoves.map!(mv => mv.center.array).shouldBeSameSetAs(
-        [[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5], [2,3,5], [3,4,5], [1,4,5],
-        [2, 3], [0, 1], [1, 5], [4, 5], [0, 3], [1, 4],
+        [[2, 3], [0, 1], [1, 5], [4, 5], [0, 3], [1, 4],
         [1, 2], [0, 4], [0, 2], [2, 5], [3, 5], [3, 4]]);
 }
 
@@ -512,6 +568,9 @@ if (isIRof!(C, const(Vertex)) && isIRof!(D, const(Vertex)))
     oldPiece.each!(f => manifold.removeFacet(f));
     newPiece.each!(f => manifold.insertFacet(f));
     manifold.numSimplices.modifyFVector(cenLen);
+
+    // TO DO: remove or add (simplex, coCenter) to list
+    // of pachner moves if needed, due to degree change
 
     // TO DO: Do sanity checking for manifold
 }

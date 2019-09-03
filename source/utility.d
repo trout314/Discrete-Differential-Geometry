@@ -1656,3 +1656,11 @@ template isInputRangeOfInputRangeOf(T, E)
     static assert(isInputRangeOfInputRangeOf!(RoR, uint));
     static assert(!isInputRangeOfInputRangeOf!(RoR, string));
 }
+
+
+void swapPop(T)(ref T[] unorderedArray, size_t index)
+{
+    assert(index < unorderedArray.length);
+    unorderedArray[index] = unorderedArray[$-1];
+    unorderedArray = unorderedArray[0..$-1];
+}
