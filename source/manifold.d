@@ -7,7 +7,7 @@ import std.algorithm : all, any, copy, canFind, each, equal, filter, find,
 import std.conv : to;
 import std.exception : assertThrown;
 import std.range : array, back, chain, chunks, cycle, ElementType, empty,
-    enumerate, front, iota, isInputRange, isOutputRange, only, popBack, popFront, put, replace, save, slide, take, walkLength, zip;
+    enumerate, front, iota, isInputRange, isOutputRange, only, popBack, popFront, put, replace, retro, save, slide, take, walkLength, zip;
 import unit_threaded : Name, shouldEqual, shouldBeSameSetAs;
 import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf,
     isSubsetOf, nGonTriangs, productUnion, SmallMap, StackArray,
@@ -23,7 +23,7 @@ import std.traits : Unqual;
 import std.random : uniform;
 
 
-import std.algorithm : copy, map;
+import std.algorithm : countUntil, copy, map;
 
 alias isIRof = isInputRangeOf;
 alias isIRofIRof = isInputRangeOfInputRangeOf;
@@ -80,59 +80,31 @@ public:
     PachnerMove!(dimension_, Vertex_)[] pachnerMovesList;
     size_t[Vertex[]] moveCenterIndx;
     size_t[][Vertex[]] moveCoCenterIndices;
-
-    void removeMovesWithCoCenter(S)(S coCenter_) if (isIRof!(S, const(Vertex)))
+    void modifyListOnMove(PachnerMove!(dimension, Vertex) mv)
     {
-        auto toRemove = this.moveCoCenterIndices[coCenter_.array].array;
-        foreach(j; toRemove)
+        auto indx = pachnerMovesList.countUntil(mv);
+        assert(indx>0, "illegal pachner move");
+        assert(mv.center in moveCenterIndx, "illegal pachner move");
+        assert(mv.coCenter in moveCoCenterIndices, "illegal pachner move");
+
+        foreach(i; moveCoCenterIndices[mv.coCenter].retro)
         {
-            moveCenterIndx.remove(pachnerMovesList[j].center.array);
-        }
-        moveCoCenterIndices.remove(coCenter_.array);
-
-        size_t numToKeep = this.pachnerMovesList.length - toRemove.length;
-        
-        auto newMoveList = this.pachnerMovesList[0..numToKeep];
-        auto oldMoveList = this.pachnerMovesList[numToKeep..$];
-    
-        // need to swap out any moves we want removed with ones we want to keep
-        auto toEvict = toRemove.filter!(i => i < numToKeep);
-
-        // the ones we don't must exist in the tail
-        auto toRescue = iota(numToKeep, numToKeep + oldMoveList.length)
-            .filter!(i => !pachnerMovesList[i].coCenter.equal(coCenter_));
-
-        assert(toRescue.walkLength == toEvict.walkLength);
-        foreach(i,j; zip(toRescue, toEvict))
-        {
-            pachnerMovesList[j] = pachnerMovesList[i];
-            moveCenterIndx[pachnerMovesList[i].center.array] = j;
-            moveCoCenterIndices[pachnerMovesList[i].coCenter.array]
-                = moveCoCenterIndices[pachnerMovesList[i].coCenter.array].replace(i, j);
+            auto lastIndx = pachnerMovesList.length - 1;
+            auto lastMove = pachnerMovesList[lastIndx];
+            auto goneMove = pachnerMovesList[i];
+            moveCenterIndx[lastMove.center] = i;
+            lastMove.coCenter.writeln;
+            moveCoCenterIndices[lastMove.coCenter]
+                = moveCoCenterIndices[lastMove.coCenter].replace(lastIndx, i);
+            this.pachnerMovesList.swapPop(i);
+            moveCoCenterIndices.remove(goneMove.coCenter);
+            moveCenterIndx.remove(goneMove.center);
         }
 
-        pachnerMovesList = newMoveList;
-    }
-
-    void removeMoveWithCenter(S)(S center_) if (isIRof!(S, const(Vertex)))
-    {
-        auto indx = this.moveCenterIndx[center_.array];
-        auto removedMove = pachnerMovesList[indx];
-        auto removedCoCen = removedMove.coCenter.array;
-
-        auto endIndx = pachnerMovesList.length - 1;
-        auto endMove = pachnerMovesList[endIndx];
-        auto endCen = endMove.center.array;
-        auto endCoCen = endMove.coCenter.array;
-
-        pachnerMovesList.swapPop(indx);
-
-        this.moveCenterIndx[endCen] = indx;
-        this.moveCoCenterIndices[endCoCen] = 
-            this.moveCoCenterIndices[endCoCen].replace(endIndx, indx);
-        this.moveCenterIndx.remove(center_);
-
-        // TO DO: AHA! Combine updates into update-on-doMove
+        auto newMove = typeof(mv)(mv.coCenter, mv.center);
+        pachnerMovesList ~= newMove;
+        moveCenterIndx[newMove.center.array] = pachnerMovesList.length - 1;
+        moveCoCenterIndices[newMove.coCenter.array] ~= pachnerMovesList.length - 1;
     }
 
     /// Dimension of the manifold

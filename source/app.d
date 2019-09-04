@@ -203,12 +203,10 @@ else
         m.moveCenterIndx.writeln;
         m.moveCoCenterIndices.writeln;
 
-        // m.removeMovesWithCoCenter([1,2,3]);
-        // m.removeMovesWithCoCenter([0,4]);
-        m.removeMoveWithCenter([1,2]);
-
-        writeln;
-
+        alias PM = PachnerMove!2;
+        auto mv = PM([1,2],[0,4]);
+        m.modifyListOnMove(mv);
+    
         foreach(move; m.pachnerMovesList)
         {
             move.writeln;
