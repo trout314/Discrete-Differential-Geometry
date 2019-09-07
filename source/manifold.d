@@ -7,12 +7,12 @@ import std.algorithm : all, any, copy, canFind, each, equal, filter, find,
 import std.conv : to;
 import std.exception : assertThrown;
 import std.range : array, back, chain, chunks, cycle, ElementType, empty,
-    enumerate, front, iota, isInputRange, isOutputRange, only, popBack, popFront, put, replace, retro, save, slide, take, walkLength, zip;
+    enumerate, front, iota, isInputRange, isOutputRange, only, popBack, popFront,
+    put, replace, retro, save, slide, take, walkLength, zip;
 import unit_threaded : Name, shouldEqual, shouldBeSameSetAs;
 import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf,
     isSubsetOf, nGonTriangs, productUnion, SmallMap, StackArray,
-    staticIota, subsets, subsetsOfSize, throwsWithMsg, toImmutStaticArray,
-    toStackArray, toStaticArray, swapPop;
+    staticIota, subsets, subsetsOfSize, throwsWithMsg, toStackArray, swapPop;
 import std.stdio : File, writeln;
 import std.typecons : Flag, No, Yes;
 import std.math : approxEqual;
@@ -21,6 +21,8 @@ import std.stdio : writeln, writefln;
 
 import std.traits : Unqual;
 import std.random : uniform;
+
+import std.array : staticArray;
 
 
 import std.algorithm : countUntil, copy, map;
@@ -67,44 +69,50 @@ private:
 
     static Ridge toRidge(R)(R range) if (isIRof!(R, Vertex_))
     {
-        return range.toStaticArray!dimension;
+        return range.staticArray!dimension;
     }
 
     alias Facet = Vertex[dimension_ + 1];
     static Facet toFacet(R)(R range) if (isIRof!(R, Vertex_))
     {
-        return range.toStaticArray!(dimension_ + 1);
+        return range.staticArray!(dimension_ + 1);
     }
 public:
     // TO DO: Make private
-    PachnerMove!(dimension_, Vertex_)[] pachnerMovesList;
+    PachnerMove!(dimension_, Vertex_)[] pachnerMoveList;
     size_t[Vertex[]] moveCenterIndx;
     size_t[][Vertex[]] moveCoCenterIndices;
-    void modifyListOnMove(PachnerMove!(dimension, Vertex) mv)
+    void modifyMoveDataOnMove(PachnerMove!(dimension, Vertex) mv)
     {
-        auto indx = pachnerMovesList.countUntil(mv);
-        assert(indx>0, "illegal pachner move");
+        assert(pachnerMoveList.canFind(mv), "illegal pachner move");
         assert(mv.center in moveCenterIndx, "illegal pachner move");
         assert(mv.coCenter in moveCoCenterIndices, "illegal pachner move");
 
-        foreach(i; moveCoCenterIndices[mv.coCenter].retro)
+        auto toRemove = moveCoCenterIndices[mv.coCenter].retro.array; 
+        foreach(i; toRemove)
         {
-            auto lastIndx = pachnerMovesList.length - 1;
-            auto lastMove = pachnerMovesList[lastIndx];
-            auto goneMove = pachnerMovesList[i];
+            auto lastIndx = pachnerMoveList.length - 1;
+            auto lastMove = pachnerMoveList[lastIndx];
+            auto goneMove = pachnerMoveList[i];
             moveCenterIndx[lastMove.center] = i;
-            lastMove.coCenter.writeln;
             moveCoCenterIndices[lastMove.coCenter]
                 = moveCoCenterIndices[lastMove.coCenter].replace(lastIndx, i);
-            this.pachnerMovesList.swapPop(i);
+            this.pachnerMoveList.swapPop(i);
             moveCoCenterIndices.remove(goneMove.coCenter);
             moveCenterIndx.remove(goneMove.center);
         }
 
-        auto newMove = typeof(mv)(mv.coCenter, mv.center);
-        pachnerMovesList ~= newMove;
-        moveCenterIndx[newMove.center.array] = pachnerMovesList.length - 1;
-        moveCoCenterIndices[newMove.coCenter.array] ~= pachnerMovesList.length - 1;
+        auto newMoves = [typeof(mv)(mv.coCenter, mv.center)];
+        foreach(newMove; newMoves)
+        {
+            pachnerMoveList ~= newMove;
+            moveCenterIndx[newMove.center.array] = pachnerMoveList.length - 1;
+            moveCoCenterIndices[newMove.coCenter.array] ~= pachnerMoveList.length - 1;
+        }
+
+        // TO DO: remove or add (simplex, coCenter) to list
+        // of pachner moves if needed, due to degree change
+
     }
 
     /// Dimension of the manifold
@@ -126,8 +134,8 @@ public:
         {
             totSqrDegrees[d] = simplices(d).map!(s => this.degree(s)^^2).sum;
         }
-        pachnerMovesList = this.pachnerMoves;
-        foreach(indx, mv; pachnerMovesList.enumerate)
+        pachnerMoveList = this.pachnerMoves;
+        foreach(indx, mv; pachnerMoveList.enumerate)
         {
             this.moveCenterIndx[mv.center.array] = indx;
             this.moveCoCenterIndices[mv.coCenter.array] ~= indx;
@@ -138,7 +146,7 @@ public:
     {
         ridgeLinks = ridgeLinks.dup;
         degreeMap = degreeMap.dup;
-        pachnerMovesList = pachnerMovesList.dup;
+        pachnerMoveList = pachnerMoveList.dup;
     }
 
     /***************************************************************************
@@ -514,8 +522,8 @@ if (isIRof!(C, const(Vertex)) && isIRof!(D, const(Vertex)))
     assert(!manifold.contains(coCenter));
  
     // Buffer for holding vertices in center (followed by coCenter)
-    const(Vertex)[(dim + 2)] cBuffer = chain(center, coCenter)
-        .toStaticArray!(dim + 2);
+    const(Vertex)[dim + 2] cBuffer = chain(center, coCenter)
+        .staticArray!(dim + 2);
  
     immutable cenLen = center.walkLength;
     immutable coCenLen = (dim + 2) - cenLen;
@@ -541,8 +549,7 @@ if (isIRof!(C, const(Vertex)) && isIRof!(D, const(Vertex)))
     newPiece.each!(f => manifold.insertFacet(f));
     manifold.numSimplices.modifyFVector(cenLen);
 
-    // TO DO: remove or add (simplex, coCenter) to list
-    // of pachner moves if needed, due to degree change
+    // TO DO: Call modifyMoveDataOnMove function...
 
     // TO DO: Do sanity checking for manifold
 }
@@ -1032,13 +1039,13 @@ if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
 
     static assert(dim >= 3,
         "no hinge moves in dimension less than 3");
-    auto hingeBuffer = hinge_.toStaticArray!(dim - 1);
+    auto hingeBuffer = hinge_.staticArray!(dim - 1);
     auto hinge = hingeBuffer[];
 
     // TO DO: Decide what to do about this magic constant 7
     // (It comes from nGonTriangs only supporting up to 7-gon.)
     auto deg = linkVertices_.walkLength.to!int;
-    Unqual!Vertex[7] linkVerticesBuff = linkVertices_.toStaticArray!7;
+    Unqual!Vertex[7] linkVerticesBuff = linkVertices_.staticArray!7;
     auto linkVertices = linkVerticesBuff[0 .. deg];
 
     auto linkEdgeBuffer = chain(linkVertices[], linkVertices.front.only)
@@ -1114,13 +1121,13 @@ if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
 
     static assert(dim >= 3,
         "no hinge moves in dimension less than 3");
-    auto hingeBuffer = hinge_.toStaticArray!(dim - 1);
+    auto hingeBuffer = hinge_.staticArray!(dim - 1);
     auto hinge = hingeBuffer[];
 
     // TO DO: Decide what to do about this magic constant 7
     // (It comes from nGonTriangs only supporting up to 7-gon.)
     auto deg = linkVertices_.walkLength.to!int;
-    Unqual!Vertex[7] linkVerticesBuff = linkVertices_.toStaticArray!7;
+    Unqual!Vertex[7] linkVerticesBuff = linkVertices_.staticArray!7;
     auto linkVertices = linkVerticesBuff[0 .. deg];
 
     auto linkEdgeBuffer = chain(linkVertices[], linkVertices.front.only)
@@ -1223,7 +1230,7 @@ if (isIRof!(K, const(Vertex)))
     // TO DO: Decide what to do about this magic constantS 7, 14
     // (It comes from nGonTriangs only supporting up to 7-gon.)
     auto deg = linkVertices_.walkLength.to!int;
-    Unqual!Vertex[7] linkVerticesBuff = linkVertices_.toStaticArray!7;
+    Unqual!Vertex[7] linkVerticesBuff = linkVertices_.staticArray!7;
     auto linkVertices = linkVerticesBuff[0 .. deg];
 
     auto linkEdgeBuffer = chain(linkVertices[], linkVertices.front.only)
@@ -1546,11 +1553,10 @@ the index of the triangulation in nGonTriangs for the chosen move. The vertices
 of the disk are given by linkVertices_ and these should be the link of hinge_
 in the manifold `mfd`
 */
-int getRandomHingeMove(Vertex, int dim, H, K)(
+int getRandomHingeMove(Vertex, int dim, K)(
     const ref Manifold!(dim, Vertex) mfd,
-    H hinge_,
     K linkVertices_)
-if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
+if (isIRof!(K, const(Vertex)))
 {
     auto deg = linkVertices_.walkLength.to!int;
     auto possibleDisks = deg.nGonTriangs.array;
@@ -1578,7 +1584,7 @@ unittest
     auto twoPts = [[6], [7]];
     auto mfd = Manifold!3(productUnion(octahedron, twoPts));
 
-    auto x = mfd.getRandomHingeMove([0,6], [1,2,3,4]);
+    auto x = mfd.getRandomHingeMove([1,2,3,4]);
     assert(x != -1); // both possible hinge moves should be valid
     assert(x == 0 || x == 1); // only two moves possible
     mfd.doHingeMove([0,6], [1,2,3,4], x);

@@ -11,6 +11,8 @@ import std.range : array, back, popBack, chain, cycle, drop, ElementType, empty,
 import std.traits : lvalueOf, rvalueOf, hasAliasing, Unqual;
 import unit_threaded : Name, shouldBeSameSetAs, shouldEqual;
 
+import std.array : staticArray;
+
 //dfmt off
 
 // I wish we could compute these, but acos dosn't work at compile time. These
@@ -1357,75 +1359,6 @@ ulong binomial(ulong n, ulong k) pure nothrow @nogc @safe
     // A few larger tests, answers verified with Mathematica
     assert(binomial(20, 10) == 184_756);
     assert(binomial(17, 7) == 19_448);
-}
-
-/******************************************************************************
-Returns a static array of specified size of immutable(T) which is initialized
-with the given range of T. 
-// TO DO: clean up docs
-*/
-immutable(ElementType!R)[arrayLength] toImmutStaticArray(size_t arrayLength, R)(R range)
-if (isInputRange!R)
-{
-    assert(range.walkLength <= arrayLength,
-        "range has too many elements for static array");
-
-    Unqual!(ElementType!R)[arrayLength] arrayToReturn;
-    copy(range, arrayToReturn[]);
-    return arrayToReturn;
-}
-///
-@Name("toImmutStaticArray (pure nothrow @nogc @safe)") pure nothrow @safe unittest
-{
-    auto expectedAns = [1,2,3,0,0];
-
-    () pure nothrow @nogc @safe
-    {
-        immutable(int)[5] immSlice = iota(1,4).toStaticArray!5;
-        auto buffer = iota(1,4).toImmutStaticArray!5;
-        static assert(is(typeof(buffer) == immutable(int)[5]));
-        assert(buffer[].equal(expectedAns));
-    } ();
-}
-///
-@Name("toImmutStaticArray (errors)") pure @system unittest
-{
-    iota(1,10).toImmutStaticArray!5.throwsWithMsg(
-        "range has too many elements for static array");
-}
-
-/******************************************************************************
-Returns a static array of specified size of immutable(T) which is initialized
-with the given range of T. 
-// TO DO: clean up docs
-*/
-ElementType!R[arrayLength] toStaticArray(size_t arrayLength, R)(R range)
-if (isInputRange!R)
-{
-    assert(range.walkLength <= arrayLength,
-        "range has too many elements for static array");
-
-    Unqual!(ElementType!R)[arrayLength] arrayToReturn;
-    copy(range, arrayToReturn[]);
-    return arrayToReturn;
-}
-///
-@Name("toStaticArray (pure nothrow @nogc @safe)") pure nothrow @safe unittest
-{
-    auto expectedAns = [1,2,3,0,0];
-
-    () pure nothrow @nogc @safe
-    {
-        auto buffer = iota(1,4).toStaticArray!5;
-        static assert(is(typeof(buffer) == int[5]));
-        assert(buffer[].equal(expectedAns));
-    } ();
-}
-///
-@Name("toStaticArray (errors)") pure @system unittest
-{
-    iota(1,10).toStaticArray!5.throwsWithMsg(
-        "range has too many elements for static array");
 }
 
 /******************************************************************************

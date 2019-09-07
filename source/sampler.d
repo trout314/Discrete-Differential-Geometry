@@ -19,8 +19,9 @@ import std.stdio : File, write, writef, writefln, writeln, stdout;
 import std.traits : isFloatingPoint;
 import std.variant : Algebraic, visit, tryVisit;
 import unit_threaded : Name;
-import utility : binomial, flatDegreeInDim, subsetsOfSize, subsets, toStackArray, toStaticArray, StackArray;
+import utility : binomial, flatDegreeInDim, subsetsOfSize, subsets, toStackArray, StackArray;
 
+import std.array : staticArray;
 
 /// struct containing the sampling parameters
 struct Parameters
@@ -508,7 +509,7 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
             s.unusedVertices ~= s.manifold_.fVector[0].to!int;
         }
 
-        auto facet_ = s.manifold_.randomFacetOfDim(dim).toStaticArray!(dim + 1);
+        auto facet_ = s.manifold_.randomFacetOfDim(dim).staticArray!(dim + 1);
         auto facet = facet_[];
 
         struct BistellarMove
@@ -610,7 +611,7 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
                     auto m_ = moves[mIndx_].peek!HingeMove;
 
                     auto lnkVerts = s.manifold.linkVerticesAtHinge(m_.hinge, facet);
-                    auto indx = s.manifold.getRandomHingeMove(m_.hinge.array.dup, lnkVerts.array.dup);
+                    auto indx = s.manifold.getRandomHingeMove(lnkVerts.array.dup);
                     if (indx >= 0)  // Some hinge move was valid
                     {
                         m_.hingeLink = lnkVerts;
