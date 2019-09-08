@@ -1052,8 +1052,7 @@ auto productUnion(Vertex = int, R1, R2)(R1 range1, R2 range2)
 if (isInputRangeOfInputRangeOf!(R1, const(Vertex)) 
     && isInputRangeOfInputRangeOf!(R2, const(Vertex))) 
 {
-    return cartesianProduct(range1, range2).map!(pair =>
-        merge(pair[0], pair[1]));
+    return cartesianProduct(range1, range2).map!(p => merge(p[0], p[1]));
 }
 ///
 @Name("productUnion") pure @safe unittest
