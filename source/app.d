@@ -1,3 +1,4 @@
+version(unittest) {} else {
 void main(string[] args)
 {
     import std.getopt : getopt;
@@ -191,21 +192,32 @@ void main(string[] args)
     else if (task=="test_pachner_moves")
     {    
         import std.stdio : writeln;
-        import manifold : Manifold, standardSphere, pachnerMoves, findCoCenter, PachnerMove;
+        import manifold : Manifold, standardSphere, pachnerMoves, findCoCenter, PachnerMove, doPachner;
         import std.range : iota;
 
-        auto m = Manifold!2([[0,1,2],[0,1,3],[0,2,3],[1,2,4],[1,3,4],[2,3,4]]);
+        // auto m = Manifold!2([[0,1,2],[0,1,3],[0,2,3],[1,2,4],[1,3,4],[2,3,4]]);
+        auto m = standardSphere!3;
 
-        foreach(move; m.pachnerMoveList)
+        "starting out ...".writeln;
+        foreach(move; m.pachnerMoves)
         {
             move.writeln;
         }
         m.moveCenterIndx.writeln;
         m.moveCoCenterIndices.writeln;
 
-        alias PM = PachnerMove!2;
-        auto mv = PM([1,3],[0,4]);
-        m.modifyMoveDataOnMove(mv);
+        m.doPachner([0,1,2,3], [5]);
+        "did 1->4 move ...".writeln;
+
+        foreach(move; m.pachnerMoves)
+        {
+            move.writeln;
+        }
+        m.moveCenterIndx.writeln;
+        m.moveCoCenterIndices.writeln;
+
+        m.doPachner([5], [0,1,2,3]);
+        "did 4->1 move ...".writeln;
     
         foreach(move; m.pachnerMoveList)
         {
@@ -217,6 +229,6 @@ void main(string[] args)
     else
     {
         import std.stdio : writeln;
-        writeln("unrecognized task! " ~ task);
+        writeln("unrecognized task: " ~ task);
     }
-}
+}}
