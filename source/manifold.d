@@ -25,7 +25,7 @@ import std.random : uniform;
 import std.array : staticArray;
 
 
-import std.algorithm : countUntil, copy, map;
+import std.algorithm : countUntil, copy, map, min;
 
 alias isIRof = isInputRangeOf;
 alias isIRofIRof = isInputRangeOfInputRangeOf;
@@ -84,11 +84,32 @@ public:
     size_t[][Vertex[]] moveCoCenterIndices;
     void modifyMoveDataOnMove(PachnerMove!(dimension, Vertex) mv)
     {
-        assert(pachnerMoveList.canFind(mv), "illegal pachner move");
-        assert(mv.center in moveCenterIndx, "illegal pachner move");
-        assert(mv.coCenter in moveCoCenterIndices, "illegal pachner move");
+        auto cen = mv.center;
+        auto coCen = mv.coCenter;
 
-        auto toRemove = moveCoCenterIndices[mv.coCenter].retro.array; 
+        auto cenLen = cen.walkLength.to!int;
+        assert(cenLen>0);
+
+        auto coCenLen = coCen.walkLength.to!int;
+        assert(coCenLen>0);
+
+        size_t[] toRemove = [];
+        if (coCenLen > 1)
+        {
+            assert(pachnerMoveList.canFind(mv), "illegal pachner move");
+            assert(cen in moveCenterIndx, "illegal pachner move");
+            assert(coCen in moveCoCenterIndices, "illegal pachner move");
+
+            toRemove = moveCoCenterIndices[coCen].retro.array;
+        }
+        auto newMoves = [typeof(mv)(coCen, cen)];
+
+        // TO DO: Find other new moves and moves to remove
+
+        auto cenBdry = cen.subsetsOfSize(cenLen-1).map!array.array;
+        auto coCenBdry = coCen.subsetsOfSize(coCenLen-1).map!array.array;
+        auto bdry = productUnion(cenBdry, coCenBdry).to!SimpComp;
+  
         foreach(i; toRemove)
         {
             auto lastIndx = pachnerMoveList.length - 1;
@@ -102,13 +123,17 @@ public:
             moveCenterIndx.remove(goneMove.center);
         }
 
-        auto newMoves = [typeof(mv)(mv.coCenter, mv.center)];
         foreach(newMove; newMoves)
         {
             pachnerMoveList ~= newMove;
             moveCenterIndx[newMove.center.array] = pachnerMoveList.length - 1;
             moveCoCenterIndices[newMove.coCenter.array] ~= pachnerMoveList.length - 1;
         }
+
+
+
+        // auto oldPiece = productUnion(coCenter_.subsetsOfSize(coCenterDim), center_.only);
+        // auto newPiece = productUnion(center_.subsetsOfSize(centerDim), coCenter_.only);
 
         // TO DO: remove or add (simplex, coCenter) to list
         // of pachner moves if needed, due to degree change
@@ -398,7 +423,12 @@ private:
          [1,5], [2,3], [2,5], [3,4], [3,5], [4,5]]);      
 
     tetrahedron.pachnerMoves.map!(mv => mv.center.array).empty.shouldEqual(true);
-    tetrahedron.doPachner([1,2,3], [5]);
+
+    // make this not an "illegal pachner move"
+    // tetrahedron.doPachner([1,2,3], [5]);
+
+    tetrahedron.doPachner([0,1], [2,4]);
+
 
     // TO DO: FINISH CHECKS!
     // octahedron.doPachner([1,2]);
@@ -415,16 +445,6 @@ private:
     Manifold!3(chain(sphere3, sphere3)).throwsWithMsg(
         "tried to insert a facet already in the manifold");
     
-}
-
-// More tests
-@Name("Manifold (additional)") pure @safe unittest
-{
-    static assert(!__traits(compiles, Manifold!2([["a", "bubba", "gump"]])));
-
-    auto m1 = Manifold!(1, string)([["a", "b"], ["b", "c"], ["a", "c"]]);
-    static assert(m1.dimension == 1);
-    static assert(is(m1.Vertex == string));
 }
 
 ///
@@ -548,6 +568,9 @@ if (isIRof!(C, const(Vertex)) && isIRof!(D, const(Vertex)))
     oldPiece.each!(f => manifold.removeFacet(f));
     newPiece.each!(f => manifold.insertFacet(f));
     manifold.numSimplices.modifyFVector(cenLen);
+
+    auto pm = PachnerMove!(dim, Vertex)(center_, coCenter_);
+    manifold.modifyMoveDataOnMove(pm);
 
     // TO DO: Call modifyMoveDataOnMove function...
 
