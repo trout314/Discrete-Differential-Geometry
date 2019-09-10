@@ -192,39 +192,43 @@ void main(string[] args)
     else if (task=="test_pachner_moves")
     {    
         import std.stdio : writeln;
-        import manifold : Manifold, standardSphere, pachnerMoves, findCoCenter, PachnerMove, doPachner;
+        import manifold : Manifold, standardSphere, computePachnerMoves, findCoCenter, PachnerMove, doPachner;
         import std.range : iota;
 
-        // auto m = Manifold!2([[0,1,2],[0,1,3],[0,2,3],[1,2,4],[1,3,4],[2,3,4]]);
-        auto m = standardSphere!3;
+        // trigonal bi-pyramid.
+        auto m = Manifold!2([[0,1,2],[0,1,3],[0,2,3],[1,2,4],[1,3,4],[2,3,4]]);
 
-        "starting out ...".writeln;
-        foreach(move; m.pachnerMoves)
-        {
-            move.writeln;
-        }
-        m.moveCenterIndx.writeln;
-        m.moveCoCenterIndices.writeln;
-
-        m.doPachner([0,1,2,3], [5]);
-        "did 1->4 move ...".writeln;
-
-        foreach(move; m.pachnerMoves)
-        {
-            move.writeln;
-        }
-        m.moveCenterIndx.writeln;
-        m.moveCoCenterIndices.writeln;
-
-        m.doPachner([5], [0,1,2,3]);
-        "did 4->1 move ...".writeln;
-    
+        "starting out with trigonal bipyramid...".writeln;
+        "pachnerMoveList:".writeln;
         foreach(move; m.pachnerMoveList)
         {
             move.writeln;
         }
-        m.moveCenterIndx.writeln;
-        m.moveCoCenterIndices.writeln;
+        writeln("moveCenterIndx: ", m.moveCenterIndx);
+        writeln("moveCoCenterIndices: ", m.moveCoCenterIndices);
+
+        "m.doPachner([0,1,2], [5]);".writeln;
+        m.doPachner([0,1,2], [5]);
+
+        "pachnerMoveList:".writeln;
+        foreach(move; m.pachnerMoveList)
+        {
+            move.writeln;
+        }
+        writeln("moveCenterIndx: ", m.moveCenterIndx);
+        writeln("moveCoCenterIndices: ", m.moveCoCenterIndices);
+
+        "m.doPachner([5], [0,1,2])".writeln;
+        m.doPachner([5], [0,1,2]);
+    
+        "m.doPachner([5], [0,1,2])".writeln;
+        foreach(move; m.pachnerMoveList)
+        {
+            move.writeln;
+        }
+        writeln("moveCenterIndx: ", m.moveCenterIndx);
+        writeln("moveCoCenterIndices: ", m.moveCoCenterIndices);
+
     }
     else
     {
