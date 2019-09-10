@@ -858,11 +858,14 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
         }
     }
 
+    static assert(isInputRange!SubsetsOfSizeRange);
+
     return SubsetsOfSizeRange((1 << subsetSize) - 1, set);
 }
 ///
 @Name("subsetsOfSize") pure @safe unittest
 {
+
     [1, 2, 3, 4].subsetsOfSize(1).map!array.shouldBeSameSetAs([[1], [2], [3], [4]]);
 
     [1, 2, 3, 4].subsetsOfSize(2).map!array.shouldBeSameSetAs([[1, 2], [1, 3],
