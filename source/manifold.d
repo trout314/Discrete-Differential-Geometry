@@ -82,8 +82,13 @@ public:
     PachnerMove!(dimension_, Vertex_)[] pachnerMoveList;
     size_t[Vertex[]] moveCenterIndx;
     size_t[][Vertex[]] moveCoCenterIndices;
-    void modifyMoveDataOnMove(PachnerMove!(dimension, Vertex) mv)
+
+    // TO DO: figure out how to make oldPiece and newPiece const
+    void modifyMoveDataOnMove(S)(PachnerMove!(dimension, Vertex) mv, ref S oldPiece, ref S newPiece)
     {
+        auto oldP = SimpComp(oldPiece);
+        auto newP = SimpComp(newPiece);
+
         auto cen = mv.center;
         auto coCen = mv.coCenter;
 
@@ -157,13 +162,39 @@ public:
         writeln("indices toUpdate = ", toUpdate);
         writeln("newMoves = ", newMoves);
 
-        // TO DO: make updates to existing cocenters
+        "updating moves...".writeln;
+        foreach(i; toUpdate)
+        {
+            auto thisCoCen = pachnerMoveList[i].coCenter;
+            auto thisCen = pachnerMoveList[i].center;
+            
+            // Indices pointing to old cocenter must be removed
+            foreach(k; moveCoCenterIndices[thisCoCen])
+            {
+                auto indx = pachnerMoveList[k].coCenter.countUntil(i);
+                if (indx > 0)
+                {
+                    auto newCoCen = pachnerMoveList[k].coCenter.dup;
+                    auto oldCen = pachnerMoveList[k].center.dup;
+                    newCoCen.swapPop(indx);
+                    pachnerMoveList[k] = typeof(mv)(oldCen, newCoCen);
+                }
+            }
+
+            auto newVerts = newP.link(thisCen).joiner.array.dup.sort.uniq.array;
+            auto oldVerts = oldP.link(thisCen).joiner.array.dup.sort.uniq.array;
+            assert(newVerts.walkLength == oldVerts.walkLength);
+            foreach(j; 0 .. newVerts.walkLength)
+            {               
+                thisCoCen = thisCoCen.replace(oldVerts[j].only, newVerts[j].only);
+            }
+            pachnerMoveList[i] = typeof(mv)(thisCen, thisCoCen);
+        }
 
 
         "removing moves...".writeln;
         foreach(i; toRemove.retro)
         {
-            i.writeln;
             writeln(pachnerMoveList);
             auto lastIndx = pachnerMoveList.length - 1;
             auto lastMove = pachnerMoveList[lastIndx];
@@ -171,7 +202,8 @@ public:
             moveCenterIndx[lastMove.center] = i;
             writeln(moveCoCenterIndices);
             moveCoCenterIndices[lastMove.coCenter]
-                = moveCoCenterIndices[lastMove.coCenter].replace(lastIndx, i);
+                = moveCoCenterIndices[lastMove.coCenter].replace(lastIndx.only, i.only);
+            
             this.pachnerMoveList.swapPop(i);
             moveCoCenterIndices.remove(goneMove.coCenter);
             moveCenterIndx.remove(goneMove.center);
@@ -186,10 +218,6 @@ public:
             moveCoCenterIndices[newMove.coCenter.array] ~= pachnerMoveList.length - 1;
         }
 
-
-
-        // auto oldPiece = productUnion(coCenter_.subsetsOfSize(coCenterDim), center_.only);
-        // auto newPiece = productUnion(center_.subsetsOfSize(centerDim), coCenter_.only);
 
         // TO DO: remove or add (simplex, coCenter) to list
         // of pachner moves if needed, due to degree change
@@ -622,11 +650,7 @@ if (isIRof!(C, const(Vertex)) && isIRof!(D, const(Vertex)))
 
     auto oldPiece = productUnion(coCenter_.subsetsOfSize(coCenterDim), center_.only);
     auto newPiece = productUnion(center_.subsetsOfSize(centerDim), coCenter_.only);
-    auto bdry = productUnion(center_.subsetsOfSize(centerDim), coCenter_.subsetsOfSize(coCenterDim));
-
-    // TO DO: figure out how many degree records we need on bdry
-    // and stack allocate needed data structure to pass into
-    // modifyMoveDataOnMove
+    // auto bdry = productUnion(center_.subsetsOfSize(centerDim), coCenter_.subsetsOfSize(coCenterDim));
 
     alias SC = SimplicialComplex!(Vertex, dim);
     alias MFD = Manifold!(dim, Vertex);
@@ -635,20 +659,18 @@ if (isIRof!(C, const(Vertex)) && isIRof!(D, const(Vertex)))
     assert(MFD(chain(oldPiece, newPiece)).numFacets == dim + 2);
     assert(manifold.star(center).map!array.array.sort
         .equal!equal(oldPiece.map!array.array.sort));
-    assert(SC(bdry).isPureOfDim(dim-1));
-    static foreach(d; dim.iota)
-    {
-        // assert(SC(bdry).simplices(d).length == dim + 2);
-    }
+    // assert(SC(bdry).isPureOfDim(dim-1));
+    // static foreach(d; dim.iota)
+    // {
+    //     // assert(SC(bdry).simplices(d).length == dim + 2);
+    // }
 
     oldPiece.each!(f => manifold.removeFacet(f));
     newPiece.each!(f => manifold.insertFacet(f));
     manifold.numSimplices.modifyFVector(cenLen);
 
     auto pm = PachnerMove!(dim, Vertex)(center_, coCenter_);
-    manifold.modifyMoveDataOnMove(pm);
-
-    // TO DO: Call modifyMoveDataOnMove function...
+    manifold.modifyMoveDataOnMove(pm, oldPiece, newPiece);
 
     // TO DO: Do sanity checking for manifold
 }

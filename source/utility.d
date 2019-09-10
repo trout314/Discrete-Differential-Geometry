@@ -1593,7 +1593,7 @@ template isInputRangeOfInputRangeOf(T, E)
 }
 
 
-void swapPop(T)(ref T[] unorderedArray, size_t index)
+void swapPop(S, T)(ref S[] unorderedArray, T index)
 {
     assert(index < unorderedArray.length);
     unorderedArray[index] = unorderedArray[$-1];
