@@ -192,7 +192,7 @@ public:
         }
 
 
-        "removing moves...".writeln;
+        "removing moves....".writeln;
         foreach(i; toRemove.retro)
         {
             writeln(pachnerMoveList);
