@@ -1,4 +1,6 @@
 version(unittest) {} else {
+
+import std.stdio : write, writeln, writefln;
 void main(string[] args)
 {
     import std.getopt : getopt;
@@ -192,42 +194,59 @@ void main(string[] args)
     else if (task=="test_pachner_moves")
     {    
         import std.stdio : writeln;
-        import manifold : Manifold, standardSphere, computePachnerMoves, findCoCenter, PachnerMove, doPachner;
-        import std.range : iota;
+        import moves : Move;
+        import manifold : Manifold, standardSphere, computePachnerMoves, findCoCenter, doPachner;
+        import std.range : enumerate, iota;
 
         // trigonal bi-pyramid.
-        auto m = Manifold!2([[0,1,2],[0,1,3],[0,2,3],[1,2,4],[1,3,4],[2,3,4]]);
+        auto m = standardSphere!2;
 
-        "starting out with trigonal bipyramid...".writeln;
-        "pachnerMoveList:".writeln;
-        foreach(move; m.pachnerMoveList)
-        {
-            move.writeln;
-        }
-        writeln("moveCenterIndx: ", m.moveCenterIndx);
-        writeln("moveCoCenterIndices: ", m.moveCoCenterIndices);
+        auto report = () {
+            writeln("   current manifold: ", m);
+            "   moves:".writeln;
+            foreach(indx, move; m.moves.enumerate)
+            {
+                write("      ", indx, ": ", move);
+                if (m.contains(move.coCenter))
+                {
+                    writeln(", blocked");
+                }
+                else
+                {
+                    writeln;
+                }
+            }
+            "   indxOfCenter:".writeln;
+            foreach(cen, indx; m.indxOfCenter)
+            {
+                writeln("      ", cen, ": ", indx);            
+            }
+            "   indicesOfCoCenter:".writeln;
+            foreach(coCen, indices; m.indicesOfCoCenter)
+            {
+                writeln("      ", coCen, ": ", indices);            
+            }
+        };
 
-        "m.doPachner([0,1,2], [5]);".writeln;
-        m.doPachner([0,1,2], [5]);
+        "starting out with standard 2-sphere... ".write;
+        m.writeln;
+        report();
 
-        "pachnerMoveList:".writeln;
-        foreach(move; m.pachnerMoveList)
-        {
-            move.writeln;
-        }
-        writeln("moveCenterIndx: ", m.moveCenterIndx);
-        writeln("moveCoCenterIndices: ", m.moveCoCenterIndices);
+        "m.doPachner([1,2,3], [4]);".writeln;
+        m.doPachner([1,2,3], [4]);
+        report();
 
-        "m.doPachner([5], [0,1,2])".writeln;
-        m.doPachner([5], [0,1,2]);
-    
-        "m.doPachner([5], [0,1,2])".writeln;
-        foreach(move; m.pachnerMoveList)
-        {
-            move.writeln;
-        }
-        writeln("moveCenterIndx: ", m.moveCenterIndx);
-        writeln("moveCoCenterIndices: ", m.moveCoCenterIndices);
+        "m.doPachner([1,2], [0,4]);".writeln;
+        m.doPachner([1,2], [0,4]);
+        report();
+
+        "m.doPachner([0,4], [1,2])".writeln;
+        m.doPachner([0,4], [1,2]);
+        report();    
+
+        "m.doPachner([4], [1,2,3]);".writeln;
+        m.doPachner([4], [1,2,3]);
+        report();
 
     }
     else

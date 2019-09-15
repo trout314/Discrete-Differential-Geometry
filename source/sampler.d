@@ -1,6 +1,8 @@
+module sampler;
+
 import algorithms : eulerCharacteristic;
 import core.memory : GC;
-import manifold : coCenter, degreeHistogram, degreeVariance, doHingeMove, findProblems, getRandomHingeMove, hasValidHingeMove, 
+import manifold : coCenter, degreeHistogram, degreeVariance, doHingeMove, findCoCenter, findProblems, getRandomHingeMove, hasValidHingeMove, 
     linkVerticesAtHinge, movesAtFacet, Manifold, saveEdgeGraphTo, saveTo, standardSphere, totalSquareDegree, doPachner, meanDegree, undoHingeMove;
 import simplicial_complex : fVector;
 import std.algorithm : all, each, filter, findSplit, joiner, map, max, mean, min, maxElement, sort, sum;
@@ -20,6 +22,8 @@ import std.traits : isFloatingPoint;
 import std.variant : Algebraic, visit, tryVisit;
 import unit_threaded : Name;
 import utility : binomial, flatDegreeInDim, subsetsOfSize, subsets, toStackArray, StackArray;
+
+import moves : Move;
 
 import std.array : staticArray;
 
@@ -381,24 +385,6 @@ public:
     }
 }
 
-void writeRegression(H, Writer)(auto ref Writer w, H history, real dt)
-{
-    static if (isFloatingPoint!(typeof(history[].front)))
-    {
-        auto filteredHist = history[].filter!(
-            val => !val.isNaN).array;
-    }
-    else
-    {
-        auto filteredHist = history[].filter!(
-            val => val != 0).array;
-    }
-    
-    auto nSweepsHistory = filteredHist.length.iota.retro.map!(i => dt * i);
-    auto result = linearRegress(filteredHist, nSweepsHistory, 1.repeat);
-    w.writef(" %8.1e ┊ %5.3f ║", result.betas.front, result.p.front);
-}
-
 real volumePenalty(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
 {
     immutable numF = s.manifold.fVector[dim];
@@ -512,25 +498,9 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         auto facet_ = s.manifold_.randomFacetOfDim(dim).staticArray!(dim + 1);
         auto facet = facet_[];
 
-        struct BistellarMove
-        {
-            double weight;
-            typeof(facet.subsets.front()) center;
-            typeof(s.manifold.coCenter(center, facet)) coCenter;            
-        }
+        alias Move_ = Move!(dim, Vertex);
 
-        struct HingeMove
-        {
-            double weight;
-            typeof(facet.subsets.front()) hinge;
-            typeof(s.manifold.linkVerticesAtHinge(hinge, facet)) hingeLink;
-            // used for storing hinge move used (if any)
-            // we start it at -2 because this is invalid, and not
-            // the invalid index -1 used by getRandomHingeMove
-            int diskIndex_ = -2;
-        }
 
-        alias Move_ = Algebraic!(BistellarMove, HingeMove);
         StackArray!(Move_, 2^^(dim + 1) - 1) moves;
 
         foreach(f; facet.subsets)
@@ -539,20 +509,19 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
             auto face = face_[];
             auto fDim = face.length - 1;
             auto fDeg = s.manifold.degree(face);
-            if ((fDim == dim) || (fDeg == dim + 1 - fDim))
+            if (fDim == dim)
             {
-                moves ~= Move_(BistellarMove());
-                auto m_ = moves.back.peek!BistellarMove;
-                m_.weight = 1.0 / (dim - fDim + 1);
-                m_.center = f;
+                moves ~= Move_(face, [s.unusedVertices.back]);
+            }
+            else if (fDeg == dim + 1 - fDim)
+            {
+                moves ~= Move_(face, s.manifold.findCoCenter(face));
             }
             // TO DO: Get rid of magic constant here. It's max deg hinge move.
-            else if ((fDim == dim - 2) && fDeg <= 7 && s.params.useHingeMoves)
+            else if ((fDim == dim - 2) && (fDeg <= 7) && s.params.useHingeMoves)
             {
-                moves ~= Move_(HingeMove());
-                auto m_ = moves.back.peek!HingeMove;
-                m_.weight = 1.0L / fDeg;
-                m_.hinge = f;
+                // TO DO: put in actual hinge move triangulation index
+                moves ~= Move_(face, s.manifold.findCoCenter(face), 0);
             }
         }
         
@@ -561,74 +530,49 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         bool doneChoosingMove = false;
         while(!doneChoosingMove)     // Choose a move involving the facet
         {
-            mIndx_ = moves[].map!(_ => _.visit!(m => m.weight)).dice;
+            mIndx_ = moves[].map!(move => move.weight).dice;
+            auto m_ = moves[mIndx_];
             bool moveInvalid = false;
 
-            // TO DO: Why can't I get ref access to work here?!
-            moves[mIndx_].visit!(
-                (BistellarMove m)
+            if(m_.isPachner)
+            {
+                if(m_.center.walkLength == dim + 1)
                 {
-                    auto m_ = moves[mIndx_].peek!BistellarMove;
-                    if(m_.center.walkLength == dim + 1)
+                    // (dim + 1) -> 1 moves are always valid
+                    doneChoosingMove = true;
+                }
+                else
+                {
+                    auto coMove = s.manifold_.coCenter(m_.center, facet);
+                    assert(!coMove.empty);
+                    if(!s.manifold.contains(coMove))
                     {
-                        // (dim + 1) -> 1 moves are always valid
                         doneChoosingMove = true;
-                        m_.coCenter = [s.unusedVertices.back];
                     }
                     else
                     {
-                        auto coMove = s.manifold_.coCenter(m_.center, facet);
-                        assert(!coMove.empty);
-                        if(!s.manifold.contains(coMove))
-                        {
-                            m_.coCenter = coMove;
-                            doneChoosingMove = true;
-                        }
-                        else
-                        {
-                            moveInvalid = true;
-                        }
-                    }
-
-                    if (doneChoosingMove)
-                    {
-                        s.manifold_.doPachner(m_.center.array, m_.coCenter.array);
-
-                        ++s.bistellarTries[dim + 1 - m_.center.walkLength];
-                        ++s.bistellarAccepts[dim + 1 - m_.center.walkLength];
-                        if (m_.center.walkLength == 1)
-                        {
-                            s.unusedVertices ~= m.center.front;
-                        }
-                        else if (m_.center.walkLength == dim + 1)
-                        {
-                            s.unusedVertices.popBack;
-                        }
-                    }
-                },
-                (HingeMove m)
-                {
-                    auto m_ = moves[mIndx_].peek!HingeMove;
-
-                    auto lnkVerts = s.manifold.linkVerticesAtHinge(m_.hinge, facet);
-                    auto indx = s.manifold.getRandomHingeMove(lnkVerts.array.dup);
-                    if (indx >= 0)  // Some hinge move was valid
-                    {
-                        m_.hingeLink = lnkVerts;
-                        m_.diskIndex_ = indx;
-                        s.manifold_.doHingeMove(m_.hinge.array.dup, m_.hingeLink.array.dup, m_.diskIndex_);
-                        ++s.hingeTries[m_.hingeLink.walkLength - 4];
-                        ++s.hingeAccepts[m_.hingeLink.walkLength - 4];
-                        doneChoosingMove = true;
-                    }
-                    else            // No hinge move was valid
-                    {
-                        assert(indx == -1);
                         moveInvalid = true;
                     }
-                },
-                () {assert(0, "move type not implemented");}
-            );
+                }
+            }
+
+            if (m_.isHinge)
+            {
+                auto lnkVerts = s.manifold.linkVerticesAtHinge(m_.center, facet);
+                auto indx = s.manifold.getRandomHingeMove(lnkVerts.array.dup);
+                if (indx >= 0)  // Some hinge move was valid
+                {
+                    // s.manifold_.doHingeMove(m_.hinge.array.dup, m_.hingeLink.array.dup, m_.diskIndex_);
+                    // ++s.hingeTries[m_.hingeLink.walkLength - 4];
+                    // ++s.hingeAccepts[m_.hingeLink.walkLength - 4];
+                    // doneChoosingMove = true;
+                }
+                else            // No hinge move was valid
+                {
+                    assert(indx == -1);
+                    moveInvalid = true;
+                } 
+            }
 
             if(moveInvalid)
             {
@@ -639,39 +583,37 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
             }
         }
 
-
         real deltaObj = s.objective - oldObj;        
-
         if ((deltaObj > 0) && (uniform01 > exp(-deltaObj))) // REJECT MOVE
         {
-            moves[mIndx_].visit!(
-                (BistellarMove m)
-                {
-                    auto m_ = moves[mIndx_].peek!BistellarMove;            
-                    s.manifold_.doPachner(m.coCenter.array, m.center.array);
-                    --s.bistellarAccepts[dim + 1 - m_.center.walkLength];
-                    if (m.center.walkLength == 1)
-                    {
-                        s.unusedVertices.popBack;
-                    }
-                    else if (m.center.walkLength == dim + 1)
-                    {
-                        s.unusedVertices ~= m.coCenter.front;
-                    }
-                },
-                (HingeMove m)
-                {
-                    assert(!m.hinge.empty);
-                    assert(!m.hingeLink.empty);
-                    assert(!m.diskIndex_ >= 0);
+            // moves[mIndx_].visit!(
+            //     (BistellarMove m)
+            //     {
+            //         auto m_ = moves[mIndx_].peek!BistellarMove;            
+            //         s.manifold_.doPachner(m.coCenter.array, m.center.array);
+            //         --s.bistellarAccepts[dim + 1 - m_.center.walkLength];
+            //         if (m.center.walkLength == 1)
+            //         {
+            //             s.unusedVertices.popBack;
+            //         }
+            //         else if (m.center.walkLength == dim + 1)
+            //         {
+            //             s.unusedVertices ~= m.coCenter.front;
+            //         }
+            //     },
+            //     (HingeMove m)
+            //     {
+            //         assert(!m.hinge.empty);
+            //         assert(!m.hingeLink.empty);
+            //         assert(!m.diskIndex_ >= 0);
                     
-                    auto m_ = moves[mIndx_].peek!HingeMove;
+            //         auto m_ = moves[mIndx_].peek!HingeMove;
 
-                    s.manifold_.undoHingeMove(m_.hinge, m_.hingeLink, m_.diskIndex_);
-                    --s.hingeAccepts[m_.hingeLink.walkLength - 4];
-                },
-                () {assert(0, "move type not implemented");}
-            );
+            //         s.manifold_.undoHingeMove(m_.hinge, m_.hingeLink, m_.diskIndex_);
+            //         --s.hingeAccepts[m_.hingeLink.walkLength - 4];
+            //     },
+            //     () {assert(0, "move type not implemented");}
+            // );
         }
 
         //--------------------------- MAKE REPORT ----------------------------

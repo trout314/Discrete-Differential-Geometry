@@ -22,21 +22,14 @@ import std.stdio : writeln, writefln, write;
 import std.traits : Unqual;
 import std.random : uniform;
 
-import std.array : staticArray;
+import moves : Move;
 
+import std.array : staticArray;
 
 import std.algorithm : countUntil, copy, map, min;
 
 alias isIRof = isInputRangeOf;
 alias isIRofIRof = isInputRangeOfInputRangeOf;
-
-
-
-
-
-
-
-
 
 //dfmt off
 /*******************************************************************************
@@ -50,6 +43,8 @@ struct Manifold(int dimension_, Vertex_ = int)
 private:
     alias SimpComp = SimplicialComplex!Vertex_;
     SimpComp simpComp;
+
+    alias Move_ = Move!(dimension_, Vertex_);
 
     alias NSimplex = StackArray!(Vertex, dimension + 1);
     size_t[NSimplex] degreeMap;
@@ -79,15 +74,18 @@ private:
     }
 public:
     // TO DO: Make private
-    PachnerMove!(dimension_, Vertex_)[] pachnerMoveList;
-    size_t[Vertex[]] moveCenterIndx;
-    size_t[][Vertex[]] moveCoCenterIndices;
+    Move_[] moves;
+    size_t[Vertex[]] indxOfCenter;
+    size_t[][Vertex[]] indicesOfCoCenter;
 
     // TO DO: figure out how to make oldPiece and newPiece const
-    void modifyMoveDataOnMove(S)(PachnerMove!(dimension, Vertex) mv, ref S oldPiece, ref S newPiece)
+    void modifyMoveDataOnMove(S)(Move!(dimension, Vertex) mv, ref S oldPiece, ref S newPiece)
     {
         auto oldP = SimpComp(oldPiece);
         auto newP = SimpComp(newPiece);
+        writeln("   newP: ", newP);
+        writeln("   oldP: ", oldP);
+
 
         auto cen = mv.center;
         auto coCen = mv.coCenter;
@@ -100,55 +98,37 @@ public:
 
         size_t[] toRemove = [];
         size_t[] toUpdate = [];
+        Move_[] newMoves = [];
 
         if (coCenLen > 1)
         {
-            // assert(this.hasValidPachnerMove(mv), "pachner move not in move list");
-            assert(cen in moveCenterIndx, "pachner move center indx not found");
-            assert(coCen in moveCoCenterIndices, "pachner move cocenter indx not found");
-
-            toRemove = moveCoCenterIndices[coCen].retro.array;
+            assert(cen in indxOfCenter, "pachner move center indx not found");
+            assert(coCen in indicesOfCoCenter, "pachner move cocenter indx not found");
         }
-        auto newMoves = [typeof(mv)(coCen, cen)];
 
-        // TO DO: Find other new moves and moves to remove
-
-        auto cenBdry = cen.subsetsOfSize(cenLen-1).map!array.array;
-        auto coCenBdry = coCen.subsetsOfSize(coCenLen-1).map!array.array;
-        auto bdry = productUnion(cenBdry, coCenBdry).to!SimpComp;
-  
         static foreach (d; 0 .. this.dimension)
         {
-            writeln("checking bdry simplices of dimension ", d);
-            foreach(s; bdry.simplices(d))
+            writeln("   checking oldPiece simplices of dimension ", d);
+            foreach(simp; newP.simplices(d))
             {
-                write("  checking s = ", s);
-                bool wasMove = (s in moveCenterIndx) !is null;
-                bool isNowMove = false;
-                typeof(this.findCoCenter(s)) coCenter;                
-                if(this.degree(s) == dimension - d + 1)
-                {
-                    coCenter = this.findCoCenter(s);
-                    if(coCenter.empty || (!this.contains(coCenter)))
-                    {
-                        isNowMove = true;
-                    }
-                }
+                write("     checking simp = ", simp);
+                bool wasMove = (simp in indxOfCenter) !is null;
+                bool isNowMove = (degree(simp) == dimension - d + 1);
 
                 if(wasMove && !isNowMove)
                 {
-                    writeln(", must remove index ", moveCenterIndx[s.array]);
-                    toRemove ~= moveCenterIndx[s.array];
+                    writeln(", remove index ", indxOfCenter[simp.array]);
+                    toRemove ~= indxOfCenter[simp.array];
                 }
                 else if (!wasMove && isNowMove)
                 {
-                    writeln(", must add move ", typeof(mv)(s.array, coCenter.array));
-                    newMoves ~= typeof(mv)(s.array, coCenter.array);
+                    newMoves ~= typeof(mv)(simp.array, this.findCoCenter(simp).sort);
+                    writeln(", add move: ", newMoves[$-1]);
                 }
                 else if (wasMove && isNowMove)
                 {
-                    writeln(", must update index ", moveCenterIndx[s.array]);
-                    toUpdate ~= moveCenterIndx[s.array];
+                    writeln(", update index ", indxOfCenter[simp.array]);
+                    toUpdate ~= indxOfCenter[simp.array];
                 }
                 else
                 {
@@ -158,64 +138,91 @@ public:
         }
 
         toRemove.sort;
-        writeln("indices toRemove = ", toRemove.retro);
-        writeln("indices toUpdate = ", toUpdate);
-        writeln("newMoves = ", newMoves);
+        writeln("   indices toRemove = ", toRemove.retro);
+        writeln("   indices toUpdate = ", toUpdate);
+        writeln("   newMoves = ");
+        foreach(m; newMoves)
+        {
+            writeln("      ", m);
+        }
 
-        "updating moves...".writeln;
+        "   updating moves...".writeln;
         foreach(i; toUpdate)
         {
-            auto thisCoCen = pachnerMoveList[i].coCenter;
-            auto thisCen = pachnerMoveList[i].center;
+            auto thisCoCen = moves[i].coCenter;
+            auto thisOldCoCen = thisCoCen.idup;
+            auto thisCen = moves[i].center;
+            writeln("      updating index ", i);
             
-            // Indices pointing to old cocenter must be removed
-            foreach(k; moveCoCenterIndices[thisCoCen])
+            // Update vertices in cocenter of move
+            Vertex[] newVerts;
+            Vertex[] oldVerts;
+            if (newP.contains(thisCen))
             {
-                auto indx = pachnerMoveList[k].coCenter.countUntil(i);
-                if (indx > 0)
-                {
-                    auto newCoCen = pachnerMoveList[k].coCenter.dup;
-                    auto oldCen = pachnerMoveList[k].center.dup;
-                    newCoCen.swapPop(indx);
-                    pachnerMoveList[k] = typeof(mv)(oldCen, newCoCen);
-                }
+                newVerts = newP.link(thisCen).joiner.array.dup.sort.uniq.array;
+            }
+            if (oldP.contains(thisCen))
+            {
+                oldVerts = oldP.link(thisCen).joiner.array.dup.sort.uniq.array;
+            }
+            writeln("         newVerts: ", newVerts);
+            writeln("         oldVerts: ", oldVerts);
+
+            if (oldVerts.empty)
+            {
+                oldVerts = newVerts;
             }
 
-            auto newVerts = newP.link(thisCen).joiner.array.dup.sort.uniq.array;
-            auto oldVerts = oldP.link(thisCen).joiner.array.dup.sort.uniq.array;
+            if (newVerts.empty)
+            {
+                newVerts = oldVerts;
+            }
+
             assert(newVerts.walkLength == oldVerts.walkLength);
             foreach(j; 0 .. newVerts.walkLength)
             {               
                 thisCoCen = thisCoCen.replace(oldVerts[j].only, newVerts[j].only);
             }
-            pachnerMoveList[i] = typeof(mv)(thisCen, thisCoCen);
+            moves[i] = typeof(mv)(thisCen, thisCoCen.sort);
+            indicesOfCoCenter[thisCoCen.idup] ~= i;
+
+            // Update indices pointing to updated cocenter
+            auto newIndices = indicesOfCoCenter[thisOldCoCen].filter!(k => k != i).array;
+            if (newIndices.walkLength > 0)
+            {
+                indicesOfCoCenter[thisOldCoCen] = newIndices;
+            }
+            else
+            {
+                indicesOfCoCenter.remove(thisOldCoCen);
+            }
         }
 
 
-        "removing moves....".writeln;
+        "   removing moves...".writeln;
         foreach(i; toRemove.retro)
         {
-            writeln(pachnerMoveList);
-            auto lastIndx = pachnerMoveList.length - 1;
-            auto lastMove = pachnerMoveList[lastIndx];
-            auto goneMove = pachnerMoveList[i];
-            moveCenterIndx[lastMove.center] = i;
-            writeln(moveCoCenterIndices);
-            moveCoCenterIndices[lastMove.coCenter]
-                = moveCoCenterIndices[lastMove.coCenter].replace(lastIndx.only, i.only);
+            writeln("      removing index ", i);
+            auto lastIndx = moves.length - 1;
+            auto lastMove = moves[lastIndx];
+            auto goneMove = moves[i];
+            indxOfCenter[lastMove.center.idup] = i;
+            indicesOfCoCenter[lastMove.coCenter.idup]
+                = indicesOfCoCenter[lastMove.coCenter].replace(lastIndx.only, i.only);
             
-            this.pachnerMoveList.swapPop(i);
-            moveCoCenterIndices.remove(goneMove.coCenter);
-            moveCenterIndx.remove(goneMove.center);
+            this.moves.swapPop(i);
+            indicesOfCoCenter.remove(goneMove.coCenter);
+            indxOfCenter.remove(goneMove.center);
         }
 
 
-        "adding new moves...".writeln;
+        "   adding new moves...".writeln;
         foreach(newMove; newMoves)
         {
-            pachnerMoveList ~= newMove;
-            moveCenterIndx[newMove.center.array] = pachnerMoveList.length - 1;
-            moveCoCenterIndices[newMove.coCenter.array] ~= pachnerMoveList.length - 1;
+            writeln("      adding move: ", newMove);
+            moves ~= newMove;
+            indxOfCenter[newMove.center.idup] = moves.length - 1;
+            indicesOfCoCenter[newMove.coCenter.idup] ~= moves.length - 1;
         }
 
 
@@ -243,11 +250,28 @@ public:
         {
             totSqrDegrees[d] = simplices(d).map!(s => this.degree(s)^^2).sum;
         }
-        pachnerMoveList = this.computePachnerMoves;
-        foreach(indx, mv; pachnerMoveList.enumerate)
+
+        int numValidMoves;
+        foreach(simp, deg; degreeMap)
         {
-            this.moveCenterIndx[mv.center.array] = indx;
-            this.moveCoCenterIndices[mv.coCenter.array] ~= indx;
+            if(simp[].walkLength < dimension + 1)
+            {
+                if(deg == dimension + 2 - simp[].walkLength)
+                {
+                    auto coCenter = this.findCoCenter(simp[]);
+                    if(!this.contains(coCenter))
+                    {
+                        ++numValidMoves;
+                    }
+                    moves ~= Move_(simp[], coCenter.sort);
+                }
+            }
+        }
+
+        foreach(indx, mv; moves.enumerate)
+        {
+            this.indxOfCenter[mv.center.idup] = indx;
+            this.indicesOfCoCenter[mv.coCenter.idup] ~= indx;
         }
     }
 
@@ -255,7 +279,7 @@ public:
     {
         ridgeLinks = ridgeLinks.dup;
         degreeMap = degreeMap.dup;
-        pachnerMoveList = pachnerMoveList.dup;
+        moves = moves.dup;
     }
 
     /***************************************************************************
@@ -431,26 +455,13 @@ public:
 }
 
 /*******************************************************************************
-Returns true if a pachner move is valid and false otherwise
-*/
-bool hasValidPachnerMove(Vertex, int dim)(
-    const ref Manifold!(dim, Vertex) mfd,
-    PachnerMove!(dim, Vertex) pm)
-{
-    bool centerAns = (pm.center in mfd.moveCenterIndx) is null;
-    bool coCenterAns = (pm.coCenter in mfd.moveCoCenterIndices) is null;
-    assert(centerAns == coCenterAns);
-    return centerAns;
-}
-
-/*******************************************************************************
 Returns a list of all the possible pachner moves except for the 1->(dim+1) moves
 that are valid in this manifold. (Note that 1->(dim+1) moves are always valid.)
 */
-PachnerMove!(dim, Vertex)[] computePachnerMoves(Vertex, int dim)(
+Move!(dim, Vertex)[] computePachnerMoves(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) mfd)
 {
-    PachnerMove!(dim, Vertex)[] result;
+    Move!(dim, Vertex)[] result;
     foreach(simp_, deg; mfd.degreeMap)
     {
         if(simp_.length < dim + 1)
@@ -461,43 +472,13 @@ PachnerMove!(dim, Vertex)[] computePachnerMoves(Vertex, int dim)(
                 auto coCenter = mfd.findCoCenter(simp);
                 if(coCenter.empty || (!mfd.contains(coCenter)))
                 {
-                    result ~= PachnerMove!(dim, Vertex)(simp, coCenter);
+                    result ~= Move!(dim, Vertex)(simp, coCenter);
                 }
             }
         }
     }
     return result;
 }
-
-struct PachnerMove(size_t dim, Vertex = int)
-{
-public:
-    alias coCenter = getCoCenter;
-    alias center = getCenter;
-
-    string toString()() const 
-    {
-        string result = (vertices.length - centerLen).to!string;
-        result ~= "->" ~ centerLen.to!string;
-        result ~= " center: " ~ vertices[0..centerLen].to!string();
-        result ~= " coCenter: " ~ vertices[centerLen..$].to!string();
-        return result;
-    }
-
-    this(S1,S2)(S1 center_, S2 coCenter_) if (isIRof!(S1, Vertex) && isIRof!(S2, Vertex))
-    {
-        centerLen = center_.length;
-        copy(center_, vertices[0..centerLen]);
-        copy(coCenter_, vertices[centerLen..$]);
-    }
-
-private:
-    size_t centerLen;
-    Vertex[dim+2] vertices;
-    const(Vertex)[] getCenter()() const {return vertices[0..centerLen];}
-    const(Vertex)[] getCoCenter()() const {return vertices[centerLen..$];}
-}
-
 
 ///
 @Name("Manifold doc tests") pure @safe unittest
@@ -567,7 +548,7 @@ private:
 {
     // Can't do 2->2 move on the boundary of a 3-simplex
     auto m = Manifold!2([[1,2,3],[1,2,4], [1,3,4], [2,3,4]]);   
-    m.doPachner([1,2], [3,4]).throwsWithMsg("move not in list of valid pachner moves");
+    m.doPachner([1,2], [3,4]).throwsWithMsg("coCenter of move in manifold");
 }
 ///
 @Name("doPachner") pure @safe unittest
@@ -629,11 +610,11 @@ if (isIRof!(C, const(Vertex)) && isIRof!(D, const(Vertex)))
 {
     if(coCenter.walkLength > 1)
     {
-        // auto pm = PachnerMove!(dim, Vertex)(center, coCenter);
+        // auto pm = Move!(dim, Vertex)(center, coCenter);
         // assert(manifold.hasValidPachnerMove(pm), "not a valid pachner move");
     }
-    assert(manifold.contains(center));
-    assert(!manifold.contains(coCenter));
+    assert(manifold.contains(center), "center of move not in manifold");
+    assert(!manifold.contains(coCenter), "coCenter of move in manifold");
  
     // Buffer for holding vertices in center (followed by coCenter)
     const(Vertex)[dim + 2] cBuffer = chain(center, coCenter)
@@ -669,7 +650,7 @@ if (isIRof!(C, const(Vertex)) && isIRof!(D, const(Vertex)))
     newPiece.each!(f => manifold.insertFacet(f));
     manifold.numSimplices.modifyFVector(cenLen);
 
-    auto pm = PachnerMove!(dim, Vertex)(center_, coCenter_);
+    auto pm = Move!(dim, Vertex)(center_, coCenter_);
     manifold.modifyMoveDataOnMove(pm, oldPiece, newPiece);
 
     // TO DO: Do sanity checking for manifold
