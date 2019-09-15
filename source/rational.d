@@ -1,3 +1,5 @@
+module rational;
+
 // NOTE: Code taken from David Simcha. See https://github.com/dsimcha/Rational
 // Updated by Aaron Trout June/July 2017
 

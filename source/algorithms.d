@@ -1,3 +1,5 @@
+module algorithms;
+
 import manifold : Manifold;
 import simplicial_complex : fVector, simplicialComplex, SimplicialComplex;
 import std.algorithm : all, any, canFind, chunkBy, equal, filter, find,

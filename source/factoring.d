@@ -1,3 +1,5 @@
+module factoring;
+
 import std.algorithm : equal, filter, group, map, reduce, setDifference, sort;
 import std.range : array, chain, iota, isForwardRange, stride;
 import std.traits : ReturnType;

@@ -1,3 +1,5 @@
+module rational_extension_vector;
+
 import factoring : sqrtSquarePart, squareFreePart, squarePart;
 import rational : rational, Rational;
 import std.algorithm : all, copy, equal, map, sum;

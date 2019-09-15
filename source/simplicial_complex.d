@@ -1,3 +1,5 @@
+module simplicial_complex;
+
 import algorithms : connectedComponents, eulerCharacteristic,
     isCircle, isConnected,  isPureOfDim;
 

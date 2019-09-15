@@ -1,3 +1,5 @@
+module utility;
+
 import core.bitop : popcnt;
 import std.algorithm : all, canFind, cartesianProduct, copy, each, equal, filter, find, fold, joiner, map, merge,
     sort, sum, uniq;  
