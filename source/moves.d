@@ -59,6 +59,22 @@ public:
         }
     }
 
+    int opCmp()(Move rhs) const
+    {
+        if(center < rhs.center)
+        {
+            return -1;
+        }
+        else if(center > rhs.center)
+        {
+            return 1;
+        }
+        else
+        {
+            return 0;
+        }
+    }
+
     this(R1, R2)(R1 center_, R2 coCenter_, int hingeMoveTriangIndx = -1)
     if (isIRof!(R1, Vertex) && isIRof!(R2, Vertex))
     {

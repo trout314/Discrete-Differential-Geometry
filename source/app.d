@@ -195,7 +195,7 @@ void main(string[] args)
     {    
         import std.stdio : writeln;
         import moves : Move;
-        import manifold : Manifold, standardSphere, computePachnerMoves, findCoCenter, doPachner;
+        import manifold : Manifold, standardSphere, computePachnerMoves, findCoCenter, doPachner, computeMBPMoves;
         import std.range : enumerate, iota;
 
         // trigonal bi-pyramid.
@@ -216,7 +216,6 @@ void main(string[] args)
                     writeln;
                 }
             }
-            "   indxOfCenter:".writeln;
             foreach(cen, indx; m.indxOfCenter)
             {
                 writeln("      ", cen, ": ", indx);            
@@ -226,10 +225,19 @@ void main(string[] args)
             {
                 writeln("      ", coCen, ": ", indices);            
             }
+            writeln("   num valid moves: ", m.numValidMoves);
+
+            import unit_threaded : shouldBeSameSetAs;
+            import std.algorithm : each, sort;
+            import std.range : array;
+
+            m.moves.array.sort.each!writeln;
+            "-------".writeln;
+            m.computeMBPMoves.array.sort.each!writeln;
+            m.moves.dup.sort.shouldBeSameSetAs(m.computeMBPMoves.dup.sort);
         };
 
-        "starting out with standard 2-sphere... ".write;
-        m.writeln;
+        "starting out with standard 2-sphere... ".writeln;
         report();
 
         "m.doPachner([1,2,3], [4]);".writeln;
@@ -244,9 +252,17 @@ void main(string[] args)
         m.doPachner([0,4], [1,2]);
         report();    
 
-        "m.doPachner([4], [1,2,3]);".writeln;
-        m.doPachner([4], [1,2,3]);
-        report();
+        // "m.doPachner([4], [1,2,3]);".writeln;
+        // m.doPachner([4], [1,2,3]);
+        // report();
+
+        // "m.doPachner([1,2,3], [4]);".writeln;
+        // m.doPachner([1,2,3], [4]);
+        // report();
+
+        // "m.doPachner([1,2,3], [5]);".writeln;
+        // m.doPachner([1,2,4], [5]);
+        // report();
 
     }
     else
