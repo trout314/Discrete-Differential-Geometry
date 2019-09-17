@@ -3,7 +3,7 @@ module sampler;
 import algorithms : eulerCharacteristic;
 import core.memory : GC;
 import manifold : coCenter, degreeHistogram, degreeVariance, doHingeMove, findCoCenter, findProblems, getRandomHingeMove, hasValidHingeMove, 
-    linkVerticesAtHinge, movesAtFacet, Manifold, saveEdgeGraphTo, saveTo, standardSphere, totalSquareDegree, doPachner, meanDegree, undoHingeMove;
+    linkVerticesAtHinge, movesAtFacet, Manifold, saveEdgeGraphTo, saveTo, totalSquareDegree, doPachner, meanDegree, undoHingeMove;
 import simplicial_complex : fVector;
 import std.algorithm : all, each, filter, findSplit, joiner, map, max, mean, min, maxElement, sort, sum;
 import std.array : replace;
@@ -22,6 +22,8 @@ import std.traits : isFloatingPoint;
 import std.variant : Algebraic, visit, tryVisit;
 import unit_threaded : Name;
 import utility : binomial, flatDegreeInDim, subsetsOfSize, subsets, toStackArray, StackArray;
+
+import manifold_examples : standardSphere;
 
 import moves : Move;
 
