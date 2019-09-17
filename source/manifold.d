@@ -9,7 +9,7 @@ import std.exception : assertThrown;
 import std.range : array, back, chain, chunks, cycle, ElementType, empty,
     enumerate, front, iota, isInputRange, isOutputRange, only, popBack, popFront,
     put, replace, retro, save, slide, take, walkLength, zip;
-import unit_threaded : Name, shouldEqual, shouldBeSameSetAs;
+import unit_threaded : Name, shouldEqual, shouldBeSameSetAs, shouldBeEmpty;
 import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf,
     isSubsetOf, nGonTriangs, productUnion, SmallMap, StackArray,
     staticIota, subsets, subsetsOfSize, throwsWithMsg, toStackArray, swapPop;
@@ -27,6 +27,8 @@ import moves : Move;
 import std.array : staticArray;
 
 import std.algorithm : countUntil, copy, map, min;
+
+import manifold_examples : trigonalBipyramid, octahedron, standardSphere;
 
 alias isIRof = isInputRangeOf;
 alias isIRofIRof = isInputRangeOfInputRangeOf;
@@ -312,7 +314,7 @@ public:
     */
     bool contains(S)(S simplex) const if (isIRof!(S, const(Vertex)))
     {
-        bool notInDegreeMap = (toNSimp(simplex) in degreeMap) is null;
+        bool notInDegreeMap = (toNSimp(simplex) in this.degreeMap) is null;
         assert(this.simpComp.contains(simplex) == !notInDegreeMap,
             "simplices in degreeMap and internal simplicial complex disagree");
         return !notInDegreeMap;
@@ -505,6 +507,59 @@ Move!(dim, Vertex)[] computePachnerMoves(Vertex, int dim)(
     return result;
 }
 
+///
+@Name("computePachnerMoves") pure @safe unittest
+{
+    static foreach(d; 2 .. 8)
+    {
+        {
+            auto m = standardSphere!d;
+            m.computePachnerMoves.shouldBeEmpty;
+        }
+    }
+
+    // trigonal bipyramid
+    auto tb = Manifold!2([[0,1,2],[0,1,3],[0,2,3],[1,2,4],[1,3,4],[2,3,4]]);
+    tb.computePachnerMoves.shouldBeSameSetAs([
+        Move!2([0],[1,2,3]),
+        Move!2([4],[1,2,3]),
+        Move!2([1,2],[0,4]),
+        Move!2([1,3],[0,4]),
+        Move!2([2,3],[0,4])
+    ]);
+
+    // octahedron
+    auto oct = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
+        [2,3,5], [3,4,5], [1,4,5]]);
+    oct.computePachnerMoves.shouldBeSameSetAs([
+        Move!2([0,1],[2,4]),
+        Move!2([0,2],[1,3]),
+        Move!2([0,3],[2,4]),
+        Move!2([0,4],[1,3]),
+        Move!2([1,5],[2,4]),
+        Move!2([2,5],[1,3]),
+        Move!2([3,5],[2,4]),
+        Move!2([4,5],[1,3]),
+        Move!2([1,2],[0,5]),
+        Move!2([2,3],[0,5]),
+        Move!2([3,4],[0,5]),
+        Move!2([1,4],[0,5])
+    ]);
+
+    auto m = Manifold!2([[0,1,2],[0,1,3],[0,2,3],[1,2,4],[1,3,4],[2,3,5],
+        [2,4,5],[3,4,5]]);    
+    m.computePachnerMoves.shouldBeSameSetAs([
+        Move!2([0],[1,2,3]),
+        Move!2([5],[2,3,4]),
+        Move!2([1,2],[0,4]),
+        Move!2([1,3],[0,4]),
+        Move!2([2,3],[0,5]),
+        Move!2([2,4],[1,5]),
+        Move!2([3,4],[1,5])
+    ]);
+}
+
+
 /*******************************************************************************
 Returns a list of all the ( blocked) pachner moves except for the
 1->(dim+1) moves in this manifold. Note that 1->(dim+1) moves are always valid.
@@ -527,6 +582,7 @@ Move!(dim, Vertex)[] computeMBPMoves(Vertex, int dim)(
     }
     return result;
 }
+
 
 
 ///
@@ -745,25 +801,6 @@ if (isIRof!(C, const(Vertex)) && isIRof!(F, const(Vertex)))
 
 // TO DO: Separate unittesting for findCoCenter
 
-/******************************************************************************
-Returns the "standard" triangulation of a sphere of the given dimension. This
-is just the boundary of the simplex of one higher dimension.
-*/
-Manifold!(dim, int) standardSphere(int dim)()
-{
-    static assert(dim >= 1);
-    return Manifold!(dim, int)(iota(dim + 2).subsetsOfSize(dim + 1));
-}
-///
-@Name("standardSphere") unittest
-{
-    standardSphere!1.facets.shouldBeSameSetAs(
-        [[0,1], [1,2], [0,2]]); 
-    standardSphere!2.facets.shouldBeSameSetAs(
-        [[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
-    standardSphere!3.facets.shouldBeSameSetAs(
-        [[0,1,2,3], [0,1,2,4], [0,1,3,4], [0,2,3,4],[1,2,3,4]]);
-}
 
 ///
 @Name("facets(dim) (pure nothrow @nogc @safe)") /* pure */ @safe unittest
