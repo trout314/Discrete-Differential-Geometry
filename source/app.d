@@ -10,7 +10,8 @@ void main(string[] args)
     if(task == "sampler")
     {
         //------------- SAMPLE MANIFOLDS BY OBJECTIVE  -----------------------
-        import manifold : loadManifold, Manifold, findProblems, saveTo, saveEdgeGraphTo, standardSphere;
+        import manifold : loadManifold, Manifold, findProblems, saveTo, saveEdgeGraphTo;
+        import manifold_examples : standardSphere;
         import sampler : Parameters, sample, Sampler;
         import std.algorithm : each, findSplit;
         import std.conv : to;
@@ -195,7 +196,8 @@ void main(string[] args)
     {    
         import std.stdio : writeln;
         import moves : Move;
-        import manifold : Manifold, standardSphere, computePachnerMoves, findCoCenter, doPachner, computeMBPMoves;
+        import manifold : Manifold, computePachnerMoves, findCoCenter, doPachner, computeMBPMoves;
+        import manifold_examples : standardSphere;
         import std.range : enumerate, iota;
 
         // trigonal bi-pyramid.
@@ -234,7 +236,7 @@ void main(string[] args)
             m.moves.array.sort.each!writeln;
             "-------".writeln;
             m.computeMBPMoves.array.sort.each!writeln;
-            m.moves.dup.sort.shouldBeSameSetAs(m.computeMBPMoves.dup.sort);
+            m.moves.shouldBeSameSetAs(m.computeMBPMoves.dup.sort);
         };
 
         "starting out with standard 2-sphere... ".writeln;

@@ -7,12 +7,11 @@ import std.algorithm : all, any, copy, canFind, each, equal, filter, find,
 import std.conv : to;
 import std.exception : assertThrown;
 import std.range : array, back, chain, chunks, cycle, ElementType, empty,
-    enumerate, front, iota, isInputRange, isOutputRange, only, popBack, popFront,
-    put, replace, retro, save, slide, take, walkLength, zip;
+    enumerate, front, iota, isInputRange, isOutputRange, only, popBack,
+    popFront, put, replace, retro, save, slide, take, walkLength, zip;
 import unit_threaded : Name, shouldEqual, shouldBeSameSetAs, shouldBeEmpty;
-import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf,
-    isSubsetOf, nGonTriangs, productUnion, SmallMap, StackArray,
-    staticIota, subsets, subsetsOfSize, throwsWithMsg, toStackArray, swapPop;
+import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf, isSubsetOf, nGonTriangs, productUnion, SmallMap,
+    StackArray, staticIota, subsets, subsetsOfSize, throwsWithMsg, toStackArray, swapPop;
 import std.stdio : File, writeln;
 import std.typecons : Flag, No, Yes;
 import std.math : approxEqual;
@@ -86,8 +85,6 @@ public:
     {
         auto oldP = SimpComp(oldPiece);
         auto newP = SimpComp(newPiece);
-        writeln("   newP: ", newP);
-        writeln("   oldP: ", oldP);
 
         auto cen = mv.center;
         auto coCen = mv.coCenter;
@@ -97,6 +94,15 @@ public:
 
         auto coCenLen = coCen.walkLength.to!int;
         assert(coCenLen>0);
+
+        auto bdry = SimpComp(productUnion(
+            cen.subsetsOfSize(cenLen-1),
+            coCen.subsetsOfSize(coCenLen-1)));
+
+        writeln("   newP: ", newP);
+        writeln("   oldP: ", oldP);
+        writeln("   bdry: ", bdry);
+
 
         size_t[] toRemove = [];
         size_t[] toUpdate = [];
@@ -163,7 +169,63 @@ public:
                 
                 
             }
+            
+            writeln("   checking oldPiece simplices of dimension ", d);
+            foreach(simp; oldP.simplices(d))
+            {
+                if(bdry.contains(simp))
+                {
+                    continue;   // already did boundary
+                }
+                write("     checking simp = ", simp);
+
+                bool wasMove = (simp in indxOfCenter) !is null;
+                bool wasValidMove = false;
+                if(wasMove)
+                {
+                    auto simpMoveIndx = this.indxOfCenter[simp];
+                    auto simpMove = moves[simpMoveIndx];
+                    auto simpCen = simpMove.center;
+                    auto simpCoCen = simpMove.coCenter;
+                    wasValidMove = !this.contains(simpCoCen);
+                }
+
+                bool isMove = this.contains(cen) && (this.degree(simp) == dimension - d + 1);
+
+                // TO DO: Use faster version of findCoCenter that takes a facet!
+                bool isValidMove = isMove && !this.contains(this.findCoCenter(simp).sort);
+                
+                if(wasMove && !isMove)
+                {
+                    writeln(", remove index ", indxOfCenter[simp.array]);
+                    toRemove ~= indxOfCenter[simp.array];
+                }
+                else if (!wasMove && isMove)
+                {
+                    newMoves ~= typeof(mv)(simp.array, this.findCoCenter(simp).sort);
+                    writeln(", add move: ", newMoves[$-1]);
+                }
+                else if (wasMove && isMove)
+                {
+                    // Already will update in this case from above
+                }
+                else
+                {
+                    "".writeln;
+                }
+
+                if (wasValidMove && !isValidMove)
+                {
+                    --numValidMoves;
+                }
+                
+                if (!wasValidMove && isValidMove)
+                {
+                    ++numValidMoves;
+                }   
+            }
         }
+
 
         toRemove.sort;
         writeln("   indices toRemove = ", toRemove.retro);
@@ -300,6 +362,8 @@ public:
             this.indxOfCenter[mv.center.idup] = indx;
             this.indicesOfCoCenter[mv.coCenter.idup] ~= indx;
         }
+    
+        // this.findProblems.shouldBeEmpty;
     }
 
     this(this) /* pure */ @safe
@@ -488,22 +552,8 @@ that are valid in this manifold. (Note that 1->(dim+1) moves are always valid.)
 Move!(dim, Vertex)[] computePachnerMoves(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) mfd)
 {
-    Move!(dim, Vertex)[] result;
-    foreach(simp_, deg; mfd.degreeMap)
-    {
-        if(simp_.length < dim + 1)
-        {
-            auto simp = simp_[];
-            if(deg == mfd.dimension + 2 - simp.walkLength)
-            {
-                auto coCenter = mfd.findCoCenter(simp);
-                if(coCenter.empty || (!mfd.contains(coCenter)))
-                {
-                    result ~= Move!(dim, Vertex)(simp, coCenter);
-                }
-            }
-        }
-    }
+    auto result = mfd.computeMBPMoves.filter!(
+        mv => !mfd.contains(mv.coCenter)).array;
     return result;
 }
 
@@ -557,11 +607,15 @@ Move!(dim, Vertex)[] computePachnerMoves(Vertex, int dim)(
         Move!2([2,4],[1,5]),
         Move!2([3,4],[1,5])
     ]);
+
+    // two-point suspension over boundary of 3-simplex
+    auto tps = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],
+        [1,2,3,5],[1,2,4,5],[1,3,4,5],[2,3,4,5]]);
 }
 
 
 /*******************************************************************************
-Returns a list of all the ( blocked) pachner moves except for the
+Returns a list of all the (perhaps blocked) pachner moves except for the
 1->(dim+1) moves in this manifold. Note that 1->(dim+1) moves are always valid.
 */
 Move!(dim, Vertex)[] computeMBPMoves(Vertex, int dim)(
@@ -582,8 +636,6 @@ Move!(dim, Vertex)[] computeMBPMoves(Vertex, int dim)(
     }
     return result;
 }
-
-
 
 ///
 @Name("Manifold doc tests") /* pure */ @safe unittest
@@ -713,13 +765,13 @@ void doPachner(Vertex, int dim, C, D)(
 )
 if (isIRof!(C, const(Vertex)) && isIRof!(D, const(Vertex)))
 {
-    if(coCenter.walkLength > 1)
-    {
-        // auto pm = Move!(dim, Vertex)(center, coCenter);
-        // assert(manifold.hasValidPachnerMove(pm), "not a valid pachner move");
-    }
     assert(manifold.contains(center), "center of move not in manifold");
     assert(!manifold.contains(coCenter), "coCenter of move in manifold");
+    if(coCenter.walkLength > 1)
+    {
+        auto pm = Move!(dim, Vertex)(center, coCenter);
+        assert(manifold.computePachnerMoves.canFind(pm), "not a valid pachner move");
+    }
  
     // Buffer for holding vertices in center (followed by coCenter)
     const(Vertex)[dim + 2] cBuffer = chain(center, coCenter)
@@ -728,6 +780,7 @@ if (isIRof!(C, const(Vertex)) && isIRof!(D, const(Vertex)))
     immutable cenLen = center.walkLength;
     immutable coCenLen = (dim + 2) - cenLen;
     assert(coCenLen == coCenter.walkLength);
+
     auto center_ = cBuffer[0 .. cenLen];
     auto coCenter_ = cBuffer[cenLen .. $];
 
@@ -736,20 +789,15 @@ if (isIRof!(C, const(Vertex)) && isIRof!(D, const(Vertex)))
 
     auto oldPiece = productUnion(coCenter_.subsetsOfSize(coCenterDim), center_.only);
     auto newPiece = productUnion(center_.subsetsOfSize(centerDim), coCenter_.only);
-    // auto bdry = productUnion(center_.subsetsOfSize(centerDim), coCenter_.subsetsOfSize(coCenterDim));
 
     alias SC = SimplicialComplex!(Vertex, dim);
     alias MFD = Manifold!(dim, Vertex);
+
     assert(SC(oldPiece).isPureOfDim(dim));
     assert(SC(newPiece).isPureOfDim(dim));
     assert(MFD(chain(oldPiece, newPiece)).numFacets == dim + 2);
     assert(manifold.star(center).map!array.array.sort
         .equal!equal(oldPiece.map!array.array.sort));
-    // assert(SC(bdry).isPureOfDim(dim-1));
-    // static foreach(d; dim.iota)
-    // {
-    //     // assert(SC(bdry).simplices(d).length == dim + 2);
-    // }
 
     oldPiece.each!(f => manifold.removeFacet(f));
     newPiece.each!(f => manifold.insertFacet(f));
