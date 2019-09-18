@@ -95,13 +95,23 @@ public:
         auto coCenLen = coCen.walkLength.to!int;
         assert(coCenLen>0);
 
-        auto bdry = SimpComp(productUnion(
+        auto bdry = productUnion(
             cen.subsetsOfSize(cenLen-1),
-            coCen.subsetsOfSize(coCenLen-1)));
+            coCen.subsetsOfSize(coCenLen-1)).map!array.array;
+        
+        const(Vertex)[][] oldInterior;
+        const(Vertex)[][] newInterior;
+        static foreach(d; 0 .. dimension)
+        {
+            oldInterior ~= oldP.simplices(d).filter!(s => cen.isSubsetOf(s)).array;
+            newInterior ~= newP.simplices(d).filter!(s => coCen.isSubsetOf(s)).array;
+        }
 
         writeln("   newP: ", newP);
         writeln("   oldP: ", oldP);
         writeln("   bdry: ", bdry);
+        writeln("   oldInterior: ", oldInterior);
+        writeln("   newInterior: ", newInterior);
 
 
         size_t[] toRemove = [];
@@ -114,118 +124,87 @@ public:
             assert(coCen in indicesOfCoCenter, "pachner move cocenter indx not found");
         }
 
-        static foreach (d; 0 .. this.dimension)
+        writeln("   checking oldInterior simplices ");
+        foreach(simp; oldInterior)
         {
-            writeln("   checking newPiece simplices of dimension ", d);
-            foreach(simp; newP.simplices(d))
+            write("     checking simp = ", simp);
+
+            auto simpMoveIndx = this.indxOfCenter[simp];
+            writeln(", remove index ", simpMoveIndx);
+            toRemove ~= simpMoveIndx;
+
+            // old move is now gone
+            --numValidMoves;
+
+            // any moves blocked by center are now valid
+            if(cen in indicesOfCoCenter)
             {
-                write("     checking simp = ", simp);
-
-                bool wasMove = (simp in indxOfCenter) !is null;
-                bool wasValidMove = false;
-                if(wasMove)
-                {
-                    auto simpMoveIndx = this.indxOfCenter[simp];
-                    auto simpMove = moves[simpMoveIndx];
-                    auto simpCen = simpMove.center;
-                    auto simpCoCen = simpMove.coCenter;
-                    wasValidMove = !this.contains(simpCoCen);
-                }
-
-                bool isMove = (degree(simp) == dimension - d + 1);
-
-                // TO DO: Use faster version of findCoCenter that takes a facet!
-                bool isValidMove = isMove && !this.contains(this.findCoCenter(simp).sort);
-                
-                if(wasMove && !isMove)
-                {
-                    writeln(", remove index ", indxOfCenter[simp.array]);
-                    toRemove ~= indxOfCenter[simp.array];
-                }
-                else if (!wasMove && isMove)
-                {
-                    newMoves ~= typeof(mv)(simp.array, this.findCoCenter(simp).sort);
-                    writeln(", add move: ", newMoves[$-1]);
-                }
-                else if (wasMove && isMove)
-                {
-                    writeln(", update index ", indxOfCenter[simp.array]);
-                    toUpdate ~= indxOfCenter[simp.array];
-                }
-                else
-                {
-                    "".writeln;
-                }
-
-                if (wasValidMove && !isValidMove)
-                {
-                    --numValidMoves;
-                }
-                
-                if (!wasValidMove && isValidMove)
-                {
-                    ++numValidMoves;
-                }
-                
-                
-            }
-            
-            writeln("   checking oldPiece simplices of dimension ", d);
-            foreach(simp; oldP.simplices(d))
-            {
-                if(bdry.contains(simp))
-                {
-                    continue;   // already did boundary
-                }
-                write("     checking simp = ", simp);
-
-                bool wasMove = (simp in indxOfCenter) !is null;
-                bool wasValidMove = false;
-                if(wasMove)
-                {
-                    auto simpMoveIndx = this.indxOfCenter[simp];
-                    auto simpMove = moves[simpMoveIndx];
-                    auto simpCen = simpMove.center;
-                    auto simpCoCen = simpMove.coCenter;
-                    wasValidMove = !this.contains(simpCoCen);
-                }
-
-                bool isMove = this.contains(cen) && (this.degree(simp) == dimension - d + 1);
-
-                // TO DO: Use faster version of findCoCenter that takes a facet!
-                bool isValidMove = isMove && !this.contains(this.findCoCenter(simp).sort);
-                
-                if(wasMove && !isMove)
-                {
-                    writeln(", remove index ", indxOfCenter[simp.array]);
-                    toRemove ~= indxOfCenter[simp.array];
-                }
-                else if (!wasMove && isMove)
-                {
-                    newMoves ~= typeof(mv)(simp.array, this.findCoCenter(simp).sort);
-                    writeln(", add move: ", newMoves[$-1]);
-                }
-                else if (wasMove && isMove)
-                {
-                    // Already will update in this case from above
-                }
-                else
-                {
-                    "".writeln;
-                }
-
-                if (wasValidMove && !isValidMove)
-                {
-                    --numValidMoves;
-                }
-                
-                if (!wasValidMove && isValidMove)
-                {
-                    ++numValidMoves;
-                }   
+                numValidMoves = indicesOfCoCenter[cen].length;
             }
         }
 
+        writeln("   checking newInterior simplices ");
+        foreach(simp; newInterior)
+        {
+        }
+
+        writeln("   checking boundary simplices ");
+        foreach(simp; bdry)
+        {
+            auto d = simp.walkLength.to!int - 1;
+            assert(d >= 0);
+
+            write("     checking simp = ", simp);
+
+            bool wasMove = (simp in indxOfCenter) !is null;
+            bool wasValidMove = false;
+            if(wasMove)
+            {
+                auto simpMoveIndx = this.indxOfCenter[simp];
+                auto simpMove = moves[simpMoveIndx];
+                auto simpCen = simpMove.center;
+                auto simpCoCen = simpMove.coCenter;
+                wasValidMove = !this.contains(simpCoCen);
+            }
+
+            bool isMove = (degree(simp) == dimension - d + 1);
+
+            // TO DO: Use faster version of findCoCenter that takes a facet!
+            bool isValidMove = isMove && !this.contains(this.findCoCenter(simp).sort);
+            
+            if(wasMove && !isMove)
+            {
+                writeln(", remove index ", indxOfCenter[simp.array]);
+                toRemove ~= indxOfCenter[simp.array];
+            }
+            else if (!wasMove && isMove)
+            {
+                newMoves ~= typeof(mv)(simp.array, this.findCoCenter(simp).sort);
+                writeln(", add move: ", newMoves[$-1]);
+            }
+            else if (wasMove && isMove)
+            {
+                writeln(", update index ", indxOfCenter[simp.array]);
+                toUpdate ~= indxOfCenter[simp.array];
+            }
+            else
+            {
+                "".writeln;
+            }
+
+            if (wasValidMove && !isValidMove)
+            {
+                --numValidMoves;
+            }
+            
+            if (!wasValidMove && isValidMove)
+            {
+                ++numValidMoves;
+            }
+            
+            
+        }
+        
 
         toRemove.sort;
         writeln("   indices toRemove = ", toRemove.retro);
