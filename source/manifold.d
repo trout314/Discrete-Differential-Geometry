@@ -134,8 +134,8 @@ public:
             writeln(", remove index ", simpMoveIndx);
             toRemove ~= simpMoveIndx;
 
-            // any moves blocked by center are now valid
-            if(cen in indicesOfCoCenter)
+            // any moves blocked by an old simplex are now valid
+            if(simp in indicesOfCoCenter)
             {
                 numValidMoves += indicesOfCoCenter[simp].length;
             }
@@ -151,7 +151,7 @@ public:
             newMoves ~= Move_(simp, simpCoCen);
             writeln(", adding move", newMoves[$-1]);
 
-            // any moves blocked by center are now valid
+            // any moves blocked by a new simplex are now not valid
             if(simpCoCen in indicesOfCoCenter)
             {
                 numValidMoves -= indicesOfCoCenter[simpCoCen].length;
