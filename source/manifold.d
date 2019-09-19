@@ -83,9 +83,6 @@ public:
     // TO DO: figure out how to make oldPiece and newPiece const
     void modifyMoveDataOnMove(S)(Move!(dimension, Vertex) mv, ref S oldPiece, ref S newPiece)
     {
-        auto oldP = SimpComp(oldPiece);
-        auto newP = SimpComp(newPiece);
-
         auto cen = mv.center;
         auto coCen = mv.coCenter;
 
@@ -95,21 +92,25 @@ public:
         auto coCenLen = coCen.walkLength.to!int;
         assert(coCenLen>0);
 
-        auto bdry = productUnion(
+        auto oldP = SimpComp(oldPiece);
+        auto newP = SimpComp(newPiece);
+        auto bdry = SimpComp(productUnion(
             cen.subsetsOfSize(cenLen-1),
-            coCen.subsetsOfSize(coCenLen-1)).map!array.array;
+            coCen.subsetsOfSize(coCenLen-1)));
         
         const(Vertex)[][] oldInterior;
         const(Vertex)[][] newInterior;
+        const(Vertex)[][] boundary;
         static foreach(d; 0 .. dimension)
         {
             oldInterior ~= oldP.simplices(d).filter!(s => cen.isSubsetOf(s)).array;
             newInterior ~= newP.simplices(d).filter!(s => coCen.isSubsetOf(s)).array;
+            boundary ~= bdry.simplices(d);
         }
 
         writeln("   newP: ", newP);
         writeln("   oldP: ", oldP);
-        writeln("   bdry: ", bdry);
+        writeln("   bdry: ", boundary);
         writeln("   oldInterior: ", oldInterior);
         writeln("   newInterior: ", newInterior);
 
@@ -124,37 +125,46 @@ public:
             assert(coCen in indicesOfCoCenter, "pachner move cocenter indx not found");
         }
 
-        writeln("   checking oldInterior simplices ");
+        writeln("   oldInterior simplices ");
         foreach(simp; oldInterior)
         {
-            write("     checking simp = ", simp);
+            write("      simp = ", simp);
 
             auto simpMoveIndx = this.indxOfCenter[simp];
             writeln(", remove index ", simpMoveIndx);
             toRemove ~= simpMoveIndx;
 
-            // old move is now gone
-            --numValidMoves;
-
             // any moves blocked by center are now valid
             if(cen in indicesOfCoCenter)
             {
-                numValidMoves = indicesOfCoCenter[cen].length;
+                numValidMoves += indicesOfCoCenter[simp].length;
             }
         }
 
-        writeln("   checking newInterior simplices ");
+        writeln("   newInterior simplices ");
         foreach(simp; newInterior)
         {
+            write("      simp = ", simp);
+            auto simpCoCen = this.findCoCenter(simp);
+
+            // TO DO: use known facet to do faster coCenter lookup
+            newMoves ~= Move_(simp, simpCoCen);
+            writeln(", adding move", newMoves[$-1]);
+
+            // any moves blocked by center are now valid
+            if(simpCoCen in indicesOfCoCenter)
+            {
+                numValidMoves -= indicesOfCoCenter[simpCoCen].length;
+            }
         }
 
-        writeln("   checking boundary simplices ");
-        foreach(simp; bdry)
+        writeln("   boundary simplices ");
+        foreach(simp; boundary)
         {
             auto d = simp.walkLength.to!int - 1;
             assert(d >= 0);
 
-            write("     checking simp = ", simp);
+            write("      simp = ", simp);
 
             bool wasMove = (simp in indxOfCenter) !is null;
             bool wasValidMove = false;
@@ -201,8 +211,6 @@ public:
             {
                 ++numValidMoves;
             }
-            
-            
         }
         
 
@@ -272,15 +280,21 @@ public:
         foreach(i; toRemove.retro)
         {
             writeln("      removing index ", i);
+            assert(moves.length > 0);
             auto lastIndx = moves.length - 1;
             auto lastMove = moves[lastIndx];
+            foreach(m; moves) m.writeln;
             auto goneMove = moves[i];
+            lastMove.coCenter.writeln;
             indxOfCenter[lastMove.center.idup] = i;
             indicesOfCoCenter[lastMove.coCenter.idup]
-                = indicesOfCoCenter[lastMove.coCenter].replace(lastIndx.only, i.only);
-            
-            this.moves.swapPop(i);
-            indicesOfCoCenter.remove(goneMove.coCenter);
+                = indicesOfCoCenter[lastMove.coCenter.idup].replace(lastIndx.only, i.only);
+
+            moves.swapPop(i);            
+            if(indicesOfCoCenter[goneMove.coCenter].empty)
+            {
+                indicesOfCoCenter.remove(goneMove.coCenter);
+            }
             indxOfCenter.remove(goneMove.center);
         }
 
@@ -288,7 +302,7 @@ public:
         "   adding new moves...".writeln;
         foreach(newMove; newMoves)
         {
-            writeln("      adding move: ", newMove);
+            writeln("      adding ", newMove);
             moves ~= newMove;
             indxOfCenter[newMove.center.idup] = moves.length - 1;
             indicesOfCoCenter[newMove.coCenter.idup] ~= moves.length - 1;

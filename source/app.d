@@ -254,9 +254,9 @@ void main(string[] args)
         m.doPachner([0,4], [1,2]);
         report();    
 
-        // "m.doPachner([4], [1,2,3]);".writeln;
-        // m.doPachner([4], [1,2,3]);
-        // report();
+        "m.doPachner([4], [1,2,3]);".writeln;
+        m.doPachner([4], [1,2,3]);
+        report();
 
         // "m.doPachner([1,2,3], [4]);".writeln;
         // m.doPachner([1,2,3], [4]);
