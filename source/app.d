@@ -228,14 +228,15 @@ void main(string[] args)
                 writeln("      ", coCen, ": ", indices);            
             }
             writeln("   num valid moves: ", m.numValidMoves);
+            writeln("   computed num valid moves: ", m.computePachnerMoves.length);
 
             import unit_threaded : shouldBeSameSetAs;
             import std.algorithm : each, sort;
             import std.range : array;
 
-            m.moves.array.sort.each!writeln;
-            "-------".writeln;
-            m.computeMBPMoves.array.sort.each!writeln;
+            // m.moves.array.sort.each!writeln;
+            // "-------".writeln;
+            // m.computeMBPMoves.array.sort.each!writeln;
             m.moves.shouldBeSameSetAs(m.computeMBPMoves.dup.sort);
         };
 
@@ -250,13 +251,13 @@ void main(string[] args)
         m.doPachner([1,2], [0,4]);
         report();
 
-        "m.doPachner([0,4], [1,2])".writeln;
-        m.doPachner([0,4], [1,2]);
-        report();    
+        // "m.doPachner([0,4], [1,2])".writeln;
+        // m.doPachner([0,4], [1,2]);
+        // report();    
 
-        "m.doPachner([4], [1,2,3]);".writeln;
-        m.doPachner([4], [1,2,3]);
-        report();
+        // "m.doPachner([4], [1,2,3]);".writeln;
+        // m.doPachner([4], [1,2,3]);
+        // report();
 
         // "m.doPachner([1,2,3], [4]);".writeln;
         // m.doPachner([1,2,3], [4]);
