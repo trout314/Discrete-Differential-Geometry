@@ -80,6 +80,41 @@ public:
     size_t[Vertex[]] indxOfCenter;
     size_t[][Vertex[]] indicesOfCoCenter;
 
+    void checkMoveData()()
+    {
+        foreach(i, mv; moves.enumerate)
+        {
+            if (indxOfCenter[mv.center] != i)
+            {
+                writeln("bad index of center for move. actual index i=", i,
+                    " indxOfCenter[", mv.center, "]=", indxOfCenter[mv.center]);
+                moves.enumerate.each!(p => writeln("  #", p[0], " ", p[1]));
+                indicesOfCoCenter.byKeyValue.each!(p => writeln("  coCenter:", p.key, " indices:", p.value));
+                assert(0);
+            }
+        }
+        assert(numValidMoves == this.computePachnerMoves.length);
+
+        foreach(cc, ccIndxList; this.indicesOfCoCenter)
+        {
+            foreach(i; ccIndxList)
+            {
+                if (moves[i].coCenter != cc)
+                {
+                    writeln("bad coCenter indices. indicesOfCocenter[", cc, "]=", ccIndxList,
+                        " but moves[", i, "].coCenter=", moves[i].coCenter);
+                    writeln("moves:");
+                    moves.enumerate.each!(p => writeln("  #", p[0], " ", p[1]));
+                    writeln("indicesOfCoCenter:");
+                    indicesOfCoCenter.byKeyValue.each!(
+                        p => writeln("  coCenter:", p.key, " indices:", p.value));
+                    assert(0);
+                }
+            }
+        }
+    }
+
+
     // TO DO: figure out how to make oldPiece and newPiece const
     void modifyMoveDataOnMove(S)(Move!(dimension, Vertex) mv, ref S oldPiece, ref S newPiece)
     {
@@ -344,7 +379,7 @@ public:
 
         // TO DO: remove or add (simplex, coCenter) to list
         // of pachner moves if needed, due to degree change
-
+        checkMoveData();
     }
 
     /// Dimension of the manifold
