@@ -356,11 +356,19 @@ public:
             // foreach(m; moves) m.writeln;
             auto goneMove = moves[i];
             indxOfCenter[lastMove.center.idup] = i;
-            writeln("      old coCenterIndices: ", indicesOfCoCenter[lastMove.coCenter]);
-            indicesOfCoCenter[lastMove.coCenter.idup]
-                = indicesOfCoCenter[lastMove.coCenter.idup].replace(lastIndx.only, i.only);
 
-            writeln("      new coCenterIndices: ", indicesOfCoCenter[lastMove.coCenter]);
+            if (lastMove.coCenter in indicesOfCoCenter)
+            {
+                writeln("      old coCenterIndices: ", indicesOfCoCenter[lastMove.coCenter]);
+                indicesOfCoCenter[lastMove.coCenter.idup]
+                    = indicesOfCoCenter[lastMove.coCenter.idup].replace(lastIndx.only, i.only);
+                writeln("      new coCenterIndices: ", indicesOfCoCenter[lastMove.coCenter]);
+            }
+            else
+            {
+                writeln("      old coCenterIndices: --removed--");
+                writeln("      new coCenterIndices: --removed--");
+            }
 
             moves.swapPop(i);
             if (goneMove.coCenter in indicesOfCoCenter)

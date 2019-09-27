@@ -251,22 +251,21 @@ void main(string[] args)
         m.doPachner([1,2], [0,4]);
         report();
 
-        // "m.doPachner([0,4], [1,2])".writeln;
-        // m.doPachner([0,4], [1,2]);
-        // report();    
+        "m.doPachner([0,4], [1,2])".writeln;
+        m.doPachner([0,4], [1,2]);
+        report();    
 
-        // "m.doPachner([4], [1,2,3]);".writeln;
-        // m.doPachner([4], [1,2,3]);
-        // report();
+        "m.doPachner([4], [1,2,3]);".writeln;
+        m.doPachner([4], [1,2,3]);
+        report();
 
-        // "m.doPachner([1,2,3], [4]);".writeln;
-        // m.doPachner([1,2,3], [4]);
-        // report();
+        "m.doPachner([1,2,3], [4]);".writeln;
+        m.doPachner([1,2,3], [4]);
+        report();
 
-        // "m.doPachner([1,2,3], [5]);".writeln;
-        // m.doPachner([1,2,4], [5]);
-        // report();
-
+        "m.doPachner([1,2,3], [5]);".writeln;
+        m.doPachner([1,2,4], [5]);
+        report();
     }
     else
     {
