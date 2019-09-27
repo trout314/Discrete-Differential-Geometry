@@ -82,6 +82,7 @@ public:
 
     void checkMoveData()()
     {
+        writeln("   checking move records...");
         foreach(i, mv; moves.enumerate)
         {
             if (indxOfCenter[mv.center] != i)
@@ -98,7 +99,7 @@ public:
         {
             writeln("numValidMoves = ", numValidMoves, " but...");
             writeln("this.computePachnerMoves.length = ", this.computePachnerMoves.length);
-            // assert(0);
+            assert(0);
         }
 
         foreach(cc, ccIndxList; this.indicesOfCoCenter)
@@ -168,19 +169,11 @@ public:
         }
 
         writeln("   oldInterior simplices ");
-        if (cenLen < dimension + 1)
-        {
-            // old move was valid (unless it was trivial)
-            "      subtracting 1 from numValidMoves since old center not a facet".writeln;
-            numValidMoves--;
-        }
-
         foreach(simp; oldInterior)
         {
             write("      simp = ", simp);
 
             // any moves blocked by an old simplex are now valid
-            indicesOfCoCenter.writeln;
             if(simp in indicesOfCoCenter)
             {
                 write("      adding ",indicesOfCoCenter[simp].length, " to numValidMoves"); 
@@ -330,6 +323,7 @@ public:
             {               
                 thisCoCen = thisCoCen.replace(oldVerts[j].only, newVerts[j].only);
             }
+            
             moves[i] = typeof(mv)(thisCen, thisCoCen.sort);
             indicesOfCoCenter[thisCoCen.idup] ~= i;
 
