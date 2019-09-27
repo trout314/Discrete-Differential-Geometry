@@ -93,7 +93,13 @@ public:
                 assert(0);
             }
         }
-        assert(numValidMoves == this.computePachnerMoves.length);
+
+        if (numValidMoves != this.computePachnerMoves.length)
+        {
+            writeln("numValidMoves = ", numValidMoves, " but...");
+            writeln("this.computePachnerMoves.length = ", this.computePachnerMoves.length);
+            // assert(0);
+        }
 
         foreach(cc, ccIndxList; this.indicesOfCoCenter)
         {
@@ -104,7 +110,8 @@ public:
                     writeln("bad coCenter indices. indicesOfCocenter[", cc, "]=", ccIndxList,
                         " but moves[", i, "].coCenter=", moves[i].coCenter);
                     writeln("moves:");
-                    moves.enumerate.each!(p => writeln("  #", p[0], " ", p[1]));
+                    moves.enumerate.each!(p => writeln("  #", p[0],
+                        " ", p[1], this.contains(p[1].coCenter) ? ", blocked" : ""));
                     writeln("indicesOfCoCenter:");
                     indicesOfCoCenter.byKeyValue.each!(
                         p => writeln("  coCenter:", p.key, " indices:", p.value));
@@ -307,7 +314,7 @@ public:
             }
             writeln("         newVerts: ", newVerts);
             writeln("         oldVerts: ", oldVerts);
-
+    
             if (oldVerts.empty)
             {
                 oldVerts = newVerts;
@@ -352,16 +359,18 @@ public:
             writeln("      old coCenterIndices: ", indicesOfCoCenter[lastMove.coCenter]);
             indicesOfCoCenter[lastMove.coCenter.idup]
                 = indicesOfCoCenter[lastMove.coCenter.idup].replace(lastIndx.only, i.only);
-            // indicesOfCoCenter[goneMove.coCenter]
-            //     = indicesOfCoCenter[goneMove.coCenter].replace(i.only);
-
 
             writeln("      new coCenterIndices: ", indicesOfCoCenter[lastMove.coCenter]);
 
-            moves.swapPop(i);            
-            if(indicesOfCoCenter[goneMove.coCenter].empty)
+            moves.swapPop(i);
+            if (goneMove.coCenter in indicesOfCoCenter)
             {
-                indicesOfCoCenter.remove(goneMove.coCenter);
+                indicesOfCoCenter[goneMove.coCenter.idup] = indicesOfCoCenter[goneMove.coCenter]
+                    .filter!(indx => !toRemove.canFind(indx)).array;
+                if (indicesOfCoCenter[goneMove.coCenter].empty)
+                {
+                    indicesOfCoCenter.remove(goneMove.coCenter);
+                }
             }
             indxOfCenter.remove(goneMove.center);
         }
