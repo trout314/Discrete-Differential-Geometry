@@ -200,7 +200,6 @@ void main(string[] args)
         import manifold_examples : standardSphere;
         import std.range : enumerate, iota;
 
-        // trigonal bi-pyramid.
         auto m = standardSphere!2;
 
         auto report = () {
@@ -233,10 +232,6 @@ void main(string[] args)
             import unit_threaded : shouldBeSameSetAs;
             import std.algorithm : each, sort;
             import std.range : array;
-
-            // m.moves.array.sort.each!writeln;
-            // "-------".writeln;
-            // m.computeMBPMoves.array.sort.each!writeln;
             m.moves.shouldBeSameSetAs(m.computeMBPMoves.dup.sort);
         };
 
@@ -266,6 +261,10 @@ void main(string[] args)
         "m.doPachner([1,2,3], [5]);".writeln;
         m.doPachner([1,2,4], [5]);
         report();
+
+        // TO DO: choose long sequence of randomly chosen moves to do, then undo.
+        // check validity of move tracking data at each step
+
     }
     else
     {

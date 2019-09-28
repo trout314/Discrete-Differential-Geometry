@@ -19,7 +19,7 @@ import std.math : approxEqual;
 import std.stdio : writeln, writefln, write;
 
 import std.traits : Unqual;
-import std.random : uniform;
+import std.random : uniform, choice;
 
 import moves : Move;
 
@@ -1912,4 +1912,40 @@ void saveEdgeGraphTo(int dimension, Vertex = int)(
     {
         saveFile.writeln(edge.front, " ", edge.back);
     }
+}
+
+unittest
+{
+    static foreach (d; iota(2,4))
+    {{
+        int numMoves = 50;
+
+        auto mfd = standardSphere!d;
+        mfd.computePachnerMoves.shouldBeEmpty;
+        mfd.numValidMoves.shouldEqual(0);
+        mfd.moves.length.shouldEqual(2^^(d+2) - d - 4);
+
+        mfd.Move_[] movesToDo;
+
+        foreach(_; numMoves.iota)
+        {
+            real totMoves = mfd.numValidMoves + mfd.fVector[$-1];
+            if (uniform(0, totMoves) < mfd.numValidMoves)
+            {
+
+            }
+            else
+            {
+                movesToDo ~= mfd.moves.choice;
+            }
+
+            movesToDo.length.shouldEqual(20);
+        }
+
+
+        
+
+
+    }}
+
 }
