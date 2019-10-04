@@ -80,38 +80,38 @@ public:
     size_t[Vertex[]] indxOfCenter;
     size_t[][Vertex[]] indicesOfCoCenter;
 
+    auto report()() {
+        writeln("   current manifold: ", this);
+        "   moves:".writeln;
+        foreach(indx, move; this.moves.enumerate)
+        {
+            write("      ", indx, ": ", move);
+            if (this.contains(move.coCenter))
+            {
+                writeln(", blocked");
+            }
+            else
+            {
+                "".writeln;
+            }
+        }
+        "   indxOfCenter:".writeln;
+        foreach(cen, indx; this.indxOfCenter)
+        {
+            writeln("      ", cen, ": ", indx);            
+        }
+        "   indicesOfCoCenter:".writeln;
+        foreach(coCen, indices; this.indicesOfCoCenter)
+        {
+            writeln("      ", coCen, ": ", indices);            
+        }
+        writeln("   num valid moves: ", this.numValidMoves);
+        writeln("   computed num valid moves: ", this.computePachnerMoves.length);
+
+    }
+
     void checkMoveData()()
     {
-        auto report = () {
-            writeln("   current manifold: ", this);
-            "   moves:".writeln;
-            foreach(indx, move; this.moves.enumerate)
-            {
-                write("      ", indx, ": ", move);
-                if (this.contains(move.coCenter))
-                {
-                    writeln(", blocked");
-                }
-                else
-                {
-                    "".writeln;
-                }
-            }
-            "   indxOfCenter:".writeln;
-            foreach(cen, indx; this.indxOfCenter)
-            {
-                writeln("      ", cen, ": ", indx);            
-            }
-            "   indicesOfCoCenter:".writeln;
-            foreach(coCen, indices; this.indicesOfCoCenter)
-            {
-                writeln("      ", coCen, ": ", indices);            
-            }
-            writeln("   num valid moves: ", this.numValidMoves);
-            writeln("   computed num valid moves: ", this.computePachnerMoves.length);
-
-        };
-
         writeln("   checking move records...");
         foreach(i, mv; moves.enumerate)
         {
@@ -158,6 +158,8 @@ public:
         import std.algorithm : each, sort;
         import std.range : array;
         this.moves.shouldBeSameSetAs(this.computeMBPMoves.dup.sort);
+
+        report();
     }
 
 
@@ -190,12 +192,11 @@ public:
         }
 
         writeln(mv);
-        // writeln("   newP: ", newP);
-        // writeln("   oldP: ", oldP);
-        // writeln("   bdry: ", boundary);
-        // writeln("   oldInterior: ", oldInterior);
-        // writeln("   newInterior: ", newInterior);
-
+        writeln("      newP: ", newP);
+        writeln("      oldP: ", oldP);
+        writeln("      bdry: ", boundary);
+        writeln("      oldInterior: ", oldInterior);
+        writeln("      newInterior: ", newInterior);
 
         size_t[] toRemove = [];
         size_t[] toUpdate = [];
@@ -207,15 +208,15 @@ public:
             assert(coCen in indicesOfCoCenter, "pachner move cocenter indx not found");
         }
 
-        // writeln("   oldInterior simplices ");
+        writeln("   oldInterior simplices ");
         foreach(simp; oldInterior)
         {
-            // write("      simp = ", simp);
+            writeln("      simp = ", simp);
 
             // any moves blocked by an old simplex are now valid
             if(simp in indicesOfCoCenter)
             {
-                writeln("      adding ",indicesOfCoCenter[simp].length,
+                writeln("         adding ",indicesOfCoCenter[simp].length,
                     " to numValidMoves because of unblocked coCenter ", simp); 
                 numValidMoves += indicesOfCoCenter[simp].length;
             }
@@ -223,13 +224,12 @@ public:
             if(simp.walkLength < dimension + 1)
             {
                 auto simpMoveIndx = this.indxOfCenter[simp];
-                // write(", remove index ", simpMoveIndx);
+                writeln("         remove index ", simpMoveIndx);
                 toRemove ~= simpMoveIndx;
             }
-            // "".writeln;
         }
 
-        // writeln("   newInterior simplices ");
+        writeln("   newInterior simplices ");
         if (coCenLen < dimension + 1)
         {
             // new center (old coCenter) is valid (unless it is trivial)
@@ -240,13 +240,13 @@ public:
         
         foreach(simp; newInterior)
         {
-            // write("      simp = ", simp);
+            writeln("      simp = ", simp);
 
             // any moves blocked by a new simplex are now not valid
             if(simp in indicesOfCoCenter)
             {
                 auto simpCoCen = this.findCoCenter(simp);
-                writeln("      subtracting ",indicesOfCoCenter[simp].length,
+                writeln("         subtracting ",indicesOfCoCenter[simp].length,
                     " from numValidMoves because of newly blocked coCenter ", simp); 
                 numValidMoves -= indicesOfCoCenter[simp].length;
             }
@@ -256,19 +256,18 @@ public:
                 auto simpCoCen = this.findCoCenter(simp);
                 // TO DO: use known facet to do faster coCenter lookup
                 newMoves ~= Move_(simp, simpCoCen);
-                // write(", adding ", newMoves[$-1]);
+                writeln("         adding ", newMoves[$-1]);
             }
-            // "".writeln;
         }
 
-        // writeln("   boundary simplices ");
+        writeln("   boundary simplices ");
         foreach(simp; boundary)
         {
             auto d = simp.walkLength.to!int - 1;
             assert(d >= 0);
             assert(d < dimension);
 
-            // write("      simp = ", simp);
+            writeln("      simp = ", simp);
 
             bool wasMove = (simp in indxOfCenter) !is null;
             bool wasValidMove = false;
@@ -288,54 +287,50 @@ public:
             
             if(wasMove && !isMove)
             {
-                // writeln(", remove index ", indxOfCenter[simp.array]);
+                writeln("         remove index ", indxOfCenter[simp.array]);
                 toRemove ~= indxOfCenter[simp.array];
             }
             else if (!wasMove && isMove)
             {
                 newMoves ~= typeof(mv)(simp.array, this.findCoCenter(simp).sort);
-                // writeln(", add move: ", newMoves[$-1]);
+                writeln("         add move: ", newMoves[$-1]);
             }
             else if (wasMove && isMove)
             {
-                // writeln(", update index ", indxOfCenter[simp.array]);
+                writeln("         update index ", indxOfCenter[simp.array]);
                 toUpdate ~= indxOfCenter[simp.array];
-            }
-            else
-            {
-                // "".writeln;
             }
 
             if (wasValidMove && !isValidMove)
             {
-                writeln("      subtracting 1 from numValidMoves because of update at ", simp);
+                writeln("         subtracting 1 from numValidMoves because of update at ", simp);
                 --numValidMoves;
             }
             
             if (!wasValidMove && isValidMove)
             {
-                writeln("      adding 1 from numValidMoves because of update at ", simp);
+                writeln("         adding 1 from numValidMoves because of update at ", simp);
                 ++numValidMoves;
             }
         }
         
 
         toRemove.sort;
-        // writeln("   indices toRemove = ", toRemove.retro);
-        // writeln("   indices toUpdate = ", toUpdate);
-        // writeln("   newMoves = ");
+        writeln("   indices toRemove = ", toRemove.retro);
+        writeln("   indices toUpdate = ", toUpdate);
+        writeln("   newMoves = ");
         foreach(m; newMoves)
         {
-            // writeln("      ", m);
+            writeln("      ", m);
         }
 
-        // "   updating moves...".writeln;
+        "   updating moves...".writeln;
         foreach(i; toUpdate)
         {
             auto thisCoCen = moves[i].coCenter;
             auto thisOldCoCen = thisCoCen.idup;
             auto thisCen = moves[i].center;
-            // writeln("      updating index ", i);
+            writeln("      updating index ", i);
             
             // Update vertices in cocenter of move
             Vertex[] newVerts;
@@ -348,8 +343,8 @@ public:
             {
                 oldVerts = oldP.link(thisCen).joiner.array.dup.sort.uniq.array;
             }
-            // writeln("         newVerts: ", newVerts);
-            // writeln("         oldVerts: ", oldVerts);
+            writeln("         newVerts: ", newVerts);
+            writeln("         oldVerts: ", oldVerts);
     
             if (oldVerts.empty)
             {
@@ -380,54 +375,55 @@ public:
                 }
                 else
                 {
+                    writeln("      indicesOfCoCenter.remove(", thisOldCoCen, ")");
                     indicesOfCoCenter.remove(thisOldCoCen);
                 }
             }
         }
 
 
-        // "   removing moves...".writeln;
+        "   removing moves...".writeln;
         foreach(i; toRemove.retro)
         {
-            // writeln("      removing index ", i);
+            writeln("      removing index ", i);
             assert(moves.length > 0);
             auto lastIndx = moves.length - 1;
             auto lastMove = moves[lastIndx];
-            // foreach(m; moves) m.writeln;
             auto goneMove = moves[i];
             indxOfCenter[lastMove.center.idup] = i;
 
             if (lastMove.coCenter in indicesOfCoCenter)
             {
-                // writeln("      old coCenterIndices: ", indicesOfCoCenter[lastMove.coCenter]);
+                writeln("         old coCenterIndices: ", indicesOfCoCenter[lastMove.coCenter]);
                 indicesOfCoCenter[lastMove.coCenter.idup]
                     = indicesOfCoCenter[lastMove.coCenter.idup].replace(lastIndx.only, i.only);
-                // writeln("      new coCenterIndices: ", indicesOfCoCenter[lastMove.coCenter]);
+                writeln("         new coCenterIndices: ", indicesOfCoCenter[lastMove.coCenter]);
             }
             else
             {
-                // writeln("      old coCenterIndices: --removed--");
-                // writeln("      new coCenterIndices: --removed--");
+                writeln("         old coCenterIndices: --removed--");
+                writeln("         new coCenterIndices: --removed--");
             }
 
             moves.swapPop(i);
+            if (i==1) report();
             if (goneMove.coCenter in indicesOfCoCenter)
             {
                 indicesOfCoCenter[goneMove.coCenter.idup] = indicesOfCoCenter[goneMove.coCenter]
                     .filter!(indx => !toRemove.canFind(indx)).array;
                 if (indicesOfCoCenter[goneMove.coCenter].empty)
                 {
+                    writeln("         indicesOfCoCenter.remove(", goneMove.coCenter, ")");
                     indicesOfCoCenter.remove(goneMove.coCenter);
                 }
             }
             indxOfCenter.remove(goneMove.center);
         }
 
-
-        // "   adding new moves...".writeln;
+        "   adding new moves...".writeln;
         foreach(newMove; newMoves)
         {
-            // writeln("      adding ", newMove);
+            writeln("      adding ", newMove);
             moves ~= newMove;
             indxOfCenter[newMove.center.idup] = moves.length - 1;
             indicesOfCoCenter[newMove.coCenter.idup] ~= moves.length - 1;
@@ -1988,6 +1984,8 @@ unittest
         [[0],[1,2,3]],
         [[1,2,3],[6]]
     ];
+
+    m.report();
     foreach(mv; testMoves2)
     {
         m.doPachner(mv[0], mv[1]);
