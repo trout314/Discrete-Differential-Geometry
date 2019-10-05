@@ -166,6 +166,9 @@ public:
     // TO DO: figure out how to make oldPiece and newPiece const
     void modifyMoveDataOnMove(S)(Move!(dimension, Vertex) mv, ref S oldPiece, ref S newPiece)
     {
+        // Note that this function is designed to run *after* any changes to the manifold's
+        // underlying simplicial complex (and stored fVector) have already happened.
+
         auto cen = mv.center;
         auto coCen = mv.coCenter;
 
@@ -385,12 +388,13 @@ public:
         "   removing moves...".writeln;
         foreach(i; toRemove.retro)
         {
-            writeln("      removing index ", i);
             assert(moves.length > 0);
             auto lastIndx = moves.length - 1;
             auto lastMove = moves[lastIndx];
             auto goneMove = moves[i];
             indxOfCenter[lastMove.center.idup] = i;
+
+            writeln("      removing index ", i, " by swapping ", i, " <-> ", lastIndx);
 
             if (lastMove.coCenter in indicesOfCoCenter)
             {
@@ -406,7 +410,6 @@ public:
             }
 
             moves.swapPop(i);
-            if (i==1) report();
             if (goneMove.coCenter in indicesOfCoCenter)
             {
                 indicesOfCoCenter[goneMove.coCenter.idup] = indicesOfCoCenter[goneMove.coCenter]
