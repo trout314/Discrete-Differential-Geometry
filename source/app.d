@@ -30,7 +30,7 @@ void main(string[] args)
         {
             saveFilePrefix = "test";
 
-            numFacetsTarget = 100;
+            numFacetsTarget = 300;
             hingeDegreeTarget = flatDegreeInDim[3];
             
             numFacetsCoef = 0.01;

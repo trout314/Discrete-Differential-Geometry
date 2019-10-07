@@ -499,26 +499,56 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         
         real oldObj = s.objective;
 
-        bool doneChoosingMove = false;
         s.manifold_.Move chosenMove;
 
-        while(!doneChoosingMove)     // Choose a move involving the facet
+        real totMoves = s.manifold.numValidMoves + s.manifold.fVector[$-1];
+        if (uniform(0, totMoves) < s.manifold.numValidMoves)
         {
-            //         if(!s.manifold.contains(coMove))
-            //         {
-                        doneChoosingMove = true;
-            //         }
-            //         else
-            //         {
-            //             moveInvalid = true;
-            //         }
+            chosenMove = s.manifold.moves.choice;
+            while (s.manifold.contains(chosenMove.coCenter))
+            {
+                chosenMove = s.manifold.moves.choice;
+            }
+        }
+        else
+        {
+            auto facet = s.manifold.randomFacetOfDim(dim);
+            chosenMove = s.manifold_.Move(facet, [s.unusedVertices[$-1]]);
+        }
+        
+        
+        s.manifold_.doPachner(chosenMove.center, chosenMove.coCenter);
 
+        ++s.bistellarTries[dim + 1 - chosenMove.center.length];
+        ++s.bistellarAccepts[dim + 1 - chosenMove.center.length];
+
+        if (chosenMove.center.length == 1)
+        {
+            s.unusedVertices ~= chosenMove.center.front;
         }
 
+        if (chosenMove.center.length == dim + 1)
+        {
+            s.unusedVertices.popBack;
+        }
+        
         real deltaObj = s.objective - oldObj;        
         if ((deltaObj > 0) && (uniform01 > exp(-deltaObj))) // REJECT MOVE
         {
+            --s.bistellarAccepts[dim + 1 - chosenMove.center.length];
 
+            chosenMove = s.manifold.Move(chosenMove.coCenter, chosenMove.center);
+
+            s.manifold_.doPachner(chosenMove.center, chosenMove.coCenter);
+            if (chosenMove.center.length == 1)
+            {
+                s.unusedVertices ~= chosenMove.center.front;
+            }
+
+            if (chosenMove.center.length == dim + 1)
+            {
+                s.unusedVertices.popBack;
+            }
         }
 
         //--------------------------- MAKE REPORT ----------------------------
@@ -529,64 +559,64 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         }
 
         //----------------------- WRITE TO DATA FILE --------------------------
-        if ((dtIncreased && (s.dtElapsed % s.params.dtPerFileReport == 0))
-            || doneSampling)
-        {
-            auto file = File(s.params.saveFilePrefix ~ ".dat", "a");
-            s.columnReport(file);
-        }
+    //     if ((dtIncreased && (s.dtElapsed % s.params.dtPerFileReport == 0))
+    //         || doneSampling)
+    //     {
+    //         auto file = File(s.params.saveFilePrefix ~ ".dat", "a");
+    //         s.columnReport(file);
+    //     }
 
-        //----------------------- SAVE CURRENT MANIFOLD ----------------------
-        if ((dtIncreased && (s.dtElapsed % s.params.dtPerSave == 0))
-            || doneSampling)
-        {
-            string prefix;
-            if (doneSampling)
-            {
-                prefix = s.params.saveFilePrefix ~ "_final";
-            }
-            else
-            {
-                prefix = s.params.saveFilePrefix ~ "_save" 
-                    ~ sampleNumber.to!string;
-            }
+    //     //----------------------- SAVE CURRENT MANIFOLD ----------------------
+    //     if ((dtIncreased && (s.dtElapsed % s.params.dtPerSave == 0))
+    //         || doneSampling)
+    //     {
+    //         string prefix;
+    //         if (doneSampling)
+    //         {
+    //             prefix = s.params.saveFilePrefix ~ "_final";
+    //         }
+    //         else
+    //         {
+    //             prefix = s.params.saveFilePrefix ~ "_save" 
+    //                 ~ sampleNumber.to!string;
+    //         }
 
-            auto mfdFileName = prefix ~ ".mfd";
-            auto graphFileName = prefix ~ ".edge_graph";
+    //         auto mfdFileName = prefix ~ ".mfd";
+    //         auto graphFileName = prefix ~ ".edge_graph";
 
-            s.manifold.saveTo(mfdFileName);
-            auto saveFile = File(mfdFileName, "a");
-            saveFile.writeln;
-            s.report(saveFile);
+    //         s.manifold.saveTo(mfdFileName);
+    //         auto saveFile = File(mfdFileName, "a");
+    //         saveFile.writeln;
+    //         s.report(saveFile);
 
-            s.manifold.saveEdgeGraphTo(graphFileName);
-            ++sampleNumber;
-        }
+    //         s.manifold.saveEdgeGraphTo(graphFileName);
+    //         ++sampleNumber;
+    //     }
 
-        //------------------------- COLLECT GARBAGE --------------------------
-        if (s.params.disableGC && (numMovesTried % s.params.triesPerCollect == 0))
-        {
-            GC.enable;
-            GC.collect;
-            GC.disable;
-        }
+    //     //------------------------- COLLECT GARBAGE --------------------------
+    //     if (s.params.disableGC && (numMovesTried % s.params.triesPerCollect == 0))
+    //     {
+    //         GC.enable;
+    //         GC.collect;
+    //         GC.disable;
+    //     }
 
-        //----------------------- CHECK FOR PROBLEMS ----------------------- 
-        static if (s.params.checkForProblems)
-        {
-            if (dtIncreased
-                && ((s.dtElapsed * s.params.dt) % s.params.sweepsPerProblemCheck == 0))
-            {
-                "checking for problems ... ".write;
-                auto problems = s.manifold.findProblems;
-                if (!problems.empty)
-                {
-                    problems.each!writeln;
-                    assert(0);
-                }
-                "done".writeln;
-            }
-        }
+    //     //----------------------- CHECK FOR PROBLEMS ----------------------- 
+    //     static if (s.params.checkForProblems)
+    //     {
+    //         if (dtIncreased
+    //             && ((s.dtElapsed * s.params.dt) % s.params.sweepsPerProblemCheck == 0))
+    //         {
+    //             "checking for problems ... ".write;
+    //             auto problems = s.manifold.findProblems;
+    //             if (!problems.empty)
+    //             {
+    //                 problems.each!writeln;
+    //                 assert(0);
+    //             }
+    //             "done".writeln;
+    //         }
+    //     }
     }
 
     "Finished! Time elapsed: %s".writefln(
