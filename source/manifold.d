@@ -115,6 +115,7 @@ public:
         writeln("   checking move records...");
         foreach(i, mv; moves.enumerate)
         {
+            writeln("      checking move #", i);
             if (indxOfCenter[mv.center] != i)
             {
                 writeln("bad index of center for move. actual index i=", i,
@@ -134,6 +135,7 @@ public:
 
         foreach(cc, ccIndxList; this.indicesOfCoCenter)
         {
+            writeln("      checking coCenter ", cc);
             foreach(i; ccIndxList)
             {
                 if (moves[i].coCenter != cc)
@@ -333,7 +335,7 @@ public:
             auto thisCoCen = moves[i].coCenter;
             auto thisOldCoCen = thisCoCen.idup;
             auto thisCen = moves[i].center;
-            writeln("      updating index ", i);
+            writeln("      updating #", i, " ", moves[i]);
             
             // Update vertices in cocenter of move
             Vertex[] newVerts;
@@ -346,8 +348,6 @@ public:
             {
                 oldVerts = oldP.link(thisCen).joiner.array.dup.sort.uniq.array;
             }
-            writeln("         newVerts: ", newVerts);
-            writeln("         oldVerts: ", oldVerts);
     
             if (oldVerts.empty)
             {
@@ -366,13 +366,16 @@ public:
             }
             
             moves[i] = typeof(mv)(thisCen, thisCoCen.sort);
-            indicesOfCoCenter[thisCoCen.idup] ~= i;
+            writeln("      new move #", i, " ", moves[i]);
+
+
+            indicesOfCoCenter[moves[i].coCenter.idup] ~= i;
 
             // Update indices pointing to updated cocenter
             if (thisOldCoCen in indicesOfCoCenter)
             {
                 auto newIndices = indicesOfCoCenter[thisOldCoCen].filter!(k => k != i).array;
-                if (newIndices.walkLength > 0)
+                if (!newIndices.empty)
                 {
                     indicesOfCoCenter[thisOldCoCen] = newIndices;
                 }
@@ -398,10 +401,14 @@ public:
 
             if (lastMove.coCenter in indicesOfCoCenter)
             {
-                writeln("         old coCenterIndices: ", indicesOfCoCenter[lastMove.coCenter]);
+                writeln("         for lastMove: ", lastMove);
+                writeln("         old indicesOfCoCenter[lastMove.coCenter]: ",
+                    indicesOfCoCenter[lastMove.coCenter]);
                 indicesOfCoCenter[lastMove.coCenter.idup]
-                    = indicesOfCoCenter[lastMove.coCenter.idup].replace(lastIndx.only, i.only);
-                writeln("         new coCenterIndices: ", indicesOfCoCenter[lastMove.coCenter]);
+                    = indicesOfCoCenter[lastMove.coCenter.idup].replace(lastIndx.only, i.only).
+                        sort.uniq.filter!(indx => indx != lastIndx).array;
+                writeln("         new indicesOfCoCenter[lastMove.coCenter]: ",
+                    indicesOfCoCenter[lastMove.coCenter]);
             }
             else
             {
@@ -412,12 +419,26 @@ public:
             moves.swapPop(i);
             if (goneMove.coCenter in indicesOfCoCenter)
             {
-                indicesOfCoCenter[goneMove.coCenter.idup] = indicesOfCoCenter[goneMove.coCenter]
-                    .filter!(indx => !toRemove.canFind(indx)).array;
-                if (indicesOfCoCenter[goneMove.coCenter].empty)
+                writeln("         for goneMove: ", goneMove);
+                writeln("         old indicesOfCoCenter[goneMove.coCenter]: ",
+                    indicesOfCoCenter[goneMove.coCenter]);
+
+                if (goneMove.coCenter != lastMove.coCenter)
                 {
-                    writeln("         indicesOfCoCenter.remove(", goneMove.coCenter, ")");
-                    indicesOfCoCenter.remove(goneMove.coCenter);
+                    indicesOfCoCenter[goneMove.coCenter.idup] = 
+                        indicesOfCoCenter[goneMove.coCenter].filter!(k => k != i).array;
+                }
+
+                writeln("         new indicesOfCoCenter[goneMove.coCenter]: ",
+                    indicesOfCoCenter[goneMove.coCenter]);
+
+                if (indicesOfCoCenter[goneMove.coCenter].all!(k => k == i))
+                {
+                    if (lastMove.coCenter != goneMove.coCenter)
+                    {
+                        writeln("         indicesOfCoCenter.remove(goneMove.coCenter)");
+                        indicesOfCoCenter.remove(goneMove.coCenter);
+                    }
                 }
             }
             indxOfCenter.remove(goneMove.center);
@@ -1962,23 +1983,23 @@ void saveEdgeGraphTo(int dimension, Vertex = int)(
 unittest
 {
     auto m = standardSphere!2;
-    // auto testMoves =  [
-    //     [[0, 2, 3], [4]],
-    //     [[0, 2], [1, 4]],
-    //     [[0, 1, 4], [6]],
-    //     [[3, 4], [0, 2]],
-    //     [[3], [0, 1, 2]],
-    //     [[0, 4], [2, 6]],
-    //     [[2, 4, 6], [10]],
-    //     [[4, 6], [1, 10]],
-    //     [[0], [1, 2, 6]],
-    //     [[4], [1, 2, 10]],
-    //     [[1, 2, 6], [14]]
-    //     ];
-    // foreach(mv; testMoves)
-    // {
-    //     m.doPachner(mv[0], mv[1]);
-    // }
+    auto testMoves =  [
+        [[0, 2, 3], [4]],
+        [[0, 2], [1, 4]],
+        [[0, 1, 4], [6]],
+        [[3, 4], [0, 2]],
+        [[3], [0, 1, 2]],
+        [[0, 4], [2, 6]],
+        [[2, 4, 6], [10]],
+        [[4, 6], [1, 10]],
+        [[0], [1, 2, 6]],
+        [[4], [1, 2, 10]],
+        [[1, 2, 6], [14]]
+        ];
+    foreach(mv; testMoves)
+    {
+        m.doPachner(mv[0], mv[1]);
+    }
 
     "".writeln;
     m = standardSphere!2;
@@ -1994,12 +2015,11 @@ unittest
         m.doPachner(mv[0], mv[1]);
     }
 
-
-    static foreach (d; iota(2,8))
+    static foreach (d; iota(2,6))
     {{
         writeln("dimension = ", d);
 
-        int numMoves = 100;
+        int numMoves = 20;
 
         auto mfd = standardSphere!d;
         mfd.computePachnerMoves.shouldBeEmpty;
