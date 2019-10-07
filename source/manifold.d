@@ -21,7 +21,7 @@ import std.stdio : writeln, writefln, write;
 import std.traits : Unqual;
 import std.random : uniform, choice;
 
-import moves : Move;
+import moves : Move_ = Move;
 
 import std.array : staticArray;
 
@@ -44,8 +44,6 @@ struct Manifold(int dimension_, Vertex_ = int)
 private:
     alias SimpComp = SimplicialComplex!Vertex_;
     SimpComp simpComp;
-
-    alias Move_ = Move!(dimension_, Vertex_);
 
     alias NSimplex = StackArray!(Vertex, dimension + 1);
     size_t[NSimplex] degreeMap;
@@ -74,7 +72,7 @@ private:
         return range.staticArray!(dimension_ + 1);
     }
     size_t numValidMoves;
-    Move_[] moves;
+    Move[] moves;
     size_t[Vertex[]] indxOfCenter;
     size_t[][Vertex[]] indicesOfCoCenter;
 
@@ -85,6 +83,9 @@ public:
 
     /// Vertex type used in the manifold
     alias Vertex = Vertex_;
+
+    /// Move type used for the manifold
+    alias Move = Move_!(dimension_, Vertex_);
 
     static assert(dimension >= 1, "dimension must be at least one, but got "
         ~ "dimension " ~ dimension.to!string);
@@ -111,7 +112,7 @@ public:
                     {
                         ++numValidMoves;
                     }
-                    moves ~= Move_(simp[], coCenter.sort);
+                    moves ~= Move(simp[], coCenter.sort);
                 }
             }
         }
@@ -308,7 +309,7 @@ public:
 Returns a list of all the possible pachner moves except for the 1->(dim+1) moves
 that are valid in this manifold. (Note that 1->(dim+1) moves are always valid.)
 */
-Move!(dim, Vertex)[] computePachnerMoves(Vertex, int dim)(
+Move_!(dim, Vertex)[] computePachnerMoves(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) mfd)
 {
     auto result = mfd.computeMBPMoves.filter!(
@@ -330,41 +331,41 @@ Move!(dim, Vertex)[] computePachnerMoves(Vertex, int dim)(
     // trigonal bipyramid
     auto tb = Manifold!2([[0,1,2],[0,1,3],[0,2,3],[1,2,4],[1,3,4],[2,3,4]]);
     tb.computePachnerMoves.shouldBeSameSetAs([
-        Move!2([0],[1,2,3]),
-        Move!2([4],[1,2,3]),
-        Move!2([1,2],[0,4]),
-        Move!2([1,3],[0,4]),
-        Move!2([2,3],[0,4])
+        Move_!2([0],[1,2,3]),
+        Move_!2([4],[1,2,3]),
+        Move_!2([1,2],[0,4]),
+        Move_!2([1,3],[0,4]),
+        Move_!2([2,3],[0,4])
     ]);
 
     // octahedron
     auto oct = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
         [2,3,5], [3,4,5], [1,4,5]]);
     oct.computePachnerMoves.shouldBeSameSetAs([
-        Move!2([0,1],[2,4]),
-        Move!2([0,2],[1,3]),
-        Move!2([0,3],[2,4]),
-        Move!2([0,4],[1,3]),
-        Move!2([1,5],[2,4]),
-        Move!2([2,5],[1,3]),
-        Move!2([3,5],[2,4]),
-        Move!2([4,5],[1,3]),
-        Move!2([1,2],[0,5]),
-        Move!2([2,3],[0,5]),
-        Move!2([3,4],[0,5]),
-        Move!2([1,4],[0,5])
+        Move_!2([0,1],[2,4]),
+        Move_!2([0,2],[1,3]),
+        Move_!2([0,3],[2,4]),
+        Move_!2([0,4],[1,3]),
+        Move_!2([1,5],[2,4]),
+        Move_!2([2,5],[1,3]),
+        Move_!2([3,5],[2,4]),
+        Move_!2([4,5],[1,3]),
+        Move_!2([1,2],[0,5]),
+        Move_!2([2,3],[0,5]),
+        Move_!2([3,4],[0,5]),
+        Move_!2([1,4],[0,5])
     ]);
 
     auto m = Manifold!2([[0,1,2],[0,1,3],[0,2,3],[1,2,4],[1,3,4],[2,3,5],
         [2,4,5],[3,4,5]]);    
     m.computePachnerMoves.shouldBeSameSetAs([
-        Move!2([0],[1,2,3]),
-        Move!2([5],[2,3,4]),
-        Move!2([1,2],[0,4]),
-        Move!2([1,3],[0,4]),
-        Move!2([2,3],[0,5]),
-        Move!2([2,4],[1,5]),
-        Move!2([3,4],[1,5])
+        Move_!2([0],[1,2,3]),
+        Move_!2([5],[2,3,4]),
+        Move_!2([1,2],[0,4]),
+        Move_!2([1,3],[0,4]),
+        Move_!2([2,3],[0,5]),
+        Move_!2([2,4],[1,5]),
+        Move_!2([3,4],[1,5])
     ]);
 
     // two-point suspension over boundary of 3-simplex
@@ -377,10 +378,10 @@ Move!(dim, Vertex)[] computePachnerMoves(Vertex, int dim)(
 Returns a list of all the (perhaps blocked) pachner moves except for the
 1->(dim+1) moves in this manifold. Note that 1->(dim+1) moves are always valid.
 */
-Move!(dim, Vertex)[] computeMBPMoves(Vertex, int dim)(
+Move_!(dim, Vertex)[] computeMBPMoves(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) mfd)
 {
-    Move!(dim, Vertex)[] result;
+    Move_!(dim, Vertex)[] result;
     foreach(simp_, deg; mfd.degreeMap)
     {
         if(simp_.length < dim + 1)
@@ -389,7 +390,7 @@ Move!(dim, Vertex)[] computeMBPMoves(Vertex, int dim)(
             if(deg == mfd.dimension + 2 - simp.walkLength)
             {
                 auto coCenter = mfd.findCoCenter(simp);
-                result ~= Move!(dim, Vertex)(simp, coCenter);
+                result ~= Move_!(dim, Vertex)(simp, coCenter);
             }
         }
     }
@@ -528,7 +529,7 @@ if (isIRof!(C, const(Vertex)) && isIRof!(D, const(Vertex)))
     assert(!manifold.contains(coCenter), "coCenter of move in manifold");
     if(coCenter.walkLength > 1)
     {
-        auto pm = Move!(dim, Vertex)(center, coCenter);
+        auto pm = Move_!(dim, Vertex)(center, coCenter);
         assert(manifold.computePachnerMoves.canFind(pm), "not a valid pachner move");
     }
  
@@ -562,7 +563,7 @@ if (isIRof!(C, const(Vertex)) && isIRof!(D, const(Vertex)))
     newPiece.each!(f => manifold.insertFacet(f));
     manifold.numSimplices.modifyFVector(cenLen);
 
-    auto pm = Move!(dim, Vertex)(center_, coCenter_);
+    auto pm = Move_!(dim, Vertex)(center_, coCenter_);
     manifold.modifyMoveDataOnMove(pm, oldPiece, newPiece);
 
     // TO DO: Do sanity checking for manifold
@@ -1601,9 +1602,7 @@ void saveEdgeGraphTo(int dimension, Vertex = int)(
     }
 }
 
-
-
-auto report(Vertex, int dim)(
+private void report(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) mfd)
 {
     writeln("   current manifold: ", mfd);
@@ -1635,7 +1634,7 @@ auto report(Vertex, int dim)(
 
 }
 
-void checkMoveData(Vertex, int dim)(
+private void checkMoveData(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) mfd)
 {
     // writeln("   checking move records...");
@@ -1694,7 +1693,7 @@ void checkMoveData(Vertex, int dim)(
 // TO DO: figure out how to make oldPiece and newPiece const
 void modifyMoveDataOnMove(Vertex, int dim, S)(
     ref Manifold!(dim, Vertex) mfd,
-    Move!(dim, Vertex) mv,
+    Move_!(dim, Vertex) mv,
     ref S oldPiece,
     ref S newPiece)
 {
@@ -1735,7 +1734,7 @@ void modifyMoveDataOnMove(Vertex, int dim, S)(
 
     size_t[] toRemove = [];
     size_t[] toUpdate = [];
-    mfd.Move_[] newMoves = [];
+    mfd.Move[] newMoves = [];
 
     if (coCenLen > 1)
     {
@@ -1790,7 +1789,7 @@ void modifyMoveDataOnMove(Vertex, int dim, S)(
         {
             auto simpCoCen = mfd.findCoCenter(simp);
             // TO DO: use known facet to do faster coCenter lookup
-            newMoves ~= mfd.Move_(simp, simpCoCen);
+            newMoves ~= mfd.Move(simp, simpCoCen);
             // writeln("         adding ", newMoves[$-1]);
         }
     }
@@ -2034,13 +2033,13 @@ unittest
         mfd.numValidMoves.shouldEqual(0);
         mfd.moves.length.shouldEqual(2^^(d+2) - d - 4);
 
-        mfd.Move_[] movesDone;
+        mfd.Move[] movesDone;
         foreach(i; numMoves.iota)
         {
             real totMoves = mfd.numValidMoves + mfd.fVector[$-1];
             if (uniform(0, totMoves) < mfd.numValidMoves)
             {
-                mfd.Move_ chosenMove = mfd.moves.choice;
+                mfd.Move chosenMove = mfd.moves.choice;
                 while (mfd.contains(chosenMove.coCenter))
                 {
                     chosenMove = mfd.moves.choice;
@@ -2050,7 +2049,7 @@ unittest
             else
             {
                 auto facet = mfd.randomFacetOfDim(d).array;
-                movesDone ~= mfd.Move_(facet, [i+d+2]);
+                movesDone ~= mfd.Move(facet, [i+d+2]);
             }
             // mfd.writeln;
             mfd.doPachner(movesDone[$-1].center, movesDone[$-1].coCenter);
