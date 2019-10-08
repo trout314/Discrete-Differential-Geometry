@@ -498,6 +498,7 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         }
         
         real oldObj = s.objective;
+        long oldNumMoves = s.manifold.numValidMoves;
 
         s.manifold_.Move chosenMove;
 
@@ -532,8 +533,12 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
             s.unusedVertices.popBack;
         }
         
+        long newNumMoves = s.manifold.numValidMoves;
+        real nMovesFactor = min(1.0, real(oldNumMoves) / newNumMoves);
         real deltaObj = s.objective - oldObj;        
-        if ((deltaObj > 0) && (uniform01 > exp(-deltaObj))) // REJECT MOVE
+
+        // REJECT MOVE if appropriate
+        if ((deltaObj > 0) && (uniform01 > exp(-deltaObj)*nMovesFactor))
         {
             --s.bistellarAccepts[dim + 1 - chosenMove.center.length];
 
@@ -559,64 +564,64 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         }
 
         //----------------------- WRITE TO DATA FILE --------------------------
-    //     if ((dtIncreased && (s.dtElapsed % s.params.dtPerFileReport == 0))
-    //         || doneSampling)
-    //     {
-    //         auto file = File(s.params.saveFilePrefix ~ ".dat", "a");
-    //         s.columnReport(file);
-    //     }
+        if ((dtIncreased && (s.dtElapsed % s.params.dtPerFileReport == 0))
+            || doneSampling)
+        {
+            auto file = File(s.params.saveFilePrefix ~ ".dat", "a");
+            s.columnReport(file);
+        }
 
-    //     //----------------------- SAVE CURRENT MANIFOLD ----------------------
-    //     if ((dtIncreased && (s.dtElapsed % s.params.dtPerSave == 0))
-    //         || doneSampling)
-    //     {
-    //         string prefix;
-    //         if (doneSampling)
-    //         {
-    //             prefix = s.params.saveFilePrefix ~ "_final";
-    //         }
-    //         else
-    //         {
-    //             prefix = s.params.saveFilePrefix ~ "_save" 
-    //                 ~ sampleNumber.to!string;
-    //         }
+        //----------------------- SAVE CURRENT MANIFOLD ----------------------
+        if ((dtIncreased && (s.dtElapsed % s.params.dtPerSave == 0))
+            || doneSampling)
+        {
+            string prefix;
+            if (doneSampling)
+            {
+                prefix = s.params.saveFilePrefix ~ "_final";
+            }
+            else
+            {
+                prefix = s.params.saveFilePrefix ~ "_save" 
+                    ~ sampleNumber.to!string;
+            }
 
-    //         auto mfdFileName = prefix ~ ".mfd";
-    //         auto graphFileName = prefix ~ ".edge_graph";
+            auto mfdFileName = prefix ~ ".mfd";
+            auto graphFileName = prefix ~ ".edge_graph";
 
-    //         s.manifold.saveTo(mfdFileName);
-    //         auto saveFile = File(mfdFileName, "a");
-    //         saveFile.writeln;
-    //         s.report(saveFile);
+            s.manifold.saveTo(mfdFileName);
+            auto saveFile = File(mfdFileName, "a");
+            saveFile.writeln;
+            s.report(saveFile);
 
-    //         s.manifold.saveEdgeGraphTo(graphFileName);
-    //         ++sampleNumber;
-    //     }
+            s.manifold.saveEdgeGraphTo(graphFileName);
+            ++sampleNumber;
+        }
 
-    //     //------------------------- COLLECT GARBAGE --------------------------
-    //     if (s.params.disableGC && (numMovesTried % s.params.triesPerCollect == 0))
-    //     {
-    //         GC.enable;
-    //         GC.collect;
-    //         GC.disable;
-    //     }
+        //------------------------- COLLECT GARBAGE --------------------------
+        if (s.params.disableGC && (numMovesTried % s.params.triesPerCollect == 0))
+        {
+            GC.enable;
+            GC.collect;
+            GC.disable;
+        }
 
-    //     //----------------------- CHECK FOR PROBLEMS ----------------------- 
-    //     static if (s.params.checkForProblems)
-    //     {
-    //         if (dtIncreased
-    //             && ((s.dtElapsed * s.params.dt) % s.params.sweepsPerProblemCheck == 0))
-    //         {
-    //             "checking for problems ... ".write;
-    //             auto problems = s.manifold.findProblems;
-    //             if (!problems.empty)
-    //             {
-    //                 problems.each!writeln;
-    //                 assert(0);
-    //             }
-    //             "done".writeln;
-    //         }
-    //     }
+        //----------------------- CHECK FOR PROBLEMS ----------------------- 
+        static if (s.params.checkForProblems)
+        {
+            if (dtIncreased
+                && ((s.dtElapsed * s.params.dt) % s.params.sweepsPerProblemCheck == 0))
+            {
+                "checking for problems ... ".write;
+                auto problems = s.manifold.findProblems;
+                if (!problems.empty)
+                {
+                    problems.each!writeln;
+                    assert(0);
+                }
+                "done".writeln;
+            }
+        }
     }
 
     "Finished! Time elapsed: %s".writefln(

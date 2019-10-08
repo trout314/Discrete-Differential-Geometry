@@ -426,11 +426,8 @@ Move_!(dim, Vertex)[] computeMBPMoves(Vertex, int dim)(
         [[0,1], [0,2], [0,3], [0,4], [1,2], [1,4],  // 1-simplices
          [1,5], [2,3], [2,5], [3,4], [3,5], [4,5]]);      
 
-    tetrahedron.computePachnerMoves.map!(mv => mv.center.array).empty.shouldEqual(true);
-
-    // octahedron.doPachner([0,1], [2,4]);
-
-
+    tetrahedron.computePachnerMoves.shouldBeEmpty;
+    
     // TO DO: FINISH CHECKS!
     // octahedron.doPachner([1,2]);
     // octahedron.doPachner([0,5]);
@@ -574,8 +571,6 @@ if (isIRof!(C, const(Vertex)) && isIRof!(D, const(Vertex)))
 
     auto pm = Move_!(dim, Vertex)(center_, coCenter_);
     manifold.modifyMoveDataOnMove(pm, oldPiece, newPiece);
-
-    // TO DO: Do sanity checking for manifold
 }
 
 auto findCoCenter(Vertex, int dim, C)(
@@ -1989,14 +1984,9 @@ void modifyMoveDataOnMove(Vertex, int dim, S)(
         mfd.indxOfCenter[newMove.center.idup] = mfd.moves_.length - 1;
         mfd.indicesOfCoCenter[newMove.coCenter.idup] ~= mfd.moves_.length - 1;
     }
-
-
-    // TO DO: remove or add (simplex, coCenter) to list
-    // of pachner moves if needed, due to degree change
-    mfd.checkMoveData();
 }
 
-@Name("") unittest
+@Name("overall move") unittest
 {
     auto m = standardSphere!2;
     auto testMoves =  [
@@ -2015,6 +2005,7 @@ void modifyMoveDataOnMove(Vertex, int dim, S)(
     foreach(mv; testMoves)
     {
         m.doPachner(mv[0], mv[1]);
+        m.checkMoveData();
     }
 
     m = standardSphere!2;
@@ -2027,6 +2018,7 @@ void modifyMoveDataOnMove(Vertex, int dim, S)(
     foreach(mv; testMoves2)
     {
         m.doPachner(mv[0], mv[1]);
+        m.checkMoveData();
     }
 
     static foreach (d; iota(2,6))
@@ -2039,6 +2031,7 @@ void modifyMoveDataOnMove(Vertex, int dim, S)(
         mfd.computePachnerMoves.shouldBeEmpty;
         mfd.numValidMoves_.shouldEqual(0);
         mfd.moves_.length.shouldEqual(2^^(d+2) - d - 4);
+        m.checkMoveData();
 
         mfd.Move[] movesDone;
         foreach(i; numMoves.iota)
@@ -2060,12 +2053,13 @@ void modifyMoveDataOnMove(Vertex, int dim, S)(
             }
             // mfd.writeln;
             mfd.doPachner(movesDone[$-1].center, movesDone[$-1].coCenter);
-
+            m.checkMoveData();
         }
         // Do inverse moves, in reverse order
         foreach(move_; movesDone.retro)
         {
             mfd.doPachner(move_.coCenter, move_.center);
+            m.checkMoveData();
         }
     }}
 }

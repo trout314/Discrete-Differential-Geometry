@@ -30,11 +30,11 @@ void main(string[] args)
         {
             saveFilePrefix = "test";
 
-            numFacetsTarget = 300;
+            numFacetsTarget = 1000;
             hingeDegreeTarget = flatDegreeInDim[3];
             
             numFacetsCoef = 0.01;
-            numHingesCoef = 0.0;
+            numHingesCoef = 0.005;
             hingeDegreeVarCoef = 0.0;
             cd3DegVarCoef = 0.0;
             maxSweeps = 10;
@@ -49,7 +49,7 @@ void main(string[] args)
 
             useHingeMoves = true;
             disableGC = true;
-            triesPerCollect = 50;
+            triesPerCollect = 200;
         }
 
         auto runID = randomUUID();
