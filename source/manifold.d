@@ -10,7 +10,7 @@ import std.range : array, back, chain, chunks, cycle, ElementType, empty,
     enumerate, front, iota, isInputRange, isOutputRange, only, popBack,
     popFront, put, replace, retro, save, slide, take, walkLength, zip;
 import unit_threaded : Name, shouldEqual, shouldBeSameSetAs, shouldBeEmpty;
-import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf, isSubsetOf, nGonTriangs, productUnion, SmallMap,
+import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf, isSubsetOf, numNgonTriangs, nGonTriangs, productUnion, SmallMap,
     StackArray, staticIota, subsets, subsetsOfSize, throwsWithMsg, toStackArray, swapPop;
 import std.stdio : File, writeln;
 import std.typecons : Flag, No, Yes;
@@ -324,6 +324,124 @@ Move_!(dim, Vertex)[] computePachnerMoves(Vertex, int dim)(
     auto result = mfd.computeMBPMoves.filter!(
         mv => !mfd.contains(mv.coCenter)).array;
     return result;
+}
+
+
+/*******************************************************************************
+Returns a list of all the (maybe blocked) hinge moves in this manifold.
+*/
+Move_!(dim, Vertex)[] computeMBHMoves(Vertex, int dim)(
+    const ref Manifold!(dim, Vertex) mfd)
+{
+    alias MV = Move_!(dim, Vertex); 
+    MV[] result;
+    foreach(hinge; mfd.simplices(dim-2))
+    {
+        auto hingeDeg = mfd.degree(hinge); 
+        if (hingeDeg >= 3 && hingeDeg <= 7)
+        {
+            auto lnk = mfd.link(hinge).map!array.array;
+            auto coCen = lnk.front.array;
+            while(coCen.length < hingeDeg)
+            {
+                auto lastVert = coCen[$-2];
+                auto thisVert = coCen[$-1];
+                auto lnkLnk = mfd.SimpComp(lnk).link([thisVert])
+                    .map!array.array;
+                if (lnkLnk[0][0] == lastVert)
+                {
+                    coCen ~= lnkLnk[1][0];
+                }
+                else
+                {
+                    coCen ~= lnkLnk[0][0];
+                }
+            }
+
+            foreach(i; numNgonTriangs(hingeDeg).iota)
+            {
+                result ~= MV(hinge, coCen, i);
+            }
+        }
+    }
+    return result;
+}
+
+/*******************************************************************************
+Returns a list of all the valid hinge moves in this manifold.
+*/
+Move_!(dim, Vertex)[] computeHingeMoves(Vertex, int dim)(
+    const ref Manifold!(dim, Vertex) mfd)
+{
+    return mfd.computeMBHMoves.filter!(mv => 
+        mfd.hasValidHingeMove(mv.coCenter, mv.triangIndx)).array;
+
+    // alias MV = Move_!(dim, Vertex); 
+    // alias SC = SimplicialComplex!(Vertex, dim);
+    // MV[] result;
+
+    // foreach(mv; mfd.computeMBHMoves)
+    // {
+    //     auto deg = mv.coCenter.length.to!int;
+    //     auto diskIndx = mv.triangIndx;
+    //     auto diskFacets = deg.nGonTriangs[diskIndx];
+
+    //     if (mfd.hasValidHingeMove(mv.coCenter, diskIndx))
+    //     {
+    //         result ~= mv;
+    //     }
+    // }
+    // return result;
+}
+
+unittest
+{
+    auto octahedron = [[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
+        [2,3,5], [3,4,5], [1,4,5]];  
+    auto twoPts = [[6], [7]];
+    auto mfd = Manifold!3(productUnion(octahedron, twoPts));
+
+    // 48 = (num hinges with moves) * (moves per hinge)
+    //    = (12 deg4 edges in octahedron + 2*6 deg4 edges of
+    //       the form [pt in twoPts, pt in octahedron])
+    //      * 2 triangulations of each orthogonal disk
+    //    = 24 * 2
+    mfd.computeMBHMoves.length.shouldEqual(48);
+
+    // All of these moves are valid (i.e. not blocked by an
+    // existing simplex)
+    mfd.computeHingeMoves.length.shouldEqual(48);
+
+    // Spot check done by hand.
+    alias MV = mfd.Move;
+    mfd.computeMBHMoves.shouldBeSameSetAs([
+        // Moves where center is edge in octaheron
+        MV([0, 1],[2, 6, 4, 7],0), MV([0, 1],[2, 6, 4, 7],1),
+        MV([0, 2],[1, 6, 3, 7],0), MV([0, 2],[1, 6, 3, 7],1),
+        MV([0, 3],[2, 6, 4, 7],0), MV([0, 3],[2, 6, 4, 7],1),
+        MV([0, 4],[3, 6, 1, 7],0), MV([0, 4],[3, 6, 1, 7],1),
+        MV([1, 2],[0, 6, 5, 7],0), MV([1, 2],[0, 6, 5, 7],1),
+        MV([1, 4],[0, 6, 5, 7],0), MV([1, 4],[0, 6, 5, 7],1),
+        MV([1, 5],[2, 6, 4, 7],0), MV([1, 5],[2, 6, 4, 7],1),
+        MV([2, 3],[0, 6, 5, 7],0), MV([2, 3],[0, 6, 5, 7],1),
+        MV([2, 5],[1, 6, 3, 7],0), MV([2, 5],[1, 6, 3, 7],1),
+        MV([3, 4],[0, 6, 5, 7],0), MV([3, 4],[0, 6, 5, 7],1),
+        MV([3, 5],[2, 6, 4, 7],0), MV([3, 5],[2, 6, 4, 7],1),
+        MV([4, 5],[3, 6, 1, 7],0), MV([4, 5],[3, 6, 1, 7],1),
+        // Moves where center is edge with a vertex in twoPts
+        MV([0, 6],[1, 2, 3, 4],0), MV([0, 6],[1, 2, 3, 4],1),
+        MV([1, 6],[0, 2, 5, 4],0), MV([1, 6],[0, 2, 5, 4],1),
+        MV([2, 6],[0, 1, 5, 3],0), MV([2, 6],[0, 1, 5, 3],1),
+        MV([3, 6],[0, 2, 5, 4],0), MV([3, 6],[0, 2, 5, 4],1),
+        MV([4, 6],[0, 3, 5, 1],0), MV([4, 6],[0, 3, 5, 1],1),
+        MV([5, 6],[1, 2, 3, 4],0), MV([5, 6],[1, 2, 3, 4],1),
+        MV([0, 7],[1, 2, 3, 4],0), MV([0, 7],[1, 2, 3, 4],1),
+        MV([1, 7],[0, 2, 5, 4],0), MV([1, 7],[0, 2, 5, 4],1),
+        MV([2, 7],[0, 1, 5, 3],0), MV([2, 7],[0, 1, 5, 3],1),
+        MV([3, 7],[0, 2, 5, 4],0), MV([3, 7],[0, 2, 5, 4],1),
+        MV([4, 7],[0, 3, 5, 1],0), MV([4, 7],[0, 3, 5, 1],1),
+        MV([5, 7],[1, 2, 3, 4],0), MV([5, 7],[1, 2, 3, 4],1),
+     ]);
 }
 
 ///

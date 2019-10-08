@@ -1531,6 +1531,19 @@ int[][][] nGonTriangs()(int n)
     // TO DO: More tests!
 }
 
+
+auto numNgonTriangs(size_t degree)
+{
+    static immutable result = [1,2,5,14,42];
+    return result[degree-3];
+}
+
+unittest
+{
+    assert(numNgonTriangs(4) == 2);
+    assert(numNgonTriangs(7) == 42);
+}
+
 /******************************************************************************
 template evaluating to true if T is an input range with element type
 implicitly convertible to E. TO DO: maybe a more general facility for this?
