@@ -8,8 +8,7 @@
     "targetPath": "bin",
     "dflags": [""],
     "dependencies": {
-        "unit-threaded": "~>0.10.3",
-        "gperftools_d": "~>0.1.0"
+        "unit-threaded": "~>0.10.3"
     },
     "configurations": [
         { "name": "executable" },
