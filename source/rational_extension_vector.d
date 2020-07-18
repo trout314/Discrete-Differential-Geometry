@@ -28,11 +28,10 @@ Returns:
 auto simplexPoints(int dim, RationalType = Rational!BigInt)()
 {
     alias Vec = REVector!(simplexRoots(dim).array, RationalType);
-    return iota(0, dim + 1).map!(k => Vec(simplexCoefs(dim)[k]));
+    return (dim + 1).iota.map!(k => Vec(simplexCoefs(dim)[k]));
 }
-// TO DO: BigInt won't allow @safe unittest here
 ///
-@Name("simplexPoints") @system unittest
+@Name("simplexPoints") @safe unittest
 {
     assert(simplexPoints!3.map!(pt => pt.toString).equal([
         "(0, 0, 0)",
@@ -70,7 +69,6 @@ auto simplexPoints(int dim, RationalType = Rational!BigInt)()
     // NOTE: smaller types like short, byte, etc. won't work. TO DO: Why?
     static assert(!__traits(compiles, simplexPoints!(3, Rational!short)));
     static assert(!__traits(compiles, simplexPoints!(3, Rational!byte)));
-
 }
 
 /*******************************************************************************
@@ -79,7 +77,7 @@ A "rational-extension vector" that stores vectors of the form:
 d1, ... , dN are integers. The rational coefficients may vary at runtime, but 
 the integers under the roots are part of the type.
 */
-struct REVector(int[] roots_, RationalType_ = Rational!BigInt) 
+struct REVector(immutable(int)[] roots_, RationalType_ = Rational!BigInt) 
 if (roots_.all!(r => r>0))
 {
     static assert(isInstanceOf!(Rational, RationalType));
@@ -192,6 +190,14 @@ if (roots_.all!(r => r>0))
 
 private:
     RationalType[dimension] coefs;
+}
+
+@Name("compile-time tests") unittest
+{
+    alias r = rational;
+    immutable v = reVector!(3,5,11)(r(1), r(2, 3), r(6));
+    static assert(!__traits(compiles, () { v.roots[0] = 1; } () ));
+    static assert(!__traits(compiles, () { v.dimension = 1; } () ));
 }
 
 ///
