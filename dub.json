@@ -8,7 +8,7 @@
     "targetPath": "bin",
     "dflags": [""],
     "dependencies": {
-        "unit-threaded": "~>0.10.3"
+        "unit-threaded": "~>1.0.4"
     },
     "configurations": [
         { "name": "executable" },
