@@ -9,7 +9,7 @@ import std.exception : assertThrown;
 import std.range : array, back, chain, chunks, cycle, ElementType, empty,
     enumerate, front, iota, isInputRange, isOutputRange, only, popBack,
     popFront, put, replace, retro, save, slide, take, walkLength, zip;
-import unit_threaded : Name, shouldEqual, shouldBeSameSetAs, shouldBeEmpty;
+import unit_threaded : Name, shouldEqual, shouldBeSameSetAs, shouldBeEmpty, should;
 import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf, isSubsetOf, numNgonTriangs, nGonTriangs, productUnion, SmallMap,
     StackArray, staticIota, subsets, subsetsOfSize, throwsWithMsg, toStackArray, swapPop;
 import std.stdio : File, writeln;
@@ -2180,4 +2180,31 @@ void modifyMoveDataOnMove(Vertex, int dim, S)(
             m.checkMoveData();
         }
     }}
+}
+
+@Name("value semantics") pure @safe unittest
+{
+    auto m1 = octahedron;
+    auto m2 = m1;
+
+    m2.doPachner([0,1], [2,4]);
+    m2.facets.should.not ~ octahedron.facets;
+    m2.facets.should.not ~ m1.facets;
+    m1.facets.should ~ octahedron.facets;
+}
+
+@Name("value semantics for contained simplices") pure @safe unittest
+{
+    auto vertices = [0,1,2];
+    auto edge1 = vertices[0..2];
+    auto edge2 = vertices[1..3];
+    // edge1 and edge2 slices now overlap at index 1
+
+    auto edge3 = [0,2];
+
+    auto m = Manifold!1([edge1, edge2, edge3]);
+    m.facets.shouldBeSameSetAs([[0,1],[1,2],[0,2]]);
+    vertices[1] = 42;
+    [42].should.not in m.simplices(0);
+    m.facets.shouldBeSameSetAs([[0,1],[1,2],[0,2]]);
 }
