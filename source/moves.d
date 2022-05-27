@@ -95,15 +95,7 @@ public:
         copy(center_, center);
         copy(coCenter_, coCenter);
     }
-private:
-    Vertex[dim + maxHingeDeg - 1] vertices;
-    size_t lenCenter;
-    size_t lenCoCenter;
 
-    // indicates which triangulation of a disk to use
-    // (where the boundary of this disk is the coCenter)
-    int triangIndx_;
-    
     inout(Vertex)[] getCenter()() inout
     {
         return vertices[0..lenCenter];
@@ -113,6 +105,14 @@ private:
     {
         return vertices[lenCenter..lenCenter + lenCoCenter];
     }
+private:
+    Vertex[dim + maxHingeDeg - 1] vertices;
+    size_t lenCenter;
+    size_t lenCoCenter;
+
+    // indicates which triangulation of a disk to use
+    // (where the boundary of this disk is the coCenter)
+    int triangIndx_;
 }
 
 ///

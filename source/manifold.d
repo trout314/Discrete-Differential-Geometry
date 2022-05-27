@@ -1,4 +1,6 @@
-import algorithms : canFind, eulerCharacteristic, is2Sphere, isCircle,
+module manifold;
+
+import algorithms : eulerCharacteristic, is2Sphere, isCircle,
     isConnected, isPureOfDim, join;
 import simplicial_complex : fVector, simplicialComplex, SimplicialComplex,
     assertValidSimplex, loadSimplicialComplex;
@@ -14,7 +16,7 @@ import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf, isSubsetO
     StackArray, staticIota, subsets, subsetsOfSize, throwsWithMsg, toStackArray, swapPop;
 import std.stdio : File, writeln;
 import std.typecons : Flag, No, Yes;
-import std.math : approxEqual;
+import std.math : isClose;
 
 import std.stdio : writeln, writefln, write;
 
@@ -592,7 +594,7 @@ Move_!(dim, Vertex)[] computeMBPMoves(Vertex, int dim)(
     m.doPachner([1,2], [3,4]).throwsWithMsg("coCenter of move in manifold");
 }
 ///
-@Name("doPachner") pure @safe unittest
+@Name("doPachner") pure unittest
 {
     auto m = standardSphere!2;
     m.facets.shouldBeSameSetAs([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
@@ -1050,10 +1052,9 @@ real meanDegree(Vertex, int mfdDim)(
         [[0,1,2], [0,2,3], [0,1,3], [1,2,4], [2,3,4], [1,3,4]]);
 
     // pyramid has two vertices with deg(v)=3 and three vertices with deg(v)=4
-    real epsilon = 1e-20;
-    assert(pyramid.meanDegree(0).approxEqual((2 * 3 + 3 * 4)/5.0, epsilon));
-    assert(pyramid.meanDegree(1).approxEqual(2.0, epsilon));
-    assert(pyramid.meanDegree(2).approxEqual(1.0, epsilon));
+    assert(pyramid.meanDegree(0).isClose((2 * 3 + 3 * 4)/5.0));
+    assert(pyramid.meanDegree(1).isClose(2.0));
+    assert(pyramid.meanDegree(2).isClose(1.0));
 }
 
 /******************************************************************************
@@ -1132,12 +1133,11 @@ real degreeVariance(Vertex, int mfdDim)(
         [[0,1,2], [0,2,3], [0,1,3], [1,2,4], [2,3,4], [1,3,4]]);
 
     immutable real md0 = pyramid.meanDegree(0);
-    immutable real epsilon = 1e-20;
     assert(pyramid.degreeVariance(0)
-        .approxEqual((2 * (3 - md0)^^2 + 3 * (4 - md0)^^2)/5.0, epsilon));
+        .isClose((2 * (3 - md0)^^2 + 3 * (4 - md0)^^2)/5.0));
 
-    assert(pyramid.degreeVariance(1).approxEqual(0.0, epsilon));
-    assert(pyramid.degreeVariance(2).approxEqual(0.0, epsilon));
+    assert(pyramid.degreeVariance(1).isClose(0.0));
+    assert(pyramid.degreeVariance(2).isClose(0.0));
 
 }
 
@@ -1308,7 +1308,7 @@ if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
 }
 
 ///
-@Name("hinge moves") pure @safe unittest
+@Name("hinge moves") pure /* @safe */ unittest
 {
     auto octahedron = [[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
         [2,3,5], [3,4,5], [1,4,5]];
@@ -2182,7 +2182,7 @@ void modifyMoveDataOnMove(Vertex, int dim, S)(
     }}
 }
 
-@Name("value semantics") pure @safe unittest
+@Name("value semantics") pure /* @safe */ unittest
 {
     auto m1 = octahedron;
     auto m2 = m1;

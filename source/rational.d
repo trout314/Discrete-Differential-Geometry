@@ -883,7 +883,7 @@ private:
     assert(rational(2, 5) ^^ -2 == rational(25, 4));
 
     // Test decimal conversion.
-    assert(approxEqual(cast(real) f5, -12.37883925284411L));
+    assert(isClose(cast(real) f5, -12.37883925284411L));
 
     // Test comparison.
     assert(rational(1UL, 6) < rational(1, 2));

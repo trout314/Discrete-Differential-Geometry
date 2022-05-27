@@ -62,11 +62,11 @@ template isLessThanComparable(T)
 @safe pure nothrow @nogc unittest
 {
     alias ComparableTypes = AliasSeq!(bool, byte, ubyte, short, ushort, int,
-            uint, long, ulong, float, double, real, ifloat, idouble, ireal,
+            uint, long, ulong, float, double, real,
             char, wchar, dchar, int*, void*);
     static assert(allSatisfy!(isLessThanComparable, ComparableTypes));
 
-    alias NonComparableTypes = AliasSeq!(cfloat, cdouble, creal, void);
+    alias NonComparableTypes = AliasSeq!(void);
     static assert(!anySatisfy!(isLessThanComparable, NonComparableTypes));
 }
 
@@ -204,8 +204,8 @@ pure nothrow @nogc @safe unittest
     import std.meta : AliasSeq, allSatisfy, anySatisfy;
 
     alias ComparableTypes = AliasSeq!(bool, byte, ubyte, short, ushort, int,
-            uint, long, ulong, float, double, real, ifloat, idouble, ireal,
-            char, wchar, dchar, cfloat, cdouble, creal, int*, void*);
+            uint, long, ulong, float, double, real,
+            char, wchar, dchar, int*, void*);
     static assert(allSatisfy!(isEqualityComparable, ComparableTypes));
 }
 
@@ -1607,10 +1607,16 @@ template isInputRangeOfInputRangeOf(T, E)
     static assert(!isInputRangeOfInputRangeOf!(RoR, string));
 }
 
-
 void swapPop(S, T)(ref S[] unorderedArray, T index)
 {
     assert(index < unorderedArray.length);
     unorderedArray[index] = unorderedArray[$-1];
     unorderedArray = unorderedArray[0..$-1];
+}
+
+string prettyTime(T)(T timer)
+{
+    import std.algorithm : findSplit;
+    import std.string : replace;
+    return timer.peek.to!string.findSplit(",")[0].findSplit("and")[0].replace("hnsecs", "ns");
 }

@@ -543,7 +543,7 @@ public:
     Returns a string containing more detailed, implementation specific info on the
     simplicial complex
     */
-    string toDetailedString() const pure @safe
+    string toDetailedString()() const
     {
         string output;
         output ~= "facets   : " ~ facets.to!string ~ "\n";
