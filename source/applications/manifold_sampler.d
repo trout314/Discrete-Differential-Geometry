@@ -619,20 +619,6 @@ void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
         Clock.currTime.to!DateTime - startTime);
 }
 
-@Name("sample") unittest
-{
-    auto mfd = Manifold!3([
-        [11, 12, 13, 14], [11, 12, 13, 15], [11, 12, 14, 15], [11, 13, 14, 15],
-        [12, 13, 14, 15]
-    ]);
-    auto s = Sampler!(int, 3)(mfd);
-    import std.algorithm : canFind;
-
-    assert(11.iota.all!((int i) => s.unusedVertices.canFind(i)));
-
-    // TO DO: Tests!
-}
-
 auto getFirstPart(T)(T time)
 {
     return time.to!string.findSplit(",")[0].findSplit("and")[0]
