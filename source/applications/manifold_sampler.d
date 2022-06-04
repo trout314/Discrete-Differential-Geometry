@@ -32,8 +32,7 @@ mixin(import("manifold_sampler.config").parseConfig);
 version (unittest) {} else {
 void main(string[] args)
 {
-
-
+    
     string mfdFile;
     auto helpInformation = getopt(args, "manifoldFile", &mfdFile);
     if (helpInformation.helpWanted)
@@ -116,7 +115,6 @@ void main(string[] args)
 
     auto startTime = Clock.currTime;
     timer.reset;
-
 
     // **************************** PRINT REPORT ****************************
     "-".repeat(80).joiner.writeln;
