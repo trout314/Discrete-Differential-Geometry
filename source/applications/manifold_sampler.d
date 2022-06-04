@@ -111,12 +111,87 @@ void main(string[] args)
     {
         timePerSweep = timePerMove * (mfd.fVector.back / acceptFrac).to!ulong;
     }
-
-
+    
     auto startTime = Clock.currTime;
     timer.reset;
 
-    // **************************** PRINT REPORT ****************************
+    // **************************** PRINT REPORTS ****************************
+    timingAndTargetsReport(dtElapsed, startTime, timePerMove, acceptFrac);
+    mfd.simplexReport;
+    mfd.objectiveReport;
+    moveReport(bistellarTries, bistellarAccepts, hingeTries, hingeAccepts);
+    mfd.histogramReport;
+}}
+
+
+string parseConfig()(string str)
+{
+    string ret;
+    foreach (line; str.split("\n"))
+    {
+        if (line.walkLength > 0 && line[0] != '#')
+        {
+            auto parts = line.split(" = ");
+            ret ~= `enum ` ~ parts[0] ~ ` = ` ~ parts[1] ~ `;`;
+        }
+    }
+    return ret;
+}
+
+private struct Penalty
+{
+    real volumePenalty;
+    real globalCurvPenalty;
+    real localCurvPenalty;
+    real localSolidAngleCurvPenalty;
+}
+
+Penalty penalties(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd)
+{
+    immutable hingesPerFacet = dim * (dim + 1) / 2;
+    immutable coDim3PerFacet = binomial(dim + 1, dim - 2);
+
+    immutable nFacets = mfd.fVector[dim];
+    immutable nHinges = mfd.fVector[dim - 2];
+    immutable nCoDim3 = mfd.fVector[dim - 3];
+    immutable totSqDeg = mfd.totalSquareDegree(dim - 2);
+    immutable totSAsqDeg = mfd.totalSquareDegree(dim - 3);
+
+    immutable nHingesTarget = hingesPerFacet * nFacets / hingeDegreeTarget;
+    immutable degTarget = hingesPerFacet * nFacets / nHinges.to!real;
+    immutable coDim3DegTarget = coDim3PerFacet * nFacets / nCoDim3.to!real;
+
+    Penalty penalty;
+    penalty.volumePenalty = (nFacets - numFacetsTarget) ^^ 2;
+    penalty.globalCurvPenalty = (nHinges - nHingesTarget) ^^ 2;
+
+    real _; // dummy for integer part
+    real x = modf(degTarget, _); // fractional part
+    real minPenalty = (x - x ^^ 2) * nHinges;
+
+    // TO DO: Refer to external paper for this!
+    penalty.localCurvPenalty = (
+        degTarget ^^ 2 * nHinges - 2 * degTarget * hingesPerFacet * nFacets + totSqDeg) - minPenalty;  
+
+
+    x = modf(coDim3DegTarget, _); // fractional part
+    minPenalty = (x - x ^^ 2) * nCoDim3;
+
+    // TO DO: Refer to arxiv paper for this!
+    penalty.localSolidAngleCurvPenalty = (
+        coDim3DegTarget ^^ 2 * nCoDim3 - 2 * coDim3DegTarget * coDim3PerFacet * nFacets + totSAsqDeg) - minPenalty;
+
+    return penalty;
+}
+
+real objective(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd)
+{
+    auto pen = mfd.penalties;
+    return pen.volumePenalty;
+}
+
+void timingAndTargetsReport(S,T,U)(ulong dtElapsed, S startTime, T timePerMove, U acceptFrac)
+{
     "-".repeat(80).joiner.writeln;
     string timeInfo = "%.1f / %s".format(dtElapsed * dt, maxSweeps);
     auto prettyStartTime = startTime.to!string.split('.').front;
@@ -141,7 +216,10 @@ void main(string[] args)
     "Δt/move        : %23-s |".writefln(timePerMove.to!string);
     "Δt/sweep       : %23-s |".writefln(timePerMove.getFirstPart);
     "move accept %%  : %23.3-f |".writefln(acceptFrac);
+}
 
+void simplexReport(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd)
+{
     "-".repeat(80).joiner.writeln;
     "dimension      : ". write;
     (dim + 1).iota.each!(d => "%12s ".writef(d));
@@ -155,7 +233,10 @@ void main(string[] args)
     "degree std dev : ". write;
     (dim + 1).iota.each!(d => "%12.4f ".writef(mfd.degreeVariance(d).sqrt));
     writeln;
+}
 
+void objectiveReport(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd)
+{
     "-".repeat(80).joiner.writeln;
     writeln("    Penalty", ' '.repeat(10), "Raw",
         ' '.repeat(11), "Coef", ' '.repeat(9), "Value");
@@ -189,9 +270,11 @@ void main(string[] args)
     }
     writefln("total penalty  :                             %.6e",
         mfd.objective);
+}
 
-
-    "-".repeat(80).joiner.writeln;
+void moveReport(S, T)(S bistellarTries, S bistellarAccepts, T hingeTries, T hingeAccepts)
+{
+   "-".repeat(80).joiner.writeln;
     writeln("Bistellar Moves      # Accepted          # Tried    %    ");
     foreach (i; 0 .. dim + 1)
     {
@@ -213,8 +296,10 @@ void main(string[] args)
                 double(hingeAccepts[i]) / hingeTries[i]);
         }
     }
+}
 
-
+void histogramReport(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd)
+{
     "-".repeat(80).joiner.writeln;
     auto maxDeg2 = 2 + maxCoDim2Bins;
     auto maxDeg3 = 2 + 2 * maxCoDim3Bins;
@@ -295,76 +380,7 @@ void main(string[] args)
             writefln("%-*s", maxBar3, bar3);
         }
     }
-  
-}}
-
-
-string parseConfig()(string str)
-{
-    string ret;
-    foreach (line; str.split("\n"))
-    {
-        if (line.walkLength > 0 && line[0] != '#')
-        {
-            auto parts = line.split(" = ");
-            ret ~= `enum ` ~ parts[0] ~ ` = ` ~ parts[1] ~ `;`;
-        }
-    }
-    return ret;
 }
-
-private struct Penalty
-{
-    real volumePenalty;
-    real globalCurvPenalty;
-    real localCurvPenalty;
-    real localSolidAngleCurvPenalty;
-}
-
-Penalty penalties(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd)
-{
-    immutable hingesPerFacet = dim * (dim + 1) / 2;
-    immutable coDim3PerFacet = binomial(dim + 1, dim - 2);
-
-    immutable nFacets = mfd.fVector[dim];
-    immutable nHinges = mfd.fVector[dim - 2];
-    immutable nCoDim3 = mfd.fVector[dim - 3];
-    immutable totSqDeg = mfd.totalSquareDegree(dim - 2);
-    immutable totSAsqDeg = mfd.totalSquareDegree(dim - 3);
-
-    immutable nHingesTarget = hingesPerFacet * nFacets / hingeDegreeTarget;
-    immutable degTarget = hingesPerFacet * nFacets / nHinges.to!real;
-    immutable coDim3DegTarget = coDim3PerFacet * nFacets / nCoDim3.to!real;
-
-    Penalty penalty;
-    penalty.volumePenalty = (nFacets - numFacetsTarget) ^^ 2;
-    penalty.globalCurvPenalty = (nHinges - nHingesTarget) ^^ 2;
-
-    real _; // dummy for integer part
-    real x = modf(degTarget, _); // fractional part
-    real minPenalty = (x - x ^^ 2) * nHinges;
-
-    // TO DO: Refer to external paper for this!
-    penalty.localCurvPenalty = (
-        degTarget ^^ 2 * nHinges - 2 * degTarget * hingesPerFacet * nFacets + totSqDeg) - minPenalty;  
-
-
-    x = modf(coDim3DegTarget, _); // fractional part
-    minPenalty = (x - x ^^ 2) * nCoDim3;
-
-    // TO DO: Refer to arxiv paper for this!
-    penalty.localSolidAngleCurvPenalty = (
-        coDim3DegTarget ^^ 2 * nCoDim3 - 2 * coDim3DegTarget * coDim3PerFacet * nFacets + totSAsqDeg) - minPenalty;
-
-    return penalty;
-}
-
-real objective(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd)
-{
-    auto pen = mfd.penalties;
-    return pen.volumePenalty;
-}
-
 // struct Sampler(Vertex, int dim)
 // {
 // private:
