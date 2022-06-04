@@ -68,24 +68,10 @@ void main(string[] args)
         mfd = standardSphere!dim;
     }
 
-    auto initialVertices = mfd.simplices(0).joiner.array.dup.sort;
+    auto initialVertices = mfd.simplices(0).joiner.array.dup.sort.array;
     assert(initialVertices.length > 0, "initial manifold is empty");
-    int[] unusedVertices;
-
-    // all gaps in list of vertices should be unusued vertices
-    if (initialVertices.front != 0)
-    {
-        unusedVertices ~= initialVertices.front.iota.array;
-    }
-    foreach (i; 0 .. initialVertices.length - 1)
-    {
-        if (initialVertices[i] + 1 != initialVertices[i + 1])
-        {
-            unusedVertices ~= iota(initialVertices[i] + 1, initialVertices[i + 1]).array;
-        }
-    }
-    assert(unusedVertices.all!(v => !mfd.contains(v.only)));
-
+    int[] unusedVertices = mfd.getUnusedVertices(initialVertices);
+    
     // bistellarTries[j] counts the (j + 1) -> (dim + 1 - j) moves attempted
     ulong[dim + 1] bistellarTries;
 
@@ -111,7 +97,7 @@ void main(string[] args)
     {
         timePerSweep = timePerMove * (mfd.fVector.back / acceptFrac).to!ulong;
     }
-    
+
     auto startTime = Clock.currTime;
     timer.reset;
 
@@ -123,6 +109,24 @@ void main(string[] args)
     mfd.histogramReport;
 }}
 
+Vertex[] getUnusedVertices(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd, Vertex[] initialVertices)
+{
+    int[] unusedVertices;
+    // all gaps in list of vertices should be unusued vertices
+    if (initialVertices.front != 0)
+    {
+        unusedVertices ~= initialVertices.front.iota.array;
+    }
+    foreach (i; 0 .. initialVertices.length - 1)
+    {
+        if (initialVertices[i] + 1 != initialVertices[i + 1])
+        {
+            unusedVertices ~= iota(initialVertices[i] + 1, initialVertices[i + 1]).array;
+        }
+    }
+    assert(unusedVertices.all!(v => !mfd.contains(v.only)));
+    return unusedVertices;
+}
 
 string parseConfig()(string str)
 {
