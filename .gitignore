@@ -32,3 +32,4 @@ data/simplicial_complex_unittest_save.dat
 
 #unit_threaded test runner
 ut.d
+manifold_sampler
