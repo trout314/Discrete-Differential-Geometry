@@ -16,6 +16,7 @@
 discrete-differential-geometry
 discrete-differential-geometry-test-application
 discrete-differential-geometry-test-library
+discrete_differential_geometry
 
 #unittest coverage files
 *.lst
