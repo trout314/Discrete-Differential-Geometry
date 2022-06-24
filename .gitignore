@@ -17,6 +17,7 @@ discrete-differential-geometry
 discrete-differential-geometry-test-application
 discrete-differential-geometry-test-library
 discrete_differential_geometry
+manifold_sampler
 
 #unittest coverage files
 *.lst
@@ -34,5 +35,5 @@ data/simplicial_complex_unittest_save.dat
 #unit_threaded test runner
 ut.d
 
-#executables
-manifold_sampler
+#data files
+*.dat
