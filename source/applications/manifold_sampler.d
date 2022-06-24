@@ -70,7 +70,7 @@ void main(string[] args)
 
     auto initialVertices = mfd.simplices(0).joiner.array.dup.sort.array;
     assert(initialVertices.length > 0, "initial manifold is empty");
-    int[] unusedVertices = mfd.getUnusedVertices(initialVertices);
+    int[] unusedVertices = getUnusedVertices(mfd, initialVertices);
     
     // bistellarTries[j] counts the (j + 1) -> (dim + 1 - j) moves attempted
     ulong[dim + 1] bistellarTries;
@@ -78,21 +78,34 @@ void main(string[] args)
     // bistellarAccepts[j] counts the (j + 1) -> (dim + 1 - j) moves accepted
     ulong[dim + 1] bistellarAccepts;
 
-    // hingeTries[j] counts the hinge-moves with hinge degree j + 4 tried
-    static assert(maxHingeMoveDeg >= 4, "Hinge move degrees must be at least 4");
-    ulong[maxHingeMoveDeg - 3] hingeTries;
+    static if (useHingeMoves)
+    {
+        // hingeTries[j] counts the hinge-moves with hinge degree j + 4 tried
+        static assert(maxHingeMoveDeg >= 4, "Hinge move degrees must be at least 4");
+        ulong[maxHingeMoveDeg - 3] hingeTries;
 
-    // hingeAccepts[j] counts the hinge-moves with hinge degree j + 4 accepted
-    ulong[maxHingeMoveDeg - 3] hingeAccepts;
-
+        // hingeAccepts[j] counts the hinge-moves with hinge degree j + 4 accepted
+        ulong[maxHingeMoveDeg - 3] hingeAccepts;
+    }
     ulong dtElapsed; // number of dt intervals elapsed (in sweeps)
 
-    auto numMovesTried = bistellarTries[].sum + hingeTries[].sum;
-    auto numMovesAccepted = bistellarAccepts[].sum + hingeAccepts[].sum;
-    double acceptFrac = double(numMovesAccepted) / numMovesTried;
+    auto numMovesTried = bistellarTries[].sum;
+    auto numMovesAccepted = bistellarAccepts[].sum;
+    static if (useHingeMoves)
+    {
+        numMovesTried += hingeTries[].sum;
+        numMovesAccepted += hingeAccepts[].sum;
+    }
 
+    auto acceptFrac = double(numMovesAccepted) / numMovesTried;
     auto timePerMove = timer.peek / triesPerStdoutReport;
     typeof(timePerMove) timePerSweep;
+
+    int sampleNumber;
+    auto dtIncThreshold = (dt * numFacetsTarget).to!ulong;
+    assert(dtIncThreshold > 0);
+
+
     if (acceptFrac > 0.0)
     {
         timePerSweep = timePerMove * (mfd.fVector.back / acceptFrac).to!ulong;
@@ -100,13 +113,200 @@ void main(string[] args)
 
     auto startTime = Clock.currTime;
     timer.reset;
+    
+    static if (disableGC)
+    {
+        GC.disable;
+    }
 
-    // **************************** PRINT REPORTS ****************************
-    timingAndTargetsReport(dtElapsed, startTime, timePerMove, acceptFrac);
-    mfd.simplexReport;
-    mfd.objectiveReport;
-    moveReport(bistellarTries, bistellarAccepts, hingeTries, hingeAccepts);
-    mfd.histogramReport;
+    auto currentMoves = mfd.computePachnerMoves;
+    static if (useHingeMoves)
+    {
+        currentMoves ~= mfd.computeHingeMoves;
+    }
+    auto currentNumMoves = currentMoves.length + mfd.fVector[dim-1];
+    real currentObjective = mfd.objective;
+
+    auto doneSampling = false;
+    while (!doneSampling)
+    {
+        doneSampling = (dtElapsed * dt >= maxSweeps);
+        numMovesTried = bistellarTries[].sum + hingeTries[].sum;
+        numMovesAccepted = bistellarAccepts[].sum + hingeAccepts[].sum;
+
+        bool dtIncreased = false;
+        if (numMovesAccepted == dtIncThreshold)
+        {
+            ++dtElapsed;
+            dtIncreased = true;
+            dtIncThreshold = ((dtElapsed + 1)
+                    * dt * numFacetsTarget).to!ulong;
+            assert(dtIncThreshold > numMovesAccepted);
+        }
+
+        if (unusedVertices.empty)
+        {
+            /* If no unused vertices then next unused vertex label
+            is just the number of vertices. */
+            unusedVertices ~= mfd.fVector[0].to!int;
+        }
+        assert(unusedVertices.all!(v => !mfd.contains(v.only)));
+
+        auto choiceIndx = uniform(0, currentNumMoves);
+
+        mfd.Move chosenMove;
+        if (choiceIndx < currentMoves.length)
+        {
+            chosenMove = currentMoves.choice;
+        }
+        else
+        {
+            auto facet = mfd.randomFacetOfDim(dim);
+            chosenMove = mfd.Move(facet, [unusedVertices[$ - 1]]);
+        }
+
+        mfd.doPachner(chosenMove.center, chosenMove.coCenter);
+
+        if (chosenMove.isPachner)
+        {
+            ++bistellarTries[dim + 1 - chosenMove.center.length];
+            // Also increment accepted #, we will fix if move rejected
+            ++bistellarAccepts[dim + 1 - chosenMove.center.length];
+
+            if (chosenMove.center.length == 1)
+            {
+                unusedVertices ~= chosenMove.center.front;
+            }
+            if (chosenMove.center.length == dim + 1)
+            {
+                unusedVertices.popBack;
+            }
+        }
+        else
+        {
+            static if (useHingeMoves)
+            {
+                assert(chosenMove.isHinge);
+                assert(useHingeMoves);
+                ++hingeTries[chosenMove.coCenter.length - 4];
+                // Also increment accepted #, we will fix if move rejected
+                ++hingeAccepts[chosenMove.coCenter.length - 4];                
+            }
+        }
+
+        auto newMoves = mfd.computePachnerMoves;
+        static if (useHingeMoves)
+        {
+            newMoves ~= mfd.computeHingeMoves;
+        }
+        auto newNumMoves = currentMoves.length + mfd.fVector[dim-1];
+        real newObjective = mfd.objective;
+        real nMovesFactor = min(1.0, real(currentMoves.length) / newNumMoves);
+        real deltaObj = currentObjective - newObjective;
+
+
+        // REJECT MOVE if appropriate
+        if ((deltaObj > 0) && (uniform01 > exp(-deltaObj) * nMovesFactor))
+        {
+            --bistellarAccepts[dim + 1 - chosenMove.center.length];
+
+            chosenMove = mfd.Move(chosenMove.coCenter, chosenMove.center);
+
+            mfd.doPachner(chosenMove.center, chosenMove.coCenter);
+            if (chosenMove.center.length == 1)
+            {
+                unusedVertices ~= chosenMove.center.front;
+            }
+
+            if (chosenMove.center.length == dim + 1)
+            {
+                unusedVertices.popBack;
+            }
+        }
+
+        //--------------------------- MAKE REPORT ----------------------------
+        if ((numMovesTried % triesPerStdoutReport == 0)
+            || doneSampling)
+        {
+            stdout.writeTimingAndTargetsReport(dtElapsed, startTime, timePerMove, acceptFrac);
+            stdout.writeSimplexReport(mfd);
+            stdout.writeObjectiveReport(mfd);
+            stdout.writeMoveReport(bistellarTries, bistellarAccepts, hingeTries, hingeAccepts);
+            stdout.writeHistogramReport(mfd);
+        }
+
+        //----------------------- WRITE TO DATA FILE --------------------------
+        if ((dtIncreased && (dtElapsed % dtPerFileReport == 0))
+            || doneSampling)
+        {
+            auto file = File(saveFilePrefix ~ ".dat", "a");
+            // TO DO: Implement this
+            //columnReport(file);
+        }
+
+        //----------------------- SAVE CURRENT MANIFOLD ----------------------
+        if ((dtIncreased && (dtElapsed % dtPerSave == 0))
+            || doneSampling)
+        {
+            string prefix;
+            if (doneSampling)
+            {
+                prefix = saveFilePrefix ~ "_final";
+            }
+            else
+            {
+                prefix = saveFilePrefix ~ "_save"
+                    ~ sampleNumber.to!string;
+            }
+
+            auto mfdFileName = prefix ~ ".mfd";
+            auto graphFileName = prefix ~ ".edge_graph";
+
+            mfd.saveTo(mfdFileName);
+            auto saveFile = File(mfdFileName, "a");
+            saveFile.writeln;
+            
+            saveFile.writeTimingAndTargetsReport(dtElapsed, startTime, timePerMove, acceptFrac);
+            saveFile.writeSimplexReport(mfd);
+            saveFile.writeObjectiveReport(mfd);
+            saveFile.writeMoveReport(bistellarTries, bistellarAccepts, hingeTries, hingeAccepts);
+            saveFile.writeHistogramReport(mfd);
+
+            mfd.saveEdgeGraphTo(graphFileName);
+            ++sampleNumber;
+        }
+
+        //------------------------- COLLECT GARBAGE --------------------------
+        static if (disableGC)
+        {
+            if (numMovesTried % triesPerCollect == 0)
+            {
+                GC.enable;
+                GC.collect;
+                GC.disable;
+            }
+        }
+        
+        //----------------------- CHECK FOR PROBLEMS ----------------------- 
+        static if (checkForProblems)
+        {
+            if (dtIncreased
+                && ((dtElapsed * dt) % sweepsPerProblemCheck == 0))
+            {
+                "checking for problems ... ".write;
+                auto problems = mfd.findProblems;
+                if (!problems.empty)
+                {
+                    problems.each!writeln;
+                    assert(0);
+                }
+                "done".writeln;
+            }
+        }
+    }
+
+    "Finished! Time elapsed: %s".writefln(Clock.currTime.to!DateTime - startTime.to!DateTime);
+
 }}
 
 Vertex[] getUnusedVertices(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd, Vertex[] initialVertices)
@@ -194,7 +394,7 @@ real objective(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd)
     return pen.volumePenalty;
 }
 
-void timingAndTargetsReport(S,T,U)(ulong dtElapsed, S startTime, T timePerMove, U acceptFrac)
+void writeTimingAndTargetsReport(S,T,U,W)(W sink, ulong dtElapsed, S startTime, T timePerMove, U acceptFrac)
 {
     "-".repeat(80).joiner.writeln;
     string timeInfo = "%.1f / %s".format(dtElapsed * dt, maxSweeps);
@@ -222,87 +422,87 @@ void timingAndTargetsReport(S,T,U)(ulong dtElapsed, S startTime, T timePerMove, 
     "move accept %%  : %23.3-f |".writefln(acceptFrac);
 }
 
-void simplexReport(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd)
+void writeSimplexReport(int dim, Vertex, W)(W sink, const ref Manifold!(dim, Vertex) mfd)
 {
     "-".repeat(80).joiner.writeln;
     "dimension      : ". write;
-    (dim + 1).iota.each!(d => "%12s ".writef(d));
-    writeln;
+    (dim + 1).iota.each!(d => sink.writef("%12s ", d));
+    sink.writeln;
     "# simplices    : ". write;
-    (dim + 1).iota.each!(d => "%12s ".writef(mfd.fVector[d]));
-    writeln;
+    (dim + 1).iota.each!(d => sink.writef("%12s ", mfd.fVector[d]));
+    sink.writeln;
     "degree mean    : ". write;
-    (dim + 1).iota.each!(d => "%12.4f ".writef(mfd.meanDegree(d)));
-    writeln;
+    (dim + 1).iota.each!(d => sink.writef("%12.4f ", mfd.meanDegree(d)));
+    sink.writeln;
     "degree std dev : ". write;
-    (dim + 1).iota.each!(d => "%12.4f ".writef(mfd.degreeVariance(d).sqrt));
-    writeln;
+    (dim + 1).iota.each!(d => sink.writef("%12.4f ", mfd.degreeVariance(d).sqrt));
+    sink.writeln;
 }
 
-void objectiveReport(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd)
+void writeObjectiveReport(int dim, Vertex, W)(W sink, const ref Manifold!(dim, Vertex) mfd)
 {
     "-".repeat(80).joiner.writeln;
-    writeln("    Penalty", ' '.repeat(10), "Raw",
+    sink.writeln("    Penalty", ' '.repeat(10), "Raw",
         ' '.repeat(11), "Coef", ' '.repeat(9), "Value");
 
     if (numFacetsCoef > 0.0)
     {
         auto vp = mfd.penalties.volumePenalty;
-        writefln("# facets       : %.6e  *  %.4f  =  %.6e",
+        sink.writefln("# facets       : %.6e  *  %.4f  =  %.6e",
            vp, numFacetsCoef, numFacetsCoef * vp);
     }
 
     if (numHingesCoef > 0.0)
     {
         auto gcp = mfd.penalties.globalCurvPenalty;
-        writefln("# hinges       : %.6e  *  %.4f  =  %.6e",
+        sink.writefln("# hinges       : %.6e  *  %.4f  =  %.6e",
             gcp, numHingesCoef, numHingesCoef * gcp);
     }
 
     if (hingeDegreeVarCoef > 0.0)
     {
         auto lcp = mfd.penalties.localCurvPenalty;
-        writefln("hinge deg var  : %.6e  *  %.4f  =  %.6e",
+        sink.writefln("hinge deg var  : %.6e  *  %.4f  =  %.6e",
             lcp, hingeDegreeVarCoef, hingeDegreeVarCoef * lcp);
     }
 
     if (cd3DegVarCoef > 0.0)
     {
         auto lsacp = mfd.penalties.localSolidAngleCurvPenalty;
-        writefln("codim-3 deg var: %.6e  *  %.4f  =  %.6e",
+        sink.writefln("codim-3 deg var: %.6e  *  %.4f  =  %.6e",
             lsacp, cd3DegVarCoef, cd3DegVarCoef * lsacp);
     }
-    writefln("total penalty  :                             %.6e",
+    sink.writefln("total penalty  :                             %.6e",
         mfd.objective);
 }
 
-void moveReport(S, T)(S bistellarTries, S bistellarAccepts, T hingeTries, T hingeAccepts)
+void writeMoveReport(S, T, W)(W sink, S bistellarTries, S bistellarAccepts, T hingeTries, T hingeAccepts)
 {
-   "-".repeat(80).joiner.writeln;
-    writeln("Bistellar Moves      # Accepted          # Tried    %    ");
+    sink.writeln("-".repeat(80).joiner);
+    sink.writeln("Bistellar Moves      # Accepted          # Tried    %    ");
     foreach (i; 0 .. dim + 1)
     {
         auto accepts = "%10,d".format(bistellarAccepts[i]);
         auto tries = "%10,d".format(bistellarTries[i]);
-        writefln("    %2s → %2-s    : %14s / %14s (%5.3f)",
+        sink.writefln("    %2s → %2-s    : %14s / %14s (%5.3f)",
             i + 1, dim + 1 - i, accepts, tries,
             double(bistellarAccepts[i]) / bistellarTries[i]);
     }
-    if(useHingeMoves)
+    static if(useHingeMoves)
     {
-        writeln("Hinge Moves");
+        sink.writeln("Hinge Moves");
         foreach(i; 0 .. hingeAccepts.length)
         {
             auto accepts = "%10,d".format(hingeAccepts[i]);
             auto tries = "%10,d".format(hingeTries[i]);
-            writefln("    %2s → %2-s    : %14s / %14s (%5.3f)", i + 4,
+            sink.writefln("    %2s → %2-s    : %14s / %14s (%5.3f)", i + 4,
                 (i + 2) * (dim - 1), accepts, tries,
                 double(hingeAccepts[i]) / hingeTries[i]);
         }
     }
 }
 
-void histogramReport(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd)
+void writeHistogramReport(int dim, Vertex, W)(W sink, const ref Manifold!(dim, Vertex) mfd)
 {
     "-".repeat(80).joiner.writeln;
     auto maxDeg2 = 2 + maxCoDim2Bins;
@@ -396,177 +596,8 @@ Objective objectiveParts(Vertex, int dim)(const ref Sampler!(Vertex, dim) s)
     return Objective(volPen, gcPen, lcPen, lsacPen);
 }
 
-
-
-void sample(Vertex, int dim)(ref Sampler!(Vertex, dim) s)
+void sample(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd)
 {
-    if (disableGC)
-    {
-        GC.disable;
-    }
-    startTime = Clock.currTime.to!DateTime;
-    timer.start;
-
-    int sampleNumber;
-    auto dtIncThreshold = (dt * numFacetsTarget).to!ulong;
-    assert(dtIncThreshold > 0);
-    auto doneSampling = false;
-    while (!doneSampling)
-    {
-        if (dtElapsed * dt >= maxSweeps)
-        {
-            doneSampling = true;
-        }
-
-        size_t numMovesTried = bistellarTries[].sum + hingeTries[].sum;
-        size_t numMovesAccepted = bistellarAccepts[].sum + hingeAccepts[].sum;
-
-        bool dtIncreased = false;
-        if (numMovesAccepted == dtIncThreshold)
-        {
-            ++s.dtElapsed;
-            dtIncreased = true;
-            dtIncThreshold = ((dtElapsed + 1)
-                    * dt * numFacetsTarget).to!ulong;
-            assert(dtIncThreshold > numMovesAccepted);
-        }
-
-        assert(unusedVertices.all!(v => !s.manifold.contains(v.only)));
-        if (unusedVertices.empty)
-        {
-            /* If no unused vertices then next unused vertex label
-            is just the number of vertices. */
-            unusedVertices ~= manifold_.fVector[0].to!int;
-        }
-
-        real oldObj = objective;
-        long oldNumMoves = manifold.numValidMoves;
-
-        manifold_.Move chosenMove;
-
-        real totMoves = manifold.numValidMoves + manifold.fVector[$ - 1];
-        if (uniform(0, totMoves) < manifold.numValidMoves)
-        {
-            chosenMove = manifold.moves.choice;
-            while (manifold.contains(chosenMove.coCenter))
-            {
-                chosenMove = manifold.moves.choice;
-            }
-        }
-        else
-        {
-            auto facet = manifold.randomFacetOfDim(dim);
-            chosenMove = manifold_.Move(facet, [s.unusedVertices[$ - 1]]);
-        }
-
-        manifold_.doPachner(chosenMove.center, chosenMove.coCenter);
-
-        ++s.bistellarTries[dim + 1 - chosenMove.center.length];
-        ++s.bistellarAccepts[dim + 1 - chosenMove.center.length];
-
-        if (chosenMove.center.length == 1)
-        {
-            unusedVertices ~= chosenMove.center.front;
-        }
-
-        if (chosenMove.center.length == dim + 1)
-        {
-            unusedVertices.popBack;
-        }
-
-        long newNumMoves = manifold.numValidMoves;
-        real nMovesFactor = min(1.0, real(oldNumMoves) / newNumMoves);
-        real deltaObj = objective - oldObj;
-
-        // REJECT MOVE if appropriate
-        if ((deltaObj > 0) && (uniform01 > exp(-deltaObj) * nMovesFactor))
-        {
-            --s.bistellarAccepts[dim + 1 - chosenMove.center.length];
-
-            chosenMove = manifold.Move(chosenMove.coCenter, chosenMove.center);
-
-            manifold_.doPachner(chosenMove.center, chosenMove.coCenter);
-            if (chosenMove.center.length == 1)
-            {
-                unusedVertices ~= chosenMove.center.front;
-            }
-
-            if (chosenMove.center.length == dim + 1)
-            {
-                unusedVertices.popBack;
-            }
-        }
-
-        //--------------------------- MAKE REPORT ----------------------------
-        if ((numMovesTried % triesPerStdoutReport == 0)
-            || doneSampling)
-        {
-            report(stdout);
-        }
-
-        //----------------------- WRITE TO DATA FILE --------------------------
-        if ((dtIncreased && (dtElapsed % dtPerFileReport == 0))
-            || doneSampling)
-        {
-            auto file = File(saveFilePrefix ~ ".dat", "a");
-            columnReport(file);
-        }
-
-        //----------------------- SAVE CURRENT MANIFOLD ----------------------
-        if ((dtIncreased && (dtElapsed % dtPerSave == 0))
-            || doneSampling)
-        {
-            string prefix;
-            if (doneSampling)
-            {
-                prefix = saveFilePrefix ~ "_final";
-            }
-            else
-            {
-                prefix = saveFilePrefix ~ "_save"
-                    ~ sampleNumber.to!string;
-            }
-
-            auto mfdFileName = prefix ~ ".mfd";
-            auto graphFileName = prefix ~ ".edge_graph";
-
-            manifold.saveTo(mfdFileName);
-            auto saveFile = File(mfdFileName, "a");
-            saveFile.writeln;
-            report(saveFile);
-
-            manifold.saveEdgeGraphTo(graphFileName);
-            ++sampleNumber;
-        }
-
-        //------------------------- COLLECT GARBAGE --------------------------
-        if (disableGC && (numMovesTried % triesPerCollect == 0))
-        {
-            GC.enable;
-            GC.collect;
-            GC.disable;
-        }
-
-        //----------------------- CHECK FOR PROBLEMS ----------------------- 
-        static if (checkForProblems)
-        {
-            if (dtIncreased
-                && ((dtElapsed * dt) % sweepsPerProblemCheck == 0))
-            {
-                "checking for problems ... ".write;
-                auto problems = manifold.findProblems;
-                if (!problems.empty)
-                {
-                    problems.each!writeln;
-                    assert(0);
-                }
-                "done".writeln;
-            }
-        }
-    }
-
-    "Finished! Time elapsed: %s".writefln(
-        Clock.currTime.to!DateTime - startTime);
 }
 
 auto getFirstPart(T)(T time)
