@@ -89,7 +89,7 @@ public:
         {
             assert(lenCenter == dim - 1, "center is not a hinge");
             assert(lenCoCenter >= 4);
-            assert(triangIndx_ >= 0, "must set a valid trianulation index");
+            assert(triangIndx_ >= 0, "must set a valid triangulation index");
         }
 
         copy(center_, center);
