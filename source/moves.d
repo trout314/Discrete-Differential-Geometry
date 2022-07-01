@@ -130,7 +130,6 @@ private:
     pm.coCenter.shouldBeSameSetAs([4,5,6]);
     pm.isHinge.shouldBeFalse;
     pm.isPachner.shouldBeTrue;
-
 }
 
     
