@@ -11,7 +11,12 @@ import polygons : nGonTriangs;
 alias isIRof = isInputRangeOf;
 alias isIRofIRof = isInputRangeOfInputRangeOf;
 
-/// Represents a bistellar move
+/**
+Represents a bistellar move, also called a Pachner move. See:
+Udo Pachner, "P.L. Homeomorphic Manifolds are Equivalent by Elementary Shellings",
+European Journal of Combinatorics, Volume 12, Issue 2, 1991, Pages 129-145,
+ISSN 0195-6698, https://doi.org/10.1016/S0195-6698(13)80080-7
+**/
 struct BistellarMove(int dim, Vertex=int)
 {
 public:
@@ -116,7 +121,7 @@ public:
             ~ " triangIndx=" ~ triangIndx.to!string;
     }
 
-    // Returns the index of the triangulation 
+    // Returns the index of the normal surface triangulation 
     ulong triangIndx()() const
     {
         return triangIndx_;
