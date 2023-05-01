@@ -1,4 +1,5 @@
 module applications.manifold_sampler;
+
 import algorithms : eulerCharacteristic;
 import manifold;
 import manifold_examples : standardSphere;
@@ -91,6 +92,8 @@ void main(string[] args)
     {
         GC.disable;
     }
+
+    // auto currentNumMoves = mfd.computePachnerMoves.walkLength;
     auto doneSampling = false;
     while (!doneSampling)
     {
@@ -122,6 +125,11 @@ void main(string[] args)
             unusedVertices ~= mfd.fVector[0].to!int;
         }
         assert(unusedVertices.all!(v => !mfd.contains(v.only)));
+
+
+        // auto moves = mfd.computePachnerMoves;
+        // moves.each!writeln;
+        doneSampling = true;
 
         // auto chosenMove = mfd.getRandomMove;
 
