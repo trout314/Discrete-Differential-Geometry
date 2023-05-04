@@ -89,7 +89,10 @@ private:
         "center and co-center must not have any common vertices");
 }
 
-/// Represents a hinge-move
+/** Represents a hinge-move. These moves remove the star of a hinge
+H and replace it with the join of (boundary of H) and a triangulated
+disk T whose boundary is the link of H. We think of T as normal to H.
+**/
 struct HingeMove(int dim, Vertex = int, int maxHingeDeg=7)
 {
 public:   
@@ -105,8 +108,8 @@ public:
         return vertices[dim-1..dim-1+rimLength];
     }
 
-    /// Returns the new triangulated surface normal to the hinge
-    auto normalSurface()()
+    /// Returns the new triangulated disk normal to the hinge
+    auto normalDisk()()
     {
         return rimLength.nGonTriangs[triangIndx].map!(
             facet => facet.map!(indx => rim[indx]));
@@ -160,11 +163,13 @@ private:
 @Name("HingeMove") pure @safe unittest
 {
     auto mv = HingeMove!3([1,2],[3,4,5,6],0);
-
     mv.hinge.shouldBeSameSetAs([1,2]);
     mv.rim.shouldBeSameSetAs([3,4,5,6]);
-    mv.normalSurface.map!array.array.shouldBeSameSetAs([[3,4,5],[3,5,6]]);
 
+    mv.normalDisk.map!array.array.shouldBeSameSetAs([[3,4,5],[3,5,6]]);
+
+    mv.triangIndx_ = 1; 
+    mv.normalDisk.map!array.array.shouldBeSameSetAs([[3,4,6],[4,5,6]]);
 }
 ///
 @Name("HingeMove (errors)") pure @system unittest
