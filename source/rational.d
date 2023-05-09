@@ -19,9 +19,8 @@ import std.algorithm, std.bigint, std.conv, std.exception, std.format, std.math,
 
 import unit_threaded : Name;
 
-// TO DO: BigInt won't allow @safe unittest here
 ///
-@Name("pi approximation") @system unittest
+@Name("pi approximation") pure @safe unittest
 {
     enum maxTerm = 30;
 
