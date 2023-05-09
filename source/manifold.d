@@ -279,23 +279,11 @@ public:
     }
 }
 
-/*******************************************************************************
-Returns a list of all the possible pachner moves except for the 1->(dim+1) moves
-that are valid in this manifold. (Note that 1->(dim+1) moves are always valid.)
-*/
-BistellarMove!(dim, Vertex)[] computePachnerMoves(Vertex, int dim)(
-    const ref Manifold!(dim, Vertex) mfd)
-{
-    auto result = mfd.computeMBPMoves.filter!(
-        mv => !mfd.contains(mv.coCenter)).array;
-    return result;
-}
-
 
 /*******************************************************************************
 Returns a list of all the (maybe blocked) hinge moves in this manifold.
 */
-HingeMove!(dim, Vertex)[] computeMBHMoves(Vertex, int dim)(
+HingeMove!(dim, Vertex)[] allHingeMoves(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) mfd)
 {
     alias MV = HingeMove!(dim, Vertex); 
@@ -306,54 +294,30 @@ HingeMove!(dim, Vertex)[] computeMBHMoves(Vertex, int dim)(
         if (hingeDeg > 3 && hingeDeg <= 7)
         {
             auto lnk = mfd.link(hinge).map!array.array;
-            auto coCen = lnk.front.array;
-            while(coCen.length < hingeDeg)
+            auto rim = lnk.front.array;
+            while(rim.length < hingeDeg)
             {
-                auto lastVert = coCen[$-2];
-                auto thisVert = coCen[$-1];
+                auto lastVert = rim[$-2];
+                auto thisVert = rim[$-1];
                 auto lnkLnk = mfd.SimpComp(lnk).link([thisVert])
                     .map!array.array;
                 if (lnkLnk[0][0] == lastVert)
                 {
-                    coCen ~= lnkLnk[1][0];
+                    rim ~= lnkLnk[1][0];
                 }
                 else
                 {
-                    coCen ~= lnkLnk[0][0];
+                    rim ~= lnkLnk[0][0];
                 }
             }
 
-            foreach(i; numNgonTriangs(hingeDeg).iota)
+            foreach(diskIndx; numNgonTriangs(hingeDeg).iota)
             {
-                result ~= MV(hinge, coCen, i);
+                if (mfd.hasValidHingeMove(rim, diskIndx))
+                {
+                    result ~= MV(hinge, rim, diskIndx);
+                }
             }
-        }
-    }
-    return result;
-}
-
-/*******************************************************************************
-Returns a list of all the valid hinge moves in this manifold.
-*/
-HingeMove!(dim, Vertex)[] computeHingeMoves(Vertex, int dim)(
-    const ref Manifold!(dim, Vertex) mfd)
-{
-    // return mfd.computeMBHMoves.filter!(mv => 
-    //     mfd.hasValidHingeMove(mv.rim, mv.triangIndx)).array;
-
-    alias MV = HingeMove!(dim, Vertex); 
-    alias SC = SimplicialComplex!(Vertex, dim);
-    MV[] result;
-
-    foreach(mv; mfd.computeMBHMoves)
-    {
-        auto deg = mv.rim.length;
-        auto diskIndx = mv.triangIndx;
-        auto diskFacets = deg.nGonTriangs[diskIndx];
-
-        if (mfd.hasValidHingeMove(mv.rim, diskIndx))
-        {
-            result ~= mv;
         }
     }
     return result;
@@ -372,15 +336,15 @@ unittest
     //       the form [pt in twoPts, pt in octahedron])
     //      * 2 triangulations of each orthogonal disk
     //    = 24 * 2
-    mfd.computeMBHMoves.length.shouldEqual(48);
+    mfd.allHingeMoves.length.shouldEqual(48);
 
     // All of these moves are valid (i.e. not blocked by an
     // existing simplex)
-    mfd.computeHingeMoves.length.shouldEqual(48);
+    mfd.allHingeMoves.length.shouldEqual(48);
 
     // Spot check done by hand.
     alias MV = HingeMove!3;
-    mfd.computeMBHMoves.shouldBeSameSetAs([
+    mfd.allHingeMoves.shouldBeSameSetAs([
         // Moves where center is edge in octaheron
         MV([0, 1],[2, 6, 4, 7],0), MV([0, 1],[2, 6, 4, 7],1),
         MV([0, 2],[1, 6, 3, 7],0), MV([0, 2],[1, 6, 3, 7],1),
@@ -411,19 +375,19 @@ unittest
 }
 
 ///
-@Name("computePachnerMoves") pure @safe unittest
+@Name("allBistellarMoves") pure @safe unittest
 {
     static foreach(d; 2 .. 8)
     {
         {
             auto m = standardSphere!d;
-            m.computePachnerMoves.shouldBeEmpty;
+            m.allBistellarMoves.shouldBeEmpty;
         }
     }
 
     // trigonal bipyramid
     auto tb = Manifold!2([[0,1,2],[0,1,3],[0,2,3],[1,2,4],[1,3,4],[2,3,4]]);
-    tb.computePachnerMoves.shouldBeSameSetAs([
+    tb.allBistellarMoves.shouldBeSameSetAs([
         BistellarMove!2([0],[1,2,3]),
         BistellarMove!2([4],[1,2,3]),
         BistellarMove!2([1,2],[0,4]),
@@ -434,7 +398,7 @@ unittest
     // octahedron
     auto oct = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
         [2,3,5], [3,4,5], [1,4,5]]);
-    oct.computePachnerMoves.shouldBeSameSetAs([
+    oct.allBistellarMoves.shouldBeSameSetAs([
         BistellarMove!2([0,1],[2,4]),
         BistellarMove!2([0,2],[1,3]),
         BistellarMove!2([0,3],[2,4]),
@@ -451,7 +415,7 @@ unittest
 
     auto m = Manifold!2([[0,1,2],[0,1,3],[0,2,3],[1,2,4],[1,3,4],[2,3,5],
         [2,4,5],[3,4,5]]);    
-    m.computePachnerMoves.shouldBeSameSetAs([
+    m.allBistellarMoves.shouldBeSameSetAs([
         BistellarMove!2([0],[1,2,3]),
         BistellarMove!2([5],[2,3,4]),
         BistellarMove!2([1,2],[0,4]),
@@ -468,10 +432,10 @@ unittest
 
 
 /*******************************************************************************
-Returns a list of all the (perhaps blocked) pachner moves except for the
-1->(dim+1) moves in this manifold. Note that 1->(dim+1) moves are always valid.
+Returns a list of all the bistellar moves in this manifold (except for the
+1->(dim+1) moves.
 */
-BistellarMove!(dim, Vertex)[] computeMBPMoves(Vertex, int dim)(
+BistellarMove!(dim, Vertex)[] allBistellarMoves(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) mfd)
 {
     BistellarMove!(dim, Vertex)[] result;
@@ -483,7 +447,10 @@ BistellarMove!(dim, Vertex)[] computeMBPMoves(Vertex, int dim)(
             if(deg == mfd.dimension + 2 - simp.walkLength)
             {
                 auto coCenter = mfd.findCoCenter(simp);
-                result ~= BistellarMove!(dim, Vertex)(simp, coCenter);
+                if(!mfd.contains(coCenter))
+                {
+                    result ~= BistellarMove!(dim, Vertex)(simp, coCenter);
+                }
             }
         }
     }
@@ -506,11 +473,11 @@ BistellarMove!(dim, Vertex)[] computeMBPMoves(Vertex, int dim)(
 
     octahedron.star([1,2]).shouldBeSameSetAs([[0,1,2], [1,2,5]]);    
 
-    octahedron.computePachnerMoves.map!(mv => mv.center.array).shouldBeSameSetAs(
+    octahedron.allBistellarMoves.map!(mv => mv.center.array).shouldBeSameSetAs(
         [[0,1], [0,2], [0,3], [0,4], [1,2], [1,4],  // 1-simplices
          [1,5], [2,3], [2,5], [3,4], [3,5], [4,5]]);      
 
-    tetrahedron.computePachnerMoves.shouldBeEmpty;
+    tetrahedron.allBistellarMoves.shouldBeEmpty;
     
     // TO DO: FINISH CHECKS!
     // octahedron.doPachner([1,2]);
@@ -531,12 +498,12 @@ BistellarMove!(dim, Vertex)[] computeMBPMoves(Vertex, int dim)(
 }
 
 ///
-@Name("computePachnerMoves") pure @safe unittest
+@Name("allBistellarMoves") pure @safe unittest
 {
     auto m = Manifold!2(
         [[1,2,3], [1,2,4], [1,3,4], [2,3,5], [2,4,5],[3,4,5]]);
 
-    m.computePachnerMoves.map!(mv => mv.center.array).shouldBeSameSetAs(
+    m.allBistellarMoves.map!(mv => mv.center.array).shouldBeSameSetAs(
         [[1], [5], [2, 3], [2, 4], [3, 4]]);
 
     auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4],
@@ -544,7 +511,7 @@ BistellarMove!(dim, Vertex)[] computeMBPMoves(Vertex, int dim)(
     
     assert(octahedron.simplices(0).all!(s => octahedron.degree(s) == 4));
 
-    octahedron.computePachnerMoves.map!(mv => mv.center.array).shouldBeSameSetAs(
+    octahedron.allBistellarMoves.map!(mv => mv.center.array).shouldBeSameSetAs(
         [[2, 3], [0, 1], [1, 5], [4, 5], [0, 3], [1, 4],
         [1, 2], [0, 4], [0, 2], [2, 5], [3, 5], [3, 4]]);
 }
@@ -638,7 +605,7 @@ if (isIRof!(C, const(Vertex)) && isIRof!(D, const(Vertex)))
     if(coCenter.walkLength > 1)
     {
         auto pm = BistellarMove!(dim, Vertex)(center, coCenter);
-        assert(manifold.computePachnerMoves.canFind(pm), "not a valid pachner move");
+        assert(manifold.allBistellarMoves.canFind(pm), "not a valid pachner move");
     }
  
     // Buffer for holding vertices in center (followed by coCenter)
