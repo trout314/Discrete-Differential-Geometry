@@ -910,6 +910,7 @@ if (isIRof!(F, const(Vertex)))
     BistellarMove!dim[] moves;
     foreach(center; facet.subsets.map!array)
     {
+        if(center.walkLength == dim + 1) continue;
         if (mfd.degree(center) == dim + 2 - center.walkLength)
         {
             auto coCenter = mfd.findCoCenter(center);
@@ -942,15 +943,15 @@ if (isIRof!(F, const(Vertex)))
     alias MV = BistellarMove!2;
 
     octahedron.bistellarMovesAtFacet([0,1,2]).shouldBeSameSetAs([
-        MV([0,1], [1,4]),
+        MV([0,1], [2,4]),
         MV([0,2], [1,3]),
         MV([1,2], [0,5])]);
     
     foreach(f; octahedron.facets)
     {
         auto edges = f.subsetsOfSize(2).map!array.array;
-        auto moveCenters = octahedron.bistellarMovesAtFacet(f).map!(mv => mv.center.array);
-        moveCenters.shouldBeSameSetAs(edges);
+        auto moves = octahedron.bistellarMovesAtFacet(f);
+        moves.map!(mv => mv.center.array).shouldBeSameSetAs(edges);
     }
     
     auto pyramid = Manifold!2(
@@ -961,7 +962,6 @@ if (isIRof!(F, const(Vertex)))
     moveCenters.shouldBeSameSetAs([
         [0],                    // 3 -> 1 move
         [1,2],                  // 2 -> 2 move
-        [0,1,2]                 // 1 -> 3 move
     ]);
 
     moves = pyramid.bistellarMovesAtFacet([0,2,3]);
@@ -969,7 +969,6 @@ if (isIRof!(F, const(Vertex)))
     moveCenters.shouldBeSameSetAs([
         [0],                    // 3 -> 1 move
         [2,3],                  // 2 -> 2 move
-        [0,2,3]                 // 1 -> 3 move
     ]);
 
     moves = pyramid.bistellarMovesAtFacet([1,3,4]);
@@ -977,7 +976,6 @@ if (isIRof!(F, const(Vertex)))
     moveCenters.shouldBeSameSetAs([
         [4],                    // 3 -> 1 move
         [1,3],                  // 2 -> 2 move
-        [1,3,4]                 // 1 -> 3 move
     ]);
 }
 
