@@ -3,6 +3,7 @@ module applications.manifold_sampler;
 import algorithms : eulerCharacteristic;
 import manifold;
 import manifold_examples : standardSphere;
+import manifold_moves : BistellarMove, HingeMove;
 import simplicial_complex : fVector;
 import utility : binomial, flatDegreeInDim, prettyTime;
 
@@ -19,9 +20,12 @@ import std.format : format;
 import std.getopt : getopt, defaultGetoptPrinter;
 import std.math : exp, sqrt, isNaN, modf;
 import std.range;
-import std.random : choice, uniform01;
+import std.random : choice, uniform, uniform01;
 import std.stdio : File, write, writef, writefln, writeln, stdout;
+import std.sumtype : SumType;
+
 import core.memory : GC;
+
 
 
 mixin(import("manifold_sampler.config").parseConfig);
@@ -127,8 +131,33 @@ void main(string[] args)
         assert(unusedVertices.all!(v => !mfd.contains(v.only)));
 
 
-        // auto moves = mfd.computePachnerMoves;
-        // moves.each!writeln;
+        auto bistellarMoves = mfd.allBistellarMoves;
+        auto numBistellarMoves = bistellarMoves.walkLength;
+        auto numNewVertexMoves = mfd.fVector[dim];
+        auto numberOfMoves = numBistellarMoves + numNewVertexMoves;
+
+        static if(useHingeMoves)
+        {
+            auto hingeMoves = mfd.allHingeMoves;
+            auto numHingeMoves = hingeMoves.walkLength;
+            numberOfMoves += numHingeMoves;
+            hingeMoves.each!writeln;
+        }
+
+        auto indxOfChosenMove = uniform(0,numberOfMoves);
+
+        if (indxOfChosenMove < numNewVertexMoves)
+        {
+            
+        }
+
+
+        
+
+
+
+
+
         doneSampling = true;
 
         // auto chosenMove = mfd.getRandomMove;
