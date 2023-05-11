@@ -60,6 +60,8 @@ public:
         return "bistellar move, center=" ~ center.to!string 
             ~ " coCenter=" ~ coCenter.to!string;
     }
+
+    alias dimension = dim;
 private:
     size_t lenCenter;
     Vertex[dim + 2] vertices;
@@ -218,35 +220,45 @@ auto modifyFVector(Move)(size_t[] fVector_, Move move)
     }
 }
 ///
-@Name("modifyFVector") pure @safe unittest
+@Name("modifyFVector (dim 3)") pure @safe unittest
 {
+    alias BMove = BistellarMove!3;
+
+    size_t[] fVector = [0,0,0,0];
+
     /* A 1 -> 4 move should give net: +1 vertices, +4 edges, +6 triangles,
     +3 tetrahdra */
-    auto bmove = BistellarMove!3([1,2,3,4],[5]);
-    size_t[] fVector = [0,0,0,0];
-    fVector.modifyFVector(bmove);
+    fVector.modifyFVector(BMove([1,2,3,4],[5]));
     fVector.shouldEqual([1, 4, 6, 3]);
 
-    // /* A 2 -> 3 move should give net: +0 vertices, +1 edges, +2 triangles,
-    // +1 tetrahedra */
-    // fVec.modifyFVector(3);
-    // fVec.shouldEqual([1,5,8,4]);
+    /* A 2 -> 3 move should give net: +0 vertices, +1 edges, +2 triangles,
+    +1 tetrahedra */
+    fVector.modifyFVector(BMove([1,2,3],[4,5]));
+    fVector.shouldEqual([1,5,8,4]);
 
-    // fVec.modifyFVector(2);    // 3 -> 2 move
-    // fVec.modifyFVector(1);    // 4 -> 1 move
+    fVector.modifyFVector(BMove([4,5],[1,2,3]));    // 3 -> 2 move
+    fVector.modifyFVector(BMove([5],[1,2,3,4]));    // 4 -> 1 move
 
-    // // Should be back where we started
-    // fVec.shouldEqual([0,0,0,0]);
+    // Should be back where we started
+    fVector.shouldEqual([0,0,0,0]);
+}
 
-    // size_t[3] fVec2 = [0,0,0];
-    // fVec2.modifyFVector(2); // 2 -> 2 move
-    // fVec2.shouldEqual([0,0,0]);
+///
+@Name("modifyFVector (dim 2)") pure @safe unittest
+{
+    alias BMove = BistellarMove!2;
+    
+    size_t[] fVector = [0,0,0];
 
-    // fVec2.modifyFVector(3); // 1 -> 3 move
+    // A 2 -> 2 move should leave the f-vector unchanged 
+    fVector.modifyFVector(BMove([1,2],[3,4]));
+    fVector.shouldEqual([0, 0, 0]);
 
-    // // a 1 -> 3 move should give net: +1 vertices, +3 edges, +2 triangles
-    // fVec2.shouldEqual([1, 3, 2]);
+    // A 1 -> 3 move should give net: +1 vertices, +3 edges, +2 triangles
+    fVector.modifyFVector(BMove([1,2,3],[4]));
+    fVector.shouldEqual([1, 3, 2]);
 
-    // fVec2.modifyFVector(1); // 3 -> 1 move
-    // fVec2.shouldEqual([0,0,0]);
+    // Doing a 3 -> 1 move should return the f-vector to its original value
+    fVector.modifyFVector(BMove([4],[1,2,3]));
+    fVector.shouldEqual([0, 0, 0]);
 }
