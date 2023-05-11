@@ -23,7 +23,7 @@ import std.stdio : File, writeln, writefln, write;
 import std.traits : Unqual;
 import std.typecons : Flag, No, Yes;
 
-import manifold_moves : BistellarMove, HingeMove;
+import manifold_moves : BistellarMove, modifyFVector, HingeMove;
 
 alias isIRof = isInputRangeOf;
 alias isIRofIRof = isInputRangeOfInputRangeOf;
@@ -600,6 +600,9 @@ void doPachner(Vertex, int dim, C, D)(
 )
 if (isIRof!(C, const(Vertex)) && isIRof!(D, const(Vertex)))
 {
+    // TO DO: make this function directly accept a bistellar move
+    auto move = BistellarMove!dim(center, coCenter);
+
     assert(manifold.contains(center), "center of move not in manifold");
     assert(!manifold.contains(coCenter), "coCenter of move in manifold");
     if(coCenter.walkLength > 1)
@@ -636,7 +639,12 @@ if (isIRof!(C, const(Vertex)) && isIRof!(D, const(Vertex)))
 
     oldPiece.each!(f => manifold.removeFacet(f));
     newPiece.each!(f => manifold.insertFacet(f));
-    manifold.numSimplices.modifyFVector(cenLen);
+
+    size_t[dim + 1] currentFVector = manifold.fVector;
+    size_t[dim + 1] newFVector = manifold.fVector;
+    newFVector[].modifyFVector(move);
+
+    // manifold.numSimplices.modifyFVector(cenLen);
 }
 
 auto findCoCenter(Vertex, int dim, C)(
@@ -805,64 +813,6 @@ if (isIRof!(C, const(Vertex)) && isIRof!(F, const(Vertex)))
         assert(sc.contains(edge01[]));
         assert(!sc.contains(edge07[]));
     }();  
-}
-
-/******************************************************************************
-Modifies an fVector for a pachner move with center simplex that contains `n`
-vertices.
-*/
-auto modifyFVector(size_t[] fVector_, size_t centerLength)
-{
-    assert(centerLength >= 1, "center length must be at least one");
-    assert(fVector_.length >= centerLength, "fVector must have length at least the center length");
-
-    // We modify the fVector for the removal of the original star
-    auto centerDim = centerLength - 1;
-    auto dim = fVector_.length.to!int - 1;
-    foreach(d; centerDim .. dim + 1)
-    {
-        fVector_[d] -= binomial(dim + 1 - centerDim, d - centerDim);
-    }
-
-    // Now modify it for the addition of the new star
-    auto coDim = dim + 1 - centerLength;
-    foreach(d; coDim .. dim + 1)
-    {
-        fVector_[d] += binomial(dim + 1 - coDim, d - coDim);
-    }
-}
-///
-@Name("modifyFVector") pure @safe unittest
-{
-    size_t[4] fVec = [0,0,0,0];
-
-    /* A 1 -> 4 move should give net: +1 vertices, +4 edges, +6 triangles,
-    +3 tetrahdra */
-    fVec.modifyFVector(4);
-    fVec.shouldEqual([1, 4, 6, 3]);
-
-    /* A 2 -> 3 move should give net: +0 vertices, +1 edges, +2 triangles,
-    +1 tetrahedra */
-    fVec.modifyFVector(3);
-    fVec.shouldEqual([1,5,8,4]);
-
-    fVec.modifyFVector(2);    // 3 -> 2 move
-    fVec.modifyFVector(1);    // 4 -> 1 move
-
-    // Should be back where we started
-    fVec.shouldEqual([0,0,0,0]);
-
-    size_t[3] fVec2 = [0,0,0];
-    fVec2.modifyFVector(2); // 2 -> 2 move
-    fVec2.shouldEqual([0,0,0]);
-
-    fVec2.modifyFVector(3); // 1 -> 3 move
-
-    // a 1 -> 3 move should give net: +1 vertices, +3 edges, +2 triangles
-    fVec2.shouldEqual([1, 3, 2]);
-
-    fVec2.modifyFVector(1); // 3 -> 1 move
-    fVec2.shouldEqual([0,0,0]);
 }
 
 /******************************************************************************

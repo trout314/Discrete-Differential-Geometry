@@ -2,9 +2,10 @@
 module manifold_moves;
 
 import std.conv : to;
-import utility : isInputRangeOf, isInputRangeOfInputRangeOf, throwsWithMsg, replaceEmptyLiteral;
+import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf, throwsWithMsg, replaceEmptyLiteral;
 import std.range : array, empty, walkLength;
 import std.algorithm : copy, map, setIntersection;
+import std.traits : isInstanceOf;
 import unit_threaded : Name, shouldBeSameSetAs, shouldEqual, shouldBeTrue, shouldBeFalse, writelnUt;
 import polygons : nGonTriangs;
 
@@ -186,4 +187,66 @@ private:
     enum maxRim = 5;
     HingeMove!(4, int, maxRim)([1,2,3],[4,5,6,7,8,9,10]).throwsWithMsg(
         "rim must have at most 5 vertices");
+}
+
+/******************************************************************************
+Takes as input a move and a slice containing the starting fVector and modifies
+the fVector as if the given move were performed
+*/
+auto modifyFVector(Move)(size_t[] fVector_, Move move)
+{
+    enum moveIsBistellar = isInstanceOf!(BistellarMove, Move);
+    enum moveisHinge = isInstanceOf!(HingeMove, Move);
+    static assert(moveIsBistellar || moveisHinge,
+        "must be a bistellar or hinge move");
+    static if(isInstanceOf!(BistellarMove, Move))
+    {
+        // We modify the fVector for the removal of the original star
+        auto centerDim = move.center.length - 1;
+        auto dim = fVector_.length.to!int - 1;
+        foreach(d; centerDim .. dim + 1)
+        {
+            fVector_[d] -= binomial(dim + 1 - centerDim, d - centerDim);
+        }
+
+        // Now modify it for the addition of the new star
+        auto coDim = dim + 1 - move.center.length;
+        foreach(d; coDim .. dim + 1)
+        {
+            fVector_[d] += binomial(dim + 1 - coDim, d - coDim);
+        }
+    }
+}
+///
+@Name("modifyFVector") pure @safe unittest
+{
+    /* A 1 -> 4 move should give net: +1 vertices, +4 edges, +6 triangles,
+    +3 tetrahdra */
+    auto bmove = BistellarMove!3([1,2,3,4],[5]);
+    size_t[] fVector = [0,0,0,0];
+    fVector.modifyFVector(bmove);
+    fVector.shouldEqual([1, 4, 6, 3]);
+
+    // /* A 2 -> 3 move should give net: +0 vertices, +1 edges, +2 triangles,
+    // +1 tetrahedra */
+    // fVec.modifyFVector(3);
+    // fVec.shouldEqual([1,5,8,4]);
+
+    // fVec.modifyFVector(2);    // 3 -> 2 move
+    // fVec.modifyFVector(1);    // 4 -> 1 move
+
+    // // Should be back where we started
+    // fVec.shouldEqual([0,0,0,0]);
+
+    // size_t[3] fVec2 = [0,0,0];
+    // fVec2.modifyFVector(2); // 2 -> 2 move
+    // fVec2.shouldEqual([0,0,0]);
+
+    // fVec2.modifyFVector(3); // 1 -> 3 move
+
+    // // a 1 -> 3 move should give net: +1 vertices, +3 edges, +2 triangles
+    // fVec2.shouldEqual([1, 3, 2]);
+
+    // fVec2.modifyFVector(1); // 3 -> 1 move
+    // fVec2.shouldEqual([0,0,0]);
 }

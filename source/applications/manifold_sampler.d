@@ -33,7 +33,6 @@ mixin(import("manifold_sampler.config").parseConfig);
 version (unittest) {} else {
 void main(string[] args)
 {
-
     string mfdFile;
     auto helpInformation = getopt(args, "manifoldFile", &mfdFile);
     if (helpInformation.helpWanted)
@@ -146,9 +145,21 @@ void main(string[] args)
 
         auto indxOfChosenMove = uniform(0,numberOfMoves);
 
-        if (indxOfChosenMove < numNewVertexMoves)
+        real deltaObjective = 0;
+        if(indxOfChosenMove < numNewVertexMoves)
         {
+            // Chosen move is a 1->(dim+1) bistellar move
             
+            // deltaObjective = changeInObjective(mfd, objective, move);
+        }
+        else if(indxOfChosenMove < numNewVertexMoves + numBistellarMoves)
+        {
+            // Chosen move is a bistellar move that isn't 1->(dim+1)
+        }
+        else
+        {
+            // Chosen move is a hinge move
+            assert(indxOfChosenMove < numberOfMoves);
         }
 
 
