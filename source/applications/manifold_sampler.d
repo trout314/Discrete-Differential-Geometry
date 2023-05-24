@@ -9,10 +9,11 @@ import utility : binomial, flatDegreeInDim, prettyTime;
 
 import unit_threaded : Name;
 
-import std.algorithm;
+import core.memory : GC;
+
+import std.algorithm : all, each, findSplit, joiner, map, max, maxElement, sort, sum;
 import std.array : split, array, replace;
 import std.conv : to;
-import std.datetime;
 import std.datetime.stopwatch : Duration, msecs, StopWatch;
 import std.datetime.date : DateTime;
 import std.datetime.systime : Clock;
@@ -22,11 +23,6 @@ import std.math : exp, sqrt, isNaN, modf;
 import std.range;
 import std.random : choice, uniform, uniform01;
 import std.stdio : File, write, writef, writefln, writeln, stdout;
-import std.sumtype : SumType;
-
-import core.memory : GC;
-
-
 
 mixin(import("manifold_sampler.config").parseConfig);
 
@@ -71,15 +67,12 @@ void main(string[] args)
     // bistellarAccepts[j] counts the (j + 1) -> (dim + 1 - j) moves accepted
     ulong[dim + 1] bistellarAccepts;
 
-    static if (useHingeMoves)
-    {
-        // hingeTries[j] counts the hinge-moves with hinge degree j + 4 tried
-        static assert(maxHingeMoveDeg >= 4, "Hinge move degrees must be at least 4");
-        ulong[maxHingeMoveDeg - 3] hingeTries;
+    // hingeTries[j] counts the hinge-moves with hinge degree j + 4 tried
+    static assert(maxHingeMoveDeg >= 4, "Hinge move degrees must be at least 4");
+    ulong[maxHingeMoveDeg - 3] hingeTries;
 
-        // hingeAccepts[j] counts the hinge-moves with hinge degree j + 4 accepted
-        ulong[maxHingeMoveDeg - 3] hingeAccepts;
-    }
+    // hingeAccepts[j] counts the hinge-moves with hinge degree j + 4 accepted
+    ulong[maxHingeMoveDeg - 3] hingeAccepts;
 
     ulong dtElapsed; // number of dt intervals elapsed (in sweeps)
     auto dtIncThreshold = (dt * numFacetsTarget).to!ulong;
@@ -91,7 +84,7 @@ void main(string[] args)
     auto currentObjective = mfd.objective;
     timer.reset;
 
-    static if (disableGC)
+    if(disableGC)
     {
         GC.disable;
     }
@@ -103,7 +96,7 @@ void main(string[] args)
         doneSampling = (dtElapsed * dt >= maxSweeps);
         ulong numMovesTried = bistellarTries[].sum;
         ulong numMovesAccepted = bistellarAccepts[].sum;
-        static if (useHingeMoves)
+        if(useHingeMoves)
         {
             numMovesTried += hingeTries[].sum;
             numMovesAccepted += hingeAccepts[].sum;
@@ -135,7 +128,7 @@ void main(string[] args)
         auto numNewVertexMoves = mfd.fVector[dim];
         auto numberOfMoves = numBistellarMoves + numNewVertexMoves;
 
-        static if(useHingeMoves)
+        if(useHingeMoves)
         {
             auto hingeMoves = mfd.allHingeMoves;
             auto numHingeMoves = hingeMoves.walkLength;
@@ -149,21 +142,36 @@ void main(string[] args)
         if(indxOfChosenMove < numNewVertexMoves)
         {
             // Chosen move is a 1->(dim+1) bistellar move
-            
-            // deltaObjective = changeInObjective(mfd, objective, move);
+            auto center = mfd.randomFacetOfDim(dim);
+            auto coCenter = unusedVertices.back.only;
+            auto chosenMove = BistellarMove!dim(center, coCenter);
+
+            deltaObjective = changeInObjective(mfd, chosenMove);
+            writeln("chosen move: ", chosenMove);
         }
         else if(indxOfChosenMove < numNewVertexMoves + numBistellarMoves)
         {
             // Chosen move is a bistellar move that isn't 1->(dim+1)
+            auto indx = indxOfChosenMove - numNewVertexMoves;
+            auto chosenMove = bistellarMoves[indx];
+            deltaObjective = changeInObjective(mfd, chosenMove);
+            writeln("chosen move: ", chosenMove);
         }
         else
         {
+            assert(useHingeMoves);
             // Chosen move is a hinge move
-            assert(indxOfChosenMove < numberOfMoves);
+            if(useHingeMoves)
+            {
+                auto indx = indxOfChosenMove - numNewVertexMoves - numBistellarMoves;
+                auto chosenMove = hingeMoves[indx];
+                deltaObjective = changeInObjective(mfd, chosenMove);
+                writeln("chosen move: ", chosenMove);
+            }
         }
+  
 
 
-        
 
 
 
@@ -278,7 +286,7 @@ void main(string[] args)
         }
 
         //------------------------- COLLECT GARBAGE --------------------------
-        static if (disableGC)
+        if(disableGC)
         {
             if (numMovesTried % triesPerCollect == 0)
             {
@@ -289,7 +297,7 @@ void main(string[] args)
         }
 
         //----------------------- CHECK FOR PROBLEMS ----------------------- 
-        static if (checkForProblems)
+        if(checkForProblems)
         {
             if (dtIncreased
                 && ((dtElapsed * dt) % sweepsPerProblemCheck == 0))
@@ -495,7 +503,7 @@ void writeMoveReport(S, T, W)(W sink, S bistellarTries, S bistellarAccepts, T hi
             i + 1, dim + 1 - i, accepts, tries,
             double(bistellarAccepts[i]) / bistellarTries[i]);
     }
-    static if (useHingeMoves)
+    if(useHingeMoves)
     {
         sink.writeln("Hinge Moves");
         foreach (i; 0 .. hingeAccepts.length)
@@ -598,17 +606,25 @@ auto getFirstPart(T)(T time)
         .replace("minutes", "mins");
 }
 
-auto getRandomMove(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd)
+// auto getRandomMove(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd)
+// {
+//     auto facet = mfd.randomFacetOfDim(dim);
+//     auto moveCenters = mfd.bistellarMovesAtFacet(facet);
+//     static if (useHingeMoves)
+//     {
+
+//     }
+
+
+// }
+
+real changeInObjective(int dim, Vertex, Move)(const ref Manifold!(dim, Vertex) mfd, Move move)
 {
-    auto facet = mfd.randomFacetOfDim(dim);
-    auto moveCenters = mfd.bistellarMovesAtFacet(facet);
-    static if (useHingeMoves)
-    {
-
-    }
-
-
+    auto currentObjective = mfd.objective;
+    writeln(currentObjective);
+    return 0;
 }
+
 
 // Returns a random move, with an empty list in place of any needed new vertex
 // Move_!(dim, Vertex) getRndPachnerMove(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd)
