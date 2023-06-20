@@ -286,41 +286,48 @@ Returns a list of all the (maybe blocked) hinge moves in this manifold.
 HingeMove!(dim, Vertex)[] allHingeMoves(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) mfd)
 {
-    alias MV = HingeMove!(dim, Vertex); 
-    MV[] result;
-    foreach(hinge; mfd.simplices(dim-2))
+    static if(dim < 2)
     {
-        auto hingeDeg = mfd.degree(hinge); 
-        if (hingeDeg > 3 && hingeDeg <= 7)
+        return [];
+    }
+    else
+    {
+        alias MV = HingeMove!(dim, Vertex); 
+        MV[] result;
+        foreach(hinge; mfd.simplices(dim-2))
         {
-            auto lnk = mfd.link(hinge).map!array.array;
-            auto rim = lnk.front.array;
-            while(rim.length < hingeDeg)
+            auto hingeDeg = mfd.degree(hinge); 
+            if (hingeDeg > 3 && hingeDeg <= 7)
             {
-                auto lastVert = rim[$-2];
-                auto thisVert = rim[$-1];
-                auto lnkLnk = mfd.SimpComp(lnk).link([thisVert])
-                    .map!array.array;
-                if (lnkLnk[0][0] == lastVert)
+                auto lnk = mfd.link(hinge).map!array.array;
+                auto rim = lnk.front.array;
+                while(rim.length < hingeDeg)
                 {
-                    rim ~= lnkLnk[1][0];
+                    auto lastVert = rim[$-2];
+                    auto thisVert = rim[$-1];
+                    auto lnkLnk = mfd.SimpComp(lnk).link([thisVert])
+                        .map!array.array;
+                    if (lnkLnk[0][0] == lastVert)
+                    {
+                        rim ~= lnkLnk[1][0];
+                    }
+                    else
+                    {
+                        rim ~= lnkLnk[0][0];
+                    }
                 }
-                else
-                {
-                    rim ~= lnkLnk[0][0];
-                }
-            }
 
-            foreach(diskIndx; numNgonTriangs(hingeDeg).iota)
-            {
-                if (mfd.hasValidHingeMove(rim, diskIndx))
+                foreach(diskIndx; numNgonTriangs(hingeDeg).iota)
                 {
-                    result ~= MV(hinge, rim, diskIndx);
+                    if (mfd.hasValidHingeMove(rim, diskIndx))
+                    {
+                        result ~= MV(hinge, rim, diskIndx);
+                    }
                 }
             }
         }
+        return result;        
     }
-    return result;
 }
 
 ///
@@ -1266,38 +1273,42 @@ bool hasValidHingeMove(Vertex, int dim, K)(
     ulong diskIndx)
 {
     static assert(isIRof!(K, const(Vertex)));
-    static assert(dim >= 3,
-        "no hinge moves in dimension less than 3");
-
-    // TO DO: Decide what to do about this magic constantS 7, 14
-    // (It comes from nGonTriangs only supporting up to 7-gon.)
-    auto deg = linkVertices_.walkLength.to!int;
-    Unqual!Vertex[7] linkVerticesBuff = linkVertices_.staticArray!7;
-    auto linkVertices = linkVerticesBuff[0 .. deg];
-
-    auto linkEdgeBuffer = chain(linkVertices[], linkVertices.front.only)
-        .slide(2).take(deg).joiner.toStackArray!(Unqual!Vertex, 14);
-    auto linkEdges = linkEdgeBuffer[];
-    deg.iota.each!(indx => linkEdges[2*indx .. 2*(indx + 1)].sort);
-
-    assert(diskIndx < deg.nGonTriangs.walkLength);
-    auto diskFacetsBuffer = deg.nGonTriangs[diskIndx]
-        .joiner.map!(i => linkVertices[i])
-        .toStackArray!(Unqual!Vertex, (7 - 2) * 3);
-    foreach(indx; 0 .. deg - 2)
+    static if (dim < 3)
     {
-        diskFacetsBuffer[][3*indx .. 3*indx + 3].sort;
+        return false;
     }
-    auto diskFacets = diskFacetsBuffer[].chunks(3);
+    else
+    {
+        // TO DO: Decide what to do about this magic constantS 7, 14
+        // (It comes from nGonTriangs only supporting up to 7-gon.)
+        auto deg = linkVertices_.walkLength.to!int;
+        Unqual!Vertex[7] linkVerticesBuff = linkVertices_.staticArray!7;
+        auto linkVertices = linkVerticesBuff[0 .. deg];
 
-    // TO DO: rework this to avoid creating simplicial complex
-    // (and allocating of course!)
-    auto disk = SimplicialComplex!(Vertex, 2)(diskFacets);
+        auto linkEdgeBuffer = chain(linkVertices[], linkVertices.front.only)
+            .slide(2).take(deg).joiner.toStackArray!(Unqual!Vertex, 14);
+        auto linkEdges = linkEdgeBuffer[];
+        deg.iota.each!(indx => linkEdges[2*indx .. 2*(indx + 1)].sort);
 
-    // None of the "internal" edges can already be in manifold
-    return disk.simplices(1)
-        .filter!(edge => disk.star(edge).walkLength == 2)
-        .all!(edge => !manifold.contains(edge));
+        assert(diskIndx < deg.nGonTriangs.walkLength);
+        auto diskFacetsBuffer = deg.nGonTriangs[diskIndx]
+            .joiner.map!(i => linkVertices[i])
+            .toStackArray!(Unqual!Vertex, (7 - 2) * 3);
+        foreach(indx; 0 .. deg - 2)
+        {
+            diskFacetsBuffer[][3*indx .. 3*indx + 3].sort;
+        }
+        auto diskFacets = diskFacetsBuffer[].chunks(3);
+
+        // TO DO: rework this to avoid creating simplicial complex
+        // (and allocating of course!)
+        auto disk = SimplicialComplex!(Vertex, 2)(diskFacets);
+
+        // None of the "internal" edges can already be in manifold
+        return disk.simplices(1)
+            .filter!(edge => disk.star(edge).walkLength == 2)
+            .all!(edge => !manifold.contains(edge));
+    }
 }
 // TO DO: unittests!
 
@@ -1657,9 +1668,9 @@ void saveEdgeGraphTo(int dimension, Vertex = int)(
     m2.doMove(move);
 
 
-    // m2.facets.should.not ~ octahedron.facets;
-    // m2.facets.should.not ~ m1.facets;
-    // m1.facets.should ~ octahedron.facets;
+    m2.facets.should.not ~ octahedron.facets;
+    m2.facets.should.not ~ m1.facets;
+    m1.facets.should ~ octahedron.facets;
 }
 
 @Name("value semantics for contained simplices") pure @safe unittest

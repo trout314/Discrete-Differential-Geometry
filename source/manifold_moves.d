@@ -6,6 +6,7 @@ import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf, throwsWit
 import std.range : array, empty, walkLength;
 import std.algorithm : copy, map, setIntersection;
 import std.traits : isInstanceOf;
+
 import unit_threaded : Name, shouldBeSameSetAs, shouldEqual, shouldBeTrue, shouldBeFalse, writelnUt;
 import polygons : nGonTriangs;
 
@@ -201,7 +202,7 @@ auto modifyFVector(Move)(size_t[] fVector_, Move move)
     enum moveisHinge = isInstanceOf!(HingeMove, Move);
     static assert(moveIsBistellar || moveisHinge,
         "must be a bistellar or hinge move");
-    static if(isInstanceOf!(BistellarMove, Move))
+    static if(moveIsBistellar)
     {
         // We modify the fVector for the removal of the original star
         auto centerDim = move.center.length - 1;
@@ -217,6 +218,10 @@ auto modifyFVector(Move)(size_t[] fVector_, Move move)
         {
             fVector_[d] += binomial(dim + 1 - coDim, d - coDim);
         }
+    }
+    else static if(moveisHinge)
+    {
+        
     }
 }
 ///

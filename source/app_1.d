@@ -1,4 +1,4 @@
-module applications.app_2;
+module app_1;
 
 version(unittest) {} else {
 
@@ -7,4 +7,5 @@ void main()
     import std.stdio : writeln;
     ("hello from " ~ __FILE__).writeln;
 }
+
 }

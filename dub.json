@@ -6,21 +6,19 @@
 		{
 			"name": "manifold_sampler",
 			"excludedSourceFiles": [
-				"source/applications/app_1.d",
-				"source/applications/app_2.d"
+				"source/app_1.d",
+				"source/app_2.d"
 			],
-			"mainSourceFile": "source/applications/manifold_sampler.d",
 			"targetName": "manifold_sampler",
 			"targetType": "executable",
-			"dflags": ["-J=source/applications"]
+			"dflags": ["-J=source"]
 		},
 		{
-			"excludedSourceFiles": [
-				"source/applications/app_1.d",
-				"source/applications/sampler_app.d"
-			],
-			"mainSourceFile": "source/applications/app_2.d",
 			"name": "application_2",
+			"excludedSourceFiles": [
+				"source/app_1.d",
+				"source/manifold_sampler.d"
+			],
 			"targetName": "app_executable",
 			"targetType": "executable"
 		},
@@ -29,8 +27,7 @@
             "targetType": "executable",
             "preBuildCommands": ["$DUB run --compiler=$$DC unit-threaded -c gen_ut_main -- -f bin/ut.d -d $DUB"],
             "mainSourceFile": "bin/ut.d",
-            "excludedSourceFiles": ["src/main.d"],
-			"dflags": ["-J=source/applications"],
+			"dflags": ["-J=source"],
             "dependencies": {
                 "unit-threaded": "*"
 			}
