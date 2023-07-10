@@ -1,4 +1,4 @@
-module app_1;
+module applications.app_1;
 
 version(unittest) {} else {
 

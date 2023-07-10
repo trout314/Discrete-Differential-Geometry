@@ -1,13 +1,14 @@
-module applications.manifold_sampler;
+/// Samples from manifolds (TO DO: better description)
+module manifold_sampler;
 
 import algorithms : eulerCharacteristic;
 import manifold;
-import manifold_examples : standardSphere;
+import manifold_examples : standardSphere, octahedron;
 import manifold_moves : BistellarMove, HingeMove;
 import simplicial_complex : fVector;
 import utility : binomial, flatDegreeInDim, prettyTime;
 
-import unit_threaded : Name;
+import unit_threaded : Name, writelnUt;
 
 import core.memory : GC;
 
@@ -23,6 +24,8 @@ import std.math : exp, sqrt, isNaN, modf;
 import std.range;
 import std.random : choice, uniform, uniform01;
 import std.stdio : File, write, writef, writefln, writeln, stdout;
+import std.sumtype : SumType;
+import std.typecons : Flag, Yes, No;
 
 mixin(import("manifold_sampler.config").parseConfig);
 
@@ -89,7 +92,6 @@ void main(string[] args)
         GC.disable;
     }
 
-    // auto currentNumMoves = mfd.computePachnerMoves.walkLength;
     auto doneSampling = false;
     while (!doneSampling)
     {
@@ -123,17 +125,19 @@ void main(string[] args)
         assert(unusedVertices.all!(v => !mfd.contains(v.only)));
 
 
+
         auto bistellarMoves = mfd.allBistellarMoves;
         auto numBistellarMoves = bistellarMoves.walkLength;
         auto numNewVertexMoves = mfd.fVector[dim];
         auto numberOfMoves = numBistellarMoves + numNewVertexMoves;
 
+        HingeMove!dim[] hingeMoves;
+        size_t numHingeMoves = 0;
         if(useHingeMoves)
         {
-            auto hingeMoves = mfd.allHingeMoves;
-            auto numHingeMoves = hingeMoves.walkLength;
+            hingeMoves = mfd.allHingeMoves;
+            numHingeMoves = hingeMoves.length;
             numberOfMoves += numHingeMoves;
-            hingeMoves.each!writeln;
         }
 
         auto indxOfChosenMove = uniform(0,numberOfMoves);
@@ -147,7 +151,13 @@ void main(string[] args)
             auto chosenMove = BistellarMove!dim(center, coCenter);
 
             deltaObjective = changeInObjective(mfd, chosenMove);
+
+
+
             writeln("chosen move: ", chosenMove);
+
+
+
         }
         else if(indxOfChosenMove < numNewVertexMoves + numBistellarMoves)
         {
@@ -155,25 +165,20 @@ void main(string[] args)
             auto indx = indxOfChosenMove - numNewVertexMoves;
             auto chosenMove = bistellarMoves[indx];
             deltaObjective = changeInObjective(mfd, chosenMove);
+
+
+
             writeln("chosen move: ", chosenMove);
         }
         else
         {
             assert(useHingeMoves);
-            // Chosen move is a hinge move
-            if(useHingeMoves)
-            {
-                auto indx = indxOfChosenMove - numNewVertexMoves - numBistellarMoves;
-                auto chosenMove = hingeMoves[indx];
-                deltaObjective = changeInObjective(mfd, chosenMove);
-                writeln("chosen move: ", chosenMove);
-            }
+            auto indx = indxOfChosenMove - numNewVertexMoves - numBistellarMoves;
+            auto chosenMove = hingeMoves[indx];
+            deltaObjective = changeInObjective(mfd, chosenMove);
+            writeln("chosen move: ", chosenMove);
         }
   
-
-
-
-
 
 
 
@@ -606,30 +611,86 @@ auto getFirstPart(T)(T time)
         .replace("minutes", "mins");
 }
 
-// auto getRandomMove(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd)
-// {
-//     auto facet = mfd.randomFacetOfDim(dim);
-//     auto moveCenters = mfd.bistellarMovesAtFacet(facet);
-//     static if (useHingeMoves)
-//     {
-
-//     }
-
-
-// }
-
-real changeInObjective(int dim, Vertex, Move)(const ref Manifold!(dim, Vertex) mfd, Move move)
+real changeInObjective(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd, BistellarMove!dim move)
 {
     auto currentObjective = mfd.objective;
-    writeln(currentObjective);
+    writeln("current objective: ", currentObjective);
+    
     return 0;
 }
 
+real changeInObjective(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd, HingeMove!dim move)
+{
+    auto currentObjective = mfd.objective;
+    writeln("current objective: ", currentObjective);
+    
+    return 0;
+}
 
-// Returns a random move, with an empty list in place of any needed new vertex
-// Move_!(dim, Vertex) getRndPachnerMove(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd)
-// {
-//     alias MV = Move_!(dim, Vertex);
-//     auto facet = mfd.randomFacetOfDim(dim);
-//     return MV([1,2,3,4], [7]);
-// }
+auto chooseRandomMove(int dim, Vertex)(Manifold!(dim, Vertex) manifold, Vertex newVertex, Flag!"includeHingeMoves" includeHingeMoves = Yes.includeHingeMoves, Flag!"listAllMoves" listAllMoves = No.listAllMoves)
+{
+    SumType!(BistellarMove!(dim, Vertex), HingeMove!(dim, Vertex)) chosenMove;
+
+    if(listAllMoves)
+    {
+        auto bistellarMoves = manifold.allBistellarMoves;
+        auto numBistellarMoves = bistellarMoves.walkLength;
+        auto numNewVertexMoves = manifold.fVector[dim];
+        auto numberOfMoves = numBistellarMoves + numNewVertexMoves;
+
+        HingeMove!dim[] hingeMoves;
+        size_t numHingeMoves = 0;
+        if(useHingeMoves)
+        {
+            hingeMoves = manifold.allHingeMoves;
+            numHingeMoves = hingeMoves.length;
+            numberOfMoves += numHingeMoves;
+        }
+
+        auto indxOfChosenMove = uniform(0,numberOfMoves);
+        if(indxOfChosenMove < numNewVertexMoves)
+        {
+            // Chosen move is a 1->(dim+1) bistellar move
+            auto center = manifold.randomFacetOfDim(dim);
+            chosenMove = BistellarMove!dim(center, newVertex.only);
+        }
+        else if(indxOfChosenMove < numNewVertexMoves + numBistellarMoves)
+        {
+            // Chosen move is a bistellar move that isn't 1->(dim+1)
+            auto indx = indxOfChosenMove - numNewVertexMoves;
+            chosenMove = bistellarMoves[indx];
+        }
+        else
+        {
+            auto indx = indxOfChosenMove - numNewVertexMoves - numBistellarMoves;
+            chosenMove = hingeMoves[indx];
+        }
+    }
+    else
+    {
+        // In this case we will choose a star of a ridge and ... TO DO: Finish this
+    }
+
+    writeln("chosen move: ", chosenMove);
+    return chosenMove;
+}
+///
+@Name("chooseRandomMove") @safe unittest
+{
+    // http://page.math.tu-berlin.de/~lutz/stellar/RP3
+    auto rp3 = Manifold!3([[1, 2, 3, 7], [1, 2, 3, 11], [1, 2, 6, 9], [1,
+            2, 6, 11], [1, 2, 7, 9], [1, 3, 5, 10], [1, 3, 5, 11], [1, 3, 7,
+            10], [1, 4, 7, 9], [1, 4, 7, 10], [1, 4, 8, 9], [1, 4, 8, 10], [1,
+            5, 6, 8], [1, 5, 6, 11], [1, 5, 8, 10], [1, 6, 8, 9], [2, 3, 4, 8],
+            [2, 3, 4, 11], [2, 3, 7, 8], [2, 4, 6, 10], [2, 4, 6, 11], [2, 4,
+            8, 10], [2, 5, 7, 8], [2, 5, 7, 9], [2, 5, 8, 10], [2, 5, 9, 10],
+            [2, 6, 9, 10], [3, 4, 5, 9], [3, 4, 5, 11], [3, 4, 8, 9], [3, 5, 9,
+            10], [3, 6, 7, 8], [3, 6, 7, 10], [3, 6, 8, 9], [3, 6, 9, 10], [4,
+            5, 6, 7], [4, 5, 6, 11], [4, 5, 7, 9], [4, 6, 7, 10], [5, 6, 7, 8]]);
+
+    foreach(i; iota(10))
+    {
+        auto mv = rp3.chooseRandomMove(716, Yes.includeHingeMoves, Yes.listAllMoves);
+        writelnUt(mv);
+    }
+}
