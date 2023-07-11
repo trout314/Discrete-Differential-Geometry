@@ -1,7 +1,6 @@
-module app_2;
+module applications.app_2;
 
 version(unittest) {} else {
-
 void main()
 {
     import std.stdio : writeln;

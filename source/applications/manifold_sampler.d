@@ -1,5 +1,5 @@
 /// Samples from manifolds (TO DO: better description)
-module manifold_sampler;
+module applications.manifold_sampler;
 
 import algorithms : eulerCharacteristic;
 import manifold;
@@ -27,9 +27,8 @@ import std.stdio : File, write, writef, writefln, writeln, stdout;
 import std.sumtype : SumType;
 import std.typecons : Flag, Yes, No;
 
-mixin(import("manifold_sampler.config").parseConfig);
-
 version (unittest) {} else {
+mixin(import("manifold_sampler.config").parseConfig);
 void main(string[] args)
 {
     string mfdFile;
