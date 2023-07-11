@@ -1468,3 +1468,12 @@ auto replaceEmptyLiteral(R, T)(T input)
     int[] x;
     assert(replaceEmptyLiteral!int([]) == x);
 }
+
+void dump(alias variable)()
+{
+  import std.stdio : writefln;
+  writefln("(%s %s = %s)",
+           typeid(typeof(variable)),
+           variable.stringof,
+           variable);
+}
