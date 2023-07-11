@@ -6,9 +6,9 @@
 		{
 			"name": "manifold_sampler",
 			"excludedSourceFiles": [
-				"source/applications/app.2.d"
+				"source/applications/app_2.d"
 			],
-			"targetName": "manifold_sampler",
+			"targetName": "manifold_sampler.exe",
 			"targetType": "executable",
 			"dflags": ["-J=source/applications"]
 		},
@@ -17,7 +17,7 @@
 			"excludedSourceFiles": [
 				"source/applications/manifold_sampler.d"
 			],
-			"targetName": "app_executable",
+			"targetName": "app_2.exe",
 			"targetType": "executable",
 			"dflags": ["-J=source/applications"]
 		},
