@@ -353,45 +353,56 @@ Vertex[] getUnusedVertices(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd
 
 auto parseParameterFile()(string parameterFileName)
 {
-    auto lines = File(parameterFileName, "r").byLineCopy.array;
-    struct Parameters
-    {
-        bool disableGC;
-        bool useHingeMoves;
-        bool checkForProblems;
-        int numFacetsTarget;
-        int maxHingeMoveDeg;
-        real dt;
-        real dtPerFileReport;
-        real dtPerSave;
-        real hingeDegreeTarget;
-        real numFacetsCoef;
-        real numHingesCoef;
-        real hingeDegreeVarCoef;
-        real cd3DegVarCoef;
-        real maxSweeps;
-        int triesPerStdoutReport;
-        int triesPerCollect;
-        int sweepsPerProblemCheck;
-        int dim;
-        int maxCoDim2Bins;
-        int maxCoDim3Bins;
-        int maxBar2;
-        int maxBar3;
-        string saveFilePrefix;
-    }
+    enum boolParameters = [
+        "disableGC",
+        "useHingeMoves",
+        "checkForProblems"
+    ];
 
+    enum intParameters = [
+        "numFacetsTarget",
+        "maxHingeMoveDeg",
+        "sweepsPerProblemCheck",
+        "triesPerStdoutReport",
+        "triesPerCollect",
+        "dim",
+        "maxCoDim2Bins",
+        "maxCoDim3Bins",
+        "maxBar2",
+        "maxBar3"
+    ];
+
+    enum realParameters = [
+        "dt",
+        "dtPerFileReport",
+        "dtPerSave",
+        "hingeDegreeTarget",
+        "numFacetsCoef",
+        "numHingesCoef",
+        "hingeDegreeVarCoef",
+        "cd3DegVarCoef",
+        "maxSweeps"
+    ];
+
+    enum stringParameters = [
+        "saveFilePrefix"
+    ];
+
+    enum boolDeclarations = boolParameters.map!(ident => "    bool " ~ ident ~ ";\n").array;
+    enum intDeclarations = intParameters.map!(ident => "    int  " ~ ident ~ ";\n").array;
+    enum realDeclarations = realParameters.map!(ident => "    real " ~ ident ~ ";\n").array;
+    enum stringDeclarations = stringParameters.map!(ident => "    string " ~ ident ~ ";\n").array;
+    
+    enum declarations = boolDeclarations ~ intDeclarations ~ realDeclarations ~ stringDeclarations;
+    enum paramStructMixin =  "struct Parameters {\n" ~ declarations.join ~ "}\n";
+
+    mixin(paramStructMixin);
+
+    
+    auto lines = File(parameterFileName, "r").byLineCopy.array;
+    
     return Parameters();
-    // string ret;
-    // foreach (line; str.split("\n"))
-    // {
-    //     if (line.walkLength > 0 && line[0] != '#')
-    //     {
-    //         auto parts = line.split(" = ");
-    //         ret ~= `enum ` ~ parts[0] ~ ` = ` ~ parts[1] ~ `;`;
-    //     }
-    // }
-    // return ret;
+    
 }
 
 private struct Penalty
