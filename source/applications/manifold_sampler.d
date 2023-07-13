@@ -6,14 +6,14 @@ import manifold;
 import manifold_examples : standardSphere, octahedron;
 import manifold_moves : BistellarMove, HingeMove;
 import simplicial_complex : fVector;
-import utility : binomial, dump, flatDegreeInDim, prettyTime;
+import utility : binomial, dump, flatDegreeInDim, parseParameterFile, prettyTime;
 
 import unit_threaded : Name, writelnUt;
 
 import core.memory : GC;
 
-import std.algorithm : all, each, findSplit, joiner, map, max, maxElement, sort, sum;
-import std.array : split, array, replace;
+import std.algorithm : all, count, each, filter, findSplit, joiner, map, max, maxElement, sort, sum;
+import std.array : array, replace, split;
 import std.conv : to;
 import std.datetime.stopwatch : Duration, msecs, StopWatch;
 import std.datetime.date : DateTime;
@@ -24,6 +24,7 @@ import std.math : exp, sqrt, isNaN, modf;
 import std.range;
 import std.random : choice, uniform, uniform01;
 import std.stdio : File, write, writef, writefln, writeln, stdout;
+import std.string : startsWith;
 import std.sumtype : SumType;
 import std.typecons : Flag, Yes, No;
 
@@ -45,11 +46,36 @@ int main(string[] args)
         return 0; // exit with return code zero (success)
     }
 
-    auto params = parseParameterFile(paramFileName);
-    
     StopWatch timer;
     timer.start;
 
+    static immutable parametersUsed = [
+            ["bool", "disableGC"],
+            ["bool", "useHingeMoves"],
+            ["bool", "checkForProblems"],
+            ["int", "numFacetsTarget"],
+            ["int", "maxHingeMoveDeg"],
+            ["int", "sweepsPerProblemCheck"],
+            ["int", "triesPerStdoutReport"],
+            ["int", "triesPerCollect"],
+            ["int", "dim"],
+            ["int", "maxCoDim2Bins"],
+            ["int", "maxCoDim3Bins"],
+            ["int", "maxBar2"],
+            ["int", "maxBar3"],
+            ["real", "dt"],
+            ["real", "dtPerFileReport"],
+            ["real", "dtPerSave"],
+            ["real", "hingeDegreeTarget"],
+            ["real", "numFacetsCoef"],
+            ["real", "numHingesCoef"],
+            ["real", "hingeDegreeVarCoef"],
+            ["real", "cd3DegVarCoef"],
+            ["real", "maxSweeps"],
+            ["string", "saveFilePrefix"]
+        ];
+    auto params = parseParameterFile!parametersUsed(paramFileName);
+    
     enum dim = 3; // TO DO: Make this selectable from parameter file
     Manifold!dim mfd;
 
@@ -351,59 +377,7 @@ Vertex[] getUnusedVertices(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd
     return unusedVertices;
 }
 
-auto parseParameterFile()(string parameterFileName)
-{
-    enum boolParameters = [
-        "disableGC",
-        "useHingeMoves",
-        "checkForProblems"
-    ];
 
-    enum intParameters = [
-        "numFacetsTarget",
-        "maxHingeMoveDeg",
-        "sweepsPerProblemCheck",
-        "triesPerStdoutReport",
-        "triesPerCollect",
-        "dim",
-        "maxCoDim2Bins",
-        "maxCoDim3Bins",
-        "maxBar2",
-        "maxBar3"
-    ];
-
-    enum realParameters = [
-        "dt",
-        "dtPerFileReport",
-        "dtPerSave",
-        "hingeDegreeTarget",
-        "numFacetsCoef",
-        "numHingesCoef",
-        "hingeDegreeVarCoef",
-        "cd3DegVarCoef",
-        "maxSweeps"
-    ];
-
-    enum stringParameters = [
-        "saveFilePrefix"
-    ];
-
-    enum boolDeclarations = boolParameters.map!(ident => "    bool " ~ ident ~ ";\n").array;
-    enum intDeclarations = intParameters.map!(ident => "    int  " ~ ident ~ ";\n").array;
-    enum realDeclarations = realParameters.map!(ident => "    real " ~ ident ~ ";\n").array;
-    enum stringDeclarations = stringParameters.map!(ident => "    string " ~ ident ~ ";\n").array;
-    
-    enum declarations = boolDeclarations ~ intDeclarations ~ realDeclarations ~ stringDeclarations;
-    enum paramStructMixin =  "struct Parameters {\n" ~ declarations.join ~ "}\n";
-
-    mixin(paramStructMixin);
-
-    
-    auto lines = File(parameterFileName, "r").byLineCopy.array;
-    
-    return Parameters();
-    
-}
 
 private struct Penalty
 {

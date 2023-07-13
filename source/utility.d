@@ -1,15 +1,17 @@
 module utility;
 
 import core.bitop : popcnt;
-import std.algorithm : all, canFind, cartesianProduct, copy, each, equal, filter, find, fold, joiner, map, merge,
-    sort, sum, uniq;  
+import std.algorithm : all, canFind, cartesianProduct, copy, each, equal, filter, find, findSplit, fold, joiner, map, merge,
+    sort, startsWith, sum, uniq;  
 import std.conv : to;
 import std.exception : enforce, assertThrown;
 import std.format : format;
 import std.meta : AliasSeq, allSatisfy, anySatisfy;
 import std.range : array, back, popBack, chain, cycle, drop, ElementType, empty, enumerate, front,
-    iota, isForwardRange, isInputRange, popFront, repeat, retro, save, take,
+    iota, isForwardRange, isInputRange, join, popFront, repeat, retro, save, take,
     walkLength;
+import std.stdio : File, writeln;
+import std.string : strip;
 import std.traits : lvalueOf, rvalueOf, hasAliasing, Unqual;
 
 
@@ -1476,4 +1478,75 @@ void dump(alias variable)()
            typeid(typeof(variable)),
            variable.stringof,
            variable);
+}
+
+auto parseParameterFile(string[][] parametersUsed)(string parameterFileName)
+{
+    // auto test = ["A", "B", "C"];
+    // auto numberedTest = test.enumerate;
+    // writeln(numberedTest);
+    // foreach(i, val; numberedTest)
+    // {
+    //     writeln(i, "   ", val);
+    // }
+
+
+    enum declarations = parametersUsed.map!(p => "    " ~ p[0] ~ " " ~ p[1] ~ ";\n").array;
+    mixin("struct Parameters {\n" ~ declarations.join ~ "}\n");
+
+    auto numberedLines = File(parameterFileName, "r").byLineCopy.enumerate;
+    writeln("AFTER: ", numberedLines);
+    foreach(lineNum, line; numberedLines)
+    {
+        // if(line.strip.empty || line.startsWith("#")) continue;
+        // auto lineParts = line.findSplit("=");
+        // auto paramName = lineParts[0].strip;
+        // auto separator = lineParts[1];
+        // auto paramValue = lineParts[2].strip;
+        
+    //     assert(separator == "=",
+    //         "no '=' found on line %s of parameter file: %s".format(lineNum + 1, parameterFileName));
+    //     assert(!paramName.empty,
+    //         "no parameter name found on line %s of parameter file: %s".format(lineNum + 1, parameterFileName));
+    //     assert(!paramValue.empty,
+    //         "no parameter value found on line %s of parameter file: %s".format(lineNum + 1, parameterFileName));
+    }
+    writeln("AFTER: ", numberedLines);
+
+    // // auto paramNames = parametersUsed.map!( => typeAndNamePair[0]);
+    // foreach(typeAndNamePair; parametersUsed)
+    // {
+    //     auto paramName = typeAndNamePair[1];
+    //     size_t[] lineNumsWithParam;
+    //     foreach(lineNum, line; numberedLines)
+    //     {
+    //         writeln(lineNum);
+    //         lineNumsWithParam ~= lineNum;
+    //         if(line.strip.startsWith(paramName))
+    //         {
+    //             lineNumsWithParam ~= lineNum;
+    //         }
+    //     }
+    //     writeln(lineNumsWithParam);
+
+
+    //     assert(lineNumsWithParam.walkLength < 2,
+    //         "parameter '%s' appears on multiple lines in parameter file: %s. Parameter was found on line numbers: %s"
+    //         .format(paramName, parameterFileName, lineNumsWithParam)); 
+    // }
+
+
+
+
+    // foreach(p; parametersUsed)
+    // {
+    //     // auto paramName = p[1];
+    //     // auto linesWithParam = paramLines.filter!(line => line.startsWith(paramName)).array;
+    //     // assert(linesWithParam.length > 0, "parameter '%s' is missing from parameter file: %s".format(paramName, parameterFileName));
+    //     // assert(linesWithParam.length < 2, "parameter '%s' appears more than once in parameter file: %s".format(paramName, parameterFileName));
+    // }
+
+    Parameters parameters;
+
+    return Parameters();
 }
