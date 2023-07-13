@@ -1494,15 +1494,17 @@ auto parseParameterFile(string[][] parametersUsed)(string parameterFileName)
     enum declarations = parametersUsed.map!(p => "    " ~ p[0] ~ " " ~ p[1] ~ ";\n").array;
     mixin("struct Parameters {\n" ~ declarations.join ~ "}\n");
 
-    auto numberedLines = File(parameterFileName, "r").byLineCopy.enumerate;
-    writeln("AFTER: ", numberedLines);
+    auto numberedLines = File(parameterFileName, "r").byLineCopy.enumerate.array;
+    //writeln("BEFORE: ", numberedLines);
     foreach(lineNum, line; numberedLines)
     {
+        writeln(line);
         // if(line.strip.empty || line.startsWith("#")) continue;
         // auto lineParts = line.findSplit("=");
         // auto paramName = lineParts[0].strip;
         // auto separator = lineParts[1];
         // auto paramValue = lineParts[2].strip;
+        // writeln(lineParts);
         
     //     assert(separator == "=",
     //         "no '=' found on line %s of parameter file: %s".format(lineNum + 1, parameterFileName));
