@@ -1,7 +1,7 @@
 module utility;
 
 import core.bitop : popcnt;
-import std.algorithm : all, canFind, cartesianProduct, copy, each, equal, filter, find, findSplit, fold, joiner, map, merge,
+import std.algorithm : all, any, canFind, cartesianProduct, copy, each, equal, filter, find, findSplit, fold, joiner, map, merge,
     sort, startsWith, sum, uniq;  
 import std.conv : to;
 import std.exception : enforce, assertThrown;
@@ -1497,7 +1497,9 @@ auto parseParameterFile(string[][] parametersUsed)(string parameterFileName)
         assert(separator == "=", "no '=' found on " ~ location);
         assert(!paramName.empty, "no parameter name found on " ~ location);
         assert(!paramValueString.empty, "no parameter value found on " ~ location);
-        assert(paramName !in valueStrings, "repeated parameter found on " ~ location); 
+        assert(paramName !in valueStrings, "repeated parameter found on " ~ location);
+        bool isValidParam = parametersUsed.any!(p => paramName == p[1]);
+        assert(isValidParam, "unknown parameter found on " ~ location);
 
         valueStrings[paramName] = paramValueString;
     }

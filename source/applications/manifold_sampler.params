@@ -17,7 +17,6 @@ saveFilePrefix = "test"
 
 # Time increment (in units of sweeps) used for finer-graned intervals
 dt = 0.1
-dtPerHistory = 50
 dtPerFileReport = 50
 dtPerSave = 250
 
@@ -30,7 +29,6 @@ checkForProblems = false
 sweepsPerProblemCheck = 10
 
 # TO DO: Better names for these formatting options!
-width = 103
 maxCoDim2Bins = 12
 maxCoDim3Bins = 26
 
