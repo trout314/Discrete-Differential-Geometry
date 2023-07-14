@@ -1482,10 +1482,6 @@ void dump(alias variable)()
 
 auto parseParameterFile(string[][] parametersUsed)(string parameterFileName)
 {
-    enum declarations = parametersUsed.map!(typeAndNamePair => "%s    %s;\n"
-        .format(typeAndNamePair[0], typeAndNamePair[1]));
-    mixin("struct Parameters {\n" ~ declarations.join ~ "}\n");
-
     auto numberedLines = File(parameterFileName, "r").byLineCopy.array.enumerate(1);
     string[string] valueStrings;
 
@@ -1506,7 +1502,11 @@ auto parseParameterFile(string[][] parametersUsed)(string parameterFileName)
         valueStrings[paramName] = paramValueString;
     }
 
+    enum declarations = parametersUsed.map!(typeAndNamePair => "%s    %s;\n"
+        .format(typeAndNamePair[0], typeAndNamePair[1]));
+    mixin("struct Parameters {\n" ~ declarations.join ~ "}\n");
     Parameters parameters;
+
     static foreach(typeAndNamePair; parametersUsed)
     {{
         auto paramType = typeAndNamePair[0];
@@ -1517,8 +1517,6 @@ auto parseParameterFile(string[][] parametersUsed)(string parameterFileName)
         auto paramValueString = valueStrings[paramName];
         mixin("parameters.%s = paramValueString.to!%s;".format(paramName, paramType));        
     }}
-
-    writeln(parameters);
 
     return parameters;
 }
