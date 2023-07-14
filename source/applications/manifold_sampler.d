@@ -159,8 +159,6 @@ int main(string[] args)
         }
         assert(unusedVertices.all!(v => !mfd.contains(v.only)));
 
-
-
         auto bistellarMoves = mfd.allBistellarMoves;
         auto numBistellarMoves = bistellarMoves.walkLength;
         auto numNewVertexMoves = mfd.fVector[dim];
@@ -186,13 +184,7 @@ int main(string[] args)
             auto chosenMove = BistellarMove!dim(center, coCenter);
 
             deltaObjective = changeInObjective(mfd, chosenMove, params);
-
-
-
             writeln("chosen move: ", chosenMove);
-
-
-
         }
         else if(indxOfChosenMove < numNewVertexMoves + numBistellarMoves)
         {
@@ -200,9 +192,6 @@ int main(string[] args)
             auto indx = indxOfChosenMove - numNewVertexMoves;
             auto chosenMove = bistellarMoves[indx];
             deltaObjective = changeInObjective(mfd, chosenMove, params);
-
-
-
             writeln("chosen move: ", chosenMove);
         }
         else
@@ -214,9 +203,6 @@ int main(string[] args)
             writeln("chosen move: ", chosenMove);
         }
   
-
-
-
         doneSampling = true;
 
         // auto chosenMove = mfd.getRandomMove;
@@ -376,8 +362,6 @@ Vertex[] getUnusedVertices(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd
     assert(unusedVertices.all!(v => !mfd.contains(v.only)));
     return unusedVertices;
 }
-
-
 
 private struct Penalty
 {
