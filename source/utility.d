@@ -1482,73 +1482,44 @@ void dump(alias variable)()
 
 auto parseParameterFile(string[][] parametersUsed)(string parameterFileName)
 {
-    // auto test = ["A", "B", "C"];
-    // auto numberedTest = test.enumerate;
-    // writeln(numberedTest);
-    // foreach(i, val; numberedTest)
-    // {
-    //     writeln(i, "   ", val);
-    // }
-
-
-    enum declarations = parametersUsed.map!(p => "    " ~ p[0] ~ " " ~ p[1] ~ ";\n").array;
+    enum declarations = parametersUsed.map!(typeAndNamePair => "%s    %s;\n"
+        .format(typeAndNamePair[0], typeAndNamePair[1]));
     mixin("struct Parameters {\n" ~ declarations.join ~ "}\n");
 
-    auto numberedLines = File(parameterFileName, "r").byLineCopy.enumerate.array;
-    //writeln("BEFORE: ", numberedLines);
+    auto numberedLines = File(parameterFileName, "r").byLineCopy.array.enumerate(1);
+    string[string] valueStrings;
+
     foreach(lineNum, line; numberedLines)
     {
-        writeln(line);
-        // if(line.strip.empty || line.startsWith("#")) continue;
-        // auto lineParts = line.findSplit("=");
-        // auto paramName = lineParts[0].strip;
-        // auto separator = lineParts[1];
-        // auto paramValue = lineParts[2].strip;
-        // writeln(lineParts);
+        if(line.strip.empty || line.startsWith("#")) continue;
+        auto lineParts = line.findSplit("=");
+        auto paramName = lineParts[0].strip;
+        auto separator = lineParts[1];
+        auto paramValueString = lineParts[2].strip;
         
-    //     assert(separator == "=",
-    //         "no '=' found on line %s of parameter file: %s".format(lineNum + 1, parameterFileName));
-    //     assert(!paramName.empty,
-    //         "no parameter name found on line %s of parameter file: %s".format(lineNum + 1, parameterFileName));
-    //     assert(!paramValue.empty,
-    //         "no parameter value found on line %s of parameter file: %s".format(lineNum + 1, parameterFileName));
+        auto location = "line %s of parameter file: %s".format(lineNum, parameterFileName);
+        assert(separator == "=", "no '=' found on " ~ location);
+        assert(!paramName.empty, "no parameter name found on " ~ location);
+        assert(!paramValueString.empty, "no parameter value found on " ~ location);
+        assert(paramName !in valueStrings, "repeated parameter found on " ~ location); 
+
+        valueStrings[paramName] = paramValueString;
     }
-    writeln("AFTER: ", numberedLines);
-
-    // // auto paramNames = parametersUsed.map!( => typeAndNamePair[0]);
-    // foreach(typeAndNamePair; parametersUsed)
-    // {
-    //     auto paramName = typeAndNamePair[1];
-    //     size_t[] lineNumsWithParam;
-    //     foreach(lineNum, line; numberedLines)
-    //     {
-    //         writeln(lineNum);
-    //         lineNumsWithParam ~= lineNum;
-    //         if(line.strip.startsWith(paramName))
-    //         {
-    //             lineNumsWithParam ~= lineNum;
-    //         }
-    //     }
-    //     writeln(lineNumsWithParam);
-
-
-    //     assert(lineNumsWithParam.walkLength < 2,
-    //         "parameter '%s' appears on multiple lines in parameter file: %s. Parameter was found on line numbers: %s"
-    //         .format(paramName, parameterFileName, lineNumsWithParam)); 
-    // }
-
-
-
-
-    // foreach(p; parametersUsed)
-    // {
-    //     // auto paramName = p[1];
-    //     // auto linesWithParam = paramLines.filter!(line => line.startsWith(paramName)).array;
-    //     // assert(linesWithParam.length > 0, "parameter '%s' is missing from parameter file: %s".format(paramName, parameterFileName));
-    //     // assert(linesWithParam.length < 2, "parameter '%s' appears more than once in parameter file: %s".format(paramName, parameterFileName));
-    // }
 
     Parameters parameters;
+    static foreach(typeAndNamePair; parametersUsed)
+    {{
+        auto paramType = typeAndNamePair[0];
+        auto paramName = typeAndNamePair[1];
+        assert(paramName in valueStrings,
+            "parameter '" ~ paramName ~ "' not found in parameter file: " ~ parameterFileName);
 
-    return Parameters();
+        auto paramValueString = valueStrings[paramName];
+        mixin("parameters.%s = paramValueString.to!%s;".format(paramName, paramType));        
+    }}
+
+    writeln(parameters);
+
+    return parameters;
 }
+// TO DO: Unittests for above function

@@ -23,9 +23,6 @@ dtPerSave = 250
 
 triesPerStdoutReport = 1000
 
-maxBar2 = 78
-maxBar2 = 78
-
 disableGC = true
 triesPerCollect = 1000
 
@@ -39,4 +36,3 @@ maxCoDim3Bins = 26
 
 maxBar2 = 78
 maxBar3 = 78
-
