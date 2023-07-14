@@ -2,13 +2,19 @@
 module manifold_moves;
 
 import std.conv : to;
-import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf, throwsWithMsg, replaceEmptyLiteral;
-import std.range : array, empty, walkLength;
-import std.algorithm : copy, map, setIntersection;
-import std.traits : isInstanceOf;
+import std.random : uniform;
+import std.range : array, back, chain, chunks, empty, front, iota, only, popBack, slide, take, walkLength;
+import std.algorithm : all, copy, each, filter, joiner, map, setIntersection, sort;
+import std.array : staticArray;
+import std.traits : isInstanceOf, Unqual;
 
 import unit_threaded : Name, shouldBeSameSetAs, shouldEqual, shouldBeTrue, shouldBeFalse, writelnUt;
 import polygons : nGonTriangs;
+
+import manifold : Manifold, doHingeMove, undoHingeMove;
+import simplicial_complex: SimplicialComplex;
+
+import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf, productUnion, replaceEmptyLiteral, throwsWithMsg, toStackArray;
 
 alias isIRof = isInputRangeOf;
 alias isIRofIRof = isInputRangeOfInputRangeOf;
@@ -267,3 +273,96 @@ auto modifyFVector(Move)(size_t[] fVector_, Move move)
     fVector.modifyFVector(BMove([4],[1,2,3]));
     fVector.shouldEqual([0, 0, 0]);
 }
+
+/******************************************************************************
+Choose a random hinge move. If none is possible, returns -1. Otherwise, returns
+the index of the triangulation in nGonTriangs for the chosen move. The vertices
+of the disk are given by linkVertices_ and these should be the link of hinge_
+in the manifold `mfd`
+*/
+int getRandomHingeMove(Vertex, int dim, K)(
+    const ref Manifold!(dim, Vertex) mfd,
+    K linkVertices_)
+if (isIRof!(K, const(Vertex)))
+{
+    auto deg = linkVertices_.walkLength.to!int;
+    auto possibleDisks = deg.nGonTriangs.array;
+
+    auto indx = uniform(0, possibleDisks.length.to!int);
+    while(!mfd.hasValidHingeMove(linkVertices_, indx))
+    {
+        possibleDisks[indx] = possibleDisks.back;
+        possibleDisks.popBack;
+        if(possibleDisks.empty)
+        {
+            return -1;
+        }
+        indx = uniform(0, possibleDisks.length.to!int);
+    }
+
+    return indx;
+}
+///
+unittest
+{
+    auto octahedron = [[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
+        [2,3,5], [3,4,5], [1,4,5]];
+    
+    auto twoPts = [[6], [7]];
+    auto mfd = Manifold!3(productUnion(octahedron, twoPts));
+
+    auto x = mfd.getRandomHingeMove([1,2,3,4]);
+    assert(x != -1); // both possible hinge moves should be valid
+    assert(x == 0 || x == 1); // only two moves possible
+    mfd.doHingeMove([0,6], [1,2,3,4], x);
+    mfd.undoHingeMove([0,6], [1,2,3,4], x);
+    mfd.facets.map!array.shouldBeSameSetAs(
+        productUnion(octahedron, twoPts).map!array);
+
+    // TO DO: More tests, test for -1 return
+}
+
+bool hasValidHingeMove(Vertex, int dim, K)(
+    ref const(Manifold!(dim, Vertex)) manifold,
+    K linkVertices_,
+    ulong diskIndx)
+{
+    static assert(isIRof!(K, const(Vertex)));
+    static if (dim < 3)
+    {
+        return false;
+    }
+    else
+    {
+        // TO DO: Decide what to do about this magic constantS 7, 14
+        // (It comes from nGonTriangs only supporting up to 7-gon.)
+        auto deg = linkVertices_.walkLength.to!int;
+        Unqual!Vertex[7] linkVerticesBuff = linkVertices_.staticArray!7;
+        auto linkVertices = linkVerticesBuff[0 .. deg];
+
+        auto linkEdgeBuffer = chain(linkVertices[], linkVertices.front.only)
+            .slide(2).take(deg).joiner.toStackArray!(Unqual!Vertex, 14);
+        auto linkEdges = linkEdgeBuffer[];
+        iota(deg).each!(indx => linkEdges[2*indx .. 2*(indx + 1)].sort);
+
+        assert(diskIndx < deg.nGonTriangs.walkLength);
+        auto diskFacetsBuffer = deg.nGonTriangs[diskIndx]
+            .joiner.map!(i => linkVertices[i])
+            .toStackArray!(Unqual!Vertex, (7 - 2) * 3);
+        foreach(indx; 0 .. deg - 2)
+        {
+            diskFacetsBuffer[][3*indx .. 3*indx + 3].sort;
+        }
+        auto diskFacets = diskFacetsBuffer[].chunks(3);
+
+        // TO DO: rework this to avoid creating simplicial complex
+        // (and allocating of course!)
+        auto disk = SimplicialComplex!(Vertex, 2)(diskFacets);
+
+        // None of the "internal" edges can already be in manifold
+        return disk.simplices(1)
+            .filter!(edge => disk.star(edge).walkLength == 2)
+            .all!(edge => !manifold.contains(edge));
+    }
+}
+// TO DO: unittests!
