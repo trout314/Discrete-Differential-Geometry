@@ -4,7 +4,7 @@ module applications.manifold_sampler;
 import algorithms : eulerCharacteristic;
 import manifold;
 import manifold_examples : standardSphere, octahedron;
-import manifold_moves : BistellarMove, HingeMove;
+import manifold_moves : BistellarMove, HingeMove, allHingeMoves;
 import simplicial_complex : fVector;
 import utility : binomial, dump, flatDegreeInDim, parseParameterFile, prettyTime;
 
@@ -638,47 +638,9 @@ auto chooseRandomMove(int dim, Vertex)(Manifold!(dim, Vertex) manifold, Vertex n
 {
     SumType!(BistellarMove!(dim, Vertex), HingeMove!(dim, Vertex)) chosenMove;
 
-    if(listAllMoves)
-    {
-        auto bistellarMoves = manifold.allBistellarMoves;
-        auto numBistellarMoves = bistellarMoves.walkLength;
-        auto numNewVertexMoves = manifold.fVector[dim];
-        auto numberOfMoves = numBistellarMoves + numNewVertexMoves;
 
-        HingeMove!dim[] hingeMoves;
-        size_t numHingeMoves = 0;
-        if(useHingeMoves)
-        {
-            hingeMoves = manifold.allHingeMoves;
-            numHingeMoves = hingeMoves.length;
-            numberOfMoves += numHingeMoves;
-        }
 
-        auto indxOfChosenMove = uniform(0,numberOfMoves);
-        if(indxOfChosenMove < numNewVertexMoves)
-        {
-            // Chosen move is a 1->(dim+1) bistellar move
-            auto center = manifold.randomFacetOfDim(dim);
-            chosenMove = BistellarMove!dim(center, newVertex.only);
-        }
-        else if(indxOfChosenMove < numNewVertexMoves + numBistellarMoves)
-        {
-            // Chosen move is a bistellar move that isn't 1->(dim+1)
-            auto indx = indxOfChosenMove - numNewVertexMoves;
-            chosenMove = bistellarMoves[indx];
-        }
-        else
-        {
-            auto indx = indxOfChosenMove - numNewVertexMoves - numBistellarMoves;
-            chosenMove = hingeMoves[indx];
-        }
-    }
-    else
-    {
-        // In this case we will choose a star of a ridge and ... TO DO: Finish this
-    }
 
-    writeln("chosen move: ", chosenMove);
     return chosenMove;
 }
 ///
