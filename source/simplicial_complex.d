@@ -469,7 +469,7 @@ public:
     /***************************************************************************
     Returns a range containing a randomly chosen facet of dimension `dim`
     */
-    const(Vertex)[] randomFacetOfDim(int dim) const
+    const(Vertex)[] randomFacetOfDim()(int dim) const
     {
         assert(dim in this.facetVertices);
         size_t nVerts = (dim + 1).to!size_t;
@@ -480,7 +480,7 @@ public:
     /***************************************************************************
     Get the simplices of dimension `dim` as lists of vertices.
     */
-    const(Vertex)[][] simplices(int dim) const pure nothrow @safe
+    const(Vertex)[][] simplices()(int dim) const pure nothrow @safe
     {
         // TO DO: Reduce gc presure here. (Can't make @nogc I think.)
 
