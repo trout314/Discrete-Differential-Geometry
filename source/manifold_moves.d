@@ -6,15 +6,17 @@ import std.random : uniform;
 import std.range : array, back, chain, chunks, empty, front, iota, only, popBack, slide, take, walkLength;
 import std.algorithm : all, copy, each, filter, joiner, map, setIntersection, sort;
 import std.array : staticArray;
+import std.sumtype : match;
 import std.traits : isInstanceOf, Unqual;
+
 
 import unit_threaded : Name, shouldBeSameSetAs, shouldEqual, shouldBeTrue, shouldBeFalse, writelnUt;
 import polygons : nGonTriangs, numNgonTriangs;
 
-import manifold : Manifold, doHingeMove, undoHingeMove;
+import manifold : Manifold, doHingeMove, undoHingeMove, coCenter;
 import simplicial_complex: SimplicialComplex;
 
-import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf, productUnion, replaceEmptyLiteral, throwsWithMsg, toStackArray;
+import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf, productUnion, replaceEmptyLiteral, throwsWithMsg, toStackArray, dump;
 
 alias isIRof = isInputRangeOf;
 alias isIRofIRof = isInputRangeOfInputRangeOf;
@@ -167,7 +169,7 @@ private:
 
     // indicates which triangulation of a disk to use
     // (where the boundary of this disk is the coCenter)
-    int triangIndx_;
+    size_t triangIndx_;
 }
 ///
 @Name("HingeMove") pure @safe unittest
@@ -322,12 +324,16 @@ unittest
     // TO DO: More tests, test for -1 return
 }
 
-bool hasValidHingeMove(Vertex, int dim, K)(
+bool hasValidHingeMove(Vertex, int dim)(
     ref const(Manifold!(dim, Vertex)) manifold,
-    K linkVertices_,
-    ulong diskIndx)
+    ref const(HingeMove!(dim, Vertex)) hingeMove)
 {
-    static assert(isIRof!(K, const(Vertex)));
+    auto linkVertices_ = hingeMove.rim;
+
+    // TO DO: Replace the use of triangIndex in this function with
+    // the built-in normalDisk member function of HingeMove
+    size_t diskIndx = hingeMove.triangIndx;
+
     static if (dim < 3)
     {
         return false;
@@ -366,6 +372,33 @@ bool hasValidHingeMove(Vertex, int dim, K)(
     }
 }
 // TO DO: unittests!
+
+auto orderedHingeLinkVertices(Vertex, int dim, S)(
+    const ref Manifold!(dim, Vertex) mfd,
+    S hinge)
+if (isIRof!(S, const(Vertex)))
+{
+    auto lnk = mfd.link(hinge).map!array.array;
+    auto rim = lnk.front.array;
+    auto hingeDeg = mfd.degree(hinge);
+
+    while(rim.length < hingeDeg)
+    {
+        auto lastVert = rim[$-2];
+        auto thisVert = rim[$-1];
+        auto lnkLnk = SimplicialComplex!Vertex(lnk).link([thisVert])
+            .map!array.array;
+        if (lnkLnk[0][0] == lastVert)
+        {
+            rim ~= lnkLnk[1][0];
+        }
+        else
+        {
+            rim ~= lnkLnk[0][0];
+        }
+    }
+    return rim;
+}
 
 
 /*******************************************************************************
@@ -468,4 +501,13 @@ unittest
         MV([4, 7],[0, 3, 5, 1],0), MV([4, 7],[0, 3, 5, 1],1),
         MV([5, 7],[1, 2, 3, 4],0), MV([5, 7],[1, 2, 3, 4],1),
      ]);
+}
+
+bool hasValidMove(int dim, Vertex, Move)(const ref Manifold!(dim, Vertex) manifold, Move move)
+{
+    alias BM = BistellarMove!(dim, Vertex);
+    alias HM = HingeMove!(dim, Vertex);
+    return move.match!(
+        (BM bistellarMove) => !manifold.contains(bistellarMove.coCenter),
+        (HM hingeMove) => manifold.hasValidHingeMove(hingeMove));
 }
