@@ -15,15 +15,15 @@ import std.array : staticArray;
 import std.conv : to;
 import std.exception : assertThrown;
 import std.math : isClose;
-import std.random : uniform, choice;
 import std.range;
 import unit_threaded : Name, shouldEqual, shouldBeSameSetAs, shouldBeEmpty, should, writelnUt;
 import utility;
 import std.stdio : File, writeln, writefln, write;
+import std.sumtype : match;
 import std.traits : Unqual, isInstanceOf;
 import std.typecons : Flag, No, Yes;
 
-import manifold_moves : BistellarMove, modifyFVector, HingeMove;
+import manifold_moves : BistellarMove, modifyFVector, HingeMove, hasValidHingeMove;
 
 alias isIRof = isInputRangeOf;
 alias isIRofIRof = isInputRangeOfInputRangeOf;
@@ -490,20 +490,27 @@ BistellarMove!(dim, Vertex)[] allBistellarMoves(Vertex, int dim)(
  */
  void doMove(int dim, Vertex, Move)(
     ref Manifold!(dim, Vertex) manifold,
-    Move move)
+    Move move,
+    ref Vertex[] unusedVertices)
 {
-    static if(is(Move == BistellarMove!(dim, Vertex)))
-    {
-        manifold.doBistellarMove(move);
-    }
-    else static if(is(Move == HingeMove!(dim, Vertex)))
-    {
-        manifold.doHingeMove(move);
-    }
-    else
-    {
-        static assert(0, "move must be a bistellar or hinge move of dimension " ~ dim.to!string);
-    }
+    alias BM = BistellarMove!(dim, Vertex);
+    alias HM = HingeMove!(dim, Vertex);
+    
+    move.match!(
+        (BM bistellarMove) {
+            manifold.doBistellarMove(bistellarMove);
+            if(bistellarMove.coCenter.length == 1)
+            {
+                unusedVertices.popBack;
+            }
+            if(bistellarMove.center.length == 1)
+            {
+                unusedVertices ~= bistellarMove.center;
+            }
+        },
+        (HM hingeMove) {
+            manifold.doHingeMove(hingeMove);
+        });
 }
 ///
 unittest
@@ -976,20 +983,20 @@ real degreeVariance(Vertex, int mfdDim)(
 Does the 'diskIndx'-th hinge move associated at 'hinge'. Must give the
 link of this hinge as `hingeLink`
 */
-void doHingeMove(Vertex, int dim, H, K)(
+void doHingeMove(int dim, Vertex)(
     ref Manifold!(dim, Vertex) manifold,
-    H hinge_,
-    K linkVertices_,
-    int diskIndx)
-if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
+    ref const(HingeMove!(dim, Vertex)) move)
 {
-    // TO DO: Clean this up!
+    // TO DO: Clean this function up! Use new functionality built into HingeMove type?
+
     assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
 
     static assert(dim >= 3,
         "no hinge moves in dimension less than 3");
-    auto hingeBuffer = hinge_.staticArray!(dim - 1);
+    auto hingeBuffer = move.hinge.staticArray!(dim - 1);
     auto hinge = hingeBuffer[];
+    auto linkVertices_ = move.rim;
+    auto diskIndx = move.triangIndx;
 
     // TO DO: Decide what to do about this magic constant 7
     // (It comes from nGonTriangs only supporting up to 7-gon.)
