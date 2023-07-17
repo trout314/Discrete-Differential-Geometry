@@ -4,9 +4,10 @@ module applications.manifold_sampler;
 import algorithms : eulerCharacteristic;
 import manifold;
 import manifold_examples : standardSphere, octahedron;
-import manifold_moves : BistellarMove, HingeMove, allHingeMoves;
+import manifold_moves : BistellarMove, HingeMove, allHingeMoves, hasValidMove, orderedHingeLinkVertices;
+import polygons : numNgonTriangs;
 import simplicial_complex : fVector;
-import utility : binomial, dump, flatDegreeInDim, parseParameterFile, prettyTime;
+import utility : binomial, dump, flatDegreeInDim, parseParameterFile, prettyTime, subsets;
 
 import unit_threaded : Name, writelnUt;
 
@@ -22,10 +23,11 @@ import std.format : format;
 import std.getopt : getopt, defaultGetoptPrinter;
 import std.math : exp, sqrt, isNaN, modf;
 import std.range;
-import std.random : choice, uniform, uniform01;
+import std.random : uniform, uniform01;
+import std.random : rndChoice = choice;
 import std.stdio : File, write, writef, writefln, writeln, stdout;
 import std.string : startsWith;
-import std.sumtype : SumType;
+import std.sumtype : match, SumType;
 import std.typecons : Flag, Yes, No;
 
 version (unittest) {} else {
@@ -155,57 +157,22 @@ int main(string[] args)
         {
             /* If there are no unused vertices, then the next unused vertex
             label is just the number of vertices. */
+            // TO DO: Make sure this invariant is maintained on load / save, etc.
             unusedVertices ~= mfd.fVector[0].to!int;
         }
         assert(unusedVertices.all!(v => !mfd.contains(v.only)));
 
-        auto bistellarMoves = mfd.allBistellarMoves;
-        auto numBistellarMoves = bistellarMoves.walkLength;
-        auto numNewVertexMoves = mfd.fVector[dim];
-        auto numberOfMoves = numBistellarMoves + numNewVertexMoves;
 
-        HingeMove!dim[] hingeMoves;
-        size_t numHingeMoves = 0;
-        if(params.useHingeMoves)
-        {
-            hingeMoves = mfd.allHingeMoves;
-            numHingeMoves = hingeMoves.length;
-            numberOfMoves += numHingeMoves;
-        }
+        auto chosenMove = mfd.chooseRandomMove(unusedVertices.back, params);
+        
+        mfd.doMove(chosenMove, unusedVertices);
+        
+        
+        bistellarTries[0] += 1;
 
-        auto indxOfChosenMove = uniform(0,numberOfMoves);
-
-        real deltaObjective = 0;
-        if(indxOfChosenMove < numNewVertexMoves)
-        {
-            // Chosen move is a 1->(dim+1) bistellar move
-            auto center = mfd.randomFacetOfDim(dim);
-            auto coCenter = unusedVertices.back.only;
-            auto chosenMove = BistellarMove!dim(center, coCenter);
-
-            deltaObjective = changeInObjective(mfd, chosenMove, params);
-            writeln("chosen move: ", chosenMove);
-        }
-        else if(indxOfChosenMove < numNewVertexMoves + numBistellarMoves)
-        {
-            // Chosen move is a bistellar move that isn't 1->(dim+1)
-            auto indx = indxOfChosenMove - numNewVertexMoves;
-            auto chosenMove = bistellarMoves[indx];
-            deltaObjective = changeInObjective(mfd, chosenMove, params);
-            writeln("chosen move: ", chosenMove);
-        }
-        else
-        {
-            assert(params.useHingeMoves);
-            auto indx = indxOfChosenMove - numNewVertexMoves - numBistellarMoves;
-            auto chosenMove = hingeMoves[indx];
-            deltaObjective = changeInObjective(mfd, chosenMove, params);
-            writeln("chosen move: ", chosenMove);
-        }
   
-        doneSampling = true;
+        // doneSampling = true;
 
-        // auto chosenMove = mfd.getRandomMove;
 
 
 
@@ -265,11 +232,13 @@ int main(string[] args)
         //--------------------------- MAKE REPORT ----------------------------
         if ((numMovesTried % params.triesPerStdoutReport == 0) || doneSampling)
         {
+            stdout.write("\033c");
             stdout.writeTimingAndTargetsReport(mfd, dtElapsed, startTime, timePerMove, acceptFrac, params);
             stdout.writeSimplexReport(mfd);
             stdout.writeObjectiveReport(mfd, params);
             stdout.writeMoveReport(bistellarTries, bistellarAccepts, hingeTries, hingeAccepts, params);
             stdout.writeHistogramReport(mfd, params);
+            stdout.flush();
         }
 
         //----------------------- WRITE TO DATA FILE --------------------------
@@ -621,7 +590,7 @@ auto getFirstPart(T)(T time)
 real changeInObjective(int dim, Vertex, P)(const ref Manifold!(dim, Vertex) mfd, BistellarMove!dim move, P params)
 {
     auto currentObjective = mfd.objective(params);
-    writeln("current objective: ", currentObjective);
+    // writeln("current objective: ", currentObjective);
     
     return 0;
 }
@@ -629,16 +598,74 @@ real changeInObjective(int dim, Vertex, P)(const ref Manifold!(dim, Vertex) mfd,
 real changeInObjective(int dim, Vertex, P)(const ref Manifold!(dim, Vertex) mfd, HingeMove!dim move, P params)
 {
     auto currentObjective = mfd.objective(params);
-    writeln("current objective: ", currentObjective);
+    // writeln("current objective: ", currentObjective);
     
     return 0;
 }
 
-auto chooseRandomMove(int dim, Vertex)(Manifold!(dim, Vertex) manifold, Vertex newVertex, Flag!"includeHingeMoves" includeHingeMoves = Yes.includeHingeMoves, Flag!"listAllMoves" listAllMoves = No.listAllMoves)
+auto chooseRandomMove(int dim, Vertex, P)(Manifold!(dim, Vertex) manifold, Vertex newVertex, P parameters, Flag!"listAllMoves" listAllMoves = No.listAllMoves)
 {
     SumType!(BistellarMove!(dim, Vertex), HingeMove!(dim, Vertex)) chosenMove;
 
+    auto done = false;
+    while(!done)
+    {
+        auto facet = manifold.asSimplicialComplex.randomFacetOfDim(dim);
+        auto center = facet.subsets.array.rndChoice.array;
 
+        auto centerDim = center.walkLength - 1;
+        auto centerDeg = manifold.degree(center);
+        auto centerIsHinge = (centerDim == dim - 2);
+
+        // Check if the chosen center simplex has an appropriate degree
+        // to be a bistellar move or hinge move
+        if((parameters.useHingeMoves) && (centerDim == dim - 2))
+        {
+            if(centerDeg > parameters.maxHingeMoveDeg)
+            {
+                continue;
+            }
+        }
+        else if(centerDeg + centerDim != dim + 1)
+        {
+            continue;
+        }
+
+        bool isHingeMove = centerIsHinge && (centerDeg > 3);
+        bool isBistellarMove = !isHingeMove;
+
+        if(isHingeMove)
+        {
+            int triangIndx = uniform(0, numNgonTriangs(centerDeg));
+            auto rimVertices = manifold.orderedHingeLinkVertices(center);
+            chosenMove = HingeMove!(dim, Vertex)(center, rimVertices, triangIndx);
+        }
+
+        if(isBistellarMove)
+        {
+            if(centerDim == dim)
+            { 
+                chosenMove = BistellarMove!(dim, Vertex)(center, newVertex.only);
+            }
+            else
+            {
+                auto coCenter = manifold.coCenter(center, facet);
+                chosenMove = BistellarMove!(dim, Vertex)(center, coCenter);
+            }
+        }
+
+        if(uniform01 > 2.0 / centerDeg)
+        {
+            continue;
+        }
+
+        if(!manifold.hasValidMove(chosenMove))
+        {
+            continue;
+        }
+
+        return chosenMove;
+    }
 
 
     return chosenMove;
@@ -657,9 +684,9 @@ auto chooseRandomMove(int dim, Vertex)(Manifold!(dim, Vertex) manifold, Vertex n
             10], [3, 6, 7, 8], [3, 6, 7, 10], [3, 6, 8, 9], [3, 6, 9, 10], [4,
             5, 6, 7], [4, 5, 6, 11], [4, 5, 7, 9], [4, 6, 7, 10], [5, 6, 7, 8]]);
 
-    foreach(i; iota(10))
-    {
-        auto mv = rp3.chooseRandomMove(716, Yes.includeHingeMoves, Yes.listAllMoves);
-        writelnUt(mv);
-    }
+    // foreach(i; iota(10))
+    // {
+    //     auto mv = rp3.chooseRandomMove(716, Yes.includeHingeMoves, Yes.listAllMoves);
+    //     writelnUt(mv);
+    // }
 }
