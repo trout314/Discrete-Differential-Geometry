@@ -1474,8 +1474,7 @@ auto replaceEmptyLiteral(R, T)(T input)
 void dump(alias variable)()
 {
   import std.stdio : writefln;
-  writefln("(%s %s = %s)",
-           typeid(typeof(variable)),
+  writefln("%s = %s",
            variable.stringof,
            variable);
 }
