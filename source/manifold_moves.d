@@ -13,7 +13,7 @@ import std.traits : isInstanceOf, Unqual;
 import unit_threaded : Name, shouldBeSameSetAs, shouldEqual, shouldBeTrue, shouldBeFalse, writelnUt;
 import polygons : nGonTriangs, numNgonTriangs;
 
-import manifold : Manifold, doMove, undoHingeMove, coCenter;
+import manifold : Manifold, doMove, undoMove, coCenter;
 import simplicial_complex: SimplicialComplex;
 
 import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf, productUnion, replaceEmptyLiteral, throwsWithMsg, toStackArray, dump;

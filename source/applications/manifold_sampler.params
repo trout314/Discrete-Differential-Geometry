@@ -5,13 +5,13 @@ maxSweeps = 100.0
 useHingeMoves = true
 maxHingeMoveDeg = 7
 
-numFacetsTarget = 10
+numFacetsTarget = 1000
 hingeDegreeTarget = 5.1
 
-numFacetsCoef = 0.001
-numHingesCoef = 0.0
+numFacetsCoef = 0.1
+numHingesCoef = 0.1
 hingeDegreeVarCoef = 0.0
-cd3DegVarCoef = 0.0
+cd3DegVarCoef = 0.1
 
 saveFilePrefix = "test"
 
@@ -20,7 +20,7 @@ dt = 0.1
 dtPerFileReport = 50
 dtPerSave = 250
 
-triesPerStdoutReport = 10
+triesPerStdoutReport = 100
 
 disableGC = true
 triesPerCollect = 1000

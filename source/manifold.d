@@ -974,9 +974,7 @@ void doMove(int dim, Vertex)(
     ref const(HingeMove!(dim, Vertex)) move)
 {
     // TO DO: Clean this function up! Use new functionality built into HingeMove type?
-
     assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
-
 
     // TO DO: Make hinge moves work in dimension 2! 
     // static assert(dim >= 3,
@@ -1048,26 +1046,50 @@ void doMove(int dim, Vertex)(
     assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
 }
 
-
-/******************************************************************************
-Does the 'diskIndx'-th hinge move associated at 'hinge'. Must give the
-link of this hinge as `hingeLink`
-*/
-void undoHingeMove(Vertex, int dim, H, K)(
+void undoMove(int dim, Vertex)(
     ref Manifold!(dim, Vertex) manifold,
-    H hinge_,
-    K linkVertices_,
-    int diskIndx)
-if (isIRof!(H, const(Vertex)) && isIRof!(K, const(Vertex)))
+    SumType!(BistellarMove!(dim,Vertex), HingeMove!(dim,Vertex)) move)
 {
-    // TO DO: Clean this up!
-    assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
+    alias BM = BistellarMove!(dim, Vertex);
+    alias HM = HingeMove!(dim, Vertex);
+    
+    move.match!(
+        (BM bistellarMove) {
+            manifold.undoMove(bistellarMove);
+            
+        },
+        (HM hingeMove) {
+            manifold.undoMove(hingeMove);
+        });
+}
 
+void undoMove(int dim, Vertex)(
+    ref Manifold!(dim, Vertex) manifold,
+    ref const(BistellarMove!(dim, Vertex)) move)
+{
+    auto inverseMove = BistellarMove!(dim, Vertex)(move.coCenter, move.center);
+    manifold.doMove(inverseMove);
+};
+
+
+void undoMove(int dim, Vertex)(
+    ref Manifold!(dim, Vertex) manifold,
+    ref const(HingeMove!(dim, Vertex)) move)
+{
+    // TO DO: Make hinge moves work in dimension 2! 
     static assert(dim >= 3,
         "no hinge moves in dimension less than 3");
-    auto hingeBuffer = hinge_.staticArray!(dim - 1);
-    auto hinge = hingeBuffer[];
 
+    // TO DO: Clean this function up! Use new functionality built into HingeMove type?
+    assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
+
+    // static assert(dim >= 3,
+    //     "no hinge moves in dimension less than 3");
+    auto hingeBuffer = move.hinge.staticArray!(dim - 1);
+    auto hinge = hingeBuffer[];
+    auto linkVertices_ = move.rim;
+    auto diskIndx = move.triangIndx;
+    
     // TO DO: Decide what to do about this magic constant 7
     // (It comes from nGonTriangs only supporting up to 7-gon.)
     auto deg = linkVertices_.walkLength.to!int;
