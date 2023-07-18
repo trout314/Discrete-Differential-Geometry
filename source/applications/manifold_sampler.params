@@ -1,6 +1,6 @@
 
 dim = 3
-maxSweeps = 1.0
+maxSweeps = 100.0
 
 useHingeMoves = true
 maxHingeMoveDeg = 7
@@ -20,7 +20,7 @@ dt = 0.1
 dtPerFileReport = 50
 dtPerSave = 250
 
-triesPerStdoutReport = 1000
+triesPerStdoutReport = 10
 
 disableGC = true
 triesPerCollect = 1000

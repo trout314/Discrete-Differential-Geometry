@@ -6,14 +6,14 @@ import std.random : uniform;
 import std.range : array, back, chain, chunks, empty, front, iota, only, popBack, slide, take, walkLength;
 import std.algorithm : all, copy, each, filter, joiner, map, setIntersection, sort;
 import std.array : staticArray;
-import std.sumtype : match;
+import std.sumtype : match, SumType;
 import std.traits : isInstanceOf, Unqual;
 
 
 import unit_threaded : Name, shouldBeSameSetAs, shouldEqual, shouldBeTrue, shouldBeFalse, writelnUt;
 import polygons : nGonTriangs, numNgonTriangs;
 
-import manifold : Manifold, doHingeMove, undoHingeMove, coCenter;
+import manifold : Manifold, doMove, undoHingeMove, coCenter;
 import simplicial_complex: SimplicialComplex;
 
 import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf, productUnion, replaceEmptyLiteral, throwsWithMsg, toStackArray, dump;

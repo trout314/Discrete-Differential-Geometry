@@ -19,7 +19,7 @@ import std.range;
 import unit_threaded : Name, shouldEqual, shouldBeSameSetAs, shouldBeEmpty, should, writelnUt;
 import utility;
 import std.stdio : File, writeln, writefln, write;
-import std.sumtype : match;
+import std.sumtype : match, SumType;
 import std.traits : Unqual, isInstanceOf;
 import std.typecons : Flag, No, Yes;
 
@@ -481,37 +481,23 @@ BistellarMove!(dim, Vertex)[] allBistellarMoves(Vertex, int dim)(
     octahedron.doBistellarMove(BM([99], [0,1,2]));
 }
 
-/** 
- * Do a BistellarMove or HingeMove on a manifold
- * Params:
- *   manifold = 
- *   center = 
- *   coCenter = 
- */
- void doMove(int dim, Vertex, Move)(
+void doMove(int dim, Vertex)(
     ref Manifold!(dim, Vertex) manifold,
-    Move move,
-    ref Vertex[] unusedVertices)
+    SumType!(BistellarMove!(dim,Vertex), HingeMove!(dim,Vertex)) move)
 {
     alias BM = BistellarMove!(dim, Vertex);
     alias HM = HingeMove!(dim, Vertex);
     
     move.match!(
         (BM bistellarMove) {
-            manifold.doBistellarMove(bistellarMove);
-            if(bistellarMove.coCenter.length == 1)
-            {
-                unusedVertices.popBack;
-            }
-            if(bistellarMove.center.length == 1)
-            {
-                unusedVertices ~= bistellarMove.center;
-            }
+            manifold.doMove(bistellarMove);
+            
         },
         (HM hingeMove) {
-            manifold.doHingeMove(hingeMove);
+            manifold.doMove(hingeMove);
         });
 }
+
 ///
 unittest
 {
@@ -530,7 +516,7 @@ unittest
 Do a bistellar move replacing the star(center) with star(coCenter)
 TO DO: Better docs here!
 */
-void doBistellarMove(Vertex, int dim)(
+void doMove(Vertex, int dim)(
     ref Manifold!(dim, Vertex) manifold,
     BistellarMove!(dim, Vertex) move
 )
@@ -983,7 +969,7 @@ real degreeVariance(Vertex, int mfdDim)(
 Does the 'diskIndx'-th hinge move associated at 'hinge'. Must give the
 link of this hinge as `hingeLink`
 */
-void doHingeMove(int dim, Vertex)(
+void doMove(int dim, Vertex)(
     ref Manifold!(dim, Vertex) manifold,
     ref const(HingeMove!(dim, Vertex)) move)
 {
@@ -991,8 +977,10 @@ void doHingeMove(int dim, Vertex)(
 
     assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
 
-    static assert(dim >= 3,
-        "no hinge moves in dimension less than 3");
+
+    // TO DO: Make hinge moves work in dimension 2! 
+    // static assert(dim >= 3,
+    //     "no hinge moves in dimension less than 3");
     auto hingeBuffer = move.hinge.staticArray!(dim - 1);
     auto hinge = hingeBuffer[];
     auto linkVertices_ = move.rim;

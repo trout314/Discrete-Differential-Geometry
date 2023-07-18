@@ -135,12 +135,10 @@ int main(string[] args)
         doneSampling = (dtElapsed * params.dt >= params.maxSweeps);
         ulong numMovesTried = bistellarTries[].sum;
         ulong numMovesAccepted = bistellarAccepts[].sum;
-        if(params.useHingeMoves)
-        {
-            numMovesTried += hingeTries[].sum;
-            numMovesAccepted += hingeAccepts[].sum;
-        }
-
+        
+        numMovesTried += hingeTries[].sum;
+        numMovesAccepted += hingeAccepts[].sum;
+    
         double acceptFrac = double(numMovesAccepted) / numMovesTried;
         timePerMove = timer.peek / params.triesPerStdoutReport;
 
@@ -164,47 +162,13 @@ int main(string[] args)
 
 
         auto chosenMove = mfd.chooseRandomMove(unusedVertices.back, params);
-        
-        mfd.doMove(chosenMove, unusedVertices);
-        
-        
-        bistellarTries[0] += 1;
+        mfd.doMove(chosenMove);
+        updateUnusedVertices(unusedVertices, chosenMove);
+        updateMoveTries(bistellarTries, bistellarAccepts, chosenMove);
 
-  
-        // doneSampling = true;
+        real newObjective = mfd.objective;
+        real deltaObj = newObjective - currentObjective;
 
-
-
-
-        // if (chosenMove.isPachner)
-        // {
-        //     mfd.doPachner(chosenMove.center, chosenMove.coCenter);
-        //     ++bistellarTries[dim + 1 - chosenMove.center.length];
-        //     // Also increment accepted #, we will fix if move rejected
-        //     ++bistellarAccepts[dim + 1 - chosenMove.center.length];
-
-        //     if (chosenMove.center.length == 1)
-        //     {
-        //         unusedVertices ~= chosenMove.center.front;
-        //     }
-        //     else if (chosenMove.center.length == dim + 1)
-        //     {
-        //         unusedVertices.popBack;
-        //     }
-        // }
-        // else
-        // {
-        //     assert(useHingeMoves);
-        //     assert(chosenMove.isHinge);
-        //     mfd.doHingeMove(chosenMove.center, chosenMove.coCenter, chosenMove.triangIndx);
-        //     ++hingeTries[chosenMove.coCenter.length - 4];
-        //     // Also increment accepted #, we will fix if move rejected
-        //     ++hingeAccepts[chosenMove.coCenter.length - 4];
-        // }
-
-        // real newObjective = mfd.objective;
-        // real deltaObj = newObjective - currentObjective;
-        // bool rejectMove = false;
  
         // // REJECT and UNDO move, if appropriate
         // if ((deltaObj > 0) && (uniform01 > exp(-deltaObj)))
@@ -587,23 +551,7 @@ auto getFirstPart(T)(T time)
         .replace("minutes", "mins");
 }
 
-real changeInObjective(int dim, Vertex, P)(const ref Manifold!(dim, Vertex) mfd, BistellarMove!dim move, P params)
-{
-    auto currentObjective = mfd.objective(params);
-    // writeln("current objective: ", currentObjective);
-    
-    return 0;
-}
-
-real changeInObjective(int dim, Vertex, P)(const ref Manifold!(dim, Vertex) mfd, HingeMove!dim move, P params)
-{
-    auto currentObjective = mfd.objective(params);
-    // writeln("current objective: ", currentObjective);
-    
-    return 0;
-}
-
-auto chooseRandomMove(int dim, Vertex, P)(Manifold!(dim, Vertex) manifold, Vertex newVertex, P parameters, Flag!"listAllMoves" listAllMoves = No.listAllMoves)
+auto chooseRandomMove(int dim, Vertex, P)(Manifold!(dim, Vertex) manifold, Vertex newVertex, P parameters)
 {
     SumType!(BistellarMove!(dim, Vertex), HingeMove!(dim, Vertex)) chosenMove;
 
@@ -689,4 +637,38 @@ auto chooseRandomMove(int dim, Vertex, P)(Manifold!(dim, Vertex) manifold, Verte
     //     auto mv = rp3.chooseRandomMove(716, Yes.includeHingeMoves, Yes.listAllMoves);
     //     writelnUt(mv);
     // }
+}
+
+void updateUnusedVertices(int dim, Vertex)(ref Vertex[] unusedVertices, SumType!(BistellarMove!(dim,Vertex), HingeMove!(dim,Vertex)) move)
+{
+    alias BM = BistellarMove!(dim, Vertex);
+    move.match!(
+        (BM bistellarMove) {
+            if(bistellarMove.coCenter.length == 1)
+            {
+                unusedVertices.popBack;
+            }
+            if(bistellarMove.center.length == 1)
+            {
+                unusedVertices ~= bistellarMove.center;
+            }                   
+        },
+        (_) {});
+}
+
+void updateMoveTries(int dim, Vertex)(
+    size_t[] bistellarTries,
+    size_t[] hingeTries,
+    SumType!(BistellarMove!(dim,Vertex), HingeMove!(dim,Vertex)) move)
+{
+    alias BM = BistellarMove!(dim, Vertex);
+    alias HM = HingeMove!(dim, Vertex);
+
+    move.match!(
+        (BM bistellarMove) {
+            ++bistellarTries[bistellarMove.coCenter.length - 1];
+        },
+        (HM hingeMove) {
+            ++hingeTries[hingeMove.rim.length - 4];
+        });
 }
