@@ -138,6 +138,8 @@ int main(string[] args)
         }
         assert(unusedVertices.all!(v => !mfd.contains(v.only)));
 
+
+        //-------------------------- ATTEMPT MOVE ----------------------------
         auto chosenMove = mfd.chooseRandomMove(unusedVertices.back, params);
         mfd.doMove(chosenMove);        
         updateUnusedVertices(unusedVertices, chosenMove);
@@ -171,7 +173,10 @@ int main(string[] args)
         //----------------------- WRITE TO DATA FILE --------------------------
         if ((dtIncreased && (dtElapsed % params.dtPerFileReport == 0)) || doneSampling)
         {
-            auto file = File(params.saveFilePrefix ~ ".dat", "a");
+            // mfd.columnReport(sampleNumber, dtElapsed, startTime, timer, bistellarTries[],
+            //     bistellarAccepts[], hingeTries[], hingeAccepts[], params);
+        
+            // auto file = File(params.saveFilePrefix ~ ".dat", "a");
             // TO DO: Implement this
             //columnReport(file);
         }
