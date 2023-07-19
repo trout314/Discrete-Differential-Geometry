@@ -1059,8 +1059,8 @@ void undoMove(int dim, Vertex)(
     ref const(HingeMove!(dim, Vertex)) move)
 {
     // TO DO: Make hinge moves work in dimension 2! 
-    static assert(dim >= 3,
-        "no hinge moves in dimension less than 3");
+    // static assert(dim >= 3,
+    //     "no hinge moves in dimension less than 3");
 
     // TO DO: Clean this function up! Use new functionality built into HingeMove type?
     assert(manifold.fVector == manifold.asSimplicialComplex.fVector);

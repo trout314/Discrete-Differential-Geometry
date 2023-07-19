@@ -179,28 +179,8 @@ int main(string[] args)
         //----------------------- SAVE CURRENT MANIFOLD ----------------------
         if ((dtIncreased && (dtElapsed % params.dtPerSave == 0)) || doneSampling)
         {
-            string prefix;
-            if (doneSampling)
-            {
-                prefix = params.saveFilePrefix ~ "_final";
-            }
-            else
-            {
-                prefix = params.saveFilePrefix ~ "_save"
-                    ~ sampleNumber.to!string;
-            }
-
-            auto savedMfdFileName = prefix ~ ".mfd";
-            auto graphFileName = prefix ~ ".edge_graph";
-
-            mfd.saveTo(savedMfdFileName);
-            auto saveFile = File(savedMfdFileName, "a");
-            saveFile.writeln;
-
-            saveFile.writeReports(mfd, dtElapsed, startTime, timer,
+            mfd.saveManifold(doneSampling, sampleNumber, dtElapsed, startTime, timer,
                 bistellarTries[], bistellarAccepts[], hingeTries[], hingeAccepts[], params);
-
-            mfd.saveEdgeGraphTo(graphFileName);
             ++sampleNumber;
         }
 
@@ -256,13 +236,11 @@ void writeReports(M, S, T, W, P)(
     }
     auto acceptFrac = double(numMovesAccepted) / numMovesTried;
 
-    sink.write("\033c");
     sink.writeTimingAndTargetsReport(mfd, dtElapsed, startTime, timePerMove, acceptFrac, params);
     sink.writeSimplexReport(mfd);
     sink.writeObjectiveReport(mfd, params);
     sink.writeMoveReport(bistellarTries, bistellarAccepts, hingeTries, hingeAccepts, params);
     sink.writeHistogramReport(mfd, params);
-    sink.flush();
 }
 
 
@@ -347,48 +325,48 @@ void writeTimingAndTargetsReport(M, S, T, W, P)(W sink, M mfd, ulong dtElapsed, 
         timePerSweep = timePerMove * (mfd.fVector[params.dim] / acceptFrac).to!ulong;
     }
 
-    "-".repeat(80).joiner.writeln;
+    sink.writeln("-".repeat(80).joiner);
     string timeInfo = "%.1f / %s".format(dtElapsed * params.dt, params.maxSweeps);
     auto prettyStartTime = startTime.to!string.split('.').front;
 
-    "sweeps         : %24-s".writef(timeInfo);
+    sink.writef("sweeps         : %24-s", timeInfo);
     if (params.numFacetsCoef > 0.0)
     {
-        writefln("| target # facets     : %s", params.numFacetsTarget);
+        sink.writefln("| target # facets     : %s", params.numFacetsTarget);
     }
 
-    "started at     : %24-s".writef(prettyStartTime);
+    sink.writef("started at     : %24-s", prettyStartTime);
     if (params.numHingesCoef > 0.0)
     {
-        writef("| target hinge degree : %.5f", params.hingeDegreeTarget);
+        sink.writef("| target hinge degree : %.5f", params.hingeDegreeTarget);
     }
-    writeln;
+    sink.writeln;
 
-    "Δt/move        : %23-s |".writefln(timePerMove.getFirstPart);
-    "Δt/sweep       : %23-s |".writefln(timePerSweep.getFirstPart);
-    "move accept %%  : %23.3-f |".writefln(acceptFrac);
+    sink.writefln("Δt/move        : %23-s |", timePerMove.getFirstPart);
+    sink.writefln("Δt/sweep       : %23-s |",timePerSweep.getFirstPart);
+    sink.writefln("move accept %%  : %23.3-f |", acceptFrac);
 }
 
 void writeSimplexReport(int dim, Vertex, W)(W sink, const ref Manifold!(dim, Vertex) mfd)
 {
-    "-".repeat(80).joiner.writeln;
-    "dimension      : ".write;
+    sink.writeln("-".repeat(80).joiner);
+    sink.write("dimension      : ");
     (dim + 1).iota.each!(d => sink.writef("%12s ", d));
     sink.writeln;
-    "# simplices    : ".write;
+    sink.write("# simplices    : ");
     (dim + 1).iota.each!(d => sink.writef("%12s ", mfd.fVector[d]));
     sink.writeln;
-    "degree mean    : ".write;
+    sink.write("degree mean    : ");
     (dim + 1).iota.each!(d => sink.writef("%12.4f ", mfd.meanDegree(d)));
     sink.writeln;
-    "degree std dev : ".write;
+    sink.write("degree std dev : ");
     (dim + 1).iota.each!(d => sink.writef("%12.4f ", mfd.degreeVariance(d).sqrt));
     sink.writeln;
 }
 
 void writeObjectiveReport(int dim, Vertex, W, P)(W sink, const ref Manifold!(dim, Vertex) mfd, P params)
 {
-    "-".repeat(80).joiner.writeln;
+    sink.writeln("-".repeat(80).joiner);
     sink.writeln("    Penalty", ' '.repeat(10), "Raw",
         ' '.repeat(11), "Coef", ' '.repeat(9), "Value");
 
@@ -458,7 +436,7 @@ void writeMoveReport(S, T, W, P)(W sink, S bistellarTries, S bistellarAccepts, T
 
 void writeHistogramReport(int dim, Vertex, W, P)(W sink, const ref Manifold!(dim, Vertex) mfd, P params)
 {
-    "-".repeat(80).joiner.writeln;
+    sink.writeln("-".repeat(80).joiner);
     auto maxDeg2 = 2 + params.maxCoDim2Bins;
     auto maxDeg3 = 2 + 2 * params.maxCoDim3Bins;
 
@@ -472,7 +450,7 @@ void writeHistogramReport(int dim, Vertex, W, P)(W sink, const ref Manifold!(dim
     auto maxDegBin3 = max(hist3.maxElement, tail3);
     auto normedHist3 = hist3.map!(freq => real(freq) / maxDegBin3);
 
-    writeln(' '.repeat(27), "Codimension-2 Degree Histogram");
+    sink.writeln(' '.repeat(27), "Codimension-2 Degree Histogram");
 
     static immutable bars = [
         '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'
@@ -480,7 +458,7 @@ void writeHistogramReport(int dim, Vertex, W, P)(W sink, const ref Manifold!(dim
 
     foreach (bin; iota(0, params.maxCoDim2Bins))
     {
-        writef("%2s ", bin + 3);
+        sink.writef("%2s ", bin + 3);
         if (bin + 2 < normedHist2.length)
         {
             auto nEighths = (params.maxBar2 * normedHist2[bin + 2] * 8.0).to!int;
@@ -489,9 +467,9 @@ void writeHistogramReport(int dim, Vertex, W, P)(W sink, const ref Manifold!(dim
             {
                 bar ~= bars[nEighths % 8];
             }
-            writef("%-*s", params.maxBar2, bar);
+            sink.writef("%-*s", params.maxBar2, bar);
         }
-        writeln;
+        sink.writeln;
     }
     auto tailFreq2 = real(tail2) / maxDegBin2;
     if (tailFreq2 > 0)
@@ -502,16 +480,16 @@ void writeHistogramReport(int dim, Vertex, W, P)(W sink, const ref Manifold!(dim
         {
             bar2 ~= bars[nEighths2 % 8];
         }
-        writefln(" > %-*s", params.maxBar2, bar2);
+        sink.writefln(" > %-*s", params.maxBar2, bar2);
     }
 
     static if (dim > 2)
     {
-        "-".repeat(80).joiner.writeln;
-        writeln(' '.repeat(27), "Codimension-3 Degree Histogram");
+        sink.writeln("-".repeat(80).joiner);
+        sink.writeln(' '.repeat(27), "Codimension-3 Degree Histogram");
         foreach (bin; iota(0, params.maxCoDim3Bins))
         {
-            writef("%2s ", 4 + bin * 2);
+            sink.writef("%2s ", 4 + bin * 2);
             if ((3 + bin * 2) < normedHist3.length)
             {
                 auto nEighths = (params.maxBar3 * normedHist3[3 + bin * 2] * 8.0).to!int;
@@ -520,21 +498,21 @@ void writeHistogramReport(int dim, Vertex, W, P)(W sink, const ref Manifold!(dim
                 {
                     bar ~= bars[nEighths % 8];
                 }
-                writef("%-*s", params.maxBar3, bar);
+                sink.writef("%-*s", params.maxBar3, bar);
             }
-            writeln;
+            sink.writeln;
         }
         auto tailFreq3 = real(tail3) / maxDegBin3;
         if (tailFreq3 > 0)
         {
-            write(" > ");
+            sink.write(" > ");
             auto nEighths3 = (params.maxBar3 * tailFreq3 * 8.0).to!int;
             auto bar3 = bars.back.repeat(nEighths3 / 8).array;
             if (nEighths3 % 8 > 0)
             {
                 bar3 ~= bars[nEighths3 % 8];
             }
-            writefln("%-*s", params.maxBar3, bar3);
+            sink.writefln("%-*s", params.maxBar3, bar3);
         }
     }
 }
@@ -704,4 +682,32 @@ void decrementMoveCounts(int dim, Vertex)(
         {
             --hingeTries[hingeMove.rim.length - 4];
         });
+}
+
+void saveManifold(M, S, T, P)(M manifold, bool doneSampling, ulong sampleNumber, ulong dtElapsed,
+                S startTime, T timer, ulong[] bistellarTries, ulong[] bistellarAccepts,
+                ulong[] hingeTries, ulong[] hingeAccepts, P parameters)
+{
+    string prefix;
+    if (doneSampling)
+    {
+        prefix = parameters.saveFilePrefix ~ "_final";
+    }
+    else
+    {
+        prefix = parameters.saveFilePrefix ~ "_save"
+            ~ sampleNumber.to!string;
+    }
+
+    auto savedMfdFileName = prefix ~ ".mfd";
+    auto graphFileName = prefix ~ ".edge_graph";
+
+    manifold.saveTo(savedMfdFileName);
+    auto saveFile = File(savedMfdFileName, "a");
+    saveFile.writeln;
+
+    saveFile.writeReports(manifold, dtElapsed, startTime, timer,
+        bistellarTries[], bistellarAccepts[], hingeTries[], hingeAccepts[], parameters);
+
+    manifold.saveEdgeGraphTo(graphFileName);
 }

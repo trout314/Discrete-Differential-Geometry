@@ -1,11 +1,11 @@
 
 dim = 3
-maxSweeps = 100.0
+maxSweeps = 10.0
 
 useHingeMoves = true
 maxHingeMoveDeg = 7
 
-numFacetsTarget = 10000
+numFacetsTarget = 500
 hingeDegreeTarget = 5.1
 
 numFacetsCoef = 0.1
@@ -13,16 +13,16 @@ numHingesCoef = 0.1
 hingeDegreeVarCoef = 0.0
 cd3DegVarCoef = 0.1
 
-saveFilePrefix = "test"
+saveFilePrefix = test
 
 # Time increment (in units of sweeps) used for finer-graned intervals
 dt = 0.1
 dtPerFileReport = 50
-dtPerSave = 250
+dtPerSave = 10
 
 triesPerStdoutReport = 100
 
-disableGC = true
+disableGC = false
 triesPerCollect = 1000
 
 checkForProblems = false
