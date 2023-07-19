@@ -63,7 +63,7 @@ int main(string[] args)
         ];
     auto params = parseParameterFile!parametersUsed(paramFileName);
     
-    enum dim = 3; // TO DO: Make this selectable from parameter file
+    enum dim = 4; // TO DO: Make this selectable from parameter file
     Manifold!dim mfd;
 
     if (!mfdFileName.empty)
@@ -164,7 +164,7 @@ int main(string[] args)
         //--------------------------- MAKE REPORT ----------------------------
         if ((numMovesTried % params.triesPerStdoutReport == 0) || doneSampling)
         {
-            stdout.write("\033c");
+            stdout.write("\033c");  // Clear the screen
             stdout.writeReports(mfd, dtElapsed, startTime, timer,
                 bistellarTries[], bistellarAccepts[], hingeTries[], hingeAccepts[], params);
             stdout.flush();
@@ -283,13 +283,17 @@ Penalty penalties(int dim, Vertex, P)(const ref Manifold!(dim, Vertex) mfd, P pa
 
     immutable nFacets = mfd.fVector[dim];
     immutable nHinges = mfd.fVector[dim - 2];
-    immutable nCoDim3 = mfd.fVector[dim - 3];
     immutable totSqDeg = mfd.totalSquareDegree(dim - 2);
-    immutable totSAsqDeg = mfd.totalSquareDegree(dim - 3);
 
     immutable nHingesTarget = hingesPerFacet * nFacets / params.hingeDegreeTarget;
     immutable degTarget = hingesPerFacet * nFacets / nHinges.to!real;
-    immutable coDim3DegTarget = coDim3PerFacet * nFacets / nCoDim3.to!real;
+
+    static if (dim > 2)
+    {
+        immutable nCoDim3 = mfd.fVector[dim - 3];
+        immutable totSAsqDeg = mfd.totalSquareDegree(dim - 3);
+        immutable coDim3DegTarget = coDim3PerFacet * nFacets / nCoDim3.to!real;        
+    }
 
     Penalty penalty;
     penalty.volumePenalty = (nFacets - params.numFacetsTarget) ^^ 2;
@@ -302,13 +306,20 @@ Penalty penalties(int dim, Vertex, P)(const ref Manifold!(dim, Vertex) mfd, P pa
     // TO DO: Refer to external paper for this!
     penalty.localCurvPenalty = (
         degTarget ^^ 2 * nHinges - 2 * degTarget * hingesPerFacet * nFacets + totSqDeg) - minPenalty;
+    
+    static if (dim > 2)
+    {
+        x = modf(coDim3DegTarget, _); // fractional part
+        minPenalty = (x - x ^^ 2) * nCoDim3;
 
-    x = modf(coDim3DegTarget, _); // fractional part
-    minPenalty = (x - x ^^ 2) * nCoDim3;
-
-    // TO DO: Refer to arxiv paper for this!
-    penalty.localSolidAngleCurvPenalty = (
-        coDim3DegTarget ^^ 2 * nCoDim3 - 2 * coDim3DegTarget * coDim3PerFacet * nFacets + totSAsqDeg) - minPenalty;
+        // TO DO: Refer to arxiv paper for this!
+        penalty.localSolidAngleCurvPenalty = (
+            coDim3DegTarget ^^ 2 * nCoDim3 - 2 * coDim3DegTarget * coDim3PerFacet * nFacets + totSAsqDeg) - minPenalty;        
+    }
+    else
+    {
+        penalty.localSolidAngleCurvPenalty = 0;
+    }
 
     return penalty;
 }
@@ -390,18 +401,21 @@ void writeObjectiveReport(int dim, Vertex, W, P)(W sink, const ref Manifold!(dim
             gcp, params.numHingesCoef, params.numHingesCoef * gcp);
     }
 
-    if (params.hingeDegreeVarCoef > 0.0)
+    static if (dim > 2)
     {
-        auto lcp = mfd.penalties(params).localCurvPenalty;
-        sink.writefln("hinge deg var  : %.6e  *  %.4f  =  %.6e",
-            lcp, params.hingeDegreeVarCoef, params.hingeDegreeVarCoef * lcp);
-    }
+        if (params.hingeDegreeVarCoef > 0.0)
+        {
+            auto lcp = mfd.penalties(params).localCurvPenalty;
+            sink.writefln("hinge deg var  : %.6e  *  %.4f  =  %.6e",
+                lcp, params.hingeDegreeVarCoef, params.hingeDegreeVarCoef * lcp);
+        }
 
-    if (params.cd3DegVarCoef > 0.0)
-    {
-        auto lsacp = mfd.penalties(params).localSolidAngleCurvPenalty;
-        sink.writefln("codim-3 deg var: %.6e  *  %.4f  =  %.6e",
-            lsacp, params.cd3DegVarCoef, params.cd3DegVarCoef * lsacp);
+        if (params.cd3DegVarCoef > 0.0)
+        {
+            auto lsacp = mfd.penalties(params).localSolidAngleCurvPenalty;
+            sink.writefln("codim-3 deg var: %.6e  *  %.4f  =  %.6e",
+                lsacp, params.cd3DegVarCoef, params.cd3DegVarCoef * lsacp);
+        }
     }
     sink.writefln("total penalty  :                             %.6e",
         mfd.objective(params));
@@ -453,8 +467,12 @@ void writeHistogramReport(int dim, Vertex, W, P)(W sink, const ref Manifold!(dim
 
     auto hist3 = mfd.degreeHistogram(mfd.dimension - 3);
     auto tail3 = (hist3.length >= maxDeg3) ? hist3[maxDeg3 .. $].sum : 0;
-    auto maxDegBin3 = max(hist3.maxElement, tail3);
-    auto normedHist3 = hist3.map!(freq => real(freq) / maxDegBin3);
+
+    static if (dim > 2)
+    {
+        auto maxDegBin3 = max(hist3.maxElement, tail3);
+        auto normedHist3 = hist3.map!(freq => real(freq) / maxDegBin3);
+    }
 
     sink.writeln(' '.repeat(27), "Codimension-2 Degree Histogram");
 
