@@ -103,7 +103,6 @@ int main(string[] args)
     auto dtIncThreshold = (params.dt* params.numFacetsTarget).to!ulong;
     assert(dtIncThreshold > 0);
 
-    typeof(timer.peek()) timePerMove;
     int sampleNumber;
     auto startTime = Clock.currTime;
     auto currentObjective = mfd.objective(params);
@@ -120,11 +119,6 @@ int main(string[] args)
         doneSampling = (dtElapsed * params.dt >= params.maxSweeps);
         ulong numMovesTried = bistellarTries[].sum;
         ulong numMovesAccepted = bistellarAccepts[].sum;
-        
-        numMovesTried += hingeTries[].sum;
-        numMovesAccepted += hingeAccepts[].sum;
-    
-        double acceptFrac = double(numMovesAccepted) / numMovesTried;
 
         bool dtIncreased = false;
         if (numMovesAccepted == dtIncThreshold)
@@ -168,13 +162,8 @@ int main(string[] args)
         //--------------------------- MAKE REPORT ----------------------------
         if ((numMovesTried % params.triesPerStdoutReport == 0) || doneSampling)
         {
-            if(numMovesTried > 0)
-            {
-                timePerMove = timer.peek / numMovesTried;
-            }
-
             stdout.write("\033c");
-            stdout.writeReports(mfd, dtElapsed, startTime, timePerMove, acceptFrac,
+            stdout.writeReports(mfd, dtElapsed, startTime, timer,
                 bistellarTries[], bistellarAccepts[], hingeTries[], hingeAccepts[], params);
             stdout.flush();
         }
@@ -208,7 +197,7 @@ int main(string[] args)
             auto saveFile = File(savedMfdFileName, "a");
             saveFile.writeln;
 
-            saveFile.writeReports(mfd, dtElapsed, startTime, timePerMove, acceptFrac,
+            saveFile.writeReports(mfd, dtElapsed, startTime, timer,
                 bistellarTries[], bistellarAccepts[], hingeTries[], hingeAccepts[], params);
 
             mfd.saveEdgeGraphTo(graphFileName);
@@ -253,14 +242,22 @@ void writeReports(M, S, T, W, P)(
     M mfd,
     ulong dtElapsed,
     S startTime,
-    T timePerMove,
-    double acceptFrac,
+    T timer,
     ulong[] bistellarTries,
     ulong[] bistellarAccepts,
     ulong[] hingeTries,
     ulong[] hingeAccepts,
     P params)
 {
+    auto numMovesTried = bistellarTries.sum + hingeTries.sum;
+    auto numMovesAccepted = bistellarAccepts.sum + hingeAccepts.sum;
+    typeof(timer.peek()) timePerMove;
+    if(numMovesTried > 0)
+    {
+        timePerMove = timer.peek / numMovesTried;
+    }
+    auto acceptFrac = double(numMovesAccepted) / numMovesTried;
+
     sink.write("\033c");
     sink.writeTimingAndTargetsReport(mfd, dtElapsed, startTime, timePerMove, acceptFrac, params);
     sink.writeSimplexReport(mfd);
