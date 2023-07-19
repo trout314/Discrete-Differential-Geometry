@@ -339,22 +339,20 @@ void writeTimingAndTargetsReport(M, S, T, W, P)(W sink, M mfd, ulong dtElapsed, 
     string timeInfo = "%.1f / %s".format(dtElapsed * params.dt, params.maxSweeps);
     auto prettyStartTime = startTime.to!string.split('.').front;
 
-    "sweeps         : %24-s|".writefln(timeInfo);
-    "started at     : %24-s".writef(prettyStartTime);
+    "sweeps         : %24-s".writef(timeInfo);
     if (params.numFacetsCoef > 0.0)
     {
-        writef("| # facets target     : %s", params.numFacetsTarget);
+        writefln("| target # facets     : %s", params.numFacetsTarget);
     }
-    writeln;
 
-    "end (estimate) : %23-s ".writef("*** TO DO ***");
+    "started at     : %24-s".writef(prettyStartTime);
     if (params.numHingesCoef > 0.0)
     {
-        writef("| hinge degree target : %.5f", params.hingeDegreeTarget);
+        writef("| target hinge degree : %.5f", params.hingeDegreeTarget);
     }
     writeln;
 
-    "Δt/move        : %23-s |".writefln(timePerMove.to!string);
+    "Δt/move        : %23-s |".writefln(timePerMove.getFirstPart);
     "Δt/sweep       : %23-s |".writefln(timePerSweep.getFirstPart);
     "move accept %%  : %23.3-f |".writefln(acceptFrac);
 }
@@ -437,6 +435,13 @@ void writeMoveReport(S, T, W, P)(W sink, S bistellarTries, S bistellarAccepts, T
                 double(hingeAccepts[i]) / hingeTries[i]);
         }
     }
+    auto totAccepts = hingeAccepts.sum + bistellarAccepts[].sum;
+    auto totTries = hingeTries.sum + bistellarTries[].sum;
+    auto accepts = "%10,d".format(totAccepts);
+    auto tries = "%10,d".format(totTries);
+    sink.writefln("Total Moves    : %14s / %14s (%5.3f)", accepts, tries,
+        double(totAccepts) / (totTries));
+
 }
 
 void writeHistogramReport(int dim, Vertex, W, P)(W sink, const ref Manifold!(dim, Vertex) mfd, P params)
