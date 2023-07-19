@@ -108,7 +108,7 @@ int main(string[] args)
     auto currentObjective = mfd.objective(params);
     timer.reset;
 
-    if(params.disableGC)
+    if (params.disableGC)
     {
         GC.disable;
     }
@@ -147,7 +147,7 @@ int main(string[] args)
         real newObjective = mfd.objective(params);
         real deltaObj = newObjective - currentObjective;
  
-        // REJECT and UNDO move, if appropriate
+        // Reject move and undo it, if appropriate
         if ((deltaObj > 0) && (uniform01 > exp(-deltaObj)))
         {
             mfd.undoMove(chosenMove);
@@ -205,7 +205,7 @@ int main(string[] args)
         }
 
         //------------------------- COLLECT GARBAGE --------------------------
-        if(params.disableGC)
+        if (params.disableGC)
         {
             if (numMovesTried % params.triesPerCollect == 0)
             {
@@ -216,19 +216,17 @@ int main(string[] args)
         }
 
         //----------------------- CHECK FOR PROBLEMS ----------------------- 
-        if(params.checkForProblems)
+        if (params.checkForProblems)
         {
             if (dtIncreased
                 && ((dtElapsed * params.dt) % params.sweepsPerProblemCheck == 0))
             {
-                "checking for problems ... ".write;
                 auto problems = mfd.findProblems;
                 if (!problems.empty)
                 {
                     problems.each!writeln;
                     assert(0);
                 }
-                "done".writeln;
             }
         }
     }
@@ -252,7 +250,7 @@ void writeReports(M, S, T, W, P)(
     auto numMovesTried = bistellarTries.sum + hingeTries.sum;
     auto numMovesAccepted = bistellarAccepts.sum + hingeAccepts.sum;
     typeof(timer.peek()) timePerMove;
-    if(numMovesTried > 0)
+    if (numMovesTried > 0)
     {
         timePerMove = timer.peek / numMovesTried;
     }
@@ -437,7 +435,7 @@ void writeMoveReport(S, T, W, P)(W sink, S bistellarTries, S bistellarAccepts, T
             i + 1, params.dim + 1 - i, accepts, tries,
             double(bistellarAccepts[i]) / bistellarTries[i]);
     }
-    if(params.useHingeMoves)
+    if (params.useHingeMoves)
     {
         sink.writeln("Hinge Moves");
         foreach (i; 0 .. hingeAccepts.length)
@@ -563,14 +561,14 @@ auto chooseRandomMove(int dim, Vertex, P)(Manifold!(dim, Vertex) manifold, Verte
 
         // Check if the chosen center simplex has an appropriate degree
         // to be a bistellar move or hinge move
-        if((parameters.useHingeMoves) && (centerDim == dim - 2))
+        if ((parameters.useHingeMoves) && (centerDim == dim - 2))
         {
-            if(centerDeg > parameters.maxHingeMoveDeg)
+            if (centerDeg > parameters.maxHingeMoveDeg)
             {
                 continue;
             }
         }
-        else if(centerDeg + centerDim != dim + 1)
+        else if (centerDeg + centerDim != dim + 1)
         {
             continue;
         }
@@ -578,16 +576,16 @@ auto chooseRandomMove(int dim, Vertex, P)(Manifold!(dim, Vertex) manifold, Verte
         bool isHingeMove = centerIsHinge && (centerDeg > 3);
         bool isBistellarMove = !isHingeMove;
 
-        if(isHingeMove)
+        if (isHingeMove)
         {
             int triangIndx = uniform(0, numNgonTriangs(centerDeg));
             auto rimVertices = manifold.orderedHingeLinkVertices(center);
             chosenMove = HingeMove!(dim, Vertex)(center, rimVertices, triangIndx);
         }
 
-        if(isBistellarMove)
+        if (isBistellarMove)
         {
-            if(centerDim == dim)
+            if (centerDim == dim)
             { 
                 chosenMove = BistellarMove!(dim, Vertex)(center, newVertex.only);
             }
@@ -598,12 +596,12 @@ auto chooseRandomMove(int dim, Vertex, P)(Manifold!(dim, Vertex) manifold, Verte
             }
         }
 
-        if(uniform01 > 2.0 / centerDeg)
+        if (uniform01 > 2.0 / centerDeg)
         {
             continue;
         }
 
-        if(!manifold.hasValidMove(chosenMove))
+        if (!manifold.hasValidMove(chosenMove))
         {
             continue;
         }
@@ -628,7 +626,7 @@ auto chooseRandomMove(int dim, Vertex, P)(Manifold!(dim, Vertex) manifold, Verte
             10], [3, 6, 7, 8], [3, 6, 7, 10], [3, 6, 8, 9], [3, 6, 9, 10], [4,
             5, 6, 7], [4, 5, 6, 11], [4, 5, 7, 9], [4, 6, 7, 10], [5, 6, 7, 8]]);
 
-    // foreach(i; iota(10))
+    // foreach (i; iota(10))
     // {
     //     auto mv = rp3.chooseRandomMove(716, Yes.includeHingeMoves, Yes.listAllMoves);
     //     writelnUt(mv);
@@ -639,12 +637,13 @@ void updateUnusedVertices(int dim, Vertex)(ref Vertex[] unusedVertices, SumType!
 {
     alias BM = BistellarMove!(dim, Vertex);
     move.match!(
-        (BM bistellarMove) {
-            if(bistellarMove.coCenter.length == 1)
+        (BM bistellarMove)
+        {
+            if (bistellarMove.coCenter.length == 1)
             {
                 unusedVertices.popBack;
             }
-            if(bistellarMove.center.length == 1)
+            if (bistellarMove.center.length == 1)
             {
                 unusedVertices ~= bistellarMove.center;
             }                   
@@ -656,12 +655,13 @@ void undoUpdateUnusedVertices(int dim, Vertex)(ref Vertex[] unusedVertices, SumT
 {
     alias BM = BistellarMove!(dim, Vertex);
     move.match!(
-        (BM bistellarMove) {
-            if(bistellarMove.coCenter.length == 1)
+        (BM bistellarMove)
+        {
+            if (bistellarMove.coCenter.length == 1)
             {
                 unusedVertices ~= bistellarMove.coCenter;
             }
-            if(bistellarMove.center.length == 1)
+            if (bistellarMove.center.length == 1)
             {
                 assert(bistellarMove.center.front == unusedVertices.back);
                 unusedVertices.popBack;
@@ -679,10 +679,12 @@ void incrementMoveCounts(int dim, Vertex)(
     alias HM = HingeMove!(dim, Vertex);
 
     move.match!(
-        (BM bistellarMove) {
+        (BM bistellarMove)
+        {
             ++bistellarTries[bistellarMove.coCenter.length - 1];
         },
-        (HM hingeMove) {
+        (HM hingeMove)
+        {
             ++hingeTries[hingeMove.rim.length - 4];
         });
 }
@@ -696,10 +698,12 @@ void decrementMoveCounts(int dim, Vertex)(
     alias HM = HingeMove!(dim, Vertex);
 
     move.match!(
-        (BM bistellarMove) {
+        (BM bistellarMove)
+        {
             --bistellarTries[bistellarMove.coCenter.length - 1];
         },
-        (HM hingeMove) {
+        (HM hingeMove)
+        {
             --hingeTries[hingeMove.rim.length - 4];
         });
 }
