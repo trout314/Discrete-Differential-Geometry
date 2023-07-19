@@ -329,16 +329,17 @@ void writeTimingAndTargetsReport(M, S, T, W, P)(W sink, M mfd, ulong dtElapsed, 
     string timeInfo = "%.1f / %s".format(dtElapsed * params.dt, params.maxSweeps);
     auto prettyStartTime = startTime.to!string.split('.').front;
 
-    sink.writef("sweeps         : %24-s", timeInfo);
+    sink.writef("sweeps         : %23-s |", timeInfo);
     if (params.numFacetsCoef > 0.0)
     {
-        sink.writefln("| target # facets     : %s", params.numFacetsTarget);
+        sink.writef(" target # facets     : %s", params.numFacetsTarget);
     }
+    sink.writeln;
 
-    sink.writef("started at     : %24-s", prettyStartTime);
+    sink.writef("started at     : %23-s |", prettyStartTime);
     if (params.numHingesCoef > 0.0)
     {
-        sink.writef("| target hinge degree : %.5f", params.hingeDegreeTarget);
+        sink.writef(" target hinge degree : %.5f", params.hingeDegreeTarget);
     }
     sink.writeln;
 
@@ -471,17 +472,16 @@ void writeHistogramReport(int dim, Vertex, W, P)(W sink, const ref Manifold!(dim
         }
         sink.writeln;
     }
-    auto tailFreq2 = real(tail2) / maxDegBin2;
-    if (tailFreq2 > 0)
+
+    auto tailFreq2 = real(tail2) / maxDegBin2;    
+    auto nEighths2 = (params.maxBar2 * tailFreq2 * 8.0).to!int;
+    auto bar2 = bars.back.repeat(nEighths2 / 8).array;
+    if (nEighths2 % 8 > 0)
     {
-        auto nEighths2 = (params.maxBar2 * tailFreq2 * 8.0).to!int;
-        auto bar2 = bars.back.repeat(nEighths2 / 8).array;
-        if (nEighths2 % 8 > 0)
-        {
-            bar2 ~= bars[nEighths2 % 8];
-        }
-        sink.writefln(" > %-*s", params.maxBar2, bar2);
+        bar2 ~= bars[nEighths2 % 8];
     }
+    sink.writefln(" > %-*s", params.maxBar2, bar2);
+    
 
     static if (dim > 2)
     {
@@ -502,18 +502,16 @@ void writeHistogramReport(int dim, Vertex, W, P)(W sink, const ref Manifold!(dim
             }
             sink.writeln;
         }
+
         auto tailFreq3 = real(tail3) / maxDegBin3;
-        if (tailFreq3 > 0)
+        sink.write(" > ");
+        auto nEighths3 = (params.maxBar3 * tailFreq3 * 8.0).to!int;
+        auto bar3 = bars.back.repeat(nEighths3 / 8).array;
+        if (nEighths3 % 8 > 0)
         {
-            sink.write(" > ");
-            auto nEighths3 = (params.maxBar3 * tailFreq3 * 8.0).to!int;
-            auto bar3 = bars.back.repeat(nEighths3 / 8).array;
-            if (nEighths3 % 8 > 0)
-            {
-                bar3 ~= bars[nEighths3 % 8];
-            }
-            sink.writefln("%-*s", params.maxBar3, bar3);
+            bar3 ~= bars[nEighths3 % 8];
         }
+        sink.writefln("%-*s", params.maxBar3, bar3);
     }
 }
 
