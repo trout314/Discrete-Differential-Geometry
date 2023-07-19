@@ -5,12 +5,12 @@ maxSweeps = 100.0
 useHingeMoves = true
 maxHingeMoveDeg = 7
 
-numFacetsTarget = 1000
+numFacetsTarget = 5000
 hingeDegreeTarget = 5.1
 
 numFacetsCoef = 0.1
 numHingesCoef = 0.1
-hingeDegreeVarCoef = 0.0
+hingeDegreeVarCoef = 0.05
 cd3DegVarCoef = 0.1
 
 saveFilePrefix = "test"

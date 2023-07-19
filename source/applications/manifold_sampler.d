@@ -174,11 +174,8 @@ int main(string[] args)
             }
 
             stdout.write("\033c");
-            stdout.writeTimingAndTargetsReport(mfd, dtElapsed, startTime, timePerMove, acceptFrac, params);
-            stdout.writeSimplexReport(mfd);
-            stdout.writeObjectiveReport(mfd, params);
-            stdout.writeMoveReport(bistellarTries, bistellarAccepts, hingeTries, hingeAccepts, params);
-            stdout.writeHistogramReport(mfd, params);
+            stdout.writeReports(mfd, dtElapsed, startTime, timePerMove, acceptFrac,
+                bistellarTries[], bistellarAccepts[], hingeTries[], hingeAccepts[], params);
             stdout.flush();
         }
 
@@ -211,11 +208,8 @@ int main(string[] args)
             auto saveFile = File(savedMfdFileName, "a");
             saveFile.writeln;
 
-            saveFile.writeTimingAndTargetsReport(mfd, dtElapsed, startTime, timePerMove, acceptFrac, params);
-            saveFile.writeSimplexReport(mfd);
-            saveFile.writeObjectiveReport(mfd, params);
-            saveFile.writeMoveReport(bistellarTries, bistellarAccepts, hingeTries, hingeAccepts, params);
-            saveFile.writeHistogramReport(mfd, params);
+            saveFile.writeReports(mfd, dtElapsed, startTime, timePerMove, acceptFrac,
+                bistellarTries[], bistellarAccepts[], hingeTries[], hingeAccepts[], params);
 
             mfd.saveEdgeGraphTo(graphFileName);
             ++sampleNumber;
@@ -253,6 +247,29 @@ int main(string[] args)
     "Finished! Time elapsed: %s".writefln(Clock.currTime.to!DateTime - startTime.to!DateTime);
     return 0; // exit with return code zero (success)
 }}
+
+void writeReports(M, S, T, W, P)(
+    W sink,
+    M mfd,
+    ulong dtElapsed,
+    S startTime,
+    T timePerMove,
+    double acceptFrac,
+    ulong[] bistellarTries,
+    ulong[] bistellarAccepts,
+    ulong[] hingeTries,
+    ulong[] hingeAccepts,
+    P params)
+{
+    sink.write("\033c");
+    sink.writeTimingAndTargetsReport(mfd, dtElapsed, startTime, timePerMove, acceptFrac, params);
+    sink.writeSimplexReport(mfd);
+    sink.writeObjectiveReport(mfd, params);
+    sink.writeMoveReport(bistellarTries, bistellarAccepts, hingeTries, hingeAccepts, params);
+    sink.writeHistogramReport(mfd, params);
+    sink.flush();
+}
+
 
 Vertex[] getUnusedVertices(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd, Vertex[] initialVertices)
 {
