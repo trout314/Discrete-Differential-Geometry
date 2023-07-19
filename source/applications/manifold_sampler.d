@@ -605,11 +605,9 @@ auto chooseRandomMove(int dim, Vertex, P)(Manifold!(dim, Vertex) manifold, Verte
         {
             continue;
         }
-
+        
         return chosenMove;
     }
-
-
     return chosenMove;
 }
 ///

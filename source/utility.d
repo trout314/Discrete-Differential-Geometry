@@ -1438,7 +1438,7 @@ string prettyTime(T)(T timer)
 
 auto replaceEmptyLiteral(R, T)(T input)
 {
-    static if(is(T == typeof([])))
+    static if (is(T == typeof([])))
     {
         // This function is only designed to fix inputs
         // that are the empty literal [] 
@@ -1473,7 +1473,7 @@ auto parseParameterFile(string[][] parametersUsed)(string parameterFileName)
 
     foreach(lineNum, line; numberedLines)
     {
-        if(line.strip.empty || line.startsWith("#")) continue;
+        if (line.strip.empty || line.startsWith("#")) continue;
         auto lineParts = line.findSplit("=");
         auto paramName = lineParts[0].strip;
         auto separator = lineParts[1];

@@ -68,22 +68,22 @@ up to the action of the isometry group of the n-gon
 */
 const(ulong)[][][] nGonTriangReps()(ulong n)
 {
-    if(n == 3)
+    if (n == 3)
     {
         return [[[0,1,2]]];
     }
 
-    if(n == 4)
+    if (n == 4)
     {
         return [[[0,1,2],[0,2,3]]];
     }
 
-    if(n == 5)
+    if (n == 5)
     {
         return [[[0,1,2],[0,2,3],[0,3,4]]];
     }
 
-    if(n == 6)
+    if (n == 6)
     {
         return [
             [[0,1,2],[0,2,3],[0,3,4],[0,4,5]], 
@@ -92,7 +92,7 @@ const(ulong)[][][] nGonTriangReps()(ulong n)
         ];
     }
 
-    if(n == 7)
+    if (n == 7)
     {
         return [
             [[0,1,2],[0,2,3],[0,3,4],[0,4,5],[0,5,6]], 
@@ -108,9 +108,9 @@ const(ulong)[][][] nGonTriangReps()(ulong n)
 
 @Name("nGonTriangReps") pure @safe unittest
 {
-    foreach(n; 3 .. 8)
+    foreach (n; 3 .. 8)
     {
-        foreach(triang; nGonTriangReps(n))
+        foreach (triang; nGonTriangReps(n))
         {
             import simplicial_complex : simplicialComplex;
             import algorithms : isPureOfDim;
@@ -145,9 +145,9 @@ const(ulong)[][][] nGonTriangReps()(ulong n)
 ulong[][][] nGonTriangs()(ulong n)
 {
     ulong[][][] ans;
-    foreach(rep; nGonTriangReps(n))
+    foreach (rep; nGonTriangReps(n))
     {
-        foreach(sym_; nGonSymmetries(n))
+        foreach (sym_; nGonSymmetries(n))
         {
             alias sym = f => f.map!(v => sym_[v]).array.sort.array;
             ans ~= rep.map!sym.array.sort.array;

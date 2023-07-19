@@ -178,7 +178,7 @@ alias isIRofIRof = isInputRangeOfInputRangeOf;
     sc.simplices(1).shouldBeSameSetAs([[1, 2], [2, 3], [3, 4], [3, 5], [4, 5]]);
     sc.simplices(2).shouldBeSameSetAs([[3, 4, 5]]);
 
-    foreach(d; iota(3, 16))
+    foreach (d; iota(3, 16))
     {
         sc.facets(d).empty.shouldEqual(true);
         sc.simplices(d).empty.shouldEqual(true);
@@ -320,7 +320,7 @@ public:
         /* We must remove any existing facets which are faces of the inserted
         facet. Also, we need independent copies of the facets to remove. */
 
-        static if(checkForFacetFaces)
+        static if (checkForFacetFaces)
         {
             simplex_[].subsets
                 .filter!(s => containsFacet(s))
@@ -469,9 +469,9 @@ public:
 
         const(Vertex)[][] simplicesSeen;
         auto dims = facetVertices.byKey;
-        foreach(d; dims.filter!(d => d >= dim))
+        foreach (d; dims.filter!(d => d >= dim))
         {
-            foreach(f; this.facets(d))
+            foreach (f; this.facets(d))
             {
                 simplicesSeen ~= f.subsetsOfSize(dim + 1).map!array.array;
             }
@@ -484,19 +484,19 @@ public:
     {
         auto dims = sc.facetVertices.byKey;
         auto thisDims = this.facetVertices.byKey;
-        if(dims.walkLength != thisDims.walkLength)
+        if (dims.walkLength != thisDims.walkLength)
         {
             return false;
         }
-        foreach(dim, thisDim; zip(dims, thisDims))
+        foreach (dim, thisDim; zip(dims, thisDims))
         {
-            if(dim != thisDim)
+            if (dim != thisDim)
             {
                 return false;
             }
             const(Vertex)[][] f = sc.facets(dim).map!array.array.sort.array;
             const(Vertex)[][] thisF = this.facets(dim).map!array.array.sort.array;
-            if(f != thisF)
+            if (f != thisF)
             {
                 return false;
             }
@@ -528,7 +528,7 @@ public:
         string output;
         output ~= "facets   : " ~ facets.to!string ~ "\n";
         output ~= "dims     : " ~ facetVertices.byKey.to!string ~ "\n";
-        foreach(dim; facetVertices.byKey)
+        foreach (dim; facetVertices.byKey)
         {
             output ~= "vertex list (dim " ~ dim.to!string ~ "): "
                 ~ facetVertices[dim].to!string ~ "\n";
@@ -554,10 +554,10 @@ public:
     sc.insertFacet([7]);
 
     int count;
-    foreach(i; 0 .. 100)
+    foreach (i; 0 .. 100)
     {
         auto f = sc.randomFacetOfDim(2);  
-        if(f == [1,2,3])
+        if (f == [1,2,3])
         {
             count++;
         }
@@ -775,7 +775,7 @@ private struct FacetRange(Vertex_ = int)
     {
         facetVertices = facetVertices_;
         facetDims = facetVertices.byKey;
-        if(!facetDims.empty)
+        if (!facetDims.empty)
         {
             vertices = facetVertices[facetDims.front];
         }
@@ -796,10 +796,10 @@ private struct FacetRange(Vertex_ = int)
     {
         assert(!this.empty);
         vertices = vertices[facetDims.front + 1 .. $];
-        if(vertices.empty)
+        if (vertices.empty)
         {
             facetDims.popFront;
-            if(!facetDims.empty)
+            if (!facetDims.empty)
             {
                 vertices = facetVertices[facetDims.front];
             }
@@ -843,7 +843,7 @@ public:
     {
         assert(!this.empty);
         facetsLeft.popFront;
-        while((!facetsLeft.empty) && (!centerSimplex.isSubsetOf(facetsLeft.front)))
+        while ((!facetsLeft.empty) && (!centerSimplex.isSubsetOf(facetsLeft.front)))
         {
             facetsLeft.popFront;
         }

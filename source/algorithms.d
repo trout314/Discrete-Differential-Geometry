@@ -32,7 +32,7 @@ bool isOrientable(Vertex, int dim)(const auto ref Manifold!(dim, Vertex) manifol
     }
 
     // An empty manifold is orientable
-    if(manifold.numFacets == 0)
+    if (manifold.numFacets == 0)
     {
         return true;
     }
@@ -43,14 +43,14 @@ bool isOrientable(Vertex, int dim)(const auto ref Manifold!(dim, Vertex) manifol
     assert(records.walkLength > 0);
     records.front.label = Orientation.GivenOrder;
 
-    while(records.any!(r => !r.done))
+    while (records.any!(r => !r.done))
     {
         /* If we're not done there must be some oriented facet that hasn't had
         its neighbors orientations set (or checked OK if already set) */
         auto toDo = records.find!(r => !r.done && r.label != Orientation.NotSet);
         assert(toDo.walkLength > 0);
 
-        foreach(i, ridge; toDo.front.facet.subsetsOfSize(dim).map!array.enumerate)
+        foreach (i, ridge; toDo.front.facet.subsetsOfSize(dim).map!array.enumerate)
         {
             auto oppFacet = manifold.star(ridge).filter!(
                 f => f != toDo.front.facet);
@@ -60,13 +60,13 @@ bool isOrientable(Vertex, int dim)(const auto ref Manifold!(dim, Vertex) manifol
                 .find!(p => p.value == ridge).front.index;
 
             Orientation oppFacetLabel;
-            if(i % 2 != j % 2)
+            if (i % 2 != j % 2)
             {
                 oppFacetLabel = toDo.front.label;
             }
             else
             {
-                if(toDo.front.label == Orientation.GivenOrder)
+                if (toDo.front.label == Orientation.GivenOrder)
                 {
                     oppFacetLabel = Orientation.OppositeOrder;
                 }
@@ -77,7 +77,7 @@ bool isOrientable(Vertex, int dim)(const auto ref Manifold!(dim, Vertex) manifol
             }
 
             auto oppRecord = records.find!(r => r.facet == oppFacet.front);
-            if(oppRecord.front.label != Orientation.NotSet)
+            if (oppRecord.front.label != Orientation.NotSet)
             {
                 if (oppRecord.front.label != oppFacetLabel)
                 {
@@ -254,23 +254,23 @@ auto connectedComponents(Vertex)(const auto ref SimplicialComplex!Vertex sc)
     auto nVertFac = sc.facets(0).walkLength;
     auto vertexFacets = records[0 .. nVertFac];
 
-    foreach(indx, ref f; vertexFacets)
+    foreach (indx, ref f; vertexFacets)
     {
         f.label = currentLabel;
         f.seenNear = true;
         ++currentLabel;
     }
 
-    while(!records.find!(r => r.label == 0).empty)
+    while (!records.find!(r => r.label == 0).empty)
     {
         records.find!(r => r.label == 0).front.label = currentLabel;
 
         // Now we propagate the current label as far as we can
-        while(records.canFind!(r => r.label != 0 && !r.seenNear))
+        while (records.canFind!(r => r.label != 0 && !r.seenNear))
         {
             auto toDo = records.find!(r => r.label != 0 && !r.seenNear);
 
-            foreach(f; toDo.front.facet.map!(v => sc.star([v])).map!array.joiner)
+            foreach (f; toDo.front.facet.map!(v => sc.star([v])).map!array.joiner)
             {
                 auto findIt = records.find!(r => r.facet == f);
                 assert(!findIt.empty);
@@ -523,9 +523,9 @@ auto join(Vertex, int maxDim1, int maxDim2)(const SimplicialComplex!(Vertex, max
                   const SimplicialComplex!(Vertex, maxDim2) sc2)
 {
     const(Vertex)[][] result;
-    foreach(f1; sc1.facets)
+    foreach (f1; sc1.facets)
     {
-        foreach(f2; sc2.facets)
+        foreach (f2; sc2.facets)
         {
             assert(setIntersection(f1, f2).empty);
             result ~= (f1 ~ f2).array.dup.sort().array;

@@ -44,11 +44,11 @@ auto simplexPoints(int dim, RationalType = Rational!BigInt)()
     assert(simplexPoints!3.all!(v => v.roots == [1,3,6]));
     static assert(isForwardRange!(ReturnType!(simplexPoints!3)));
 
-    foreach(T; AliasSeq!(int, long))//, BigInt))
+    foreach (T; AliasSeq!(int, long))//, BigInt))
     {
         auto sPts = simplexPoints!(3, Rational!T);
 
-        foreach(pair; sPts.subsetsOfSize(2))
+        foreach (pair; sPts.subsetsOfSize(2))
         {
             auto p0 = pair.front;
             pair.popFront;
@@ -92,7 +92,7 @@ if (roots_.all!(r => r>0))
     ///
     auto opUnary(string op)() const if (op == "-" || op == "+")
     {
-        static if(op == "-")
+        static if (op == "-")
         {
             return REVector!(roots, RationalType)(coefs[].map!(c => -c));
         }
@@ -154,7 +154,7 @@ if (roots_.all!(r => r>0))
             }
             else if (root != 1 && coef != 1)
             {
-                if(coef.denominator != 1)
+                if (coef.denominator != 1)
                 {
                     result ~= "(" ~ coef.to!string ~ ")" ~ rootSym 
                         ~ root.to!string;
@@ -264,7 +264,7 @@ RationalType dotProduct(int[] roots, RationalType)(
     static assert(v.roots.length == v.coefs.length);
     
     RationalType total;
-    foreach(indx; 0 .. roots.length)
+    foreach (indx; 0 .. roots.length)
     {
         // NOTE: work-around BigInt not having this(int) (WHY?!)
         RationalType r;
@@ -313,9 +313,9 @@ RationalType distanceSquared(int[] roots, RationalType)(
 {
     // TO DO: BigInt won't allow @safe.
 
-    static foreach(dim; iota(1, 8))
+    static foreach (dim; iota(1, 8))
     {{
-        foreach(pair; simplexPoints!dim.subsetsOfSize(2))
+        foreach (pair; simplexPoints!dim.subsetsOfSize(2))
         {
             auto p0 = pair.front;
             pair.popFront;
@@ -359,7 +359,7 @@ auto simplexCoefs(int dim)
     {
         auto n = basisIndex * (basisIndex + 1) / 2;
         auto m = sqrtSquarePart(n);
-        if(basisIndex < pointIndex)
+        if (basisIndex < pointIndex)
         {
             return m * rational(1, 2 * n);
         }

@@ -321,7 +321,7 @@ if (isIRof!(S, const(Vertex)))
     auto rim = lnk.front.array;
     auto hingeDeg = mfd.degree(hinge);
 
-    while(rim.length < hingeDeg)
+    while (rim.length < hingeDeg)
     {
         auto lastVert = rim[$-2];
         auto thisVert = rim[$-1];
@@ -362,7 +362,7 @@ HingeMove!(dim, Vertex)[] allHingeMoves(Vertex, int dim)(
             {
                 auto lnk = mfd.link(hinge).map!array.array;
                 auto rim = lnk.front.array;
-                while(rim.length < hingeDeg)
+                while (rim.length < hingeDeg)
                 {
                     auto lastVert = rim[$-2];
                     auto thisVert = rim[$-1];

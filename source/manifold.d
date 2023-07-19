@@ -64,11 +64,11 @@ public:
 
     /// We can initialize the manifold from an input range of input ranges
     /// of vertices
-    this(F)(F initialFacets) if(isIRofIRof!(F, const(Vertex)))
+    this(F)(F initialFacets) if (isIRofIRof!(F, const(Vertex)))
     {
         initialFacets.each!(f => this.insertFacet(f));
         numSimplices[] = simpComp.fVector[];
-        foreach(d; 0 .. dimension - 1)
+        foreach (d; 0 .. dimension - 1)
         {
             totSqrDegrees[d] = simplices(d).map!(s => this.degree(s)^^2).sum;
         }
@@ -133,13 +133,13 @@ public:
 
         this.simpComp.insertFacet!(No.checkForFacetFaces)(facet);
 
-        foreach(simplex_; facet.subsets)
+        foreach (simplex_; facet.subsets)
         {
             auto simplex = toNSimp(simplex_);
             ++degreeMap[simplex];
 
         
-            if(simplex.length <= dimension - 1)
+            if (simplex.length <= dimension - 1)
             {
                 int i = simplex.length.to!int - 1;
                 assert(i >= 0);
@@ -147,7 +147,7 @@ public:
                 totSqrDegrees[i] += 2*degreeMap[simplex] - 1;
             }
         
-            if(simplex.length == dimension)
+            if (simplex.length == dimension)
             {
                 auto oppVerts = facet.filter!(v => !simplex_.canFind(v));
                 assert(oppVerts.walkLength == 1);
@@ -155,7 +155,7 @@ public:
                
                 auto ridge = toRidge(simplex_);
                 auto ptrToLink = ridge in ridgeLinks;
-                if(!ptrToLink)
+                if (!ptrToLink)
                 {
                     assert(simplex in degreeMap);
                     assert(degreeMap[simplex] == 1);
@@ -189,19 +189,19 @@ public:
 
         this.simpComp.removeFacet(facet);
         
-        foreach(simplex_; facet.subsets)
+        foreach (simplex_; facet.subsets)
         {
             auto simplex = toNSimp(simplex_);
             assert(simplex in degreeMap);
 
             --degreeMap[simplex];
 
-            if(simplex.length <= dimension - 1)
+            if (simplex.length <= dimension - 1)
             {
                 totSqrDegrees[simplex.length - 1] -= 2*degreeMap[simplex] + 1;
             }
 
-            if((simplex.length == dimension) && (degreeMap[simplex] == 1))
+            if ((simplex.length == dimension) && (degreeMap[simplex] == 1))
             {
                 auto ridge = toRidge(simplex_);
                 assert(ridge in ridgeLinks);
@@ -212,9 +212,9 @@ public:
 
                 assert(ridgeLinks[ridge][].canFind(oppVert));
 
-                if(ridgeLinks[ridge].length == 2)
+                if (ridgeLinks[ridge].length == 2)
                 {
-                    if(ridgeLinks[ridge][0] == oppVert)
+                    if (ridgeLinks[ridge][0] == oppVert)
                     {
                         ridgeLinks[ridge][0] = ridgeLinks[ridge][1];
                     }
@@ -231,10 +231,10 @@ public:
 
             }
 
-            if(degreeMap[simplex] == 0)
+            if (degreeMap[simplex] == 0)
             {
                 degreeMap.remove(simplex);
-                if(simplex.length == dimension)
+                if (simplex.length == dimension)
                 {
                     auto ridge = toRidge(simplex_);
                     assert(ridgeLinks[ridge].length == 1);
@@ -266,7 +266,7 @@ public:
 ///
 @Name("allBistellarMoves") pure @safe unittest
 {
-    static foreach(d; 2 .. 8)
+    static foreach (d; 2 .. 8)
     {
         {
             auto m = standardSphere!d;
@@ -328,15 +328,15 @@ BistellarMove!(dim, Vertex)[] allBistellarMoves(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) mfd)
 {
     BistellarMove!(dim, Vertex)[] result;
-    foreach(simp_, deg; mfd.degreeMap)
+    foreach (simp_, deg; mfd.degreeMap)
     {
-        if(simp_.length < dim + 1)
+        if (simp_.length < dim + 1)
         {
             auto simp = simp_[];
-            if(deg == mfd.dimension + 2 - simp.walkLength)
+            if (deg == mfd.dimension + 2 - simp.walkLength)
             {
                 auto coCenter = mfd.findCoCenter(simp);
-                if(!mfd.contains(coCenter))
+                if (!mfd.contains(coCenter))
                 {
                     result ~= BistellarMove!(dim, Vertex)(simp, coCenter);
                 }
@@ -508,7 +508,7 @@ void doMove(Vertex, int dim)(
 
     assert(manifold.contains(center), "center of move not in manifold");
     assert(!manifold.contains(coCenter), "coCenter of move in manifold");
-    if(coCenter.walkLength > 1)
+    if (coCenter.walkLength > 1)
     {
         auto pm = BistellarMove!(dim, Vertex)(center, coCenter);
         assert(manifold.allBistellarMoves.canFind(pm), "not a valid pachner move");
@@ -716,9 +716,9 @@ auto bistellarMovesAtFacet(Vertex, int dim, F)(
 if (isIRof!(F, const(Vertex)))
 {
     BistellarMove!dim[] moves;
-    foreach(center; facet.subsets.map!array)
+    foreach (center; facet.subsets.map!array)
     {
-        if(center.walkLength == dim + 1) continue;
+        if (center.walkLength == dim + 1) continue;
         if (mfd.degree(center) == dim + 2 - center.walkLength)
         {
             auto coCenter = mfd.findCoCenter(center);
@@ -737,10 +737,10 @@ if (isIRof!(F, const(Vertex)))
     /* If the manifold is the boundary of a simplex (i.e. a sphere with the
     minimum number of facets) then only the type 1 -> (dim + 1) Pachner moves
     are valid, and those moves are not returned by bistellarMovesAtFacet*/    
-    foreach(dim; staticIota!(1,4))
+    foreach (dim; staticIota!(1,4))
     {
         immutable sphere = standardSphere!dim;
-        foreach(f; sphere.facets)
+        foreach (f; sphere.facets)
         {
             sphere.bistellarMovesAtFacet(f).shouldBeEmpty;
         }
@@ -755,7 +755,7 @@ if (isIRof!(F, const(Vertex)))
         MV([0,2], [1,3]),
         MV([1,2], [0,5])]);
     
-    foreach(f; octahedron.facets)
+    foreach (f; octahedron.facets)
     {
         auto edges = f.subsetsOfSize(2).map!array.array;
         auto moves = octahedron.bistellarMovesAtFacet(f);
@@ -848,7 +848,7 @@ real meanDegree(Vertex, int mfdDim)(
 ///
 @Name("meanDegree") pure @safe unittest
 {
-    foreach(dim; staticIota!(1, 8))
+    foreach (dim; staticIota!(1, 8))
     {
         auto m = standardSphere!dim;
         assert((dim + 1).iota.all!(d => m.meanDegree(d) == (dim - d + 1)));
@@ -872,12 +872,12 @@ ulong totalSquareDegree(Vertex, int mfdDim)(
 {
     assert(dim >= 0);
     assert(dim <= mfd.dimension);
-    if(dim == mfdDim - 1)
+    if (dim == mfdDim - 1)
     {
         // All codimension-1 simplices (ridges) have degree 2
         return 4 * mfd.numSimplices[dim];
     }
-    else if(dim == mfdDim)
+    else if (dim == mfdDim)
     {
         // All facets have degree 1
         return mfd.numSimplices[dim];
@@ -887,10 +887,10 @@ ulong totalSquareDegree(Vertex, int mfdDim)(
 ///
 @Name("totalSquareDegree") pure @safe unittest
 {
-    foreach(dim; staticIota!(1, 8))
+    foreach (dim; staticIota!(1, 8))
     {
         auto m = standardSphere!dim;
-        foreach(d; 0 .. dim + 1)
+        foreach (d; 0 .. dim + 1)
         {
             // (dim + 2) choose (d + 1) faces of dimension d
             // each with degree (dim - d + 1)
@@ -916,7 +916,7 @@ real degreeVariance(Vertex, int mfdDim)(
 {
     assert(dim >= 0);
     assert(dim <= mfdDim);
-    if(dim >= mfdDim - 1)
+    if (dim >= mfdDim - 1)
     {
         return 0;   // No variance in ridge and facet dimension
     }
@@ -928,7 +928,7 @@ real degreeVariance(Vertex, int mfdDim)(
 ///
 @Name("degreeVariance") pure @safe unittest
 {
-    foreach(dim; staticIota!(1, 8))
+    foreach (dim; staticIota!(1, 8))
     {
         auto m = standardSphere!dim;
         assert((dim+1).iota.all!(d => m.degreeVariance(d) == 0));
@@ -991,7 +991,7 @@ void doMove(int dim, Vertex)(
     assert(manifold.star(hinge).map!array.array.sort
         .equal!equal(oldPiece.map!array.array.sort));
 
-    foreach(f; oldPiece)
+    foreach (f; oldPiece)
     {
         manifold.removeFacet(f);    
     }
@@ -1013,7 +1013,7 @@ void doMove(int dim, Vertex)(
     // (# 0-simplices in bdry(hinge)) * (# 1-simplices in disk)
     manifold.numSimplices[2] += (dim - 1) * (deg - 3);
 
-    foreach(d; 3 .. dim)
+    foreach (d; 3 .. dim)
     {
         // (# (d - 3)-simplices in bdry(hinge)) * (# 2-simplices in disk)
         manifold.numSimplices[d] += binomial(dim - 1, d - 2) * (deg - 2);            
@@ -1088,7 +1088,7 @@ void undoMove(int dim, Vertex)(
     auto diskFacetsBuffer = deg.nGonTriangs[diskIndx]
         .joiner.map!(i => linkVertices[i])
         .toStackArray!(Unqual!Vertex, (7 - 2) * 3);
-    foreach(indx; 0 .. deg - 2)
+    foreach (indx; 0 .. deg - 2)
     {
         diskFacetsBuffer[][3*indx .. 3*indx + 3].sort;
     }
@@ -1113,7 +1113,7 @@ void undoMove(int dim, Vertex)(
     // (# 0-simplices in bdry(hinge)) * (# 1-simplices in disk)
     manifold.numSimplices[2] -= (dim - 1) * (deg - 3);
 
-    foreach(d; 3 .. dim)
+    foreach (d; 3 .. dim)
     {
         // (# (d - 3)-simplices in bdry(hinge)) * (# 2-simplices in disk)
         manifold.numSimplices[d] -= binomial(dim - 1, d - 2) * (deg - 2);            
@@ -1196,61 +1196,61 @@ string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
     // TO DO: Create a findProblems function for simplicial complexes
     // and check that here
 
-    if(!mfd.simpComp.isPureOfDim(dim))
+    if (!mfd.simpComp.isPureOfDim(dim))
     {
         problems ~= "not all facets have the correct dimension";
     }
     
-    if(!mfd.simpComp.isConnected)
+    if (!mfd.simpComp.isConnected)
     {
         problems ~= "facets do not define a connected simplicial complex";
     }
 
-    static if(dim >= 1)
+    static if (dim >= 1)
     {
-        if(!mfd.simplices(dim - 1).all!(
+        if (!mfd.simplices(dim - 1).all!(
             s => mfd.simpComp.star(s).walkLength == 2))
         {
             problems ~= "found a ridge with degree not equal to 2";
         }
     }
 
-    static if(dim >= 2)
+    static if (dim >= 2)
     {
-        if(!mfd.simplices(dim - 2).all!(s => SC(mfd.simpComp.link(s)).isCircle))
+        if (!mfd.simplices(dim - 2).all!(s => SC(mfd.simpComp.link(s)).isCircle))
         {
             problems ~= "found a hinge whose link is not a circle";
         }
     }
 
-    static if(dim >= 3)
+    static if (dim >= 3)
     {
-        if(!mfd.simplices(dim - 3).all!(s => SC(mfd.simpComp.link(s)).is2Sphere))
+        if (!mfd.simplices(dim - 3).all!(s => SC(mfd.simpComp.link(s)).is2Sphere))
         {
             problems ~= "found a codimension-3 simplex whose link is not a 2-sphere";
         }
     }
 
-    if(mfd.numSimplices[] != mfd.simpComp.fVector[])
+    if (mfd.numSimplices[] != mfd.simpComp.fVector[])
     {
         problems ~= "number of simplices incorrect";        
     }
 
-    foreach(d; 0 .. dim - 1)
+    foreach (d; 0 .. dim - 1)
     {
         auto correct = mfd.simplices(d).map!(s => mfd.degree(s)^^2).sum;
-        if(mfd.totSqrDegrees[d] != correct)
+        if (mfd.totSqrDegrees[d] != correct)
         {
             problems ~= "found incorrect total squared degree";
             break;
         }
     }
 
-    foreach(d; 0 .. dim + 1)
+    foreach (d; 0 .. dim + 1)
     {
-        foreach(s; mfd.simpComp.simplices(d))
+        foreach (s; mfd.simpComp.simplices(d))
         {
-            if(mfd.toNSimp(s) !in mfd.degreeMap)
+            if (mfd.toNSimp(s) !in mfd.degreeMap)
             {
                 problems ~= "found a simplex in simpComp that is not in degreeMap";
                 goto done;
@@ -1259,64 +1259,64 @@ string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
     }
     done:
 
-    foreach(simplex; mfd.degreeMap.byKey)
+    foreach (simplex; mfd.degreeMap.byKey)
     {
-        if(!mfd.simpComp.contains(simplex[]))
+        if (!mfd.simpComp.contains(simplex[]))
         {
             problems ~= "found a simplex in degreeMap that is not in simpComp";
             break;
         }
     }
 
-    foreach(pair; mfd.degreeMap.byKeyValue)
+    foreach (pair; mfd.degreeMap.byKeyValue)
     {
         auto simplex = pair.key[];
         auto deg = pair.value;
 
-        if(deg != mfd.simpComp.star(simplex).walkLength)
+        if (deg != mfd.simpComp.star(simplex).walkLength)
         {
             problems ~= "found a simplex in degreeMap with incorrect degree";
             break;
         }
     }
 
-    foreach(pair; mfd.ridgeLinks.byKeyValue)
+    foreach (pair; mfd.ridgeLinks.byKeyValue)
     {
         auto ridge = pair.key[];
         auto link = pair.value[];
 
-        if(link.walkLength != mfd.simpComp.star(ridge).walkLength)
+        if (link.walkLength != mfd.simpComp.star(ridge).walkLength)
         {
             problems ~= "found a ridge in ridgeLinks whose link has incorrect number of vertices";
             break;
         }
     }
 
-    foreach(pair; mfd.ridgeLinks.byKeyValue)
+    foreach (pair; mfd.ridgeLinks.byKeyValue)
     {
         auto ridge = pair.key[];
         auto link = pair.value[];
 
         // TO DO: Clean this up!
-        if(link.array != mfd.simpComp.link(ridge).joiner.array.dup.sort.array)
+        if (link.array != mfd.simpComp.link(ridge).joiner.array.dup.sort.array)
         {
             problems ~= "found a ridge in ridgeLinks whose link has the wrong vertices";
             break;
         }
     }
 
-    foreach(ridge; mfd.ridgeLinks.byKey)
+    foreach (ridge; mfd.ridgeLinks.byKey)
     {
-        if(!mfd.simpComp.contains(ridge[]))
+        if (!mfd.simpComp.contains(ridge[]))
         {
             problems ~= "found a ridge in ridgeLinks that is not in simpComp";
             break;
         }
     }
 
-    foreach(ridge; mfd.simpComp.simplices(dim - 1))
+    foreach (ridge; mfd.simpComp.simplices(dim - 1))
     {
-        if(mfd.toRidge(ridge) !in mfd.ridgeLinks)
+        if (mfd.toRidge(ridge) !in mfd.ridgeLinks)
         {
             problems ~= "found a ridge in simpComp that is not in ridgeLinks";
             break;
@@ -1399,7 +1399,7 @@ if (isIRof!(S, const(Vertex)) && isIRof!(F, const(Vertex)))
             mfd.toRidge(merge(hinge, verticesFound.back.only))][];
         assert(ridgeLink.length == 2);
 
-        if(ridgeLink.front == verticesFound[$ - 2])
+        if (ridgeLink.front == verticesFound[$ - 2])
         {
             nextVertex = ridgeLink.back;
         }
@@ -1438,7 +1438,7 @@ size_t[] degreeHistogram(Vertex, int mfdDim)(
         .filter!(p => p.key.length == dim + 1);
 
     size_t[] histogram;
-    foreach(p; degData)
+    foreach (p; degData)
     {
         if (p.value > histogram.length)
         {
@@ -1466,7 +1466,7 @@ void saveEdgeGraphTo(int dimension, Vertex = int)(
     string fileName)
 {
     auto saveFile = File(fileName, "w"); // Open in write-only mode
-    foreach(edge; mfd.asSimplicialComplex.simplices(1))
+    foreach (edge; mfd.asSimplicialComplex.simplices(1))
     {
         saveFile.writeln(edge.front, " ", edge.back);
     }
