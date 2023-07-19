@@ -1,30 +1,10 @@
+/// TO DO: Module description
 module simplicial_complex;
 
-import algorithms : connectedComponents, eulerCharacteristic,
-    isCircle, isConnected,  isPureOfDim;
-
-import std.algorithm : all, any, canFind, chunkBy, copy, countUntil, each,
-    equal, filter, find, findAdjacent, isSorted, joiner, map, maxElement,
-    setDifference, sort, sum, uniq;
-
-import std.algorithm.searching : findSplit;
-
-import std.conv : to, parse;
-import std.datetime.systime : Clock;
-import std.datetime.date : DateTime;
-import std.exception : assertThrown;
-import std.random : uniform;
-import std.range : array, chunks, dropExactly, ElementType, empty, enumerate, 
-    front, iota, isForwardRange, isInputRange, isOutputRange, only, popFront, put, save, walkLength, zip;
-import unit_threaded : Name, shouldBeSameSetAs, shouldEqual;
-
-import utility : isSubsetOf, SmallMap, StackArray, subsets,
-    subsetsOfSize, throwsWithMsg, isInputRangeOf, isInputRangeOfInputRangeOf;
-import std.stdio : File;
-import std.typecons : Flag, Yes, No;
-
-import std.stdio : writeln;
-import std.traits : Unqual;
+import std.algorithm, std.conv, std.datetime, std.exception, std.random,
+    std.range, std.stdio, std.typecons, std.traits;
+import unit_threaded;
+import algorithms, utility;
 
 alias isIRof = isInputRangeOf;
 alias isIRofIRof = isInputRangeOfInputRangeOf;

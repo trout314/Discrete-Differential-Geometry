@@ -1,29 +1,11 @@
 /// Contains functionality for working with combinatorial n-manifolds
 module manifold;
 
-import algorithms : eulerCharacteristic, is2Sphere, isCircle,
-    isConnected, isPureOfDim, join;
-import manifold_examples : trigonalBipyramid, octahedron, standardSphere;
-
-import simplicial_complex : fVector, simplicialComplex, SimplicialComplex,
-    assertValidSimplex, loadSimplicialComplex;
-
-import polygons : nGonTriangs, numNgonTriangs;
-
-import std.algorithm;
-import std.array : staticArray;
-import std.conv : to;
-import std.exception : assertThrown;
-import std.math : isClose;
-import std.range;
-import unit_threaded : Name, shouldEqual, shouldBeSameSetAs, shouldBeEmpty, should, writelnUt;
-import utility;
-import std.stdio : File, writeln, writefln, write;
-import std.sumtype : match, SumType;
-import std.traits : Unqual, isInstanceOf;
-import std.typecons : Flag, No, Yes;
-
-import manifold_moves : BistellarMove, modifyFVector, HingeMove, hasValidHingeMove;
+import std.algorithm, std.array, std.conv, std.exception, std.math, std.range,
+    std.stdio, std.sumtype, std.traits, std.typecons;
+import unit_threaded;
+import algorithms, manifold_examples, manifold_moves, polygons, simplicial_complex,
+    utility;
 
 alias isIRof = isInputRangeOf;
 alias isIRofIRof = isInputRangeOfInputRangeOf;
@@ -387,8 +369,8 @@ BistellarMove!(dim, Vertex)[] allBistellarMoves(Vertex, int dim)(
     tetrahedron.allBistellarMoves.shouldBeEmpty;
     
     // TO DO: FINISH CHECKS!
-    // octahedron.doBistellarMove([1,2]);
-    // octahedron.doBistellarMove([0,5]);
+    // octahedron.doMove([1,2]);
+    // octahedron.doMove([0,5]);
 }
 
 // NOTE: The following unittest cannot be @safe since throwsWithMsg 
@@ -426,59 +408,59 @@ BistellarMove!(dim, Vertex)[] allBistellarMoves(Vertex, int dim)(
 // NOTE: The following unittest cannot be @safe since throwsWithMsg 
 // catches an Error
 ///
-@Name("doBistellarMove (errors)") pure @system unittest
+@Name("doMove (errors)") pure @system unittest
 {
     // Can't do 2->2 move on the boundary of a 3-simplex
     auto manifold = Manifold!2([[1,2,3],[1,2,4], [1,3,4], [2,3,4]]);
     auto move = BistellarMove!2([1,2], [3,4]); 
-    manifold.doBistellarMove(move).throwsWithMsg("coCenter of move in manifold");
+    manifold.doMove(move).throwsWithMsg("coCenter of move in manifold");
 }
 
 ///
-@Name("doBistellarMove") pure unittest
+@Name("doMove") pure unittest
 {
     alias BM = BistellarMove!2;
     auto manifold = standardSphere!2;
     manifold.facets.shouldBeSameSetAs([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
     
-    manifold.doBistellarMove(BM([1,2,3], [4]));
+    manifold.doMove(BM([1,2,3], [4]));
     manifold.facets.shouldBeSameSetAs(
         [[0,1,2],[0,1,3], [0,2,3], [1,2,4], [1,3,4], [2,3,4]]);
 
-    manifold.doBistellarMove(BM([0,2,3], [7]));
+    manifold.doMove(BM([0,2,3], [7]));
     manifold.facets.shouldBeSameSetAs([[0,1,2], [0,1,3], [0,2,7],
         [0,3,7], [1,2,4], [1,3,4], [2,3,4], [2,3,7]]);
 
-    manifold.doBistellarMove(BM([7],[0,2,3]));
-    manifold.doBistellarMove(BM([4],[1,2,3]));
+    manifold.doMove(BM([7],[0,2,3]));
+    manifold.doMove(BM([4],[1,2,3]));
     manifold.facets.shouldBeSameSetAs([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
 
     manifold = standardSphere!2;
     manifold.facets.shouldBeSameSetAs([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);
     
-    manifold.doBistellarMove(BM([1,2,3], [4]));
-    manifold.doBistellarMove(BM([1,2], [0,4]));
+    manifold.doMove(BM([1,2,3], [4]));
+    manifold.doMove(BM([1,2], [0,4]));
     manifold.facets.shouldBeSameSetAs(
         [[0,1,3], [0,1,4], [0,2,3], [0,2,4], [1,3,4], [2,3,4]]);
-    manifold.doBistellarMove(BM([0,4], [1,2]));
-    manifold.doBistellarMove(BM([4], [1,2,3]));
+    manifold.doMove(BM([0,4], [1,2]));
+    manifold.doMove(BM([4], [1,2,3]));
     manifold.facets.shouldBeSameSetAs([[0,1,2], [0,1,3], [0,2,3], [1,2,3]]);      
 
     auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4],
         [1,2,5], [2,3,5], [3,4,5], [1,4,5]]);
 
-    octahedron.doBistellarMove(BM([1,2],[0,5]));
+    octahedron.doMove(BM([1,2],[0,5]));
     octahedron.degree([0]).shouldEqual(5);
     octahedron.degree([5]).shouldEqual(5);
     octahedron.degree([1]).shouldEqual(3);
     octahedron.degree([2]).shouldEqual(3);
 
     // We can undo the 2->2 move
-    octahedron.doBistellarMove(BM([0,5], [1,2]));
+    octahedron.doMove(BM([0,5], [1,2]));
     assert(octahedron.simplices(0).all!(s => octahedron.degree(s) == 4));
 
-    octahedron.doBistellarMove(BM([0,1,2], [99]));
-    octahedron.doBistellarMove(BM([99], [0,1,2]));
+    octahedron.doMove(BM([0,1,2], [99]));
+    octahedron.doMove(BM([99], [0,1,2]));
 }
 
 void doMove(int dim, Vertex)(
@@ -1164,22 +1146,25 @@ void undoMove(int dim, Vertex)(
     auto twoPts = [[6], [7]];
     auto mfd = Manifold!3(productUnion(octahedron, twoPts));
 
-    assert(mfd.hasValidHingeMove([1,2,3,4], 1));
-    mfd.doHingeMove([0,6], [1,2,3,4], 1);
+    auto hm3 = HingeMove!3([0,6], [1,2,3,4], 1);
+
+    assert(mfd.hasValidHingeMove(hm3));
+    mfd.doMove(hm3);
     mfd.facets.shouldBeSameSetAs([[1, 4, 5, 7], [0, 1, 2, 7], [1, 4, 5, 6],
         [0, 2, 3, 7], [3, 4, 5, 7], [0, 3, 4, 7], [3, 4, 5, 6], [0, 1, 4, 7],
         [1, 2, 5, 6], [1, 2, 5, 7], [2, 3, 5, 6], [2, 3, 5, 7],[0, 1, 2, 4],
         [0, 2, 3, 4], [1, 2, 4, 6], [2, 3, 4, 6]]);
 
-    mfd.undoHingeMove([0,6], [1,2,3,4], 1);
+    mfd.undoMove(hm3);
     mfd.facets.shouldBeSameSetAs(productUnion(octahedron, twoPts).map!array);
 
     auto twoOtherPts = [[8], [9]];
     auto mfd4 = Manifold!4(
         productUnion(productUnion(octahedron, twoPts), twoOtherPts));
 
-    mfd4.doHingeMove([0,6,8], [1,2,3,4], 1);
-    mfd4.undoHingeMove([0,6,8], [1,2,3,4], 1);
+    auto hm4 = HingeMove!4([0,6,8], [1,2,3,4], 1);
+    mfd4.doMove(hm4);
+    mfd4.undoMove(hm4);
     mfd4.facets.shouldBeSameSetAs(productUnion(
         productUnion(octahedron, twoPts), twoOtherPts).map!array);    
 }

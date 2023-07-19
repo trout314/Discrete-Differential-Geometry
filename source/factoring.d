@@ -1,11 +1,9 @@
+// TO DO: Module description
 module factoring;
 
-import std.algorithm : equal, filter, group, map, reduce, setDifference, sort;
-import std.range : array, chain, iota, isForwardRange, stride;
-import std.traits : ReturnType;
-import std.typecons : tuple;
+import std.algorithm, std.range, std.traits, std.typecons;
+import unit_threaded;
 
-import unit_threaded : Name;
 /*******************************************************************************
 Returns a forward range that computes the prime factors of `num`` in increasing 
 order.

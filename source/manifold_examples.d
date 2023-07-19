@@ -1,9 +1,9 @@
+/// TO DO: Module description
 module manifold_examples;
 
-import manifold : Manifold;
-import unit_threaded : Name, shouldBeSameSetAs;
-import std.range : iota;
-import utility : subsetsOfSize;
+import std.range;
+import unit_threaded;
+import manifold, utility;
 
 auto trigonalBipyramid()
 {

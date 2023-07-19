@@ -1,15 +1,9 @@
+// TO DO: Module description
 module algorithms;
 
-import manifold : Manifold;
-import simplicial_complex : fVector, simplicialComplex, SimplicialComplex;
-import std.algorithm : all, any, canFind, chunkBy, equal, filter, find,
-    joiner, map, setIntersection, sort, sum;
-import std.conv : to;
-import std.range : array, empty, enumerate, front, iota, popFront, save,
-    walkLength;
-import unit_threaded : Name, shouldBeSameSetAs;
-import utility : subsetsOfSize, throwsWithMsg;
-import utility : isInputRangeOfInputRangeOf;
+import std.algorithm, std.conv, std.range;
+import unit_threaded;
+import manifold, simplicial_complex, utility;
 
 alias isIRofIRof = isInputRangeOfInputRangeOf;
 

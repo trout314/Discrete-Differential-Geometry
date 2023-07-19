@@ -1,23 +1,10 @@
+/// TO DO: Module description. Maybe split into pieces?
 module utility;
 
+import std.algorithm, std.array, std.conv, std.exception, std.format, std.meta, std.range,
+    std.stdio, std.string, std.traits;
 import core.bitop : popcnt;
-import std.algorithm : all, any, canFind, cartesianProduct, copy, each, equal, filter, find, findSplit, fold, joiner, map, merge,
-    sort, startsWith, sum, uniq;  
-import std.conv : to;
-import std.exception : enforce, assertThrown;
-import std.format : format;
-import std.meta : AliasSeq, allSatisfy, anySatisfy;
-import std.range : array, back, popBack, chain, cycle, drop, ElementType, empty, enumerate, front,
-    iota, isForwardRange, isInputRange, join, popFront, repeat, retro, save, take,
-    walkLength;
-import std.stdio : File, writeln;
-import std.string : strip;
-import std.traits : lvalueOf, rvalueOf, hasAliasing, Unqual;
-
-
 import unit_threaded : Name, shouldBeSameSetAs, shouldEqual;
-
-import std.array : staticArray;
 
 //dfmt off
 

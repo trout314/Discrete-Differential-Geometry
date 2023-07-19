@@ -1,16 +1,9 @@
+/// TO DO: Module description
 module rational_extension_vector;
 
-import factoring : sqrtSquarePart, squareFreePart, squarePart;
-import rational : rational, Rational;
-import std.algorithm : all, copy, equal, map, sum;
-import std.bigint : BigInt;
-import std.conv : hexString, to;
-import std.meta : AliasSeq;
-import std.range : array, drop, ElementType, enumerate, iota, isForwardRange,
-    walkLength, zip;
-import std.traits : hasFunctionAttributes, isInstanceOf, ReturnType;
-import unit_threaded : Name;
-import utility : subsetsOfSize;
+import std.algorithm, std.bigint, std.conv, std.meta, std.range, std.traits;
+import unit_threaded;
+import factoring, rational_number, utility;
 
 /*******************************************************************************
 Returns a forward range which lists the points in the regular unit-edge simplex
@@ -366,7 +359,7 @@ auto simplexCoefs(int dim)
     {
         auto n = basisIndex * (basisIndex + 1) / 2;
         auto m = sqrtSquarePart(n);
-        if (basisIndex < pointIndex)
+        if(basisIndex < pointIndex)
         {
             return m * rational(1, 2 * n);
         }

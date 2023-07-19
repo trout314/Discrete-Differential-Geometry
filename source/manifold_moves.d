@@ -1,22 +1,9 @@
 /// Types and functions for working with bistellar and hinge moves on a combinatorial n-manifold
 module manifold_moves;
 
-import std.conv : to;
-import std.random : uniform;
-import std.range : array, back, chain, chunks, empty, front, iota, only, popBack, slide, take, walkLength;
-import std.algorithm : all, copy, each, filter, joiner, map, setIntersection, sort;
-import std.array : staticArray;
-import std.sumtype : match, SumType;
-import std.traits : isInstanceOf, Unqual;
-
-
-import unit_threaded : Name, shouldBeSameSetAs, shouldEqual, shouldBeTrue, shouldBeFalse, writelnUt;
-import polygons : nGonTriangs, numNgonTriangs;
-
-import manifold : Manifold, doMove, undoMove, coCenter;
-import simplicial_complex: SimplicialComplex;
-
-import utility : binomial, isInputRangeOf, isInputRangeOfInputRangeOf, productUnion, replaceEmptyLiteral, throwsWithMsg, toStackArray, dump;
+import std.algorithm, std.array, std.conv, std.random, std.range, std.sumtype, std.traits;
+import unit_threaded;
+import polygons, manifold, simplicial_complex, utility;
 
 alias isIRof = isInputRangeOf;
 alias isIRofIRof = isInputRangeOfInputRangeOf;
@@ -276,54 +263,6 @@ auto modifyFVector(Move)(size_t[] fVector_, Move move)
     fVector.shouldEqual([0, 0, 0]);
 }
 
-/******************************************************************************
-Choose a random hinge move. If none is possible, returns -1. Otherwise, returns
-the index of the triangulation in nGonTriangs for the chosen move. The vertices
-of the disk are given by linkVertices_ and these should be the link of hinge_
-in the manifold `mfd`
-*/
-int getRandomHingeMove(Vertex, int dim, K)(
-    const ref Manifold!(dim, Vertex) mfd,
-    K linkVertices_)
-if (isIRof!(K, const(Vertex)))
-{
-    auto deg = linkVertices_.walkLength.to!int;
-    auto possibleDisks = deg.nGonTriangs.array;
-
-    auto indx = uniform(0, possibleDisks.length.to!int);
-    while(!mfd.hasValidHingeMove(linkVertices_, indx))
-    {
-        possibleDisks[indx] = possibleDisks.back;
-        possibleDisks.popBack;
-        if(possibleDisks.empty)
-        {
-            return -1;
-        }
-        indx = uniform(0, possibleDisks.length.to!int);
-    }
-
-    return indx;
-}
-///
-unittest
-{
-    auto octahedron = [[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
-        [2,3,5], [3,4,5], [1,4,5]];
-    
-    auto twoPts = [[6], [7]];
-    auto mfd = Manifold!3(productUnion(octahedron, twoPts));
-
-    auto x = mfd.getRandomHingeMove([1,2,3,4]);
-    assert(x != -1); // both possible hinge moves should be valid
-    assert(x == 0 || x == 1); // only two moves possible
-    mfd.doHingeMove([0,6], [1,2,3,4], x);
-    mfd.undoHingeMove([0,6], [1,2,3,4], x);
-    mfd.facets.map!array.shouldBeSameSetAs(
-        productUnion(octahedron, twoPts).map!array);
-
-    // TO DO: More tests, test for -1 return
-}
-
 bool hasValidHingeMove(Vertex, int dim)(
     ref const(Manifold!(dim, Vertex)) manifold,
     ref const(HingeMove!(dim, Vertex)) hingeMove)
@@ -402,7 +341,7 @@ if (isIRof!(S, const(Vertex)))
 
 
 /*******************************************************************************
-Returns a list of all the (maybe blocked) hinge moves in this manifold.
+Returns a list of all the hinge moves in this manifold.
 */
 HingeMove!(dim, Vertex)[] allHingeMoves(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) mfd)
@@ -441,9 +380,10 @@ HingeMove!(dim, Vertex)[] allHingeMoves(Vertex, int dim)(
 
                 foreach(diskIndx; numNgonTriangs(hingeDeg).iota)
                 {
-                    if (mfd.hasValidHingeMove(rim, diskIndx))
+                    auto move = MV(hinge, rim, diskIndx);
+                    if (mfd.hasValidHingeMove(move))
                     {
-                        result ~= MV(hinge, rim, diskIndx);
+                        result ~= move;
                     }
                 }
             }

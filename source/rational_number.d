@@ -1,4 +1,4 @@
-module rational;
+module rational_number;
 
 // NOTE: Code taken from David Simcha. See https://github.com/dsimcha/Rational
 // Updated by Aaron Trout June/July 2017
@@ -17,7 +17,7 @@ License:    $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0)
 import std.algorithm, std.bigint, std.conv, std.exception, std.format, std.math,
     std.stdio, std.traits;
 
-import unit_threaded : Name;
+import unit_threaded;
 
 ///
 @Name("pi approximation") pure @safe unittest

@@ -1,34 +1,19 @@
 /// Samples from manifolds (TO DO: better description)
 module applications.manifold_sampler;
 
-import algorithms : eulerCharacteristic;
-import manifold;
-import manifold_examples : standardSphere, octahedron;
-import manifold_moves : BistellarMove, HingeMove, allHingeMoves, hasValidMove, orderedHingeLinkVertices;
-import polygons : numNgonTriangs;
-import simplicial_complex : fVector;
-import utility : binomial, dump, flatDegreeInDim, parseParameterFile, prettyTime, subsets;
+import std.algorithm, std.array, std.conv, std.datetime, std.datetime.stopwatch,
+    std.format, std.getopt, std.math, std.range, std.stdio, std.string,
+    std.sumtype, std.stdio;
 
-import unit_threaded : Name, writelnUt;
+import std.random : rndChoice = choice;
+import std.random : uniform, uniform01;
 
 import core.memory : GC;
 
-import std.algorithm : all, count, each, filter, findSplit, joiner, map, max, maxElement, sort, sum;
-import std.array : array, replace, split;
-import std.conv : to;
-import std.datetime.stopwatch : Duration, msecs, StopWatch;
-import std.datetime.date : DateTime;
-import std.datetime.systime : Clock;
-import std.format : format;
-import std.getopt : getopt, defaultGetoptPrinter;
-import std.math : exp, sqrt, isNaN, modf;
-import std.range;
-import std.random : uniform, uniform01;
-import std.random : rndChoice = choice;
-import std.stdio : File, write, writef, writefln, writeln, stdout;
-import std.string : startsWith;
-import std.sumtype : match, SumType;
-import std.typecons : Flag, Yes, No;
+import algorithms, manifold, manifold_examples, manifold_moves, polygons,
+    simplicial_complex, utility;
+
+import unit_threaded;
 
 version (unittest) {} else {
 int main(string[] args)

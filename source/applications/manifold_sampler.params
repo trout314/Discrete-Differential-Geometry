@@ -32,5 +32,5 @@ sweepsPerProblemCheck = 10
 maxCoDim2Bins = 12
 maxCoDim3Bins = 26
 
-maxBar2 = 78
-maxBar3 = 78
+maxBar2 = 140
+maxBar3 = 140

@@ -1,10 +1,8 @@
 /// Contains functionality related to polygons and their triangulations
 module polygons;
 
-import std.range : array, chain, cycle, front, iota, retro, take, walkLength;
-import std.algorithm : all, filter, map, sort, uniq;
-
-import unit_threaded : Name, shouldBeSameSetAs, shouldEqual;
+import std.algorithm, std.range;
+import unit_threaded;
 
 /******************************************************************************
 Returns the set of symmetries of the a regular polygon with n sides.
