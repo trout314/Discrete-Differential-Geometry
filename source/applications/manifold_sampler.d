@@ -707,7 +707,7 @@ void decrementMoveCounts(int dim, Vertex)(
 
 void saveManifold(M, S, T, P)(M manifold, bool doneSampling, ulong sampleNumber, ulong dtElapsed,
                 S startTime, T timer, ulong[] bistellarTries, ulong[] bistellarAccepts,
-                ulong[] hingeTries, ulong[] hingeAccepts, P parameters)
+                ulong[] hingeTries, ulong[] hingeAccepts, P parameters, )
 {
     string prefix;
     if (doneSampling)
@@ -729,6 +729,9 @@ void saveManifold(M, S, T, P)(M manifold, bool doneSampling, ulong sampleNumber,
 
     saveFile.writeReports(manifold, dtElapsed, startTime, timer,
         bistellarTries[], bistellarAccepts[], hingeTries[], hingeAccepts[], parameters);
+
+    // saveFile.writeln("initial manifold file: " ~ )
+    saveFile.writeln(toPrettyString(parameters));
 
     manifold.saveEdgeGraphTo(graphFileName);
 }
