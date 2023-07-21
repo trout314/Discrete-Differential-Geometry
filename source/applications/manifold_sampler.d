@@ -103,7 +103,7 @@ int main(string[] args)
     auto dtIncThreshold = (params.dt* params.numFacetsTarget).to!ulong;
     assert(dtIncThreshold > 0);
 
-    int sampleNumber;
+    ulong sampleNumber;
     auto startTime = Clock.currTime;
     auto currentObjective = mfd.objective(params);
     timer.reset;
@@ -173,12 +173,8 @@ int main(string[] args)
         //----------------------- WRITE TO DATA FILE --------------------------
         if ((dtIncreased && (dtElapsed % params.dtPerFileReport == 0)) || doneSampling)
         {
-            // mfd.columnReport(sampleNumber, dtElapsed, startTime, timer, bistellarTries[],
-            //     bistellarAccepts[], hingeTries[], hingeAccepts[], params);
-        
-            // auto file = File(params.saveFilePrefix ~ ".dat", "a");
-            // TO DO: Implement this
-            //columnReport(file);
+            mfd.writeColumnReport(sampleNumber, dtElapsed, startTime, timer, bistellarTries[],
+                bistellarAccepts[], hingeTries[], hingeAccepts[], params);
         }
 
         //----------------------- SAVE CURRENT MANIFOLD ----------------------
@@ -331,6 +327,35 @@ real objective(int dim, Vertex, P)(const ref Manifold!(dim, Vertex) mfd, P param
         + params.numHingesCoef * pen.globalCurvPenalty
         + params.hingeDegreeVarCoef * pen.localCurvPenalty
         + params.cd3DegVarCoef * pen.localSolidAngleCurvPenalty;
+}
+
+void writeColumnReport(M, S, T, P)(M manifold, ulong sampleNumber, ulong dtElapsed, S startTime, T timer, ulong[] bistellarTries,
+    ulong[] bistellarAccepts, ulong[] hingeTries, ulong[] hingeAccepts, P params)
+{
+    auto file = File(params.saveFilePrefix ~ ".dat", "a");
+    auto dim = manifold.dimension;
+
+    if (sampleNumber == 0)
+    {
+        file.write("moves_accepted, moves_tried, ");
+        file.write(iota(dim+1).map!(d => "num_%s_simplices".format(d)).joiner(", "));
+        file.write(", ");
+        file.write(iota(dim+1).map!(d => "mean_deg_%s_simplices".format(d)).joiner(", "));
+        file.write(", ");
+        file.write(iota(dim+1).map!(d => "var_deg_%s_simplices".format(d)).joiner(", "));
+        file.writeln;
+    }
+
+    auto maxDeg2 = 2 + params.maxCoDim2Bins;
+    auto maxDeg3 = 2 + 2 * params.maxCoDim3Bins;
+
+    auto hist2 = mfd.degreeHistogram(mfd.dimension - 2);
+    auto tail2 = (hist2.length >= maxDeg2) ? hist2[maxDeg2 .. $].sum : 0;
+    auto maxDegBin2 = max(hist2.maxElement, tail2);
+    auto normedHist2 = hist2.map!(freq => real(freq) / maxDegBin2);
+
+    auto hist3 = mfd.degreeHistogram(mfd.dimension - 3);
+    auto tail3 = (hist3.length >= maxDeg3) ? hist3[maxDeg3 .. $].sum : 0;
 }
 
 void writeTimingAndTargetsReport(M, S, T, W, P)(W sink, M mfd, ulong dtElapsed, S startTime, T timePerMove, double acceptFrac, P params)
