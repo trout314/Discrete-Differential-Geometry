@@ -2,7 +2,7 @@
 module simplicial_complex;
 
 import std.algorithm, std.conv, std.datetime, std.exception, std.random,
-    std.range, std.stdio, std.typecons, std.traits;
+    std.range, std.stdio, std.string, std.typecons, std.traits;
 import unit_threaded;
 import algorithms, utility;
 
@@ -953,12 +953,8 @@ Returns a simplicial complex loaded from the file specified by fileName.
 SimplicialComplex!Vertex loadSimplicialComplex(Vertex = int)(string fileName)
 {
     auto facetString = File(fileName, "r").byLineCopy
-        .filter!(line => line.front != '#').joiner.array;
-
-    // accidentally have '#' or '╔' at end of the manifold facet line on some
-    // files. Only include the part before any of these characters
-    facetString = facetString.findSplit('#'.only)[0];
-    facetString = facetString.findSplit('╔'.only)[0];
+        .filter!(line => !line.strip.empty)
+        .filter!(line => line.strip.front == '[').joiner.array;
 
     Vertex[][] facets;
     try
