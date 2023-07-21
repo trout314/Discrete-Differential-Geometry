@@ -349,12 +349,12 @@ void writeColumnReport(M, S, T, P)(M manifold, ulong sampleNumber, ulong dtElaps
     auto maxDeg2 = 2 + params.maxCoDim2Bins;
     auto maxDeg3 = 2 + 2 * params.maxCoDim3Bins;
 
-    auto hist2 = mfd.degreeHistogram(mfd.dimension - 2);
+    auto hist2 = manifold.degreeHistogram(manifold.dimension - 2);
     auto tail2 = (hist2.length >= maxDeg2) ? hist2[maxDeg2 .. $].sum : 0;
     auto maxDegBin2 = max(hist2.maxElement, tail2);
     auto normedHist2 = hist2.map!(freq => real(freq) / maxDegBin2);
 
-    auto hist3 = mfd.degreeHistogram(mfd.dimension - 3);
+    auto hist3 = manifold.degreeHistogram(manifold.dimension - 3);
     auto tail3 = (hist3.length >= maxDeg3) ? hist3[maxDeg3 .. $].sum : 0;
 }
 
