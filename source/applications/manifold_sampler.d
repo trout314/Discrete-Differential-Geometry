@@ -63,7 +63,7 @@ int main(string[] args)
         ];
     auto params = parseParameterFile!parametersUsed(paramFileName);
     
-    enum dim = 4; // TO DO: Make this selectable from parameter file
+    enum dim = 3; // TO DO: Make this selectable from parameter file
     Manifold!dim mfd;
 
     if (!mfdFileName.empty)
