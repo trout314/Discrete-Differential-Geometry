@@ -104,6 +104,8 @@ int main(string[] args)
     assert(dtIncThreshold > 0);
 
     ulong sampleNumber;
+    ulong columnReportNumber;
+
     auto startTime = Clock.currTime;
     auto currentObjective = mfd.objective(params);
     timer.reset;
@@ -173,8 +175,9 @@ int main(string[] args)
         //----------------------- WRITE TO DATA FILE --------------------------
         if ((dtIncreased && (dtElapsed % params.dtPerFileReport == 0)) || doneSampling)
         {
-            mfd.writeColumnReport(sampleNumber, dtElapsed, startTime, timer, bistellarTries[],
+            mfd.writeColumnReport(columnReportNumber, dtElapsed, startTime, timer, bistellarTries[],
                 bistellarAccepts[], hingeTries[], hingeAccepts[], params);
+            ++columnReportNumber;
         }
 
         //----------------------- SAVE CURRENT MANIFOLD ----------------------
@@ -329,33 +332,110 @@ real objective(int dim, Vertex, P)(const ref Manifold!(dim, Vertex) mfd, P param
         + params.cd3DegVarCoef * pen.localSolidAngleCurvPenalty;
 }
 
-void writeColumnReport(M, S, T, P)(M manifold, ulong sampleNumber, ulong dtElapsed, S startTime, T timer, ulong[] bistellarTries,
+void writeColumnReport(M, S, T, P)(M manifold, ulong reportNumber, ulong dtElapsed, S startTime, T timer, ulong[] bistellarTries,
     ulong[] bistellarAccepts, ulong[] hingeTries, ulong[] hingeAccepts, P params)
 {
     auto file = File(params.saveFilePrefix ~ ".dat", "a");
     auto dim = manifold.dimension;
 
-    if (sampleNumber == 0)
+    string[] columnLabels;
+    string[] values;
+
+    columnLabels ~= "total_moves_accepted";
+    values ~= (bistellarAccepts[].sum + hingeAccepts[].sum).to!string;
+
+    columnLabels ~= "objective";
+    values ~= manifold.objective(params).to!string;
+
+    columnLabels ~= "volume_penalty";
+    values ~= manifold.penalties(params).volumePenalty.to!string;
+
+    columnLabels ~= "global_curvature_penalty";
+    values ~= manifold.penalties(params).globalCurvPenalty.to!string;
+
+    columnLabels ~= "local_curvature_variance_penalty";
+    values ~= manifold.penalties(params).localCurvPenalty.to!string;
+
+    columnLabels ~= "local_solid_angle_curvature_variance_penalty";
+    values ~= manifold.penalties(params).localSolidAngleCurvPenalty.to!string;
+
+    columnLabels ~= "total_moves_tried";
+    values ~= (bistellarTries[].sum + hingeTries[].sum).to!string;
+
+    foreach(n; 1 .. dim+2)
     {
-        file.write("moves_accepted, moves_tried, ");
-        file.write(iota(dim+1).map!(d => "num_%s_simplices".format(d)).joiner(", "));
-        file.write(", ");
-        file.write(iota(dim+1).map!(d => "mean_deg_%s_simplices".format(d)).joiner(", "));
-        file.write(", ");
-        file.write(iota(dim+1).map!(d => "var_deg_%s_simplices".format(d)).joiner(", "));
-        file.writeln;
+        columnLabels ~= "num_%s_%s_bistellar_accepted".format(n, dim + 2 -n);
+        values ~= bistellarAccepts[n-1].to!string;
+
+        columnLabels ~= "num_%s_%s_bistellar_tried".format(n, dim + 2 -n);
+        values ~= bistellarTries[n-1].to!string;
+    }
+
+    foreach(n; 0 .. hingeAccepts.length)
+    {
+        columnLabels ~= "num_%s_%s_hinge_accepted".format(n+4, (n+2)*(dim-1));
+        values ~= hingeAccepts[n].to!string;
+
+        columnLabels ~= "num_%s_%s_hinge_tried".format(n+4, (n+2)*(dim-1));
+        values ~= hingeTries[n].to!string;
+    }
+    
+    foreach(d; 0 .. dim+1)
+    {
+        columnLabels ~= "num_%s_simplices".format(d);
+        values ~= manifold.fVector[d].to!string;
+
+        columnLabels ~= "deg_mean_%s_simplices".format(d);
+        values ~= manifold.meanDegree(d).to!string;
+
+        columnLabels ~= "deg_var_%s_simplices".format(d);
+        values ~= manifold.degreeVariance(d).to!string;
     }
 
     auto maxDeg2 = 2 + params.maxCoDim2Bins;
-    auto maxDeg3 = 2 + 2 * params.maxCoDim3Bins;
-
-    auto hist2 = manifold.degreeHistogram(manifold.dimension - 2);
+    auto hist2 = manifold.degreeHistogram(dim - 2);
+    foreach(deg; 3 .. 3 + params.maxCoDim2Bins)
+    {
+        columnLabels ~= "codim2_simps_of_deg_%s".format(deg);
+        if (deg-1 < hist2.length)
+        {
+            values ~= hist2[deg-1].to!string;
+        }
+        else
+        {
+            values ~= "0";
+        }
+    }
     auto tail2 = (hist2.length >= maxDeg2) ? hist2[maxDeg2 .. $].sum : 0;
-    auto maxDegBin2 = max(hist2.maxElement, tail2);
-    auto normedHist2 = hist2.map!(freq => real(freq) / maxDegBin2);
+    columnLabels ~= "codim2_deg_tail";
+    values ~= tail2.to!string;
 
-    auto hist3 = manifold.degreeHistogram(manifold.dimension - 3);
-    auto tail3 = (hist3.length >= maxDeg3) ? hist3[maxDeg3 .. $].sum : 0;
+    auto maxDeg3 = 2 + 2 * params.maxCoDim3Bins;
+    auto hist3 = manifold.degreeHistogram(dim - 3);
+    foreach(deg; iota(4, 4 + 2*params.maxCoDim3Bins, 2))
+    {
+        columnLabels ~= "codim3_simps_of_deg_%s".format(deg);
+        if (deg - 1 < hist3.length)
+        {
+            values ~= hist3[deg-1].to!string;
+        }
+        else
+        {
+            values ~= "0";
+        }
+    }
+    auto tail3 = (hist3.length >= maxDeg3) ? hist3[maxDeg3 .. $].sum : 0;    
+    columnLabels ~= "codim3_deg_tail";
+    values ~= tail3.to!string;    
+    
+
+    assert(values.length == columnLabels.length);
+    if (reportNumber == 0)
+    {
+        file.writeln(columnLabels.joiner(", "));
+    }
+
+    file.writeln(values.joiner(", "));
 }
 
 void writeTimingAndTargetsReport(M, S, T, W, P)(W sink, M mfd, ulong dtElapsed, S startTime, T timePerMove, double acceptFrac, P params)
