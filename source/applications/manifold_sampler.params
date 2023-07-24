@@ -17,7 +17,7 @@ saveFilePrefix = test
 
 # Time increment (in units of sweeps) used for finer-graned intervals
 dt = 0.1
-dtPerFileReport = 50
+dtPerFileReport = 10
 dtPerSave = 10
 
 triesPerStdoutReport = 100
