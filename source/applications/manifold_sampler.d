@@ -435,7 +435,7 @@ void writeColumnReport(M, S, T, P)(M manifold, ulong reportNumber, ulong dtElaps
         file.writeln(columnLabels.joiner(", "));
     }
 
-    file.writeln(values.joiner(", "));
+    file.writeln(values.joiner(","));
 }
 
 void writeTimingAndTargetsReport(M, S, T, W, P)(W sink, M mfd, ulong dtElapsed, S startTime, T timePerMove, double acceptFrac, P params)
