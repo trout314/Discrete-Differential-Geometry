@@ -432,7 +432,7 @@ void writeColumnReport(M, S, T, P)(M manifold, ulong reportNumber, ulong dtElaps
     assert(values.length == columnLabels.length);
     if (reportNumber == 0)
     {
-        file.writeln(columnLabels.joiner(", "));
+        file.writeln(columnLabels.joiner(","));
     }
 
     file.writeln(values.joiner(","));
