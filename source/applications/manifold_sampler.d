@@ -100,7 +100,7 @@ int main(string[] args)
     hingeAccepts.length = params.maxHingeMoveDeg - 3;
 
     ulong dtElapsed; // number of dt intervals elapsed (in sweeps)
-    auto dtIncThreshold = (params.dt* params.numFacetsTarget).to!ulong;
+    auto dtIncThreshold = (params.dt * params.numFacetsTarget).to!ulong;
     assert(dtIncThreshold > 0);
 
     ulong sampleNumber;
@@ -118,9 +118,9 @@ int main(string[] args)
     auto doneSampling = false;
     while (!doneSampling)
     {
-        doneSampling = (dtElapsed * params.dt >= params.maxSweeps);
-        ulong numMovesTried = bistellarTries[].sum;
-        ulong numMovesAccepted = bistellarAccepts[].sum;
+        ulong numMovesTried = bistellarTries[].sum + hingeTries[].sum;
+        ulong numMovesAccepted = bistellarAccepts[].sum + hingeAccepts[].sum;
+        doneSampling = (numMovesAccepted >= params.maxSweeps * params.numFacetsTarget);
 
         bool dtIncreased = false;
         if (numMovesAccepted == dtIncThreshold)
@@ -233,6 +233,7 @@ void writeReports(M, S, T, W, P)(
 {
     auto numMovesTried = bistellarTries.sum + hingeTries.sum;
     auto numMovesAccepted = bistellarAccepts.sum + hingeAccepts.sum;
+    
     typeof(timer.peek()) timePerMove;
     if (numMovesTried > 0)
     {
@@ -240,7 +241,7 @@ void writeReports(M, S, T, W, P)(
     }
     auto acceptFrac = double(numMovesAccepted) / numMovesTried;
 
-    sink.writeTimingAndTargetsReport(mfd, dtElapsed, startTime, timePerMove, acceptFrac, params);
+    sink.writeTimingAndTargetsReport(mfd, numMovesAccepted, startTime, timePerMove, acceptFrac, params);
     sink.writeSimplexReport(mfd);
     sink.writeObjectiveReport(mfd, params);
     sink.writeMoveReport(bistellarTries, bistellarAccepts, hingeTries, hingeAccepts, params);
@@ -438,7 +439,7 @@ void writeColumnReport(M, S, T, P)(M manifold, ulong reportNumber, ulong dtElaps
     file.writeln(values.joiner(","));
 }
 
-void writeTimingAndTargetsReport(M, S, T, W, P)(W sink, M mfd, ulong dtElapsed, S startTime, T timePerMove, double acceptFrac, P params)
+void writeTimingAndTargetsReport(M, S, T, W, P)(W sink, M mfd, ulong total_moves_accepted, S startTime, T timePerMove, double acceptFrac, P params)
 {
     typeof(timePerMove) timePerSweep;
     if (acceptFrac > 0.0)
@@ -447,7 +448,7 @@ void writeTimingAndTargetsReport(M, S, T, W, P)(W sink, M mfd, ulong dtElapsed, 
     }
 
     sink.writeln("-".repeat(80).joiner);
-    string timeInfo = "%.1f / %s".format(dtElapsed * params.dt, params.maxSweeps);
+    string timeInfo = "%.1f / %s".format(total_moves_accepted / double(params.numFacetsTarget), params.maxSweeps);
     auto prettyStartTime = startTime.to!string.split('.').front;
 
     sink.writef("sweeps         : %23-s |", timeInfo);
