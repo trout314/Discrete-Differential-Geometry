@@ -780,7 +780,7 @@ void saveManifold(M, S, T, P)(M manifold, ulong sampleNumber,
         ~ sampleNumber.to!string;
 
     auto savedMfdFileName = prefix ~ ".mfd";
-    auto graphFileName = prefix ~ ".edge_graph";
+
 
     manifold.saveTo(savedMfdFileName);
     auto saveFile = File(savedMfdFileName, "a");
@@ -792,5 +792,9 @@ void saveManifold(M, S, T, P)(M manifold, ulong sampleNumber,
     // saveFile.writeln("initial manifold file: " ~ )
     saveFile.writeln(toPrettyString(parameters));
 
-    manifold.saveEdgeGraphTo(graphFileName);
+    if (parameters.saveEdgeGraph)
+    {
+        auto graphFileName = prefix ~ ".edge_graph";
+        manifold.saveEdgeGraphTo(graphFileName);
+    }
 }
