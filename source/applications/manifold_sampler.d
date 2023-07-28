@@ -775,26 +775,25 @@ void saveManifold(M, S, T, P)(M manifold, ulong sampleNumber,
                 S startTime, T timer, ulong[] bistellarTries, ulong[] bistellarAccepts,
                 ulong[] hingeTries, ulong[] hingeAccepts, P parameters)
 {
-    string prefix;
-    prefix = parameters.savedFilesPrefix ~ "_sample_"
+    string prefix = parameters.savedFilesPrefix ~ "_sample_"
         ~ sampleNumber.to!string;
 
-    auto savedMfdFileName = prefix ~ ".mfd";
+    manifold.saveTo(prefix ~ ".mfd");
 
-
-    manifold.saveTo(savedMfdFileName);
-    auto saveFile = File(savedMfdFileName, "a");
+    auto saveFile = File(prefix ~ ".mfd", "a");
     saveFile.writeln;
-
     saveFile.writeReports(manifold, startTime, timer,
         bistellarTries[], bistellarAccepts[], hingeTries[], hingeAccepts[], parameters);
 
-    // saveFile.writeln("initial manifold file: " ~ )
     saveFile.writeln(toPrettyString(parameters));
 
     if (parameters.saveEdgeGraph)
     {
-        auto graphFileName = prefix ~ ".edge_graph";
-        manifold.saveEdgeGraphTo(graphFileName);
+        manifold.saveEdgeGraphTo(prefix ~ ".edge_graph");
+    }
+
+    if (parameters.saveDualGraph)
+    {
+        manifold.saveDualGraphTo(prefix ~ ".dual_graph");
     }
 }
