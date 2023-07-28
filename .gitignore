@@ -40,3 +40,6 @@ ut.d
 *.mfd
 *.edge_graph
 *.exe
+
+#jupyter notebook checkpoints
+*checkpoints.ipynb
