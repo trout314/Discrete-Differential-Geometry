@@ -1,36 +1,33 @@
+initialManifoldFile = standard_triangulations/dim_3_sphere.mfd
+savedFilesPrefix = ../Data/S3_V500
 
-dim = 3
 maxSweeps = 10.0
-
-useHingeMoves = true
-maxHingeMoveDeg = 7
+sweepsPerSample = 1.0
+sweepsPerCSVline = 0.5
 
 numFacetsTarget = 500
-hingeDegreeTarget = 5.1
-
 numFacetsCoef = 0.1
-numHingesCoef = 0.1
-hingeDegreeVarCoef = 0.0
-cd3DegVarCoef = 0.1
 
-saveFilePrefix = test
+hingeDegreeTarget = 5.1
+numHingesCoef = 0.0
 
-# Time increment (in units of sweeps) used for finer-graned intervals
-dt = 0.1
-dtPerFileReport = 10
-dtPerSave = 10
+hingeDegreeVarianceCoef = 0.0
+coDim3DegreeVarianceCoef = 0.1
 
-triesPerStdoutReport = 100
-
-disableGC = false
-triesPerCollect = 1000
+saveEdgeGraph = true
+saveDualGraph = true
 
 checkForProblems = false
-sweepsPerProblemCheck = 10
+movesTriedPerProblemCheck = 10
 
-# TO DO: Better names for these formatting options!
-maxCoDim2Bins = 12
-maxCoDim3Bins = 26
+useHingeMoves = true
+disableGC = true
+movesTriedPerGCcollect = 1000
+movesTriedPerStdoutReport = 1000
 
-maxBar2 = 140
-maxBar3 = 140
+# These are formatting options
+coDim2DegreeHistogramBins = 12
+coDim2DegreeHistogramBars = 77
+
+coDim3DegreeHistogramBins = 22
+coDim3DegreeHistogramBars = 77

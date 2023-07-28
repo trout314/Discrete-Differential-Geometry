@@ -1,30 +1,27 @@
 /// Samples from manifolds (TO DO: better description)
 module applications.manifold_sampler;
-
 import std.algorithm, std.array, std.conv, std.datetime, std.datetime.stopwatch,
     std.format, std.getopt, std.math, std.range, std.stdio, std.string,
     std.sumtype, std.stdio;
-
 import std.random : rndChoice = choice;
 import std.random : uniform, uniform01;
-
 import core.memory : GC;
-
 import algorithms, manifold, manifold_examples, manifold_moves, polygons,
     simplicial_complex, utility;
-
 import unit_threaded;
+
+enum dim = 3;
+enum maxHingeMoveDeg = 7;
+
+static assert(maxHingeMoveDeg >= 4, "Hinge move degrees must be at least 4");
 
 version (unittest) {} else {
 int main(string[] args)
 {
-    string mfdFileName;
     string paramFileName;
-    auto helpInformation = getopt(
-        args,
-        "initialManifoldFile", &mfdFileName,
-        "parameterFile", &paramFileName);
-   
+    auto helpInformation = getopt(args, std.getopt.config.required,
+        "parameterFile|p", &paramFileName);
+
     if (helpInformation.helpWanted)
     {
         // TO DO: some actual help info here!
@@ -40,45 +37,29 @@ int main(string[] args)
             ["bool", "disableGC"],
             ["bool", "useHingeMoves"],
             ["bool", "checkForProblems"],
+            ["bool", "saveEdgeGraph"],
+            ["bool", "saveDualGraph"],
             ["int", "numFacetsTarget"],
-            ["int", "maxHingeMoveDeg"],
-            ["int", "sweepsPerProblemCheck"],
-            ["int", "triesPerStdoutReport"],
-            ["int", "triesPerCollect"],
-            ["int", "dim"],
-            ["int", "maxCoDim2Bins"],
-            ["int", "maxCoDim3Bins"],
-            ["int", "maxBar2"],
-            ["int", "maxBar3"],
-            ["real", "dt"],
-            ["real", "dtPerFileReport"],
-            ["real", "dtPerSave"],
+            ["int", "movesTriedPerProblemCheck"],
+            ["int", "movesTriedPerStdoutReport"],
+            ["int", "movesTriedPerGCcollect"],
+            ["int", "coDim2DegreeHistogramBins"],
+            ["int", "coDim3DegreeHistogramBins"],
+            ["int", "coDim2DegreeHistogramBars"],
+            ["int", "coDim3DegreeHistogramBars"],
+            ["real", "sweepsPerSample"],
+            ["real", "sweepsPerCSVline"],
             ["real", "hingeDegreeTarget"],
             ["real", "numFacetsCoef"],
             ["real", "numHingesCoef"],
-            ["real", "hingeDegreeVarCoef"],
-            ["real", "cd3DegVarCoef"],
+            ["real", "hingeDegreeVarianceCoef"],
+            ["real", "coDim3DegreeVarianceCoef"],
             ["real", "maxSweeps"],
-            ["string", "saveFilePrefix"]
+            ["string", "savedFilesPrefix"],
+            ["string", "initialManifoldFile"]
         ];
     auto params = parseParameterFile!parametersUsed(paramFileName);
-    
-    enum dim = 3; // TO DO: Make this selectable from parameter file
-    Manifold!dim mfd;
-
-    if (!mfdFileName.empty)
-    {
-        "Loading %s-manifold from file: %s".writefln(dim, mfdFileName);
-        "... ".write;
-        mfd = loadManifold!dim(mfdFileName);
-        "done. Took %s.".format(timer.prettyTime).writeln;
-        timer.reset;
-    }
-    else
-    {
-        // TO DO: User chosen options from library of triangs
-        mfd = standardSphere!dim;
-    }
+    Manifold!dim mfd = loadManifold!dim(params.initialManifoldFile);
 
     auto initialVertices = mfd.simplices(0).joiner.array.dup.sort.array;
     assert(initialVertices.length > 0, "initial manifold is empty");
@@ -91,21 +72,16 @@ int main(string[] args)
     ulong[dim + 1] bistellarAccepts;
 
     // hingeTries[j] counts the hinge-moves with hinge degree j + 4 tried
-    assert(params.maxHingeMoveDeg >= 4, "Hinge move degrees must be at least 4");
-    ulong[] hingeTries;
-    hingeTries.length = params.maxHingeMoveDeg - 3;
-
+    ulong[maxHingeMoveDeg - 3] hingeTries;
+ 
     // hingeAccepts[j] counts the hinge-moves with hinge degree j + 4 accepted
-    ulong[] hingeAccepts;
-    hingeAccepts.length = params.maxHingeMoveDeg - 3;
+    ulong[maxHingeMoveDeg - 3] hingeAccepts;
 
-    ulong dtElapsed; // number of dt intervals elapsed (in sweeps)
-    auto dtIncThreshold = (params.dt * params.numFacetsTarget).to!ulong;
-    assert(dtIncThreshold > 0);
-
-    ulong sampleNumber;
-    ulong columnReportNumber;
-
+    auto sampleThreshold = params.numFacetsTarget * params.sweepsPerSample;
+    auto csvLineThreshold = params.numFacetsTarget * params.sweepsPerCSVline;
+    
+    ulong sampleNumber = 0;
+    ulong columnReportNumber = 0;
     auto startTime = Clock.currTime;
     auto currentObjective = mfd.objective(params);
     timer.reset;
@@ -120,16 +96,7 @@ int main(string[] args)
     {
         ulong numMovesTried = bistellarTries[].sum + hingeTries[].sum;
         ulong numMovesAccepted = bistellarAccepts[].sum + hingeAccepts[].sum;
-        doneSampling = (numMovesAccepted >= params.maxSweeps * params.numFacetsTarget);
-
-        bool dtIncreased = false;
-        if (numMovesAccepted == dtIncThreshold)
-        {
-            ++dtElapsed;
-            dtIncreased = true;
-            dtIncThreshold = ((dtElapsed + 1) * params.dt* params.numFacetsTarget).to!ulong;
-            assert(dtIncThreshold > numMovesAccepted);
-        }
+        doneSampling = numMovesAccepted >= params.maxSweeps * params.numFacetsTarget;
 
         if (unusedVertices.empty)
         {
@@ -139,7 +106,6 @@ int main(string[] args)
             unusedVertices ~= mfd.fVector[0].to!int;
         }
         assert(unusedVertices.all!(v => !mfd.contains(v.only)));
-
 
         //-------------------------- ATTEMPT MOVE ----------------------------
         auto chosenMove = mfd.chooseRandomMove(unusedVertices.back, params);
@@ -164,53 +130,48 @@ int main(string[] args)
         }
 
         //--------------------------- MAKE REPORT ----------------------------
-        if ((numMovesTried % params.triesPerStdoutReport == 0) || doneSampling)
+        if ((numMovesTried % params.movesTriedPerStdoutReport == 0) || doneSampling)
         {
             stdout.write("\033c");  // Clear the screen
-            stdout.writeReports(mfd, dtElapsed, startTime, timer,
-                bistellarTries[], bistellarAccepts[], hingeTries[], hingeAccepts[], params);
+            stdout.writeReports(mfd, startTime, timer, bistellarTries[],
+                bistellarAccepts[], hingeTries[], hingeAccepts[], params);
             stdout.flush();
         }
 
-        //----------------------- WRITE TO DATA FILE --------------------------
-        if ((dtIncreased && (dtElapsed % params.dtPerFileReport == 0)) || doneSampling)
+        //---------------------- WRITE TO CSV DATA FILE ----------------------
+        if ((numMovesAccepted == csvLineThreshold) || doneSampling)
         {
-            mfd.writeColumnReport(columnReportNumber, dtElapsed, startTime, timer, bistellarTries[],
+            mfd.writeCSVreport(columnReportNumber, startTime, timer, bistellarTries[],
                 bistellarAccepts[], hingeTries[], hingeAccepts[], params);
             ++columnReportNumber;
+            csvLineThreshold += params.numFacetsTarget * params.sweepsPerCSVline;
         }
 
         //----------------------- SAVE CURRENT MANIFOLD ----------------------
-        if ((dtIncreased && (dtElapsed % params.dtPerSave == 0)) || doneSampling)
+        if ((numMovesAccepted == sampleThreshold) || doneSampling)
         {
-            mfd.saveManifold(doneSampling, sampleNumber, dtElapsed, startTime, timer,
+            mfd.saveManifold(sampleNumber, startTime, timer,
                 bistellarTries[], bistellarAccepts[], hingeTries[], hingeAccepts[], params);
             ++sampleNumber;
+            sampleThreshold += params.numFacetsTarget * params.sweepsPerSample;
         }
 
         //------------------------- COLLECT GARBAGE --------------------------
-        if (params.disableGC)
+        if (params.disableGC && (numMovesTried % params.movesTriedPerProblemCheck == 0))
         {
-            if (numMovesTried % params.triesPerCollect == 0)
-            {
-                GC.enable;
-                GC.collect;
-                GC.disable;
-            }
+            GC.enable;
+            GC.collect;
+            GC.disable;
         }
 
         //----------------------- CHECK FOR PROBLEMS ----------------------- 
-        if (params.checkForProblems)
+        if (params.checkForProblems && (numMovesAccepted % params.movesTriedPerProblemCheck == 0))
         {
-            if (dtIncreased
-                && ((dtElapsed * params.dt) % params.sweepsPerProblemCheck == 0))
+            auto problems = mfd.findProblems;
+            if (!problems.empty)
             {
-                auto problems = mfd.findProblems;
-                if (!problems.empty)
-                {
-                    problems.each!writeln;
-                    assert(0);
-                }
+                problems.each!writeln;
+                assert(0);
             }
         }
     }
@@ -222,7 +183,6 @@ int main(string[] args)
 void writeReports(M, S, T, W, P)(
     W sink,
     M mfd,
-    ulong dtElapsed,
     S startTime,
     T timer,
     ulong[] bistellarTries,
@@ -329,14 +289,14 @@ real objective(int dim, Vertex, P)(const ref Manifold!(dim, Vertex) mfd, P param
     auto pen = mfd.penalties(params);
     return params.numFacetsCoef * pen.volumePenalty
         + params.numHingesCoef * pen.globalCurvPenalty
-        + params.hingeDegreeVarCoef * pen.localCurvPenalty
-        + params.cd3DegVarCoef * pen.localSolidAngleCurvPenalty;
+        + params.hingeDegreeVarianceCoef * pen.localCurvPenalty
+        + params.coDim3DegreeVarianceCoef * pen.localSolidAngleCurvPenalty;
 }
 
-void writeColumnReport(M, S, T, P)(M manifold, ulong reportNumber, ulong dtElapsed, S startTime, T timer, ulong[] bistellarTries,
+void writeCSVreport(M, S, T, P)(M manifold, ulong reportNumber, S startTime, T timer, ulong[] bistellarTries,
     ulong[] bistellarAccepts, ulong[] hingeTries, ulong[] hingeAccepts, P params)
 {
-    auto file = File(params.saveFilePrefix ~ ".dat", "a");
+    auto file = File(params.savedFilesPrefix ~ ".dat", "a");
     auto dim = manifold.dimension;
 
     string[] columnLabels;
@@ -393,9 +353,9 @@ void writeColumnReport(M, S, T, P)(M manifold, ulong reportNumber, ulong dtElaps
         values ~= manifold.degreeVariance(d).to!string;
     }
 
-    auto maxDeg2 = 2 + params.maxCoDim2Bins;
+    auto maxDeg2 = 2 + params.coDim2DegreeHistogramBins;
     auto hist2 = manifold.degreeHistogram(dim - 2);
-    foreach(deg; 3 .. 3 + params.maxCoDim2Bins)
+    foreach(deg; 3 .. 3 + params.coDim2DegreeHistogramBins)
     {
         columnLabels ~= "codim2_simps_of_deg_%s".format(deg);
         if (deg-1 < hist2.length)
@@ -411,9 +371,9 @@ void writeColumnReport(M, S, T, P)(M manifold, ulong reportNumber, ulong dtElaps
     columnLabels ~= "codim2_deg_tail";
     values ~= tail2.to!string;
 
-    auto maxDeg3 = 2 + 2 * params.maxCoDim3Bins;
+    auto maxDeg3 = 2 + 2 * params.coDim3DegreeHistogramBins;
     auto hist3 = manifold.degreeHistogram(dim - 3);
-    foreach(deg; iota(4, 4 + 2*params.maxCoDim3Bins, 2))
+    foreach(deg; iota(4, 4 + 2*params.coDim3DegreeHistogramBins, 2))
     {
         columnLabels ~= "codim3_simps_of_deg_%s".format(deg);
         if (deg - 1 < hist3.length)
@@ -444,7 +404,7 @@ void writeTimingAndTargetsReport(M, S, T, W, P)(W sink, M mfd, ulong total_moves
     typeof(timePerMove) timePerSweep;
     if (acceptFrac > 0.0)
     {
-        timePerSweep = timePerMove * (mfd.fVector[params.dim] / acceptFrac).to!ulong;
+        timePerSweep = timePerMove * (mfd.fVector[dim] / acceptFrac).to!ulong;
     }
 
     sink.writeln("-".repeat(80).joiner);
@@ -509,18 +469,18 @@ void writeObjectiveReport(int dim, Vertex, W, P)(W sink, const ref Manifold!(dim
 
     static if (dim > 2)
     {
-        if (params.hingeDegreeVarCoef > 0.0)
+        if (params.hingeDegreeVarianceCoef > 0.0)
         {
             auto lcp = mfd.penalties(params).localCurvPenalty;
             sink.writefln("hinge deg var  : %.6e  *  %.4f  =  %.6e",
-                lcp, params.hingeDegreeVarCoef, params.hingeDegreeVarCoef * lcp);
+                lcp, params.hingeDegreeVarianceCoef, params.hingeDegreeVarianceCoef * lcp);
         }
 
-        if (params.cd3DegVarCoef > 0.0)
+        if (params.coDim3DegreeVarianceCoef > 0.0)
         {
             auto lsacp = mfd.penalties(params).localSolidAngleCurvPenalty;
             sink.writefln("codim-3 deg var: %.6e  *  %.4f  =  %.6e",
-                lsacp, params.cd3DegVarCoef, params.cd3DegVarCoef * lsacp);
+                lsacp, params.coDim3DegreeVarianceCoef, params.coDim3DegreeVarianceCoef * lsacp);
         }
     }
     sink.writefln("total penalty  :                             %.6e",
@@ -531,12 +491,12 @@ void writeMoveReport(S, T, W, P)(W sink, S bistellarTries, S bistellarAccepts, T
 {
     sink.writeln("-".repeat(80).joiner);
     sink.writeln("Bistellar Moves      # Accepted          # Tried    %    ");
-    foreach (i; 0 .. params.dim + 1)
+    foreach (i; 0 .. dim + 1)
     {
         auto accepts = "%10,d".format(bistellarAccepts[i]);
         auto tries = "%10,d".format(bistellarTries[i]);
         sink.writefln("    %2s → %2-s    : %14s / %14s (%5.3f)",
-            i + 1, params.dim + 1 - i, accepts, tries,
+            i + 1, dim + 1 - i, accepts, tries,
             double(bistellarAccepts[i]) / bistellarTries[i]);
     }
     if (params.useHingeMoves)
@@ -547,7 +507,7 @@ void writeMoveReport(S, T, W, P)(W sink, S bistellarTries, S bistellarAccepts, T
             auto accepts = "%10,d".format(hingeAccepts[i]);
             auto tries = "%10,d".format(hingeTries[i]);
             sink.writefln("    %2s → %2-s    : %14s / %14s (%5.3f)", i + 4,
-                (i + 2) * (params.dim - 1), accepts, tries,
+                (i + 2) * (dim - 1), accepts, tries,
                 double(hingeAccepts[i]) / hingeTries[i]);
         }
     }
@@ -563,8 +523,8 @@ void writeMoveReport(S, T, W, P)(W sink, S bistellarTries, S bistellarAccepts, T
 void writeHistogramReport(int dim, Vertex, W, P)(W sink, const ref Manifold!(dim, Vertex) mfd, P params)
 {
     sink.writeln("-".repeat(80).joiner);
-    auto maxDeg2 = 2 + params.maxCoDim2Bins;
-    auto maxDeg3 = 2 + 2 * params.maxCoDim3Bins;
+    auto maxDeg2 = 2 + params.coDim2DegreeHistogramBins;
+    auto maxDeg3 = 2 + 2 * params.coDim3DegreeHistogramBins;
 
     auto hist2 = mfd.degreeHistogram(mfd.dimension - 2);
     auto tail2 = (hist2.length >= maxDeg2) ? hist2[maxDeg2 .. $].sum : 0;
@@ -586,61 +546,61 @@ void writeHistogramReport(int dim, Vertex, W, P)(W sink, const ref Manifold!(dim
         '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'
     ];
 
-    foreach (bin; iota(0, params.maxCoDim2Bins))
+    foreach (bin; iota(0, params.coDim2DegreeHistogramBins))
     {
         sink.writef("%2s ", bin + 3);
         if (bin + 2 < normedHist2.length)
         {
-            auto nEighths = (params.maxBar2 * normedHist2[bin + 2] * 8.0).to!int;
+            auto nEighths = (params.coDim2DegreeHistogramBars * normedHist2[bin + 2] * 8.0).to!int;
             auto bar = bars.back.repeat(nEighths / 8).array;
             if (nEighths % 8 > 0)
             {
                 bar ~= bars[nEighths % 8];
             }
-            sink.writef("%-*s", params.maxBar2, bar);
+            sink.writef("%-*s", params.coDim2DegreeHistogramBars, bar);
         }
         sink.writeln;
     }
 
     auto tailFreq2 = real(tail2) / maxDegBin2;    
-    auto nEighths2 = (params.maxBar2 * tailFreq2 * 8.0).to!int;
+    auto nEighths2 = (params.coDim2DegreeHistogramBars * tailFreq2 * 8.0).to!int;
     auto bar2 = bars.back.repeat(nEighths2 / 8).array;
     if (nEighths2 % 8 > 0)
     {
         bar2 ~= bars[nEighths2 % 8];
     }
-    sink.writefln(" > %-*s", params.maxBar2, bar2);
+    sink.writefln(" > %-*s", params.coDim2DegreeHistogramBars, bar2);
     
 
     static if (dim > 2)
     {
         sink.writeln("-".repeat(80).joiner);
         sink.writeln(' '.repeat(27), "Codimension-3 Degree Histogram");
-        foreach (bin; iota(0, params.maxCoDim3Bins))
+        foreach (bin; iota(0, params.coDim3DegreeHistogramBins))
         {
             sink.writef("%2s ", 4 + bin * 2);
             if ((3 + bin * 2) < normedHist3.length)
             {
-                auto nEighths = (params.maxBar3 * normedHist3[3 + bin * 2] * 8.0).to!int;
+                auto nEighths = (params.coDim3DegreeHistogramBars * normedHist3[3 + bin * 2] * 8.0).to!int;
                 auto bar = bars.back.repeat(nEighths / 8).array;
                 if (nEighths % 8 > 0)
                 {
                     bar ~= bars[nEighths % 8];
                 }
-                sink.writef("%-*s", params.maxBar3, bar);
+                sink.writef("%-*s", params.coDim3DegreeHistogramBars, bar);
             }
             sink.writeln;
         }
 
         auto tailFreq3 = real(tail3) / maxDegBin3;
         sink.write(" > ");
-        auto nEighths3 = (params.maxBar3 * tailFreq3 * 8.0).to!int;
+        auto nEighths3 = (params.coDim3DegreeHistogramBars * tailFreq3 * 8.0).to!int;
         auto bar3 = bars.back.repeat(nEighths3 / 8).array;
         if (nEighths3 % 8 > 0)
         {
             bar3 ~= bars[nEighths3 % 8];
         }
-        sink.writefln("%-*s", params.maxBar3, bar3);
+        sink.writefln("%-*s", params.coDim3DegreeHistogramBars, bar3);
     }
 }
 
@@ -668,7 +628,7 @@ auto chooseRandomMove(int dim, Vertex, P)(Manifold!(dim, Vertex) manifold, Verte
         // to be a bistellar move or hinge move
         if ((parameters.useHingeMoves) && (centerDim == dim - 2))
         {
-            if (centerDeg > parameters.maxHingeMoveDeg)
+            if (centerDeg > maxHingeMoveDeg)
             {
                 continue;
             }
@@ -811,20 +771,13 @@ void decrementMoveCounts(int dim, Vertex)(
         });
 }
 
-void saveManifold(M, S, T, P)(M manifold, bool doneSampling, ulong sampleNumber, ulong dtElapsed,
+void saveManifold(M, S, T, P)(M manifold, ulong sampleNumber,
                 S startTime, T timer, ulong[] bistellarTries, ulong[] bistellarAccepts,
-                ulong[] hingeTries, ulong[] hingeAccepts, P parameters, )
+                ulong[] hingeTries, ulong[] hingeAccepts, P parameters)
 {
     string prefix;
-    if (doneSampling)
-    {
-        prefix = parameters.saveFilePrefix ~ "_final";
-    }
-    else
-    {
-        prefix = parameters.saveFilePrefix ~ "_save"
-            ~ sampleNumber.to!string;
-    }
+    prefix = parameters.savedFilesPrefix ~ "_sample_"
+        ~ sampleNumber.to!string;
 
     auto savedMfdFileName = prefix ~ ".mfd";
     auto graphFileName = prefix ~ ".edge_graph";
@@ -833,7 +786,7 @@ void saveManifold(M, S, T, P)(M manifold, bool doneSampling, ulong sampleNumber,
     auto saveFile = File(savedMfdFileName, "a");
     saveFile.writeln;
 
-    saveFile.writeReports(manifold, dtElapsed, startTime, timer,
+    saveFile.writeReports(manifold, startTime, timer,
         bistellarTries[], bistellarAccepts[], hingeTries[], hingeAccepts[], parameters);
 
     // saveFile.writeln("initial manifold file: " ~ )
