@@ -1459,8 +1459,6 @@ unittest
         [[0,0,0,5], [0,0,10], [0,10], [5]]));
 }
 
-
-
 void saveEdgeGraphTo(int dimension, Vertex = int)(
     const ref Manifold!(dimension, Vertex) mfd,
     string fileName)
@@ -1471,6 +1469,53 @@ void saveEdgeGraphTo(int dimension, Vertex = int)(
         saveFile.writeln(edge.front, " ", edge.back);
     }
 }
+
+
+void saveDualGraphTo(int dimension, Vertex = int)(
+    const ref Manifold!(dimension, Vertex) mfd,
+    string fileName)
+{
+    size_t[Vertex[]] facetIndex;
+    foreach(index, facet; mfd.facets.enumerate)
+    {
+        facetIndex[facet] = index;
+    }
+
+    size_t[][] edges;
+    foreach(index, facet; mfd.facets.enumerate)
+    {
+        foreach(ridge; facet.subsetsOfSize(dimension))
+        {
+            auto linkVertices = mfd.ridgeLinks[mfd.toRidge(ridge)];
+            Vertex[] oppositeFacet;
+            if (facet.canFind(linkVertices.front))
+            {
+                oppositeFacet = chain(ridge, linkVertices.back.only).array.dup.sort.array;
+            }
+            else
+            {
+                oppositeFacet = chain(ridge, linkVertices.front.only).array.dup.sort.array;
+            }
+
+            auto oppositeIndx = facetIndex[oppositeFacet];
+
+            // To avoid duplicate edges, only write edge if second vertex
+            // corresponds to facet further down the facet list
+            if (oppositeIndx > index)
+            {
+                edges ~= [index, oppositeIndx];
+            }
+        }
+    }
+
+    auto saveFile = File(fileName, "w"); // Open in write-only mode
+    foreach(edge; edges)
+    {
+        saveFile.writeln(edge.front, " ", edge.back);
+    }
+}
+/// TO DO: Unittests for saveDualGraph
+
 
 @Name("value semantics") pure /* @safe */ unittest
 {
