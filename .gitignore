@@ -42,4 +42,5 @@ ut.d
 *.exe
 
 #jupyter notebook checkpoints
-*checkpoints.ipynb
+*checkpoints
+*checkpoint.ipynb
