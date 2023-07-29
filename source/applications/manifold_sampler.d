@@ -30,34 +30,32 @@ int main(string[] args)
         return 0; // exit with return code zero (success)
     }
 
-    StopWatch timer;
-    timer.start;
-
     static immutable parametersUsed = [
-            ["bool", "disableGC"],
-            ["bool", "useHingeMoves"],
-            ["bool", "checkForProblems"],
-            ["bool", "saveEdgeGraph"],
-            ["bool", "saveDualGraph"],
-            ["int", "numFacetsTarget"],
-            ["int", "movesTriedPerProblemCheck"],
-            ["int", "movesTriedPerStdoutReport"],
-            ["int", "movesTriedPerGCcollect"],
-            ["int", "coDim2DegreeHistogramBins"],
-            ["int", "coDim3DegreeHistogramBins"],
-            ["int", "coDim2DegreeHistogramBars"],
-            ["int", "coDim3DegreeHistogramBars"],
-            ["real", "sweepsPerSample"],
-            ["real", "sweepsPerCSVline"],
-            ["real", "hingeDegreeTarget"],
-            ["real", "numFacetsCoef"],
-            ["real", "numHingesCoef"],
-            ["real", "hingeDegreeVarianceCoef"],
-            ["real", "coDim3DegreeVarianceCoef"],
-            ["real", "maxSweeps"],
-            ["string", "savedFilesPrefix"],
-            ["string", "initialManifoldFile"]
-        ];
+        ["bool", "disableGC"],
+        ["bool", "useHingeMoves"],
+        ["bool", "checkForProblems"],
+        ["bool", "saveEdgeGraph"],
+        ["bool", "saveDualGraph"],
+        ["int", "numFacetsTarget"],
+        ["int", "movesTriedPerProblemCheck"],
+        ["int", "movesTriedPerStdoutReport"],
+        ["int", "movesTriedPerGCcollect"],
+        ["int", "coDim2DegreeHistogramBins"],
+        ["int", "coDim3DegreeHistogramBins"],
+        ["int", "coDim2DegreeHistogramBars"],
+        ["int", "coDim3DegreeHistogramBars"],
+        ["real", "sweepsPerSample"],
+        ["real", "sweepsPerCSVline"],
+        ["real", "hingeDegreeTarget"],
+        ["real", "numFacetsCoef"],
+        ["real", "numHingesCoef"],
+        ["real", "hingeDegreeVarianceCoef"],
+        ["real", "coDim3DegreeVarianceCoef"],
+        ["real", "maxSweeps"],
+        ["string", "savedFilesPrefix"],
+        ["string", "initialManifoldFile"]
+    ];
+
     auto params = parseParameterFile!parametersUsed(paramFileName);
     Manifold!dim mfd = loadManifold!dim(params.initialManifoldFile);
 
@@ -82,16 +80,19 @@ int main(string[] args)
     
     ulong sampleNumber = 0;
     ulong columnReportNumber = 0;
-    auto startTime = Clock.currTime;
-    auto currentObjective = mfd.objective(params);
-    timer.reset;
 
     if (params.disableGC)
     {
         GC.disable;
     }
 
+    auto startTime = Clock.currTime;
+    StopWatch timer;
+    timer.start;    
+    
+    auto currentObjective = mfd.objective(params);
     auto doneSampling = false;
+
     while (!doneSampling)
     {
         ulong numMovesTried = bistellarTries[].sum + hingeTries[].sum;
@@ -150,7 +151,7 @@ int main(string[] args)
         //----------------------- SAVE CURRENT MANIFOLD ----------------------
         if ((numMovesAccepted == sampleThreshold) || doneSampling)
         {
-            mfd.saveManifold(sampleNumber, startTime, timer,
+            mfd.saveSample(sampleNumber, startTime, timer,
                 bistellarTries[], bistellarAccepts[], hingeTries[], hingeAccepts[], params);
             ++sampleNumber;
             sampleThreshold += params.numFacetsTarget * params.sweepsPerSample;
@@ -771,7 +772,7 @@ void decrementMoveCounts(int dim, Vertex)(
         });
 }
 
-void saveManifold(M, S, T, P)(M manifold, ulong sampleNumber,
+void saveSample(M, S, T, P)(M manifold, ulong sampleNumber,
                 S startTime, T timer, ulong[] bistellarTries, ulong[] bistellarAccepts,
                 ulong[] hingeTries, ulong[] hingeAccepts, P parameters)
 {
