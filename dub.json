@@ -6,18 +6,18 @@
 		{
 			"name": "manifold_sampler",
 			"excludedSourceFiles": [
-				"source/applications/app_2.d"
+				"source/applications/surface_cross_S1.d"
 			],
 			"targetName": "manifold_sampler.exe",
 			"targetType": "executable",
 			"dflags": ["-J=source/applications"]
 		},
 		{
-			"name": "application_2",
+			"name": "surface_cross_S1",
 			"excludedSourceFiles": [
 				"source/applications/manifold_sampler.d"
 			],
-			"targetName": "app_2.exe",
+			"targetName": "surface_cross_S1.exe",
 			"targetType": "executable",
 			"dflags": ["-J=source/applications"]
 		},
