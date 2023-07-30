@@ -11,7 +11,7 @@ import algorithms, manifold, manifold_examples, manifold_moves, polygons,
 import unit_threaded;
 
 enum dim = 3;
-enum maxHingeMoveDeg = 7;
+enum maxHingeMoveDeg = 4;
 
 static assert(maxHingeMoveDeg >= 4, "Hinge move degrees must be at least 4");
 
@@ -778,15 +778,21 @@ void saveSample(M, S, T, P)(M manifold, ulong sampleNumber,
 {
     string prefix = parameters.savedFilesPrefix ~ "_sample_"
         ~ sampleNumber.to!string;
-
+    
     manifold.saveTo(prefix ~ ".mfd");
-
-    auto saveFile = File(prefix ~ ".mfd", "a");
+        
+    auto saveFile = File(prefix ~ ".mfd", "a");       
     saveFile.writeln;
     saveFile.writeReports(manifold, startTime, timer,
         bistellarTries[], bistellarAccepts[], hingeTries[], hingeAccepts[], parameters);
-
     saveFile.writeln(toPrettyString(parameters));
+
+    // To make sure we know history of a sample, we copy the
+    // ending info from the initial manifold file 
+    File(parameters.initialManifoldFile, "r")
+        .byLineCopy
+        .find!(line => line.startsWith("---"))
+        .each!(line => saveFile.writeln(line));
 
     if (parameters.saveEdgeGraph)
     {
