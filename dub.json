@@ -21,7 +21,7 @@
 				"source/applications/surface_cross_S1.d"
 			],
 			"targetName": "dual_graph.exe",
-			"targetType": "executable",
+			"targetType": "executable"
 		},
 		{
 			"name": "manifold_sampler",
