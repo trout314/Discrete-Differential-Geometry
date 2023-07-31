@@ -25,9 +25,10 @@ int main(string[] args)
     auto simpComp = loadSimplicialComplex(simpCompFilename);
     if (edgeGraphFilename.empty)
     {
-        edgeGraphFilename = simpCompFilename.split(".")[0] ~ ".edge_graph";
+        edgeGraphFilename = simpCompFilename.split(".")[0 .. $-1].join(".") ~ ".edge_graph";
     }
 
+    // writeln(simpCompFilename.split(".")[0..$-1].join(".") ~ ".edge_graph");
     simpComp.saveEdgeGraphTo(edgeGraphFilename);
     auto edgeGraphFile = File(edgeGraphFilename, "a");
     edgeGraphFile.writeln(
