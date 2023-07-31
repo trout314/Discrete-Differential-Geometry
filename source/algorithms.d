@@ -439,6 +439,23 @@ bool isConnected(Vertex)(const auto ref SimplicialComplex!Vertex sc)
     assert(emptyComplex.isConnected);
 }
 
+
+/*******************************************************************************
+Decide if a simplicial complex is pure
+*/
+bool isPure(Vertex, int maxDim)(const auto ref SimplicialComplex!(Vertex, maxDim) sc)
+{
+    if (sc.facets.empty)
+    {
+        return true;
+    }
+
+    auto firstFacetDim = sc.facets.front.walkLength.to!int - 1;
+
+    return sc.facets(firstFacetDim).walkLength == sc.numFacets;
+}
+/// TO DO: unittest for isPure
+
 /*******************************************************************************
 Decide if a simplicial complex is pure of dimension `d`
 */
