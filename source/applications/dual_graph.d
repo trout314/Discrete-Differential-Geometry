@@ -1,15 +1,21 @@
 module applications.dual_graph;
 
-import std.getopt;
+import std.datetime, std.format, std.getopt, std.range, std.stdio;
 
-import simplicial_complex, utility;
+import manifold, utility;
 
 version (unittest) {} else {
 int main(string[] args)
 {
-    string surfaceFileName;
-    auto helpInformation = getopt(args, std.getopt.config.required,
-        "simplicialComplex|s", &surfaceFileName);
+    enum maxDim = 8;
+
+    string manifoldFilename;
+    string dualGraphFilename;
+    int dim;
+    auto helpInformation = getopt(args,
+        std.getopt.config.required, "manifold|m", &manifoldFilename,
+        std.getopt.config.required, "dimension|d", &dim,
+        "dualGraph|g", &dualGraphFilename);
 
     if (helpInformation.helpWanted)
     {
@@ -19,17 +25,25 @@ int main(string[] args)
         return 0; // exit with return code zero (success)
     }
 
-    auto surface = loadSimplicialComplex(surfaceFileName);
-
-    foreach(vertex; surface.simplices(0))
+    if (dualGraphFilename.empty)
     {
-        dump!vertex;
+        dualGraphFilename = manifoldFilename.split(".")[0] ~ ".dual_graph";
     }
 
+    static foreach(d; 2 .. maxDim)
+    {{
+        if (dim == d)
+        {
+            auto mfd = loadManifold!d(manifoldFilename);
+            mfd.saveDualGraphTo(dualGraphFilename);
+        }
+    }}
 
+    assert((dim <= maxDim) && (dim >= 2), "unsupported dimension for manifold");
 
-
-    dump!surface;
+    auto dualGraphFile = File(dualGraphFilename, "a");
+    dualGraphFile.writeln(
+        "# Dual graph created from file: %s on %s".format(manifoldFilename, Clock.currTime));
 
     return 0;
 }}

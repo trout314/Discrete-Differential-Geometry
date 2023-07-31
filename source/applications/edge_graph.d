@@ -1,15 +1,18 @@
 module applications.edge_graph;
 
-import std.getopt;
+import std.datetime, std.format, std.getopt, std.range, std.stdio;
 
 import simplicial_complex, utility;
 
 version (unittest) {} else {
 int main(string[] args)
 {
-    string surfaceFileName;
-    auto helpInformation = getopt(args, std.getopt.config.required,
-        "simplicialComplex|s", &surfaceFileName);
+    string simpCompFilename;
+    string edgeGraphFilename;
+    auto helpInformation = getopt(
+        args,
+        std.getopt.config.required, "simplicialComplex|s", &simpCompFilename,
+        "edgeGraph|e", &edgeGraphFilename);
 
     if (helpInformation.helpWanted)
     {
@@ -19,17 +22,16 @@ int main(string[] args)
         return 0; // exit with return code zero (success)
     }
 
-    auto surface = loadSimplicialComplex(surfaceFileName);
-
-    foreach(vertex; surface.simplices(0))
+    auto simpComp = loadSimplicialComplex(simpCompFilename);
+    if (edgeGraphFilename.empty)
     {
-        dump!vertex;
+        edgeGraphFilename = simpCompFilename.split(".")[0] ~ ".edge_graph";
     }
 
-
-
-
-    dump!surface;
+    simpComp.saveEdgeGraphTo(edgeGraphFilename);
+    auto edgeGraphFile = File(edgeGraphFilename, "a");
+    edgeGraphFile.writeln(
+        "# Edge graph created from file: %s on %s".format(simpCompFilename, Clock.currTime));
 
     return 0;
 }}
