@@ -1002,3 +1002,12 @@ void saveTo(Vertex)(SimplicialComplex!Vertex sc, string fileName)
     auto loaded = loadSimplicialComplex(fileName);
     assert(loaded == sc);
 }
+
+void saveEdgeGraphTo(Vertex)(SimplicialComplex!Vertex sc, string fileName)
+{
+    auto saveFile = File(fileName, "w"); // Open in write-only mode
+    foreach (edge; sc.simplices(1))
+    {
+        saveFile.writeln(edge.front, " ", edge.back);
+    }
+}
