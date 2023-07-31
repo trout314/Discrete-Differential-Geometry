@@ -4,29 +4,50 @@
 	],
 	"configurations": [
 		{
+			"name": "edge_graph",
+			"excludedSourceFiles": [
+				"source/applications/dual_graph.d",
+				"source/applications/manifold_sampler.d",
+				"source/applications/surface_cross_S1.d"
+			],
+			"targetName": "edge_graph.exe",
+			"targetType": "executable"
+		},
+		{
+			"name": "dual_graph",
+			"excludedSourceFiles": [
+				"source/applications/edge_graph.d",				
+				"source/applications/manifold_sampler.d",
+				"source/applications/surface_cross_S1.d"
+			],
+			"targetName": "dual_graph.exe",
+			"targetType": "executable",
+		},
+		{
 			"name": "manifold_sampler",
 			"excludedSourceFiles": [
+				"source/applications/dual_graph.d",
+				"source/applications/edge_graph.d",
 				"source/applications/surface_cross_S1.d"
 			],
 			"targetName": "manifold_sampler.exe",
-			"targetType": "executable",
-			"dflags": ["-J=source/applications"]
+			"targetType": "executable"
 		},
 		{
 			"name": "surface_cross_S1",
 			"excludedSourceFiles": [
+				"source/applications/dual_graph.d",
+				"source/applications/edge_graph.d",
 				"source/applications/manifold_sampler.d"
 			],
 			"targetName": "surface_cross_S1.exe",
-			"targetType": "executable",
-			"dflags": ["-J=source/applications"]
+			"targetType": "executable"
 		},
 		{
             "name": "unittest",
             "targetType": "executable",
             "preBuildCommands": ["$DUB run --compiler=$$DC unit-threaded -c gen_ut_main -- -f bin/ut.d -d $DUB"],
             "mainSourceFile": "bin/ut.d",
-			"dflags": ["-J=source/applications"],
             "dependencies": {
                 "unit-threaded": "*"
 			}
