@@ -1463,7 +1463,7 @@ void saveEdgeGraphTo(int dimension, Vertex = int)(
     const ref Manifold!(dimension, Vertex) mfd,
     string fileName)
 {
-    mfd.asSimplicialComplex.saveEdgeGraph(fileName);
+    mfd.saveEdgeGraphTo(fileName);
 }
 
 
