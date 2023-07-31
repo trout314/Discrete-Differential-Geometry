@@ -27,7 +27,7 @@ int main(string[] args)
 
     if (dualGraphFilename.empty)
     {
-        dualGraphFilename = manifoldFilename.split(".")[0] ~ ".dual_graph";
+        dualGraphFilename = manifoldFilename.split(".")[0 .. $-1].join(".") ~ ".dual_graph";
     }
 
     static foreach(d; 2 .. maxDim)
