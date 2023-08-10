@@ -986,7 +986,7 @@ SimplicialComplex!Vertex loadSimplicialComplex(Vertex = int)(string fileName)
 /******************************************************************************
 * Saves a simplicial complex to a file specified by fileName.
 */
-void saveTo(Vertex)(SimplicialComplex!Vertex sc, string fileName)
+void saveTo(Vertex)(const SimplicialComplex!Vertex sc, string fileName)
 {
     auto saveFile = File(fileName, "w"); // Open in write-only mode
     saveFile.writeln("# created ", Clock.currTime.to!DateTime);
@@ -1003,7 +1003,7 @@ void saveTo(Vertex)(SimplicialComplex!Vertex sc, string fileName)
     assert(loaded == sc);
 }
 
-void saveEdgeGraphTo(Vertex)(SimplicialComplex!Vertex sc, string fileName)
+void saveEdgeGraphTo(Vertex)(const SimplicialComplex!Vertex sc, string fileName)
 {
     auto saveFile = File(fileName, "w"); // Open in write-only mode
     foreach (edge; sc.simplices(1))

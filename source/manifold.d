@@ -810,17 +810,6 @@ Manifold!(dim, Vertex) loadManifold(int dim, Vertex = int)(string fileName)
         "data/manifold_sampler_unittest_bad_load.dat"));
 }
 
-/******************************************************************************
-Saves a manifold to a file specified by fileName.
-*/
-void saveTo(int dimension, Vertex = int)(
-    const ref Manifold!(dimension, Vertex) mfd,
-    string fileName)
-{
-    auto saveFile = File(fileName, "w"); // Open in write-only mode
-    saveFile.write(mfd.asSimplicialComplex);
-}
-
 ///
 @Name("saveTo") @system unittest
 {
@@ -1457,13 +1446,6 @@ unittest
     auto m = standardSphere!3;
     assert(4.iota.map!(k => m.degreeHistogram(k)).equal!equal(
         [[0,0,0,5], [0,0,10], [0,10], [5]]));
-}
-
-void saveEdgeGraphTo(int dimension, Vertex = int)(
-    const ref Manifold!(dimension, Vertex) mfd,
-    string fileName)
-{
-    mfd.saveEdgeGraphTo(fileName);
 }
 
 
