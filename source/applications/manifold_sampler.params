@@ -1,8 +1,12 @@
 initialManifoldFile = standard_triangulations/dim_3_sphere.mfd
-savedFilesPrefix = ../Data/S3_V500
 
-maxSweeps = 10.0
+sampleFilesPrefix = ../Data/S3_V500_test
+startingSampleNumber = 5
+
+maxSweeps = 5.0
 sweepsPerSample = 1.0
+
+writeCSVdataFile = true
 sweepsPerCSVline = 0.5
 
 numFacetsTarget = 500
@@ -23,6 +27,8 @@ movesTriedPerProblemCheck = 10
 useHingeMoves = true
 disableGC = true
 movesTriedPerGCcollect = 1000
+
+doStdoutReport = false
 movesTriedPerStdoutReport = 1000
 
 # These are formatting options

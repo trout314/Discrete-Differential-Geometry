@@ -36,6 +36,9 @@ int main(string[] args)
         ["bool", "checkForProblems"],
         ["bool", "saveEdgeGraph"],
         ["bool", "saveDualGraph"],
+        ["bool", "doStdoutReport"],
+        ["bool", "writeCSVdataFile"],
+        ["int", "startingSampleNumber"],
         ["int", "numFacetsTarget"],
         ["int", "movesTriedPerProblemCheck"],
         ["int", "movesTriedPerStdoutReport"],
@@ -52,7 +55,7 @@ int main(string[] args)
         ["real", "hingeDegreeVarianceCoef"],
         ["real", "coDim3DegreeVarianceCoef"],
         ["real", "maxSweeps"],
-        ["string", "savedFilesPrefix"],
+        ["string", "sampleFilesPrefix"],
         ["string", "initialManifoldFile"]
     ];
 
@@ -78,7 +81,7 @@ int main(string[] args)
     auto sampleThreshold = params.numFacetsTarget * params.sweepsPerSample;
     auto csvLineThreshold = params.numFacetsTarget * params.sweepsPerCSVline;
     
-    ulong sampleNumber = 0;
+    ulong sampleNumber = params.startingSampleNumber;
     ulong columnReportNumber = 0;
 
     if (params.disableGC)
@@ -131,7 +134,9 @@ int main(string[] args)
         }
 
         //--------------------------- MAKE REPORT ----------------------------
-        if ((numMovesTried % params.movesTriedPerStdoutReport == 0) || doneSampling)
+
+        if (params.doStdoutReport && 
+            ((numMovesTried % params.movesTriedPerStdoutReport == 0) || doneSampling))
         {
             stdout.write("\033c");  // Clear the screen
             stdout.writeReports(mfd, startTime, timer, bistellarTries[],
@@ -297,7 +302,7 @@ real objective(int dim, Vertex, P)(const ref Manifold!(dim, Vertex) mfd, P param
 void writeCSVreport(M, S, T, P)(M manifold, ulong reportNumber, S startTime, T timer, ulong[] bistellarTries,
     ulong[] bistellarAccepts, ulong[] hingeTries, ulong[] hingeAccepts, P params)
 {
-    auto file = File(params.savedFilesPrefix ~ ".dat", "a");
+    auto file = File(params.sampleFilesPrefix ~ ".dat", "a");
     auto dim = manifold.dimension;
 
     string[] columnLabels;
@@ -776,7 +781,7 @@ void saveSample(M, S, T, P)(M manifold, ulong sampleNumber,
                 S startTime, T timer, ulong[] bistellarTries, ulong[] bistellarAccepts,
                 ulong[] hingeTries, ulong[] hingeAccepts, P parameters)
 {
-    string prefix = parameters.savedFilesPrefix ~ "_sample_"
+    string prefix = parameters.sampleFilesPrefix ~ "_sample_"
         ~ sampleNumber.to!string;
     
     manifold.saveTo(prefix ~ ".mfd");
