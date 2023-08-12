@@ -37,7 +37,7 @@ ut.d
 
 #data files
 *.dat
-*.mfd
+./*.mfd
 *.edge_graph
 *.exe
 
