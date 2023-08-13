@@ -431,8 +431,8 @@ void writeTimingAndTargetsReport(M, S, T, W, P)(W sink, M mfd, ulong total_moves
     }
     sink.writeln;
 
-    sink.writefln("Δt/move        : %23-s |", timePerMove.getFirstPart);
-    sink.writefln("Δt/sweep       : %23-s |",timePerSweep.getFirstPart);
+    sink.writefln("Δt/move        : %23-s |", timePerMove.getFirstTwoParts);
+    sink.writefln("Δt/sweep       : %23-s |",timePerSweep.getFirstTwoParts);
     sink.writefln("move accept %%  : %23.3-f |", acceptFrac);
 }
 
@@ -610,10 +610,11 @@ void writeHistogramReport(int dim, Vertex, W, P)(W sink, const ref Manifold!(dim
     }
 }
 
-auto getFirstPart(T)(T time)
+auto getFirstTwoParts(T)(T time)
 {
-    return time.to!string.findSplit(",")[0].findSplit("and")[0]
-        .replace("minutes", "mins");
+    return time.to!string.split(",").take(2).join(",").findSplit("and")[0]
+        .replace("minute", "min");
+
 }
 
 auto chooseRandomMove(int dim, Vertex, P)(Manifold!(dim, Vertex) manifold, Vertex newVertex, P parameters)
