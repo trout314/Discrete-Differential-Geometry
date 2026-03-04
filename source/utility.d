@@ -584,6 +584,27 @@ public:
 }
 
 ///
+@Name("SmallMap.dup") pure @safe unittest
+{
+    SmallMap!(int, string) sm;
+    sm.insert(1, "hello");
+    sm.insert(2, "goodbye");
+
+    auto sm2 = sm.dup;
+    assert(sm2.byKey.equal([1, 2]));
+    assert(sm2.byValue.equal(["hello", "goodbye"]));
+
+    // dup produces a true independent copy: mutations don't affect the original
+    sm2[1] = "changed";
+    assert(sm2[1] == "changed");
+    assert(sm[1] == "hello");
+
+    sm2.insert(3, "new");
+    assert(sm2.byKey.equal([1, 2, 3]));
+    assert(sm.byKey.equal([1, 2]));
+}
+
+///
 @Name("SmallMap.keys (pure nothrow @nogc @safe)") pure @safe unittest
 {
     SmallMap!(int, string) sm;
