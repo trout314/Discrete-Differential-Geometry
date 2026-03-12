@@ -76,8 +76,18 @@ private:
 
     version (TrackValidMoves)
     {
-        size_t _validMoveCount;
         Facet[][Vertex] _vertexFacets;
+
+        // Per-dimension valid move arrays (swap-with-last) and reverse index maps
+        static foreach (_d_vm; 0 .. dimension_)
+        {
+            mixin("Vertex_[" ~ to!string(_d_vm + 1) ~ "][] _validMoves" ~ to!string(_d_vm) ~ ";");
+            mixin("HashMap!(Vertex_[" ~ to!string(_d_vm + 1) ~ "], size_t) _validMoveIdx" ~ to!string(_d_vm) ~ ";");
+        }
+
+        // Facet array for O(1) random access (every facet is a valid stellar subdivision)
+        Facet[] _facetArray;
+        HashMap!(Facet, size_t) _facetArrayIdx;
     }
 
     //--------------- Helper Functions ---------------
@@ -120,7 +130,22 @@ public:
         }
         version (TrackValidMoves)
         {
-            _validMoveCount = this.countValidBistellarMoves;
+            // _vertexFacets and _facetArray already populated by insertFacet.
+            // Build per-dimension valid move arrays.
+            static foreach (_d_init; 0 .. dimension)
+            {{
+                foreach (kv; dimMap!_d_init.byKeyValue())
+                {
+                    auto deg = extractDegree(kv.value);
+                    if (deg == dimension + 1 - _d_init)
+                    {
+                        auto key = kv.key;
+                        auto cc = localCoCenter!(_d_init, Vertex, dimension)(this, key);
+                        if (!this.contains(cc[]))
+                            this.addValidMoveToArray!_d_init(key);
+                    }
+                }
+            }}
         }
     }
 
@@ -135,6 +160,14 @@ public:
             foreach (k, v; _vertexFacets)
                 newVF[k] = v.dup;
             _vertexFacets = newVF;
+
+            static foreach (_d_dup; 0 .. dimension_)
+            {{
+                mixin("_validMoves" ~ to!string(_d_dup) ~ " = _validMoves" ~ to!string(_d_dup) ~ ".dup;");
+                mixin("_validMoveIdx" ~ to!string(_d_dup) ~ " = _validMoveIdx" ~ to!string(_d_dup) ~ ".dup;");
+            }}
+            _facetArray = _facetArray.dup;
+            _facetArrayIdx = _facetArrayIdx.dup;
         }
     }
 
@@ -245,10 +278,60 @@ public:
 
     version (TrackValidMoves)
     {
-        /// Returns the incrementally tracked count of valid bistellar moves.
+        /// Valid move count computed from array sizes.
         size_t validMoveCount()() const
         {
-            return _validMoveCount;
+            size_t count = _facetArray.length;
+            static foreach (_d_c; 0 .. dimension)
+                count += mixin("_validMoves" ~ to!string(_d_c)).length;
+            return count;
+        }
+
+        /// Accessor for valid move array in dimension d.
+        ref auto validMoves(int d)()
+        {
+            return mixin("_validMoves" ~ to!string(d));
+        }
+
+        ref auto validMoves(int d)() const
+        {
+            return mixin("_validMoves" ~ to!string(d));
+        }
+
+        /// Accessor for valid move reverse index in dimension d.
+        ref auto validMoveIdx(int d)()
+        {
+            return mixin("_validMoveIdx" ~ to!string(d));
+        }
+
+        ref auto validMoveIdx(int d)() const
+        {
+            return mixin("_validMoveIdx" ~ to!string(d));
+        }
+
+        /// Append a valid center to the swap-with-last array.
+        private void addValidMoveToArray(int d)(Vertex[d + 1] key)
+        {
+            assert(key !in validMoveIdx!d, "adding duplicate valid move");
+            validMoveIdx!d[key] = validMoves!d.length;
+            validMoves!d ~= key;
+        }
+
+        /// Remove a valid center via swap-with-last.
+        private void removeValidMoveFromArray(int d)(Vertex[d + 1] key)
+        {
+            auto idxPtr = key in validMoveIdx!d;
+            assert(idxPtr !is null, "removing non-existent valid move");
+            auto idx = *idxPtr;
+            auto lastIdx = validMoves!d.length - 1;
+            if (idx != lastIdx)
+            {
+                auto last = validMoves!d[lastIdx];
+                validMoves!d[idx] = last;
+                validMoveIdx!d[last] = idx;
+            }
+            validMoves!d = validMoves!d[0 .. lastIdx];
+            validMoveIdx!d.remove(key);
         }
     }
 
@@ -326,6 +409,9 @@ public:
         {
             foreach (v; facet)
                 _vertexFacets[v] ~= facetBuffer;
+
+            _facetArrayIdx[facetBuffer] = _facetArray.length;
+            _facetArray ~= facetBuffer;
         }
     }
 
@@ -405,6 +491,21 @@ public:
 
         version (TrackValidMoves)
         {
+            // Remove facet from _facetArray (swap with last)
+            auto fIdxPtr = facetBuffer in _facetArrayIdx;
+            assert(fIdxPtr !is null);
+            auto fIdx = *fIdxPtr;
+            auto fLastIdx = _facetArray.length - 1;
+            if (fIdx != fLastIdx)
+            {
+                auto fLast = _facetArray[fLastIdx];
+                _facetArray[fIdx] = fLast;
+                _facetArrayIdx[fLast] = fIdx;
+            }
+            _facetArray = _facetArray[0 .. fLastIdx];
+            _facetArrayIdx.remove(facetBuffer);
+
+            // Remove facet from per-vertex adjacency
             foreach (v; facet)
             {
                 auto arr = _vertexFacets[v];
@@ -680,28 +781,6 @@ private bool isValidNonFacetCenter(int d, Vertex, int dim)(
 }
 
 /*******************************************************************************
-Count valid bistellar centers (non-facet) that are subsets of allVerts.
-This handles "Type A" simplices — those whose degree/link is directly
-affected by a move involving allVerts.
-*/
-private size_t countTypeAValidMoves(Vertex, int dim)(
-    const ref Manifold!(dim, Vertex) mfd,
-    const(Vertex)[] allVerts)
-{
-    size_t count = 0;
-    static foreach (d; 0 .. dim)
-    {{
-        foreach (subset; allVerts.subsetsOfSize(d + 1))
-        {
-            auto key = subset.staticArray!(d + 1);
-            if (mfd.isValidNonFacetCenter!d(key))
-                count++;
-        }
-    }}
-    return count;
-}
-
-/*******************************************************************************
 Compute the coCenter of a d-simplex using the per-vertex adjacency list
 (_vertexFacets) instead of the O(n) simplicial complex link computation.
 Only valid for simplices with degree == dim+1-d.
@@ -746,19 +825,40 @@ private auto localCoCenter(int d, Vertex, int dim)(
 }
 
 /*******************************************************************************
-Count "Type B" valid moves: simplices NOT subsets of allVerts whose coCenter
-IS a subset of allVerts.
+Update valid move arrays for all affected simplices in the neighborhood of
+allVerts. When adding=true, adds newly valid moves. When adding=false,
+removes moves that are about to become invalid.
 
-Uses the per-vertex adjacency list (_vertexFacets) to enumerate only the
-local neighborhood of allVerts, making this O(local) instead of O(n).
+Type A: subsets of allVerts (degree/link changes directly).
+Type B: non-subsets of allVerts with coCenter ⊆ allVerts (coCenter
+containment may change).
 */
-private size_t countTypeBValidMoves(Vertex, int dim)(
-    const ref Manifold!(dim, Vertex) mfd,
+private void updateValidMoveArrays(bool adding, Vertex, int dim)(
+    ref Manifold!(dim, Vertex) mfd,
     const(Vertex)[] allVerts)
 {
-    alias MFacet = Vertex[dim + 1];
+    // --- Type A: subsets of allVerts ---
+    static foreach (d; 0 .. dim)
+    {{
+        foreach (subset; allVerts.subsetsOfSize(d + 1))
+        {
+            auto key = subset.staticArray!(d + 1);
+            static if (adding)
+            {
+                if (mfd.isValidNonFacetCenter!d(key))
+                    mfd.addValidMoveToArray!d(key);
+            }
+            else
+            {
+                if (key in mfd.validMoveIdx!d)
+                    mfd.removeValidMoveFromArray!d(key);
+            }
+        }
+    }}
 
-    // Collect all facets incident to any vertex in allVerts (may have dups)
+    // --- Type B: non-subsets with coCenter ⊆ allVerts ---
+    // Collect facets incident to any vertex in allVerts
+    alias MFacet = Vertex[dim + 1];
     MFacet[] incidentFacets;
     foreach (v; allVerts)
     {
@@ -768,8 +868,6 @@ private size_t countTypeBValidMoves(Vertex, int dim)(
             incidentFacets ~= f;
     }
     incidentFacets.sort();
-
-    size_t count = 0;
 
     static foreach (d; 0 .. dim)
     {{
@@ -799,45 +897,44 @@ private size_t countTypeBValidMoves(Vertex, int dim)(
             prevKey = key;
             havePrevKey = true;
 
-            // Skip Type A (subsets of allVerts)
+            // Skip Type A (already handled above)
             bool isSubset = true;
             foreach (v; key)
                 if (!allVerts.canFind(v)) { isSubset = false; break; }
             if (isSubset) continue;
 
-            // Check degree
-            auto kptr = key in mfd.dimMap!d;
-            if (kptr is null) continue;
-            auto deg = mfd.extractDegree(*kptr);
-            if (deg != targetDeg) continue;
+            static if (adding)
+            {
+                // Check full validity: degree, coCenter ⊆ allVerts, coCenter ∉ manifold
+                auto kptr = key in mfd.dimMap!d;
+                if (kptr is null) continue;
+                auto deg = mfd.extractDegree(*kptr);
+                if (deg != targetDeg) continue;
 
-            // Compute coCenter locally (O(vertex_degree), not O(n))
-            auto cc = mfd.localCoCenter!d(key);
+                auto cc = mfd.localCoCenter!d(key);
+                bool ccInAllVerts = true;
+                foreach (v; cc[])
+                    if (!allVerts.canFind(v)) { ccInAllVerts = false; break; }
+                if (!ccInAllVerts) continue;
 
-            // Check coCenter ⊆ allVerts
-            bool coCenterInAllVerts = true;
-            foreach (v; cc[])
-                if (!allVerts.canFind(v)) { coCenterInAllVerts = false; break; }
-            if (!coCenterInAllVerts) continue;
+                if (!mfd.contains(cc[]))
+                    mfd.addValidMoveToArray!d(key);
+            }
+            else
+            {
+                // Remove if in index and affected (coCenter ⊆ allVerts)
+                if (key !in mfd.validMoveIdx!d) continue;
 
-            // Valid iff coCenter not in manifold
-            if (!mfd.contains(cc[]))
-                count++;
+                auto cc = mfd.localCoCenter!d(key);
+                bool ccInAllVerts = true;
+                foreach (v; cc[])
+                    if (!allVerts.canFind(v)) { ccInAllVerts = false; break; }
+                if (!ccInAllVerts) continue;
+
+                mfd.removeValidMoveFromArray!d(key);
+            }
         }
     }}
-    return count;
-}
-
-/*******************************************************************************
-Count all valid non-facet bistellar centers in the local neighborhood of a
-move involving allVerts = center ∪ coCenter.
-Returns typeA + typeB counts.
-*/
-private size_t countLocalValidMoves(Vertex, int dim)(
-    const ref Manifold!(dim, Vertex) mfd,
-    const(Vertex)[] allVerts)
-{
-    return mfd.countTypeAValidMoves(allVerts) + mfd.countTypeBValidMoves(allVerts);
 }
 
 } // version (TrackValidMoves)
@@ -1038,9 +1135,8 @@ void doMove(Vertex, int dim)(
         auto allVerts = allVertsBuf[0 .. avLen];
         allVerts.sort();
 
-        // Count local valid moves (non-facet) + facets BEFORE the move
-        auto localBefore = manifold.countLocalValidMoves(allVerts);
-        auto facetsBefore = manifold.fVector[dim];
+        // Remove all valid moves in the neighborhood before the move
+        manifold.updateValidMoveArrays!false(allVerts);
     }
 
     oldPiece.each!(f => manifold.removeFacet(f));
@@ -1048,13 +1144,8 @@ void doMove(Vertex, int dim)(
 
     version (TrackValidMoves)
     {
-        // Count local valid moves (non-facet) + facets AFTER the move
-        auto localAfter = manifold.countLocalValidMoves(allVerts);
-        auto facetsAfter = manifold.fVector[dim];
-
-        // Update tracked count
-        manifold._validMoveCount += localAfter - localBefore;
-        manifold._validMoveCount += facetsAfter - facetsBefore;
+        // Add back valid moves in the neighborhood after the move
+        manifold.updateValidMoveArrays!true(allVerts);
     }
 }
 
@@ -1510,8 +1601,7 @@ void doMove(int dim, Vertex)(
         auto allVerts = allVertsBuf[0 .. avLen];
         allVerts.sort();
 
-        auto localBefore = manifold.countLocalValidMoves(allVerts);
-        auto facetsBefore = manifold.fVector[dim];
+        manifold.updateValidMoveArrays!false(allVerts);
     }
 
     foreach (f; oldPiece)
@@ -1523,10 +1613,7 @@ void doMove(int dim, Vertex)(
 
     version (TrackValidMoves)
     {
-        auto localAfter = manifold.countLocalValidMoves(allVerts);
-        auto facetsAfter = manifold.fVector[dim];
-        manifold._validMoveCount += localAfter - localBefore;
-        manifold._validMoveCount += facetsAfter - facetsBefore;
+        manifold.updateValidMoveArrays!true(allVerts);
     }
 
     assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
