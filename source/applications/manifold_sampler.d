@@ -122,46 +122,105 @@ int main(string[] args)
         chosenMove.match!(
             (BM bm)
             {
-                // Speculative delta — avoid executing rejected moves
-                real deltaObj = mfd.speculativeBistellarDelta(bm, currentObjective, params);
-
-                // Hastings correction: proposal ∝ 1/nFacets, so ratio = nBefore/nAfter
-                immutable nFacetsBefore = cast(real) mfd.fVector[dim];
-                immutable deltaFacets = dim + 2 - 2 * cast(int) bm.center.length;
-                immutable nFacetsAfter = nFacetsBefore + deltaFacets;
-                real logAlpha = -deltaObj + log(nFacetsBefore) - log(nFacetsAfter);
-
-                if ((logAlpha >= 0) || (uniform01 <= exp(logAlpha)))
+                version (TrackValidMoves)
                 {
-                    // Accepted — now execute
+                    // Exact Hastings: execute, compute, undo if rejected.
+                    // Uses V_before/V_after (valid move counts) for correction.
+                    immutable vBefore = cast(real) mfd.countValidBistellarMoves;
+
                     mfd.doMove(bm);
                     if (bm.coCenter.length == 1) unusedVertices.popBack;
                     if (bm.center.length == 1) unusedVertices ~= bm.center;
-                    currentObjective += deltaObj;
-                    accepted = true;
+
+                    real newObjective = mfd.objective(params);
+                    real deltaObj = newObjective - currentObjective;
+                    immutable vAfter = cast(real) mfd.countValidBistellarMoves;
+
+                    real logAlpha = -deltaObj + log(vBefore) - log(vAfter);
+
+                    if ((logAlpha < 0) && (uniform01 > exp(logAlpha)))
+                    {
+                        // Rejected — undo
+                        mfd.undoMove(bm);
+                        if (bm.coCenter.length == 1) unusedVertices ~= bm.coCenter;
+                        if (bm.center.length == 1)
+                        {
+                            assert(bm.center.front == unusedVertices.back);
+                            unusedVertices.popBack;
+                        }
+                    }
+                    else
+                    {
+                        currentObjective = newObjective;
+                        accepted = true;
+                    }
+                }
+                else
+                {
+                    // Speculative delta — avoid executing rejected moves.
+                    // Approximate Hastings correction using nFacets ratio.
+                    real deltaObj = mfd.speculativeBistellarDelta(bm, currentObjective, params);
+
+                    immutable nFacetsBefore = cast(real) mfd.fVector[dim];
+                    immutable deltaFacets = dim + 2 - 2 * cast(int) bm.center.length;
+                    immutable nFacetsAfter = nFacetsBefore + deltaFacets;
+                    real logAlpha = -deltaObj + log(nFacetsBefore) - log(nFacetsAfter);
+
+                    if ((logAlpha >= 0) || (uniform01 <= exp(logAlpha)))
+                    {
+                        // Accepted — now execute
+                        mfd.doMove(bm);
+                        if (bm.coCenter.length == 1) unusedVertices.popBack;
+                        if (bm.center.length == 1) unusedVertices ~= bm.center;
+                        currentObjective += deltaObj;
+                        accepted = true;
+                    }
                 }
             },
             (HM hm)
             {
-                // Hinge moves: execute-check-undo
-                immutable nFacetsBefore = cast(real) mfd.fVector[dim];
-                mfd.doMove(hm);
-                immutable nFacetsAfter = cast(real) mfd.fVector[dim];
-
-                real newObjective = mfd.objective(params);
-                real deltaObj = newObjective - currentObjective;
-
-                // Hastings correction
-                real logAlpha = -deltaObj + log(nFacetsBefore) - log(nFacetsAfter);
-
-                if ((logAlpha < 0) && (uniform01 > exp(logAlpha)))
+                // Hinge moves: always execute-check-undo
+                version (TrackValidMoves)
                 {
-                    mfd.undoMove(hm);
+                    immutable vBefore = cast(real) mfd.countValidBistellarMoves;
+                    mfd.doMove(hm);
+
+                    real newObjective = mfd.objective(params);
+                    real deltaObj = newObjective - currentObjective;
+                    immutable vAfter = cast(real) mfd.countValidBistellarMoves;
+
+                    real logAlpha = -deltaObj + log(vBefore) - log(vAfter);
+
+                    if ((logAlpha < 0) && (uniform01 > exp(logAlpha)))
+                    {
+                        mfd.undoMove(hm);
+                    }
+                    else
+                    {
+                        currentObjective = newObjective;
+                        accepted = true;
+                    }
                 }
                 else
                 {
-                    currentObjective = newObjective;
-                    accepted = true;
+                    immutable nFacetsBefore = cast(real) mfd.fVector[dim];
+                    mfd.doMove(hm);
+                    immutable nFacetsAfter = cast(real) mfd.fVector[dim];
+
+                    real newObjective = mfd.objective(params);
+                    real deltaObj = newObjective - currentObjective;
+
+                    real logAlpha = -deltaObj + log(nFacetsBefore) - log(nFacetsAfter);
+
+                    if ((logAlpha < 0) && (uniform01 > exp(logAlpha)))
+                    {
+                        mfd.undoMove(hm);
+                    }
+                    else
+                    {
+                        currentObjective = newObjective;
+                        accepted = true;
+                    }
                 }
             });
 

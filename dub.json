@@ -34,6 +34,17 @@
 			"targetType": "executable"
 		},
 		{
+			"name": "manifold_sampler_exact",
+			"excludedSourceFiles": [
+				"source/applications/dual_graph.d",
+				"source/applications/edge_graph.d",
+				"source/applications/surface_cross_S1.d"
+			],
+			"versions": ["TrackValidMoves"],
+			"targetName": "manifold_sampler_exact.exe",
+			"targetType": "executable"
+		},
+		{
 			"name": "surface_cross_S1",
 			"excludedSourceFiles": [
 				"source/applications/dual_graph.d",
