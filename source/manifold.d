@@ -74,6 +74,11 @@ private:
     size_t[dimension_ + 1] numSimplices;
     ulong[dimension - 1] totSqrDegrees;
 
+    version (TrackValidMoves)
+    {
+        size_t _validMoveCount;
+    }
+
     //--------------- Helper Functions ---------------
     static NSimplex toNSimp(R)(R range) if (isIRof!(R, Vertex_))
     {
@@ -111,6 +116,10 @@ public:
         foreach (d; 0 .. dimension - 1)
         {
             totSqrDegrees[d] = simplices(d).map!(s => this.degree(s)^^2).sum;
+        }
+        version (TrackValidMoves)
+        {
+            _validMoveCount = this.countValidBistellarMoves;
         }
     }
 
@@ -219,10 +228,19 @@ public:
     Returns an array containing the number of simplices in each dimension.
     This is called the "fVector" of the manifold.
     */
-    const(size_t)[] fVector()() const 
+    const(size_t)[] fVector()() const
     {
         assert(numSimplices[] == this.simpComp.fVector);
         return numSimplices[];
+    }
+
+    version (TrackValidMoves)
+    {
+        /// Returns the incrementally tracked count of valid bistellar moves.
+        size_t validMoveCount()() const
+        {
+            return _validMoveCount;
+        }
     }
 
     // Special version of insertFacet to update tracked info.
@@ -520,6 +538,205 @@ size_t countValidBistellarMoves(Vertex, int dim)(
     oct.countValidBistellarMoves.shouldEqual(oct.allBistellarMoves.length + oct.fVector[2]);
 }
 
+version (TrackValidMoves)
+{
+
+///
+@Name("incrementalValidMoveCount") unittest
+{
+    import std.random : uniform, Mt19937;
+    alias BM = BistellarMove!2;
+
+    // Start with octahedron
+    auto mfd = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
+        [2,3,5], [3,4,5], [1,4,5]]);
+
+    // Verify initial count
+    mfd.validMoveCount.shouldEqual(mfd.countValidBistellarMoves);
+
+    // Do a sequence of moves and verify after each
+    auto rng = Mt19937(42);
+    int nextV = 6;
+
+    foreach (_; 0 .. 30)
+    {
+        auto moves = mfd.allBistellarMoves;
+        if (moves.empty) break;
+
+        // Pick a random valid move
+        auto idx = uniform(0, cast(int) moves.length, rng);
+        auto move = moves[idx];
+        mfd.doMove(move);
+
+        // Add stellar subdivisions too
+        if (uniform(0, 3, rng) == 0)
+        {
+            auto facet = mfd.asSimplicialComplex.facets(2).front.array;
+            mfd.doMove(BM(facet, [nextV]));
+            nextV++;
+        }
+
+        assert(mfd.validMoveCount == mfd.countValidBistellarMoves,
+            "incremental count %d != full recount %d"
+            .format(mfd.validMoveCount, mfd.countValidBistellarMoves));
+    }
+}
+
+///
+@Name("incrementalValidMoveCount dim 3") unittest
+{
+    import std.random : uniform, Mt19937;
+    alias BM = BistellarMove!3;
+
+    // Start with a 3-sphere
+    auto mfd = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+
+    mfd.validMoveCount.shouldEqual(mfd.countValidBistellarMoves);
+
+    auto rng = Mt19937(123);
+    int nextV = 5;
+
+    foreach (_; 0 .. 30)
+    {
+        // Do a stellar subdivision to grow
+        auto facet = mfd.asSimplicialComplex.facets(3).front.array;
+        mfd.doMove(BM(facet, [nextV]));
+        nextV++;
+
+        assert(mfd.validMoveCount == mfd.countValidBistellarMoves,
+            "incremental count %d != full recount %d after stellar subdiv"
+            .format(mfd.validMoveCount, mfd.countValidBistellarMoves));
+
+        // Try a random valid move if available
+        auto moves = mfd.allBistellarMoves;
+        if (!moves.empty)
+        {
+            auto idx = uniform(0, cast(int) moves.length, rng);
+            mfd.doMove(moves[idx]);
+
+            assert(mfd.validMoveCount == mfd.countValidBistellarMoves,
+                "incremental count %d != full recount %d after bistellar move"
+                .format(mfd.validMoveCount, mfd.countValidBistellarMoves));
+        }
+    }
+}
+
+} // version (TrackValidMoves) — tests
+
+version (TrackValidMoves)
+{
+
+/*******************************************************************************
+Check whether a d-simplex (given as a static array key) is a valid bistellar
+center. Requires: degree == dim+1-d AND coCenter not in manifold.
+Does NOT count facet-dimension centers (stellar subdivisions).
+*/
+private bool isValidNonFacetCenter(int d, Vertex, int dim)(
+    const ref Manifold!(dim, Vertex) mfd,
+    const ref Vertex[d + 1] key)
+{
+    static assert(d < dim, "use fVector[dim] for facet centers");
+    auto ptr = key in mfd.dimMap!d;
+    if (ptr is null) return false;
+    auto deg = mfd.extractDegree(*ptr);
+    if (deg != dim + 1 - d) return false;
+    auto coCenter_ = mfd.findCoCenter(key[]);
+    return !mfd.contains(coCenter_);
+}
+
+/*******************************************************************************
+Count valid bistellar centers (non-facet) that are subsets of allVerts.
+This handles "Type A" simplices — those whose degree/link is directly
+affected by a move involving allVerts.
+*/
+private size_t countTypeAValidMoves(Vertex, int dim)(
+    const ref Manifold!(dim, Vertex) mfd,
+    const(Vertex)[] allVerts)
+{
+    size_t count = 0;
+    static foreach (d; 0 .. dim)
+    {{
+        foreach (subset; allVerts.subsetsOfSize(d + 1))
+        {
+            auto key = subset.staticArray!(d + 1);
+            if (mfd.isValidNonFacetCenter!d(key))
+                count++;
+        }
+    }}
+    return count;
+}
+
+/*******************************************************************************
+Count "Type B" valid moves: simplices NOT subsets of allVerts whose coCenter
+IS a subset of allVerts.
+
+Scans each per-dimension map for simplices with the valid-move degree,
+skips those that are subsets of allVerts (already counted as Type A),
+and checks whether their coCenter is a subset of allVerts.
+*/
+private size_t countTypeBValidMoves(Vertex, int dim)(
+    const ref Manifold!(dim, Vertex) mfd,
+    const(Vertex)[] allVerts)
+{
+    size_t count = 0;
+
+    static foreach (d; 0 .. dim)
+    {{
+        enum targetDeg = dim + 1 - d;
+        foreach (kv; mfd.dimMap!d.byKeyValue())
+        {
+            auto deg = mfd.extractDegree(kv.value);
+            if (deg != targetDeg) continue;
+
+            auto simp = kv.key[];
+
+            // Skip Type A (subsets of allVerts)
+            bool isSubset = true;
+            foreach (v; simp)
+            {
+                if (!allVerts.canFind(v))
+                {
+                    isSubset = false;
+                    break;
+                }
+            }
+            if (isSubset) continue;
+
+            // Check if coCenter is a subset of allVerts
+            auto coCenter_ = mfd.findCoCenter(simp);
+            bool coCenterInAllVerts = true;
+            foreach (v; coCenter_)
+            {
+                if (!allVerts.canFind(v))
+                {
+                    coCenterInAllVerts = false;
+                    break;
+                }
+            }
+            if (!coCenterInAllVerts) continue;
+
+            // Valid iff coCenter not in manifold
+            if (!mfd.contains(coCenter_))
+                count++;
+        }
+    }}
+    return count;
+}
+
+/*******************************************************************************
+Count all valid non-facet bistellar centers in the local neighborhood of a
+move involving allVerts = center ∪ coCenter.
+Returns typeA + typeB counts.
+*/
+private size_t countLocalValidMoves(Vertex, int dim)(
+    const ref Manifold!(dim, Vertex) mfd,
+    const(Vertex)[] allVerts)
+{
+    return mfd.countTypeAValidMoves(allVerts) + mfd.countTypeBValidMoves(allVerts);
+}
+
+} // version (TrackValidMoves)
+
 ///
 @Name("Manifold doc tests") pure @safe unittest
 {
@@ -706,8 +923,34 @@ void doMove(Vertex, int dim)(
     assert(manifold.star(center).map!array.array.sort
         .equal!equal(oldPiece.map!array.array.sort));
 
+    version (TrackValidMoves)
+    {
+        // Build sorted allVerts = center ∪ coCenter
+        Vertex[dim + 2] allVertsBuf;
+        int avLen = 0;
+        foreach (v; center) allVertsBuf[avLen++] = v;
+        foreach (v; coCenter) allVertsBuf[avLen++] = v;
+        auto allVerts = allVertsBuf[0 .. avLen];
+        allVerts.sort();
+
+        // Count local valid moves (non-facet) + facets BEFORE the move
+        auto localBefore = manifold.countLocalValidMoves(allVerts);
+        auto facetsBefore = manifold.fVector[dim];
+    }
+
     oldPiece.each!(f => manifold.removeFacet(f));
     newPiece.each!(f => manifold.insertFacet(f));
+
+    version (TrackValidMoves)
+    {
+        // Count local valid moves (non-facet) + facets AFTER the move
+        auto localAfter = manifold.countLocalValidMoves(allVerts);
+        auto facetsAfter = manifold.fVector[dim];
+
+        // Update tracked count
+        manifold._validMoveCount += localAfter - localBefore;
+        manifold._validMoveCount += facetsAfter - facetsBefore;
+    }
 }
 
 auto findCoCenter(Vertex, int dim, C)(
@@ -1152,12 +1395,34 @@ void doMove(int dim, Vertex)(
     assert(manifold.star(hinge).map!array.array.sort
         .equal!equal(oldPiece.map!array.array.sort));
 
+    version (TrackValidMoves)
+    {
+        // Build allVerts = hinge ∪ linkVertices
+        Vertex[dim + 7] allVertsBuf; // hinge has dim-1 verts, link up to 7
+        int avLen = 0;
+        foreach (v; hinge) allVertsBuf[avLen++] = v;
+        foreach (v; linkVertices) allVertsBuf[avLen++] = v;
+        auto allVerts = allVertsBuf[0 .. avLen];
+        allVerts.sort();
+
+        auto localBefore = manifold.countLocalValidMoves(allVerts);
+        auto facetsBefore = manifold.fVector[dim];
+    }
+
     foreach (f; oldPiece)
     {
         manifold.removeFacet(f);
     }
 
     newPiece.each!(f => manifold.insertFacet(f));
+
+    version (TrackValidMoves)
+    {
+        auto localAfter = manifold.countLocalValidMoves(allVerts);
+        auto facetsAfter = manifold.fVector[dim];
+        manifold._validMoveCount += localAfter - localBefore;
+        manifold._validMoveCount += facetsAfter - facetsBefore;
+    }
 
     assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
 }

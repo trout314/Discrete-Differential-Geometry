@@ -68,6 +68,34 @@
 			"targetType": "executable"
 		},
 		{
+			"name": "bench_sampler_exact",
+			"excludedSourceFiles": [
+				"source/applications/dual_graph.d",
+				"source/applications/edge_graph.d",
+				"source/applications/manifold_sampler.d",
+				"source/applications/surface_cross_S1.d"
+			],
+			"sourceFiles": ["bench_sampler.d"],
+			"mainSourceFile": "bench_sampler.d",
+			"versions": ["TrackValidMoves"],
+			"targetName": "bench_sampler_exact.exe",
+			"targetType": "executable"
+		},
+		{
+			"name": "test_valid_moves",
+			"excludedSourceFiles": [
+				"source/applications/dual_graph.d",
+				"source/applications/edge_graph.d",
+				"source/applications/manifold_sampler.d",
+				"source/applications/surface_cross_S1.d"
+			],
+			"sourceFiles": ["test_valid_moves.d"],
+			"mainSourceFile": "test_valid_moves.d",
+			"versions": ["TrackValidMoves"],
+			"targetName": "test_valid_moves.exe",
+			"targetType": "executable"
+		},
+		{
             "name": "unittest",
             "targetType": "executable",
             "preBuildCommands": ["$DUB run --compiler=$$DC unit-threaded -c gen_ut_main -- -f bin/ut.d -d $DUB"],

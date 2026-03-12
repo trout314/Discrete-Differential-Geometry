@@ -145,7 +145,7 @@ void main()
 
     auto seed = loadManifold!dim("standard_triangulations/dim_3_sphere.mfd");
 
-    foreach (targetTets; [100, 500, 2000])
+    foreach (targetTets; [100, 200])
     {
         auto mfd = grow(seed, targetTets);
 
@@ -160,6 +160,17 @@ void main()
         auto mfd3 = mfd;
         writef("  spec+bitmask proposal: ");
         benchmarkSpeculative!true(mfd3, targetTets);
+
+        auto mfd4 = mfd;
+        writef("  exact naive (V recount):");
+        benchmarkExactHastings(mfd4, targetTets);
+
+        version (TrackValidMoves)
+        {
+            auto mfd5 = mfd;
+            writef("  exact incr (V tracked):");
+            benchmarkExactHastingsIncremental(mfd5, targetTets);
+        }
 
         writeln();
     }
@@ -396,6 +407,139 @@ void benchmarkSpeculative(bool optimizedProposal)(ref Manifold!dim mfd, int targ
 
     timer.stop();
     printResult(timer.peek(), totalAccepted, totalTried, targetTets);
+}
+
+// --- EXACT HASTINGS: execute, compute objective + valid move count, undo if rejected ---
+void benchmarkExactHastings(ref Manifold!dim mfd, int targetTets)
+{
+    alias BM = BistellarMove!(dim, int);
+    alias HM = HingeMove!(dim, int);
+
+    int totalAccepted = 0;
+    int totalTried = 0;
+    int targetAccepted = min(5000, targetTets * 2);
+
+    auto params = BenchParams(targetTets);
+
+    int nextUnused = mfd.simplices(0).joiner.array.dup.sort.array.back + 1;
+    int[] unusedVertices = [nextUnused];
+
+    auto currentObjective = computeObjective(mfd, params);
+
+    StopWatch timer;
+    timer.start();
+
+    while (totalAccepted < targetAccepted)
+    {
+        if (unusedVertices.empty)
+            unusedVertices ~= mfd.fVector[0].to!int;
+
+        auto proposed = proposeMoveOptimized(mfd, unusedVertices.back);
+        auto bm = proposed.move;
+        SumType!(BM, HM) chosenMove = bm;
+
+        immutable vBefore = cast(real) mfd.countValidBistellarMoves;
+
+        mfd.doMove(chosenMove);
+
+        if (bm.coCenter.length == 1) unusedVertices.popBack;
+        if (bm.center.length == 1) unusedVertices ~= bm.center;
+
+        totalTried++;
+
+        real newObjective = computeObjective(mfd, params);
+        real deltaObj = newObjective - currentObjective;
+        immutable vAfter = cast(real) mfd.countValidBistellarMoves;
+
+        real logAlpha = -deltaObj + log(vBefore) - log(vAfter);
+
+        if ((logAlpha < 0) && (uniform01 > exp(logAlpha)))
+        {
+            mfd.undoMove(chosenMove);
+            if (bm.coCenter.length == 1) unusedVertices ~= bm.coCenter;
+            if (bm.center.length == 1)
+            {
+                assert(bm.center.front == unusedVertices.back);
+                unusedVertices.popBack;
+            }
+        }
+        else
+        {
+            totalAccepted++;
+            currentObjective = newObjective;
+        }
+    }
+
+    timer.stop();
+    printResult(timer.peek(), totalAccepted, totalTried, targetTets);
+}
+
+// --- EXACT HASTINGS (INCREMENTAL): uses tracked validMoveCount ---
+version (TrackValidMoves)
+{
+void benchmarkExactHastingsIncremental(ref Manifold!dim mfd, int targetTets)
+{
+    alias BM = BistellarMove!(dim, int);
+    alias HM = HingeMove!(dim, int);
+
+    int totalAccepted = 0;
+    int totalTried = 0;
+    int targetAccepted = min(5000, targetTets * 2);
+
+    auto params = BenchParams(targetTets);
+
+    int nextUnused = mfd.simplices(0).joiner.array.dup.sort.array.back + 1;
+    int[] unusedVertices = [nextUnused];
+
+    auto currentObjective = computeObjective(mfd, params);
+
+    StopWatch timer;
+    timer.start();
+
+    while (totalAccepted < targetAccepted)
+    {
+        if (unusedVertices.empty)
+            unusedVertices ~= mfd.fVector[0].to!int;
+
+        auto proposed = proposeMoveOptimized(mfd, unusedVertices.back);
+        auto bm = proposed.move;
+        SumType!(BM, HM) chosenMove = bm;
+
+        immutable vBefore = cast(real) mfd.validMoveCount;
+
+        mfd.doMove(chosenMove);
+
+        if (bm.coCenter.length == 1) unusedVertices.popBack;
+        if (bm.center.length == 1) unusedVertices ~= bm.center;
+
+        totalTried++;
+
+        real newObjective = computeObjective(mfd, params);
+        real deltaObj = newObjective - currentObjective;
+        immutable vAfter = cast(real) mfd.validMoveCount;
+
+        real logAlpha = -deltaObj + log(vBefore) - log(vAfter);
+
+        if ((logAlpha < 0) && (uniform01 > exp(logAlpha)))
+        {
+            mfd.undoMove(chosenMove);
+            if (bm.coCenter.length == 1) unusedVertices ~= bm.coCenter;
+            if (bm.center.length == 1)
+            {
+                assert(bm.center.front == unusedVertices.back);
+                unusedVertices.popBack;
+            }
+        }
+        else
+        {
+            totalAccepted++;
+            currentObjective = newObjective;
+        }
+    }
+
+    timer.stop();
+    printResult(timer.peek(), totalAccepted, totalTried, targetTets);
+}
 }
 
 void printResult(T)(T elapsed, int totalAccepted, int totalTried, int targetTets)

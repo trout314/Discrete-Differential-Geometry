@@ -125,8 +125,8 @@ int main(string[] args)
                 version (TrackValidMoves)
                 {
                     // Exact Hastings: execute, compute, undo if rejected.
-                    // Uses V_before/V_after (valid move counts) for correction.
-                    immutable vBefore = cast(real) mfd.countValidBistellarMoves;
+                    // Uses incrementally tracked V_before/V_after for correction.
+                    immutable vBefore = cast(real) mfd.validMoveCount;
 
                     mfd.doMove(bm);
                     if (bm.coCenter.length == 1) unusedVertices.popBack;
@@ -134,7 +134,7 @@ int main(string[] args)
 
                     real newObjective = mfd.objective(params);
                     real deltaObj = newObjective - currentObjective;
-                    immutable vAfter = cast(real) mfd.countValidBistellarMoves;
+                    immutable vAfter = cast(real) mfd.validMoveCount;
 
                     real logAlpha = -deltaObj + log(vBefore) - log(vAfter);
 
@@ -182,12 +182,12 @@ int main(string[] args)
                 // Hinge moves: always execute-check-undo
                 version (TrackValidMoves)
                 {
-                    immutable vBefore = cast(real) mfd.countValidBistellarMoves;
+                    immutable vBefore = cast(real) mfd.validMoveCount;
                     mfd.doMove(hm);
 
                     real newObjective = mfd.objective(params);
                     real deltaObj = newObjective - currentObjective;
-                    immutable vAfter = cast(real) mfd.countValidBistellarMoves;
+                    immutable vAfter = cast(real) mfd.validMoveCount;
 
                     real logAlpha = -deltaObj + log(vBefore) - log(vAfter);
 
