@@ -937,6 +937,42 @@ private void updateValidMoveArrays(bool adding, Vertex, int dim)(
     }}
 }
 
+/*******************************************************************************
+Sample a uniformly random valid bistellar move in O(1).
+For non-facet centers, computes the coCenter via localCoCenter.
+For stellar subdivisions (facet center), uses newVertex as the coCenter.
+*/
+BistellarMove!(dim, Vertex) sampleValidMove(Vertex, int dim, Rng)(
+    const ref Manifold!(dim, Vertex) mfd,
+    ref Rng rng,
+    Vertex newVertex)
+{
+    import std.random : uniform;
+    alias BM = BistellarMove!(dim, Vertex);
+
+    auto total = mfd.validMoveCount;
+    assert(total > 0, "no valid moves to sample");
+    auto idx = uniform(0, total, rng);
+
+    size_t cumSum = 0;
+    static foreach (d; 0 .. dim)
+    {{
+        auto nMoves = mfd.validMoves!d.length;
+        if (idx < cumSum + nMoves)
+        {
+            auto center = mfd.validMoves!d[idx - cumSum];
+            auto cc = mfd.localCoCenter!d(center);
+            return BM(center[], cc[]);
+        }
+        cumSum += nMoves;
+    }}
+
+    // Stellar subdivision: center is a random facet, coCenter is newVertex
+    auto facetIdx = idx - cumSum;
+    auto facetCenter = mfd._facetArray[facetIdx];
+    return BM(facetCenter[], [newVertex]);
+}
+
 } // version (TrackValidMoves)
 
 ///

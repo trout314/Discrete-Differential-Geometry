@@ -170,6 +170,10 @@ void main()
             auto mfd5 = mfd;
             writef("  exact incr (V tracked):");
             benchmarkExactHastingsIncremental(mfd5, targetTets);
+
+            auto mfd6 = mfd;
+            writef("  exact+rej-free sample: ");
+            benchmarkRejectionFree(mfd6, targetTets);
         }
 
         writeln();
@@ -506,6 +510,76 @@ void benchmarkExactHastingsIncremental(ref Manifold!dim mfd, int targetTets)
         SumType!(BM, HM) chosenMove = bm;
 
         immutable vBefore = cast(real) mfd.validMoveCount;
+
+        mfd.doMove(chosenMove);
+
+        if (bm.coCenter.length == 1) unusedVertices.popBack;
+        if (bm.center.length == 1) unusedVertices ~= bm.center;
+
+        totalTried++;
+
+        real newObjective = computeObjective(mfd, params);
+        real deltaObj = newObjective - currentObjective;
+        immutable vAfter = cast(real) mfd.validMoveCount;
+
+        real logAlpha = -deltaObj + log(vBefore) - log(vAfter);
+
+        if ((logAlpha < 0) && (uniform01 > exp(logAlpha)))
+        {
+            mfd.undoMove(chosenMove);
+            if (bm.coCenter.length == 1) unusedVertices ~= bm.coCenter;
+            if (bm.center.length == 1)
+            {
+                assert(bm.center.front == unusedVertices.back);
+                unusedVertices.popBack;
+            }
+        }
+        else
+        {
+            totalAccepted++;
+            currentObjective = newObjective;
+        }
+    }
+
+    timer.stop();
+    printResult(timer.peek(), totalAccepted, totalTried, targetTets);
+}
+}
+
+// --- EXACT HASTINGS + REJECTION-FREE PROPOSAL: O(1) uniform sampling from valid move array ---
+version (TrackValidMoves)
+{
+void benchmarkRejectionFree(ref Manifold!dim mfd, int targetTets)
+{
+    import std.random : Mt19937;
+    alias BM = BistellarMove!(dim, int);
+    alias HM = HingeMove!(dim, int);
+
+    int totalAccepted = 0;
+    int totalTried = 0;
+    int targetAccepted = min(5000, targetTets * 2);
+
+    auto params = BenchParams(targetTets);
+
+    int nextUnused = mfd.simplices(0).joiner.array.dup.sort.array.back + 1;
+    int[] unusedVertices = [nextUnused];
+
+    auto currentObjective = computeObjective(mfd, params);
+    auto rng = Mt19937(42);
+
+    StopWatch timer;
+    timer.start();
+
+    while (totalAccepted < targetAccepted)
+    {
+        if (unusedVertices.empty)
+            unusedVertices ~= mfd.fVector[0].to!int;
+
+        immutable vBefore = cast(real) mfd.validMoveCount;
+
+        // O(1) rejection-free proposal
+        auto bm = mfd.sampleValidMove(rng, unusedVertices.back);
+        SumType!(BM, HM) chosenMove = bm;
 
         mfd.doMove(chosenMove);
 
