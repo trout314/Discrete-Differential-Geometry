@@ -4,7 +4,7 @@ module simplicial_complex;
 import std.algorithm, std.conv, std.datetime, std.exception, std.random,
     std.range, std.stdio, std.string, std.typecons, std.traits;
 import unit_threaded;
-import algorithms, utility;
+import algorithms, hashmap, utility;
 
 alias isIRof = isInputRangeOf;
 alias isIRofIRof = isInputRangeOfInputRangeOf;
@@ -279,7 +279,7 @@ private:
     }
 
     // indexOfFacet[f] = i means the vertices of f begins at facetVertices[i]
-    size_t[NSimplex] indexOfFacet;
+    HashMap!(NSimplex, size_t) indexOfFacet;
 public:
     /***************************************************************************
     The type of the vertices in this simplicial complex.
@@ -296,7 +296,7 @@ public:
     }
 
     // Postblit makes sure copy doesn't share data
-    this(this) pure @safe
+    this(this)
     {
         facetVertices = facetVertices.dup;
         facetVertices.byKey.each!(k => facetVertices[k] = facetVertices[k].dup);

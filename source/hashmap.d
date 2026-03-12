@@ -1,0 +1,483 @@
+/**
+ * Open-addressing hash map with linear probing.
+ *
+ * Drop-in replacement for D's built-in associative arrays (V[K]).
+ * Uses flat arrays for cache-friendly access — no pointer chasing,
+ * no GC-allocated nodes per entry.
+ *
+ * Ported from the pachner_data_structure project.
+ */
+module hashmap;
+
+import std.traits : isIntegral;
+import utility : StackArray;
+
+/**
+ * Open-addressing hash map with inline key/value storage.
+ *
+ * Invariants:
+ *   - Load factor kept below 0.75 (resize at 3/4 capacity)
+ *   - Capacity is always a power of 2 (mask-based indexing)
+ *   - Tombstones used for deletion to preserve probe chains
+ */
+struct HashMap(K, V)
+{
+    private enum ubyte EMPTY = 0;
+    private enum ubyte OCCUPIED = 1;
+    private enum ubyte TOMBSTONE = 2;
+
+    private K[] _keys;
+    private V[] _values;
+    private ubyte[] _ctrl;
+    private size_t _length;
+    private size_t _tombstones;
+    private size_t _mask; // capacity - 1
+
+    /// Return the number of entries.
+    size_t length() const pure nothrow @nogc @safe { return _length; }
+
+    /// Lookup: returns pointer to value if found, null otherwise.
+    inout(V)* opBinaryRight(string op : "in")(K key) inout
+    {
+        if (_ctrl.length == 0) return null;
+        auto i = locate(key);
+        if (i == size_t.max) return null;
+        return &(cast(inout(V)[])_values)[i];
+    }
+
+    /// Read by key (asserts key exists).
+    ref inout(V) opIndex(K key) inout
+    {
+        auto p = key in this;
+        assert(p !is null, "Key not found in HashMap");
+        return *p;
+    }
+
+    /// Insert or update.
+    void opIndexAssign(V value, K key)
+    {
+        ensureCapacity();
+        auto i = locateOrInsert(key);
+        _values[i] = value;
+    }
+
+    /// Prefix increment/decrement (e.g. ++map[key], --map[key]).
+    /// Auto-inserts with default value if key is absent.
+    ref V opIndexUnary(string op)(K key) if (op == "++" || op == "--")
+    {
+        ensureCapacity();
+        auto i = locateOrInsert(key);
+        mixin("return " ~ op ~ "_values[i];");
+    }
+
+    /// Compound assignment (e.g. map[key] += 5).
+    /// Auto-inserts with default value if key is absent.
+    ref V opIndexOpAssign(string op)(V rhs, K key)
+    {
+        ensureCapacity();
+        auto i = locateOrInsert(key);
+        mixin("return _values[i] " ~ op ~ "= rhs;");
+    }
+
+    /// Remove a key. Returns true if it was present.
+    bool remove(K key)
+    {
+        if (_ctrl.length == 0) return false;
+        auto i = locate(key);
+        if (i == size_t.max) return false;
+        _ctrl[i] = TOMBSTONE;
+        _keys[i] = K.init;
+        _values[i] = V.init;
+        _length--;
+        _tombstones++;
+        return true;
+    }
+
+    /// Clear all entries and deallocate.
+    void clear()
+    {
+        _keys = null;
+        _values = null;
+        _ctrl = null;
+        _length = 0;
+        _tombstones = 0;
+        _mask = 0;
+    }
+
+    /// Return all keys as an array.
+    K[] keys() const
+    {
+        auto result = new K[](_length);
+        size_t j = 0;
+        foreach (i; 0 .. _ctrl.length)
+            if (_ctrl[i] == OCCUPIED)
+                result[j++] = _keys[i];
+        return result;
+    }
+
+    /// Return a shallow copy.
+    HashMap dup() const
+    {
+        HashMap copy;
+        copy._keys = _keys.dup;
+        copy._values = _values.dup;
+        copy._ctrl = _ctrl.dup;
+        copy._length = _length;
+        copy._tombstones = _tombstones;
+        copy._mask = _mask;
+        return copy;
+    }
+
+    /// Iterate over key-value pairs.
+    auto byKeyValue() const
+    {
+        return KVRange!(const(K), const(V))(_keys, _values, _ctrl);
+    }
+
+    /// ditto
+    auto byKeyValue()
+    {
+        return KVRange!(K, V)(_keys, _values, _ctrl);
+    }
+
+    /// Iterate over keys.
+    auto byKey() const
+    {
+        return KeyRange!(const(K))(_keys, _ctrl);
+    }
+
+    /// ditto
+    auto byKey()
+    {
+        return KeyRange!(K)(_keys, _ctrl);
+    }
+
+    // -----------------------------------------------------------------------
+    // Internals
+    // -----------------------------------------------------------------------
+
+    /// Hash function. Fibonacci hashing for integers, FNV-1a for arrays/structs.
+    private static size_t computeHash(K key) pure nothrow @nogc @trusted
+    {
+        static if (isIntegral!K)
+        {
+            // Fibonacci hashing
+            return cast(size_t)(cast(ulong) key * 11_400_714_819_323_198_485UL);
+        }
+        else static if (__traits(isStaticArray, K))
+        {
+            return fnvHash(key);
+        }
+        else static if (isStackArray!K)
+        {
+            // Hash only the used portion of the StackArray
+            return fnvHash(key[]);
+        }
+        else
+        {
+            return .hashOf(key);
+        }
+    }
+
+    /// FNV-1a hash over elements of a range/array.
+    private static size_t fnvHash(R)(R data) pure nothrow @nogc @trusted
+    {
+        size_t h = 14_695_981_039_346_656_037UL;
+        foreach (e; data)
+        {
+            auto bytes = (cast(const(ubyte)*)&e)[0 .. typeof(e).sizeof];
+            foreach (b; bytes)
+            {
+                h ^= b;
+                h *= 1_099_511_628_211UL;
+            }
+        }
+        return h;
+    }
+
+    /// Find the index of an existing key, or size_t.max if not found.
+    private size_t locate(K key) const pure nothrow @nogc @safe
+    {
+        if (_ctrl.length == 0) return size_t.max;
+        auto h = computeHash(key) & _mask;
+        while (true)
+        {
+            if (_ctrl[h] == EMPTY) return size_t.max;
+            if (_ctrl[h] == OCCUPIED && _keys[h] == key) return h;
+            h = (h + 1) & _mask;
+        }
+    }
+
+    /// Find slot for key (existing or first available for insert).
+    private size_t locateOrInsert(K key)
+    {
+        auto h = computeHash(key) & _mask;
+        size_t firstTombstone = size_t.max;
+        while (true)
+        {
+            if (_ctrl[h] == EMPTY)
+            {
+                auto slot = firstTombstone != size_t.max ? firstTombstone : h;
+                if (firstTombstone != size_t.max) _tombstones--;
+                _ctrl[slot] = OCCUPIED;
+                _keys[slot] = key;
+                _length++;
+                return slot;
+            }
+            if (_ctrl[h] == TOMBSTONE)
+            {
+                if (firstTombstone == size_t.max) firstTombstone = h;
+            }
+            else if (_keys[h] == key)
+            {
+                return h;
+            }
+            h = (h + 1) & _mask;
+        }
+    }
+
+    /// Grow the table if load factor exceeds 75%.
+    private void ensureCapacity()
+    {
+        if (_ctrl.length == 0)
+        {
+            allocate(16);
+            return;
+        }
+        if ((_length + _tombstones) * 4 >= _ctrl.length * 3)
+            grow();
+    }
+
+    private void allocate(size_t cap)
+    {
+        _keys = new K[cap];
+        _values = new V[cap];
+        _ctrl = new ubyte[cap];
+        _ctrl[] = EMPTY;
+        _mask = cap - 1;
+    }
+
+    private void grow()
+    {
+        auto oldKeys = _keys;
+        auto oldValues = _values;
+        auto oldCtrl = _ctrl;
+
+        auto newCap = _ctrl.length * 2;
+        allocate(newCap);
+        _length = 0;
+        _tombstones = 0;
+
+        foreach (i; 0 .. oldCtrl.length)
+        {
+            if (oldCtrl[i] == OCCUPIED)
+            {
+                auto slot = locateOrInsert(oldKeys[i]);
+                _values[slot] = oldValues[i];
+            }
+        }
+    }
+
+    /// Key-value range
+    private static struct KVRange(KT, VT)
+    {
+        KT[] _keys;
+        VT[] _values;
+        const(ubyte)[] _ctrl;
+        size_t _pos;
+
+        this(KT[] k, VT[] v, const(ubyte)[] c)
+        {
+            _keys = k;
+            _values = v;
+            _ctrl = c;
+            _pos = 0;
+            advance();
+        }
+
+        private void advance()
+        {
+            while (_pos < _ctrl.length && _ctrl[_pos] != OCCUPIED)
+                _pos++;
+        }
+
+        bool empty() const pure nothrow @nogc @safe
+        {
+            return _pos >= _ctrl.length;
+        }
+
+        auto front()
+        {
+            struct KV { KT key; VT value; }
+            return KV(_keys[_pos], _values[_pos]);
+        }
+
+        void popFront()
+        {
+            _pos++;
+            advance();
+        }
+    }
+
+    /// Key-only range
+    private static struct KeyRange(KT)
+    {
+        KT[] _keys;
+        const(ubyte)[] _ctrl;
+        size_t _pos;
+
+        this(KT[] k, const(ubyte)[] c)
+        {
+            _keys = k;
+            _ctrl = c;
+            _pos = 0;
+            advance();
+        }
+
+        private void advance()
+        {
+            while (_pos < _ctrl.length && _ctrl[_pos] != OCCUPIED)
+                _pos++;
+        }
+
+        bool empty() const pure nothrow @nogc @safe
+        {
+            return _pos >= _ctrl.length;
+        }
+
+        KT front() const
+        {
+            return _keys[_pos];
+        }
+
+        void popFront()
+        {
+            _pos++;
+            advance();
+        }
+    }
+}
+
+/// Detect StackArray types
+private template isStackArray(T)
+{
+    static if (is(T == StackArray!(U, n), U, size_t n))
+        enum isStackArray = true;
+    else
+        enum isStackArray = false;
+}
+
+// ---------------------------------------------------------------------------
+// Unit tests
+// ---------------------------------------------------------------------------
+
+unittest
+{
+    // Basic int -> int
+    HashMap!(int, int) map;
+    map[42] = 100;
+    assert(map.length == 1);
+    assert(map[42] == 100);
+    assert(42 in map);
+    assert(99 !in map);
+
+    map[42] = 200;
+    assert(map[42] == 200);
+    assert(map.length == 1);
+
+    map.remove(42);
+    assert(42 !in map);
+    assert(map.length == 0);
+}
+
+unittest
+{
+    // StackArray keys (matches degreeMap usage)
+    alias SA = StackArray!(int, 4);
+    HashMap!(SA, size_t) map;
+
+    SA key1;
+    key1 ~= 1; key1 ~= 2; key1 ~= 3;
+
+    SA key2;
+    key2 ~= 1; key2 ~= 2; key2 ~= 4;
+
+    map[key1] = 10;
+    map[key2] = 20;
+    assert(map.length == 2);
+    assert(map[key1] == 10);
+    assert(map[key2] == 20);
+
+    // Increment operator
+    map[key1] += 5;
+    assert(map[key1] == 15);
+
+    // dup
+    auto copy = map.dup;
+    assert(copy.length == 2);
+    assert(copy[key1] == 15);
+    copy[key1] = 999;
+    assert(map[key1] == 15); // original unchanged
+}
+
+unittest
+{
+    // Static array keys (matches ridgeLinks usage)
+    HashMap!(int[3], int) map;
+    int[3] k1 = [1, 2, 3];
+    int[3] k2 = [4, 5, 6];
+
+    map[k1] = 100;
+    map[k2] = 200;
+    assert(map.length == 2);
+    assert(map[k1] == 100);
+
+    map.remove(k1);
+    assert(k1 !in map);
+    assert(map.length == 1);
+}
+
+unittest
+{
+    // Stress test: many insertions trigger resizing
+    HashMap!(int, int) map;
+    foreach (i; 0 .. 1000)
+        map[i] = i * 2;
+
+    assert(map.length == 1000);
+    foreach (i; 0 .. 1000)
+        assert(map[i] == i * 2);
+
+    // Remove half
+    foreach (i; 0 .. 500)
+        map.remove(i);
+    assert(map.length == 500);
+
+    // Remaining entries still accessible
+    foreach (i; 500 .. 1000)
+        assert(map[i] == i * 2);
+}
+
+unittest
+{
+    // byKeyValue iteration
+    HashMap!(int, int) map;
+    map[1] = 10;
+    map[2] = 20;
+    map[3] = 30;
+
+    int sum = 0;
+    foreach (kv; map.byKeyValue())
+        sum += kv.value;
+    assert(sum == 60);
+}
+
+unittest
+{
+    // Increment on absent key (default-initializes to 0)
+    HashMap!(int, size_t) map;
+    ++map[5];
+    assert(map[5] == 1);
+    ++map[5];
+    assert(map[5] == 2);
+}

@@ -4,8 +4,8 @@ module manifold;
 import std.algorithm, std.array, std.conv, std.exception, std.math, std.range,
     std.stdio, std.sumtype, std.traits, std.typecons;
 import unit_threaded;
-import algorithms, manifold_examples, manifold_moves, polygons, simplicial_complex,
-    utility;
+import algorithms, hashmap, manifold_examples, manifold_moves, polygons,
+    simplicial_complex, utility;
 
 alias isIRof = isInputRangeOf;
 alias isIRofIRof = isInputRangeOfInputRangeOf;
@@ -23,12 +23,53 @@ private:
     alias SimpComp = SimplicialComplex!Vertex_;
     SimpComp simpComp;
 
-    alias NSimplex = StackArray!(Vertex, dimension + 1);
-    size_t[NSimplex] degreeMap;
-    
-    alias Ridge = Vertex[dimension_];
+    // --- Per-dimension index maps ---
+    // For each dimension d (0..dimension), a separate hash map keyed by
+    // Vertex[d+1] (exact-size static array keys). For the ridge dimension
+    // (d == dimension-1), the value bundles degree + link info. For all
+    // other dimensions, the value is just the degree (size_t).
+
     alias RidgeLink = StackArray!(Vertex, 2);
-    RidgeLink[Ridge] ridgeLinks;
+
+    struct RidgeInfo
+    {
+        size_t degree;
+        RidgeLink link;
+    }
+
+    // Generate one HashMap field per dimension: _dimMap0, _dimMap1, ..., _dimMap{dimension}
+    static foreach (_d_; 0 .. dimension_ + 1)
+    {
+        static if (_d_ == dimension_ - 1)
+            mixin("HashMap!(Vertex_[" ~ to!string(_d_ + 1) ~ "], RidgeInfo) _dimMap" ~ to!string(_d_) ~ ";");
+        else
+            mixin("HashMap!(Vertex_[" ~ to!string(_d_ + 1) ~ "], size_t) _dimMap" ~ to!string(_d_) ~ ";");
+    }
+
+    // Compile-time accessor for per-dimension maps
+    ref auto dimMap(int d)()
+    {
+        return mixin("_dimMap" ~ to!string(d));
+    }
+
+    ref auto dimMap(int d)() const
+    {
+        return mixin("_dimMap" ~ to!string(d));
+    }
+
+    // Extract degree from a per-dimension map value (size_t or RidgeInfo)
+    private static size_t extractDegree(V)(V value)
+    {
+        static if (is(V == RidgeInfo) || is(V == const(RidgeInfo)))
+            return value.degree;
+        else
+            return value;
+    }
+
+    // Legacy aliases kept for compatibility
+    alias NSimplex = StackArray!(Vertex, dimension + 1);
+    alias Ridge = Vertex[dimension_];
+    alias Facet = Vertex[dimension_ + 1];
 
     size_t[dimension_ + 1] numSimplices;
     ulong[dimension - 1] totSqrDegrees;
@@ -44,7 +85,6 @@ private:
         return range.staticArray!dimension;
     }
 
-    alias Facet = Vertex[dimension_ + 1];
     static Facet toFacet(R)(R range) if (isIRof!(R, Vertex_))
     {
         return range.staticArray!(dimension_ + 1);
@@ -74,10 +114,10 @@ public:
         }
     }
 
-    this(this) pure @safe
+    this(this)
     {
-        ridgeLinks = ridgeLinks.dup;
-        degreeMap = degreeMap.dup;
+        static foreach (d; 0 .. dimension_ + 1)
+            mixin("_dimMap" ~ to!string(d) ~ " = _dimMap" ~ to!string(d) ~ ".dup;");
     }
 
     /***************************************************************************
@@ -85,14 +125,28 @@ public:
     */
     bool contains(S)(S simplex) const if (isIRof!(S, const(Vertex)))
     {
-        if (simplex.empty)
+        if (simplex.empty) return false;
+        return containsInDimMaps(simplex);
+    }
+
+    /// Runtime-dispatch lookup into per-dimension maps.
+    private bool containsInDimMaps(S)(S simplex) const if (isIRof!(S, const(Vertex)))
+    {
+        Vertex[dimension + 1] buf;
+        size_t len = 0;
+        foreach (v; simplex) buf[len++] = v;
+
+        final switch (cast(int)(len - 1))
         {
-            return false;
+            static foreach (d; 0 .. dimension + 1)
+            {
+                case d:
+                {
+                    Vertex[d + 1] key = buf[0 .. d + 1];
+                    return (key in dimMap!d) !is null;
+                }
+            }
         }
-        bool notInDegreeMap = (toNSimp(simplex) in this.degreeMap) is null;
-        assert(this.simpComp.contains(simplex) == !notInDegreeMap,
-            "simplices in degreeMap and internal simplicial complex disagree");
-        return !notInDegreeMap;
     }
 
     /***************************************************************************
@@ -102,9 +156,63 @@ public:
     {
         assert(this.contains(simplex),
             "called degree on a simplex not in the manifold");
-        assert(degreeMap[toNSimp(simplex)] == simpComp.star(simplex).walkLength,
-            "degree in degreeMap and internal simplicial complex disagree");
-        return degreeMap[toNSimp(simplex)];
+        return degreeFromDimMaps(simplex);
+    }
+
+    /// Runtime-dispatch degree lookup.
+    private size_t degreeFromDimMaps(S)(S simplex) const if (isIRof!(S, const(Vertex)))
+    {
+        Vertex[dimension + 1] buf;
+        size_t len = 0;
+        foreach (v; simplex) buf[len++] = v;
+
+        final switch (cast(int)(len - 1))
+        {
+            static foreach (d; 0 .. dimension + 1)
+            {
+                case d:
+                {
+                    Vertex[d + 1] key = buf[0 .. d + 1];
+                    auto ptr = key in dimMap!d;
+                    assert(ptr !is null, "Key not found in dimMap");
+                    return extractDegree(*ptr);
+                }
+            }
+        }
+    }
+
+    /***************************************************************************
+    Returns the degree of a simplex, or 0 if the simplex is not in the manifold.
+    Avoids the double lookup of contains() + degree().
+    */
+    size_t degreeOrZero(S)(S simplex) const if (isIRof!(S, const(Vertex)))
+    {
+        Vertex[dimension + 1] buf;
+        size_t len = 0;
+        foreach (v; simplex) buf[len++] = v;
+
+        final switch (cast(int)(len - 1))
+        {
+            static foreach (d; 0 .. dimension + 1)
+            {
+                case d:
+                {
+                    Vertex[d + 1] key = buf[0 .. d + 1];
+                    auto ptr = key in dimMap!d;
+                    if (ptr is null) return 0;
+                    return extractDegree(*ptr);
+                }
+            }
+        }
+    }
+
+    /// Fast compile-time dimension-aware degreeOrZero (avoids runtime dispatch).
+    size_t degreeOrZero(int d, S)(S simplex) const if (isIRof!(S, const(Vertex)))
+    {
+        auto key = simplex.staticArray!(d + 1);
+        auto ptr = key in dimMap!d;
+        if (ptr is null) return 0;
+        return extractDegree(*ptr);
     }
 
     /***************************************************************************
@@ -117,10 +225,11 @@ public:
         return numSimplices[];
     }
 
-    // Special version of insertFacet to update tracked info
-    // (EXCEPT numSimplices, which is updated after each pachner move)
+    // Special version of insertFacet to update tracked info.
+    // Self-contained: also updates numSimplices (f-vector).
+    // Uses per-dimension maps with exact-size static array keys.
     private void insertFacet(F)(F facet_) if (isIRof!(F, Vertex))
-    {       
+    {
         assert(facet_.walkLength == dimension + 1,
             "facet has wrong dimension");
 
@@ -128,55 +237,67 @@ public:
         auto facet = facetBuffer[];
 
         facet.assertValidSimplex(dimension);
-        assert(toNSimp(facet) !in degreeMap,
+        assert(facetBuffer !in dimMap!dimension,
             "tried to insert a facet already in the manifold");
 
         this.simpComp.insertFacet!(No.checkForFacetFaces)(facet);
 
-        foreach (simplex_; facet.subsets)
-        {
-            auto simplex = toNSimp(simplex_);
-            ++degreeMap[simplex];
+        static foreach (d; 0 .. dimension + 1)
+        {{
+            foreach (subset; facet[].subsetsOfSize(d + 1))
+            {
+                auto key = subset.staticArray!(d + 1);
 
-        
-            if (simplex.length <= dimension - 1)
-            {
-                int i = simplex.length.to!int - 1;
-                assert(i >= 0);
-                assert(i < totSqrDegrees.length);
-                totSqrDegrees[i] += 2*degreeMap[simplex] - 1;
-            }
-        
-            if (simplex.length == dimension)
-            {
-                auto oppVerts = facet.filter!(v => !simplex_.canFind(v));
-                assert(oppVerts.walkLength == 1);
-                auto oppVert = oppVerts.front;
-               
-                auto ridge = toRidge(simplex_);
-                auto ptrToLink = ridge in ridgeLinks;
-                if (!ptrToLink)
+                static if (d == dimension - 1)
                 {
-                    assert(simplex in degreeMap);
-                    assert(degreeMap[simplex] == 1);
-                    auto rL = RidgeLink();
-                    rL ~= oppVert;
-                    ridgeLinks[ridge] = rL;
+                    // Ridge dimension: bundled degree + link
+                    auto ptr = key in dimMap!d;
+                    if (ptr is null)
+                    {
+                        numSimplices[d]++;
+                        auto oppVert = facet[].filter!(v => !subset.canFind(v)).front;
+                        RidgeInfo ri;
+                        ri.degree = 1;
+                        ri.link ~= oppVert;
+                        dimMap!d[key] = ri;
+                    }
+                    else
+                    {
+                        ptr.degree++;
+                        assert(ptr.degree == 2);
+                        auto oppVert = facet[].filter!(v => !subset.canFind(v)).front;
+                        ptr.link ~= oppVert;
+                        ptr.link[].sort;
+                    }
+                }
+                else static if (d < dimension - 1)
+                {
+                    // Sub-ridge dimension: degree + totSqrDegrees
+                    auto ptr = key in dimMap!d;
+                    if (ptr is null)
+                    {
+                        dimMap!d[key] = 1;
+                        numSimplices[d]++;
+                        totSqrDegrees[d] += 1; // 2*1 - 1
+                    }
+                    else
+                    {
+                        ++(*ptr);
+                        totSqrDegrees[d] += 2 * (*ptr) - 1;
+                    }
                 }
                 else
                 {
-                    assert(simplex in degreeMap);
-                    assert(degreeMap[simplex] == 2);
-                    (*ptrToLink) ~= oppVert;
-                    (*ptrToLink)[].sort;
+                    // Facet dimension (d == dimension): just degree
+                    dimMap!d[key] = 1;
+                    numSimplices[d]++;
                 }
-                assert(ridge in ridgeLinks);
             }
-        }
-        assert(toNSimp(facet) in degreeMap);
+        }}
     }
 
     // Special version of removeFacet to update tracked info.
+    // Self-contained: also updates numSimplices (f-vector).
     private void removeFacet(F)(F facet_) if (isIRof!(F, Vertex))
     {
         assert(facet_.walkLength == dimension + 1);
@@ -184,66 +305,70 @@ public:
         auto facetBuffer = toFacet(facet_);
         auto facet = facetBuffer[];
 
-        facet.assertValidSimplex(dimension);      
-        assert(toNSimp(facet) in degreeMap);
+        facet.assertValidSimplex(dimension);
+        assert(facetBuffer in dimMap!dimension);
 
         this.simpComp.removeFacet(facet);
-        
-        foreach (simplex_; facet.subsets)
-        {
-            auto simplex = toNSimp(simplex_);
-            assert(simplex in degreeMap);
 
-            --degreeMap[simplex];
-
-            if (simplex.length <= dimension - 1)
+        static foreach (d; 0 .. dimension + 1)
+        {{
+            foreach (subset; facet[].subsetsOfSize(d + 1))
             {
-                totSqrDegrees[simplex.length - 1] -= 2*degreeMap[simplex] + 1;
-            }
+                auto key = subset.staticArray!(d + 1);
 
-            if ((simplex.length == dimension) && (degreeMap[simplex] == 1))
-            {
-                auto ridge = toRidge(simplex_);
-                assert(ridge in ridgeLinks);
-
-                auto oppVerts = facet.filter!(v => !simplex_.canFind(v));
-                assert(oppVerts.walkLength == 1);
-                auto oppVert = oppVerts.front;
-
-                assert(ridgeLinks[ridge][].canFind(oppVert));
-
-                if (ridgeLinks[ridge].length == 2)
+                static if (d == dimension - 1)
                 {
-                    if (ridgeLinks[ridge][0] == oppVert)
+                    // Ridge dimension
+                    auto ptr = key in dimMap!d;
+                    assert(ptr !is null);
+                    ptr.degree--;
+
+                    if (ptr.degree == 1)
                     {
-                        ridgeLinks[ridge][0] = ridgeLinks[ridge][1];
+                        auto oppVert = facet[].filter!(v => !subset.canFind(v)).front;
+                        assert(ptr.link[].canFind(oppVert));
+                        if (ptr.link.length == 2)
+                        {
+                            if (ptr.link[0] == oppVert)
+                                ptr.link[0] = ptr.link[1];
+                            else
+                                assert(ptr.link[1] == oppVert);
+                            ptr.link.length = 1;
+                        }
+                        else
+                        {
+                            assert(ptr.link.length == 1);
+                        }
                     }
-                    else
+
+                    if (ptr.degree == 0)
                     {
-                        assert(ridgeLinks[ridge][1] == oppVert);
+                        numSimplices[d]--;
+                        dimMap!d.remove(key);
                     }
-                    ridgeLinks[ridge].length = 1;
+                }
+                else static if (d < dimension - 1)
+                {
+                    // Sub-ridge dimension
+                    auto ptr = key in dimMap!d;
+                    assert(ptr !is null);
+                    (*ptr)--;
+                    totSqrDegrees[d] -= 2 * (*ptr) + 1;
+
+                    if (*ptr == 0)
+                    {
+                        numSimplices[d]--;
+                        dimMap!d.remove(key);
+                    }
                 }
                 else
                 {
-                    assert(ridgeLinks[ridge].length == 1);
-                }
-
-            }
-
-            if (degreeMap[simplex] == 0)
-            {
-                degreeMap.remove(simplex);
-                if (simplex.length == dimension)
-                {
-                    auto ridge = toRidge(simplex_);
-                    assert(ridgeLinks[ridge].length == 1);
-                    ridgeLinks.remove(ridge);
+                    // Facet dimension
+                    numSimplices[d]--;
+                    dimMap!d.remove(key);
                 }
             }
-
-        }
-        assert(toNSimp(facet) !in degreeMap);
+        }}
         assert(!this.simpComp.containsFacet(facet));
     }
 
@@ -328,21 +453,23 @@ BistellarMove!(dim, Vertex)[] allBistellarMoves(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) mfd)
 {
     BistellarMove!(dim, Vertex)[] result;
-    foreach (simp_, deg; mfd.degreeMap)
-    {
-        if (simp_.length < dim + 1)
+    // Iterate over all dimensions except facet dimension
+    static foreach (d; 0 .. dim)
+    {{
+        foreach (kv; mfd.dimMap!d.byKeyValue())
         {
-            auto simp = simp_[];
-            if (deg == mfd.dimension + 2 - simp.walkLength)
+            auto deg = mfd.extractDegree(kv.value);
+            if (deg == dim + 1 - d)
             {
-                auto coCenter = mfd.findCoCenter(simp);
-                if (!mfd.contains(coCenter))
+                auto simp = kv.key[];
+                auto coCenter_ = mfd.findCoCenter(simp);
+                if (!mfd.contains(coCenter_))
                 {
-                    result ~= BistellarMove!(dim, Vertex)(simp, coCenter);
+                    result ~= BistellarMove!(dim, Vertex)(simp, coCenter_);
                 }
             }
         }
-    }
+    }}
     return result;
 }
 
@@ -534,8 +661,6 @@ void doMove(Vertex, int dim)(
 
     oldPiece.each!(f => manifold.removeFacet(f));
     newPiece.each!(f => manifold.insertFacet(f));
-
-    manifold.numSimplices.modifyFVector(move);
 }
 
 auto findCoCenter(Vertex, int dim, C)(
@@ -569,7 +694,7 @@ if (isIRof!(C, const(Vertex)) && isIRof!(F, const(Vertex)))
     // TO DO: Clean this up!
     auto ridges = facet.subsetsOfSize(dim)
         .filter!(r => center.isSubsetOf(r)).map!(r => mfd.toRidge(r));
-    auto coCenterVerts = ridges.map!(r => mfd.ridgeLinks[r][])
+    auto coCenterVerts = ridges.map!(r => mfd.dimMap!(dim - 1)[r].link[])
         .joiner.array.dup.sort.uniq.array;
 
     assert(coCenterVerts.equal(mfd.findCoCenter(center.array)));
@@ -982,37 +1107,10 @@ void doMove(int dim, Vertex)(
 
     foreach (f; oldPiece)
     {
-        manifold.removeFacet(f);    
+        manifold.removeFacet(f);
     }
-    // oldPiece.each!(f => manifold.removeFacet(f));
-
-    // Modify fVector, start with simplices removed
-    manifold.numSimplices[dim] -= deg;      // (# 1-simplices in Lk(hinge)) * (1 hinge) 
-    manifold.numSimplices[dim - 1] -= deg;  // (# 0-simplices in Lk(hinge)) * (1 hinge)
-    manifold.numSimplices[dim - 2] -= 1;    // 1 hinge
-
-    assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
 
     newPiece.each!(f => manifold.insertFacet(f));
-
-    // Now, add in the new simplices to the stored fVector
-    manifold.numSimplices[1] += (deg - 3);  // # edges in disk
-    manifold.numSimplices[2] += (deg - 2);  // # triangles in disk
-
-    // (# 0-simplices in bdry(hinge)) * (# 1-simplices in disk)
-    manifold.numSimplices[2] += (dim - 1) * (deg - 3);
-
-    foreach (d; 3 .. dim)
-    {
-        // (# (d - 3)-simplices in bdry(hinge)) * (# 2-simplices in disk)
-        manifold.numSimplices[d] += binomial(dim - 1, d - 2) * (deg - 2);            
-
-        // (# (d - 2)-simplices in bdry(hinge)) * (# 1-simplices in disk)
-        manifold.numSimplices[d] += binomial(dim - 1, d - 1) * (deg - 3);
-    }
-
-    // (# (dim - 2)-simplices in bdry(hinge)) * (# 2-simplices in disk)
-    manifold.numSimplices[dim] += (dim - 1) * (deg - 2);
 
     assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
 }
@@ -1095,33 +1193,7 @@ void undoMove(int dim, Vertex)(
 
     oldPiece.each!(f => manifold.removeFacet(f));
 
-    // STUFF REMOVED
-    manifold.numSimplices[1] -= (deg - 3);  // # edges in disk
-    manifold.numSimplices[2] -= (deg - 2);  // # triangles in disk
-    
-    // (# 0-simplices in bdry(hinge)) * (# 1-simplices in disk)
-    manifold.numSimplices[2] -= (dim - 1) * (deg - 3);
-
-    foreach (d; 3 .. dim)
-    {
-        // (# (d - 3)-simplices in bdry(hinge)) * (# 2-simplices in disk)
-        manifold.numSimplices[d] -= binomial(dim - 1, d - 2) * (deg - 2);            
-
-        // (# (d - 2)-simplices in bdry(hinge)) * (# 1-simplices in disk)
-        manifold.numSimplices[d] -= binomial(dim - 1, d - 1) * (deg - 3);
-    }
-
-    // (# (dim - 2)-simplices in bdry(hinge)) * (# 2-simplices in disk)
-    manifold.numSimplices[dim] -= (dim - 1) * (deg - 2);
-
-    assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
-
     newPiece.each!(f => manifold.insertFacet(f));
-
-    // STUFF ADDED
-    manifold.numSimplices[dim] += deg;      // (# 1-simplices in Lk(hinge)) * (1 hinge) 
-    manifold.numSimplices[dim - 1] += deg;  // (# 0-simplices in Lk(hinge)) * (1 hinge)
-    manifold.numSimplices[dim - 2] += 1;    // 1 hinge
 
     assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
 }
@@ -1235,79 +1307,64 @@ string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
         }
     }
 
+    // Check simpComp simplices are in dimMaps
     foreach (d; 0 .. dim + 1)
     {
         foreach (s; mfd.simpComp.simplices(d))
         {
-            if (mfd.toNSimp(s) !in mfd.degreeMap)
+            if (!mfd.contains(s))
             {
-                problems ~= "found a simplex in simpComp that is not in degreeMap";
+                problems ~= "found a simplex in simpComp that is not in dimMaps";
                 goto done;
             }
         }
     }
     done:
 
-    foreach (simplex; mfd.degreeMap.byKey)
-    {
-        if (!mfd.simpComp.contains(simplex[]))
+    // Check dimMap simplices are in simpComp, and degrees match
+    static foreach (d; 0 .. dim + 1)
+    {{
+        foreach (kv; mfd.dimMap!d.byKeyValue)
         {
-            problems ~= "found a simplex in degreeMap that is not in simpComp";
-            break;
+            if (!mfd.simpComp.contains(kv.key[]))
+            {
+                problems ~= "found a simplex in dimMaps that is not in simpComp";
+                goto done2;
+            }
+            auto deg = mfd.extractDegree(kv.value);
+            if (deg != mfd.simpComp.star(kv.key[]).walkLength)
+            {
+                problems ~= "found a simplex in dimMaps with incorrect degree";
+                goto done2;
+            }
         }
-    }
+    }}
+    done2:
 
-    foreach (pair; mfd.degreeMap.byKeyValue)
+    // Check ridge links
+    foreach (kv; mfd.dimMap!(dim - 1).byKeyValue)
     {
-        auto simplex = pair.key[];
-        auto deg = pair.value;
-
-        if (deg != mfd.simpComp.star(simplex).walkLength)
-        {
-            problems ~= "found a simplex in degreeMap with incorrect degree";
-            break;
-        }
-    }
-
-    foreach (pair; mfd.ridgeLinks.byKeyValue)
-    {
-        auto ridge = pair.key[];
-        auto link = pair.value[];
+        auto ridge = kv.key[];
+        auto link = kv.value.link[];
 
         if (link.walkLength != mfd.simpComp.star(ridge).walkLength)
         {
-            problems ~= "found a ridge in ridgeLinks whose link has incorrect number of vertices";
+            problems ~= "found a ridge in dimMaps whose link has incorrect number of vertices";
             break;
         }
-    }
 
-    foreach (pair; mfd.ridgeLinks.byKeyValue)
-    {
-        auto ridge = pair.key[];
-        auto link = pair.value[];
-
-        // TO DO: Clean this up!
         if (link.array != mfd.simpComp.link(ridge).joiner.array.dup.sort.array)
         {
-            problems ~= "found a ridge in ridgeLinks whose link has the wrong vertices";
-            break;
-        }
-    }
-
-    foreach (ridge; mfd.ridgeLinks.byKey)
-    {
-        if (!mfd.simpComp.contains(ridge[]))
-        {
-            problems ~= "found a ridge in ridgeLinks that is not in simpComp";
+            problems ~= "found a ridge in dimMaps whose link has the wrong vertices";
             break;
         }
     }
 
     foreach (ridge; mfd.simpComp.simplices(dim - 1))
     {
-        if (mfd.toRidge(ridge) !in mfd.ridgeLinks)
+        if (mfd.toRidge(ridge) !in mfd.dimMap!(dim - 1))
         {
-            problems ~= "found a ridge in simpComp that is not in ridgeLinks";
+            problems ~= "found a ridge in simpComp that is not in dimMaps";
             break;
         }
     }
@@ -1384,8 +1441,8 @@ if (isIRof!(S, const(Vertex)) && isIRof!(F, const(Vertex)))
     {
         Vertex nextVertex;
 
-        auto ridgeLink = mfd.ridgeLinks[
-            mfd.toRidge(merge(hinge, verticesFound.back.only))][];
+        auto ridgeLink = mfd.dimMap!(dim - 1)[
+            mfd.toRidge(merge(hinge, verticesFound.back.only))].link[];
         assert(ridgeLink.length == 2);
 
         if (ridgeLink.front == verticesFound[$ - 2])
@@ -1423,20 +1480,27 @@ size_t[] degreeHistogram(Vertex, int mfdDim)(
     auto ref const(Manifold!(mfdDim, Vertex)) mfd,
     size_t dim)
 {
-    auto degData = mfd.degreeMap.byKeyValue
-        .filter!(p => p.key.length == dim + 1);
-
     size_t[] histogram;
-    foreach (p; degData)
+
+    void addToHistogram(size_t deg)
     {
-        if (p.value > histogram.length)
-        {
-            histogram.length = p.value;
-        }
-        ++histogram[p.value - 1];
+        if (deg > histogram.length)
+            histogram.length = deg;
+        ++histogram[deg - 1];
     }
 
-    return histogram;
+    final switch (cast(int) dim)
+    {
+        static foreach (d; 0 .. mfdDim + 1)
+        {
+            case d:
+            {
+                foreach (kv; mfd.dimMap!d.byKeyValue)
+                    addToHistogram(mfd.extractDegree(kv.value));
+                return histogram;
+            }
+        }
+    }
 }
 ///
 unittest
@@ -1464,7 +1528,7 @@ void saveDualGraphTo(int dimension, Vertex = int)(
     {
         foreach(ridge; facet.subsetsOfSize(dimension))
         {
-            auto linkVertices = mfd.ridgeLinks[mfd.toRidge(ridge)];
+            auto linkVertices = mfd.dimMap!(dimension - 1)[mfd.toRidge(ridge)].link;
             Vertex[] oppositeFacet;
             if (facet.canFind(linkVertices.front))
             {

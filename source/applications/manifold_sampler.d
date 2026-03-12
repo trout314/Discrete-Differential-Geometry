@@ -112,25 +112,51 @@ int main(string[] args)
         assert(unusedVertices.all!(v => !mfd.contains(v.only)));
 
         //-------------------------- ATTEMPT MOVE ----------------------------
-        auto chosenMove = mfd.chooseRandomMove(unusedVertices.back, params);
-        mfd.doMove(chosenMove);        
-        updateUnusedVertices(unusedVertices, chosenMove);
-        incrementMoveCounts(bistellarTries, hingeTries, chosenMove);
-        incrementMoveCounts(bistellarAccepts, hingeAccepts, chosenMove);
+        alias BM = BistellarMove!(dim, int);
+        alias HM = HingeMove!(dim, int);
 
-        real newObjective = mfd.objective(params);
-        real deltaObj = newObjective - currentObjective;
- 
-        // Reject move and undo it, if appropriate
-        if ((deltaObj > 0) && (uniform01 > exp(-deltaObj)))
+        auto chosenMove = mfd.chooseRandomMove(unusedVertices.back, params);
+        incrementMoveCounts(bistellarTries, hingeTries, chosenMove);
+
+        bool accepted = false;
+        chosenMove.match!(
+            (BM bm)
+            {
+                // Speculative delta — avoid executing rejected moves
+                real deltaObj = mfd.speculativeBistellarDelta(bm, currentObjective, params);
+
+                if ((deltaObj <= 0) || (uniform01 <= exp(-deltaObj)))
+                {
+                    // Accepted — now execute
+                    mfd.doMove(bm);
+                    if (bm.coCenter.length == 1) unusedVertices.popBack;
+                    if (bm.center.length == 1) unusedVertices ~= bm.center;
+                    currentObjective += deltaObj;
+                    accepted = true;
+                }
+            },
+            (HM hm)
+            {
+                // Hinge moves: execute-check-undo (complex f-vector/degree changes)
+                mfd.doMove(hm);
+
+                real newObjective = mfd.objective(params);
+                real deltaObj = newObjective - currentObjective;
+
+                if ((deltaObj > 0) && (uniform01 > exp(-deltaObj)))
+                {
+                    mfd.undoMove(hm);
+                }
+                else
+                {
+                    currentObjective = newObjective;
+                    accepted = true;
+                }
+            });
+
+        if (accepted)
         {
-            mfd.undoMove(chosenMove);
-            undoUpdateUnusedVertices(unusedVertices, chosenMove);
-            decrementMoveCounts(bistellarAccepts, hingeAccepts, chosenMove);
-        }
-        else
-        {
-            currentObjective = newObjective;
+            incrementMoveCounts(bistellarAccepts, hingeAccepts, chosenMove);
         }
 
         //--------------------------- MAKE REPORT ----------------------------
@@ -242,45 +268,36 @@ private struct Penalty
     real localSolidAngleCurvPenalty;
 }
 
-Penalty penalties(int dim, Vertex, P)(const ref Manifold!(dim, Vertex) mfd, P params)
+/// Compute penalties from raw values (no manifold needed).
+private Penalty penaltiesFromValues(int dim_, P)(
+    long nFacets, long nHinges, ulong hingeTotSqDeg,
+    long nCoDim3, ulong coDim3TotSqDeg, P params)
 {
-    immutable hingesPerFacet = dim * (dim + 1) / 2;
-    immutable coDim3PerFacet = binomial(dim + 1, dim - 2);
-
-    immutable nFacets = mfd.fVector[dim];
-    immutable nHinges = mfd.fVector[dim - 2];
-    immutable totSqDeg = mfd.totalSquareDegree(dim - 2);
-
-    immutable nHingesTarget = hingesPerFacet * nFacets / params.hingeDegreeTarget;
-    immutable degTarget = hingesPerFacet * nFacets / nHinges.to!real;
-
-    static if (dim > 2)
-    {
-        immutable nCoDim3 = mfd.fVector[dim - 3];
-        immutable totSAsqDeg = mfd.totalSquareDegree(dim - 3);
-        immutable coDim3DegTarget = coDim3PerFacet * nFacets / nCoDim3.to!real;        
-    }
+    enum hingesPerFacet = dim_ * (dim_ + 1) / 2;
+    enum coDim3PerFacet = binomial(dim_ + 1, dim_ - 2);
 
     Penalty penalty;
     penalty.volumePenalty = (nFacets - params.numFacetsTarget) ^^ 2;
+
+    immutable nHingesTarget = hingesPerFacet * nFacets / params.hingeDegreeTarget;
     penalty.globalCurvPenalty = (nHinges - nHingesTarget) ^^ 2;
 
-    real _; // dummy for integer part
-    real x = modf(degTarget, _); // fractional part
+    immutable degTarget = hingesPerFacet * nFacets / cast(real) nHinges;
+    real _;
+    real x = modf(degTarget, _);
     real minPenalty = (x - x ^^ 2) * nHinges;
 
-    // TO DO: Refer to external paper for this!
     penalty.localCurvPenalty = (
-        degTarget ^^ 2 * nHinges - 2 * degTarget * hingesPerFacet * nFacets + totSqDeg) - minPenalty;
-    
-    static if (dim > 2)
+        degTarget ^^ 2 * nHinges - 2 * degTarget * hingesPerFacet * nFacets + hingeTotSqDeg) - minPenalty;
+
+    static if (dim_ > 2)
     {
-        x = modf(coDim3DegTarget, _); // fractional part
+        immutable coDim3DegTarget = coDim3PerFacet * nFacets / cast(real) nCoDim3;
+        x = modf(coDim3DegTarget, _);
         minPenalty = (x - x ^^ 2) * nCoDim3;
 
-        // TO DO: Refer to arxiv paper for this!
         penalty.localSolidAngleCurvPenalty = (
-            coDim3DegTarget ^^ 2 * nCoDim3 - 2 * coDim3DegTarget * coDim3PerFacet * nFacets + totSAsqDeg) - minPenalty;        
+            coDim3DegTarget ^^ 2 * nCoDim3 - 2 * coDim3DegTarget * coDim3PerFacet * nFacets + coDim3TotSqDeg) - minPenalty;
     }
     else
     {
@@ -290,6 +307,27 @@ Penalty penalties(int dim, Vertex, P)(const ref Manifold!(dim, Vertex) mfd, P pa
     return penalty;
 }
 
+Penalty penalties(int dim, Vertex, P)(const ref Manifold!(dim, Vertex) mfd, P params)
+{
+    immutable nFacets = mfd.fVector[dim];
+    immutable nHinges = mfd.fVector[dim - 2];
+    immutable totSqDeg = mfd.totalSquareDegree(dim - 2);
+
+    static if (dim > 2)
+    {
+        immutable nCoDim3 = mfd.fVector[dim - 3];
+        immutable totSAsqDeg = mfd.totalSquareDegree(dim - 3);
+    }
+    else
+    {
+        enum nCoDim3 = 0;
+        enum totSAsqDeg = 0;
+    }
+
+    return penaltiesFromValues!dim(
+        nFacets, nHinges, totSqDeg, nCoDim3, totSAsqDeg, params);
+}
+
 real objective(int dim, Vertex, P)(const ref Manifold!(dim, Vertex) mfd, P params)
 {
     auto pen = mfd.penalties(params);
@@ -297,6 +335,135 @@ real objective(int dim, Vertex, P)(const ref Manifold!(dim, Vertex) mfd, P param
         + params.numHingesCoef * pen.globalCurvPenalty
         + params.hingeDegreeVarianceCoef * pen.localCurvPenalty
         + params.coDim3DegreeVarianceCoef * pen.localSolidAngleCurvPenalty;
+}
+
+private real objectiveFromPenalty(P)(Penalty pen, P params)
+{
+    return params.numFacetsCoef * pen.volumePenalty
+        + params.numHingesCoef * pen.globalCurvPenalty
+        + params.hingeDegreeVarianceCoef * pen.localCurvPenalty
+        + params.coDim3DegreeVarianceCoef * pen.localSolidAngleCurvPenalty;
+}
+
+/******************************************************************************
+Compute the objective delta for a bistellar move without executing it.
+Enumerates affected sub-simplices and looks up their degrees to compute
+speculative totSqDeg deltas.
+*/
+real speculativeBistellarDelta(int dim, Vertex, P)(
+    const ref Manifold!(dim, Vertex) mfd,
+    const ref BistellarMove!(dim, Vertex) move,
+    real currentObjective,
+    P params)
+{
+    auto center = move.center;
+    auto coCenter = move.coCenter;
+    immutable cenLen = cast(int) center.length;
+    immutable coCenLen = cast(int) coCenter.length;
+
+    // Combined vertex set, sorted (needed for degreeMap lookup via subsetsOfSize)
+    Vertex[dim + 2] allVertsBuf;
+    allVertsBuf[0 .. cenLen] = center[];
+    allVertsBuf[cenLen .. cenLen + coCenLen] = coCenter[];
+    auto allVerts = allVertsBuf[0 .. cenLen + coCenLen];
+    allVerts.sort();
+
+    // Compute speculative f-vector
+    size_t[dim + 1] newFVector = mfd.fVector[0 .. dim + 1];
+    newFVector[].modifyFVector(move);
+
+    // Compute speculative totSqDeg for dimensions 0 through dim-2.
+    // For each sub-simplex s of dimension d in the combined vertex set:
+    //   delta(s) = (|C| - |s∩C|) - (|CC| - |s∩CC|)
+    //   ΔtotSqDeg[d] += 2*deg(s)*delta + delta²
+    long[dim - 1] newTotSqDeg;
+    foreach (d; 0 .. dim - 1)
+        newTotSqDeg[d] = cast(long) mfd.totalSquareDegree(d);
+
+    // Enumerate subsets of each relevant dimension
+    static foreach (d; 0 .. dim - 1)
+    {{
+        foreach (subset; allVerts[].subsetsOfSize(d + 1))
+        {
+            // Count how many vertices in this subset are from the center
+            int s_C = 0;
+            foreach (v; subset)
+            {
+                if (center.canFind(v)) s_C++;
+            }
+            int s_CC = d + 1 - s_C;
+            int delta = (cenLen - s_C) - (coCenLen - s_CC);
+
+            if (delta == 0) continue;
+
+            long deg = cast(long) mfd.degreeOrZero!d(subset);
+            newTotSqDeg[d] += 2 * deg * delta + cast(long) delta * delta;
+        }
+    }}
+
+    // Compute new objective from speculative values
+    static if (dim > 2)
+    {
+        auto newPen = penaltiesFromValues!dim(
+            cast(long) newFVector[dim], cast(long) newFVector[dim - 2],
+            cast(ulong) newTotSqDeg[dim - 2],
+            cast(long) newFVector[dim - 3],
+            cast(ulong) newTotSqDeg[dim - 3],
+            params);
+    }
+    else
+    {
+        auto newPen = penaltiesFromValues!dim(
+            cast(long) newFVector[dim], cast(long) newFVector[dim - 2],
+            cast(ulong) newTotSqDeg[dim - 2],
+            0, 0, params);
+    }
+
+    return objectiveFromPenalty(newPen, params) - currentObjective;
+}
+
+///
+@Name("speculativeBistellarDelta") unittest
+{
+    import std.random : Mt19937;
+
+    // Test that speculative delta matches actual delta for all move types
+    struct TestParams
+    {
+        int numFacetsTarget = 20;
+        real hingeDegreeTarget = 4.5;
+        real numFacetsCoef = 0.1;
+        real numHingesCoef = 0.05;
+        real hingeDegreeVarianceCoef = 0.2;
+        real coDim3DegreeVarianceCoef = 0.1;
+        bool useHingeMoves = false;
+    }
+
+    // Start from a sphere and do some 1→4 moves to get a nontrivial triangulation
+    auto mfd = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+    auto params = TestParams();
+
+    // Grow the manifold a bit to create diverse degree distributions
+    alias BM = BistellarMove!3;
+    mfd.doMove(BM([0,1,2,3], [5]));
+    mfd.doMove(BM([0,1,2,4], [6]));
+
+    // Now test speculative delta on all available bistellar moves
+    foreach (move; mfd.allBistellarMoves)
+    {
+        auto currentObj = mfd.objective(params);
+        auto specDelta = mfd.speculativeBistellarDelta(move, currentObj, params);
+
+        // Actually execute and compute
+        auto mfdCopy = mfd;
+        mfdCopy.doMove(move);
+        auto actualNewObj = mfdCopy.objective(params);
+        auto actualDelta = actualNewObj - currentObj;
+
+        assert(isClose(specDelta, actualDelta, 1e-6),
+            "speculative delta mismatch: spec=%s actual=%s for move %s"
+            .format(specDelta, actualDelta, move));
+    }
 }
 
 void writeCSVreport(M, S, T, P)(M manifold, ulong reportNumber, S startTime, T timer, ulong[] bistellarTries,
@@ -620,14 +787,27 @@ auto getFirstTwoParts(T)(T time)
 auto chooseRandomMove(int dim, Vertex, P)(Manifold!(dim, Vertex) manifold, Vertex newVertex, P parameters)
 {
     SumType!(BistellarMove!(dim, Vertex), HingeMove!(dim, Vertex)) chosenMove;
+    enum nVerts = dim + 1;
+    enum maxMask = (1 << nVerts) - 1; // 2^(dim+1) - 1
 
     auto done = false;
     while(!done)
     {
         auto facet = manifold.asSimplicialComplex.randomFacetOfDim(dim);
-        auto center = facet.subsets.array.rndChoice.array;
 
-        auto centerDim = center.walkLength - 1;
+        // Pick a random non-empty subset via bitmask (avoids materializing all subsets)
+        auto mask = uniform(1, maxMask + 1);
+        Vertex[nVerts] centerBuf;
+        int centerLen = 0;
+        foreach (i; 0 .. nVerts)
+        {
+            if (mask & (1 << i))
+                centerBuf[centerLen++] = facet[i];
+        }
+        auto center = centerBuf[0 .. centerLen];
+        center.sort();
+
+        auto centerDim = centerLen - 1;
         auto centerDeg = manifold.degree(center);
         auto centerIsHinge = (centerDim == dim - 2);
 
@@ -658,7 +838,7 @@ auto chooseRandomMove(int dim, Vertex, P)(Manifold!(dim, Vertex) manifold, Verte
         if (isBistellarMove)
         {
             if (centerDim == dim)
-            { 
+            {
                 chosenMove = BistellarMove!(dim, Vertex)(center, newVertex.only);
             }
             else
@@ -677,7 +857,7 @@ auto chooseRandomMove(int dim, Vertex, P)(Manifold!(dim, Vertex) manifold, Verte
         {
             continue;
         }
-        
+
         return chosenMove;
     }
     return chosenMove;
