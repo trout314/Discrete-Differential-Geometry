@@ -77,6 +77,7 @@ private:
     version (TrackValidMoves)
     {
         size_t _validMoveCount;
+        Facet[][Vertex] _vertexFacets;
     }
 
     //--------------- Helper Functions ---------------
@@ -127,6 +128,14 @@ public:
     {
         static foreach (d; 0 .. dimension_ + 1)
             mixin("_dimMap" ~ to!string(d) ~ " = _dimMap" ~ to!string(d) ~ ".dup;");
+
+        version (TrackValidMoves)
+        {
+            Facet[][Vertex] newVF;
+            foreach (k, v; _vertexFacets)
+                newVF[k] = v.dup;
+            _vertexFacets = newVF;
+        }
     }
 
     /***************************************************************************
@@ -312,6 +321,12 @@ public:
                 }
             }
         }}
+
+        version (TrackValidMoves)
+        {
+            foreach (v; facet)
+                _vertexFacets[v] ~= facetBuffer;
+        }
     }
 
     // Special version of removeFacet to update tracked info.
@@ -387,6 +402,26 @@ public:
                 }
             }
         }}
+
+        version (TrackValidMoves)
+        {
+            foreach (v; facet)
+            {
+                auto arr = _vertexFacets[v];
+                foreach (i; 0 .. arr.length)
+                {
+                    if (arr[i] == facetBuffer)
+                    {
+                        arr[i] = arr[$ - 1];
+                        _vertexFacets[v] = arr[0 .. $ - 1];
+                        break;
+                    }
+                }
+                if (_vertexFacets[v].length == 0)
+                    _vertexFacets.remove(v);
+            }
+        }
+
         assert(!this.simpComp.containsFacet(facet));
     }
 
@@ -667,56 +702,126 @@ private size_t countTypeAValidMoves(Vertex, int dim)(
 }
 
 /*******************************************************************************
+Compute the coCenter of a d-simplex using the per-vertex adjacency list
+(_vertexFacets) instead of the O(n) simplicial complex link computation.
+Only valid for simplices with degree == dim+1-d.
+Returns a StackArray of coCenter vertices, sorted.
+*/
+private auto localCoCenter(int d, Vertex, int dim)(
+    const ref Manifold!(dim, Vertex) mfd,
+    const ref Vertex[d + 1] center)
+{
+    StackArray!(Vertex, dim + 1 - d) result;
+
+    static if (d == dim - 1)
+    {
+        // Ridge: coCenter is directly from ridgeLinks
+        auto ptr = center in mfd.dimMap!(dim - 1);
+        assert(ptr !is null);
+        foreach (v; (*ptr).link[])
+            result ~= v;
+    }
+    else
+    {
+        // Find star(center) via _vertexFacets[center[0]]
+        auto ptr = center[0] in mfd._vertexFacets;
+        assert(ptr !is null);
+        foreach (ref facet; *ptr)
+        {
+            // Check facet contains all of center
+            bool containsAll = true;
+            foreach (v; center[1 .. $])
+                if (!facet[].canFind(v)) { containsAll = false; break; }
+            if (!containsAll) continue;
+
+            // Extract vertices not in center
+            foreach (v; facet)
+                if (!center[].canFind(v) && !result[].canFind(v))
+                    result ~= v;
+        }
+    }
+
+    result[].sort();
+    return result;
+}
+
+/*******************************************************************************
 Count "Type B" valid moves: simplices NOT subsets of allVerts whose coCenter
 IS a subset of allVerts.
 
-Scans each per-dimension map for simplices with the valid-move degree,
-skips those that are subsets of allVerts (already counted as Type A),
-and checks whether their coCenter is a subset of allVerts.
+Uses the per-vertex adjacency list (_vertexFacets) to enumerate only the
+local neighborhood of allVerts, making this O(local) instead of O(n).
 */
 private size_t countTypeBValidMoves(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) mfd,
     const(Vertex)[] allVerts)
 {
+    alias MFacet = Vertex[dim + 1];
+
+    // Collect all facets incident to any vertex in allVerts (may have dups)
+    MFacet[] incidentFacets;
+    foreach (v; allVerts)
+    {
+        auto ptr = v in mfd._vertexFacets;
+        if (ptr is null) continue;
+        foreach (ref f; *ptr)
+            incidentFacets ~= f;
+    }
+    incidentFacets.sort();
+
     size_t count = 0;
 
     static foreach (d; 0 .. dim)
     {{
         enum targetDeg = dim + 1 - d;
-        foreach (kv; mfd.dimMap!d.byKeyValue())
-        {
-            auto deg = mfd.extractDegree(kv.value);
-            if (deg != targetDeg) continue;
 
-            auto simp = kv.key[];
+        // Collect d-faces of unique incident facets
+        Vertex[d + 1][] candidates;
+        MFacet prevFacet;
+        bool havePrevFacet = false;
+        foreach (ref facet; incidentFacets)
+        {
+            if (havePrevFacet && facet == prevFacet) continue;
+            prevFacet = facet;
+            havePrevFacet = true;
+
+            foreach (subset; facet[].subsetsOfSize(d + 1))
+                candidates ~= subset.staticArray!(d + 1);
+        }
+        candidates.sort();
+
+        // Check each unique candidate
+        Vertex[d + 1] prevKey;
+        bool havePrevKey = false;
+        foreach (ref key; candidates)
+        {
+            if (havePrevKey && key == prevKey) continue;
+            prevKey = key;
+            havePrevKey = true;
 
             // Skip Type A (subsets of allVerts)
             bool isSubset = true;
-            foreach (v; simp)
-            {
-                if (!allVerts.canFind(v))
-                {
-                    isSubset = false;
-                    break;
-                }
-            }
+            foreach (v; key)
+                if (!allVerts.canFind(v)) { isSubset = false; break; }
             if (isSubset) continue;
 
-            // Check if coCenter is a subset of allVerts
-            auto coCenter_ = mfd.findCoCenter(simp);
+            // Check degree
+            auto kptr = key in mfd.dimMap!d;
+            if (kptr is null) continue;
+            auto deg = mfd.extractDegree(*kptr);
+            if (deg != targetDeg) continue;
+
+            // Compute coCenter locally (O(vertex_degree), not O(n))
+            auto cc = mfd.localCoCenter!d(key);
+
+            // Check coCenter ⊆ allVerts
             bool coCenterInAllVerts = true;
-            foreach (v; coCenter_)
-            {
-                if (!allVerts.canFind(v))
-                {
-                    coCenterInAllVerts = false;
-                    break;
-                }
-            }
+            foreach (v; cc[])
+                if (!allVerts.canFind(v)) { coCenterInAllVerts = false; break; }
             if (!coCenterInAllVerts) continue;
 
             // Valid iff coCenter not in manifold
-            if (!mfd.contains(coCenter_))
+            if (!mfd.contains(cc[]))
                 count++;
         }
     }}
