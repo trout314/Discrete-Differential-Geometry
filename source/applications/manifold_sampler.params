@@ -24,7 +24,6 @@ saveDualGraph = true
 checkForProblems = false
 movesTriedPerProblemCheck = 10
 
-useHingeMoves = true
 disableGC = true
 movesTriedPerGCcollect = 1000
 

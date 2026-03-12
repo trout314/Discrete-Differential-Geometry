@@ -31,7 +31,7 @@ void main()
         foreach (_; 0 .. 100)
         {
             // Stellar subdivision to grow
-            auto facet = mfd.asSimplicialComplex.randomFacetOfDim(dim).array;
+            auto facet = mfd.randomFacetOfDim(dim).array;
             mfd.doMove(BM(facet, [nextV]));
             nextV++;
             nMoves++;

@@ -2,18 +2,15 @@
 module applications.manifold_sampler;
 import std.algorithm, std.array, std.conv, std.datetime, std.datetime.stopwatch,
     std.format, std.getopt, std.math, std.range, std.stdio, std.string,
-    std.sumtype, std.stdio;
+    std.stdio;
 import std.random : rndChoice = choice;
 import std.random : uniform, uniform01;
 import core.memory : GC;
-import algorithms, manifold, manifold_examples, manifold_moves, polygons,
+import algorithms, manifold, manifold_examples, manifold_moves,
     simplicial_complex, utility;
 import unit_threaded;
 
 enum dim = 3;
-enum maxHingeMoveDeg = 4;
-
-static assert(maxHingeMoveDeg >= 4, "Hinge move degrees must be at least 4");
 
 version (unittest) {} else {
 int main(string[] args)
@@ -32,7 +29,6 @@ int main(string[] args)
 
     static immutable parametersUsed = [
         ["bool", "disableGC"],
-        ["bool", "useHingeMoves"],
         ["bool", "checkForProblems"],
         ["bool", "saveEdgeGraph"],
         ["bool", "saveDualGraph"],
@@ -72,12 +68,6 @@ int main(string[] args)
     // bistellarAccepts[j] counts the (j + 1) -> (dim + 1 - j) moves accepted
     ulong[dim + 1] bistellarAccepts;
 
-    // hingeTries[j] counts the hinge-moves with hinge degree j + 4 tried
-    ulong[maxHingeMoveDeg - 3] hingeTries;
- 
-    // hingeAccepts[j] counts the hinge-moves with hinge degree j + 4 accepted
-    ulong[maxHingeMoveDeg - 3] hingeAccepts;
-
     auto sampleThreshold = params.numFacetsTarget * params.sweepsPerSample;
     auto csvLineThreshold = params.numFacetsTarget * params.sweepsPerCSVline;
     
@@ -98,8 +88,8 @@ int main(string[] args)
 
     while (!doneSampling)
     {
-        ulong numMovesTried = bistellarTries[].sum + hingeTries[].sum;
-        ulong numMovesAccepted = bistellarAccepts[].sum + hingeAccepts[].sum;
+        ulong numMovesTried = bistellarTries[].sum;
+        ulong numMovesAccepted = bistellarAccepts[].sum;
         doneSampling = numMovesAccepted >= params.maxSweeps * params.numFacetsTarget;
 
         if (unusedVertices.empty)
@@ -113,120 +103,69 @@ int main(string[] args)
 
         //-------------------------- ATTEMPT MOVE ----------------------------
         alias BM = BistellarMove!(dim, int);
-        alias HM = HingeMove!(dim, int);
 
-        auto chosenMove = mfd.chooseRandomMove(unusedVertices.back, params);
-        incrementMoveCounts(bistellarTries, hingeTries, chosenMove);
+        auto bm = mfd.chooseRandomMove(unusedVertices.back, params);
+        ++bistellarTries[bm.coCenter.length - 1];
 
         bool accepted = false;
-        chosenMove.match!(
-            (BM bm)
+        version (TrackValidMoves)
+        {
+            // Exact Hastings: execute, compute, undo if rejected.
+            // Uses incrementally tracked V_before/V_after for correction.
+            immutable vBefore = cast(real) mfd.validMoveCount;
+
+            mfd.doMove(bm);
+            if (bm.coCenter.length == 1) unusedVertices.popBack;
+            if (bm.center.length == 1) unusedVertices ~= bm.center;
+
+            real newObjective = mfd.objective(params);
+            real deltaObj = newObjective - currentObjective;
+            immutable vAfter = cast(real) mfd.validMoveCount;
+
+            real logAlpha = -deltaObj + log(vBefore) - log(vAfter);
+
+            if ((logAlpha < 0) && (uniform01 > exp(logAlpha)))
             {
-                version (TrackValidMoves)
+                // Rejected — undo
+                mfd.undoMove(bm);
+                if (bm.coCenter.length == 1) unusedVertices ~= bm.coCenter;
+                if (bm.center.length == 1)
                 {
-                    // Exact Hastings: execute, compute, undo if rejected.
-                    // Uses incrementally tracked V_before/V_after for correction.
-                    immutable vBefore = cast(real) mfd.validMoveCount;
-
-                    mfd.doMove(bm);
-                    if (bm.coCenter.length == 1) unusedVertices.popBack;
-                    if (bm.center.length == 1) unusedVertices ~= bm.center;
-
-                    real newObjective = mfd.objective(params);
-                    real deltaObj = newObjective - currentObjective;
-                    immutable vAfter = cast(real) mfd.validMoveCount;
-
-                    real logAlpha = -deltaObj + log(vBefore) - log(vAfter);
-
-                    if ((logAlpha < 0) && (uniform01 > exp(logAlpha)))
-                    {
-                        // Rejected — undo
-                        mfd.undoMove(bm);
-                        if (bm.coCenter.length == 1) unusedVertices ~= bm.coCenter;
-                        if (bm.center.length == 1)
-                        {
-                            assert(bm.center.front == unusedVertices.back);
-                            unusedVertices.popBack;
-                        }
-                    }
-                    else
-                    {
-                        currentObjective = newObjective;
-                        accepted = true;
-                    }
+                    assert(bm.center.front == unusedVertices.back);
+                    unusedVertices.popBack;
                 }
-                else
-                {
-                    // Speculative delta — avoid executing rejected moves.
-                    // Approximate Hastings correction using nFacets ratio.
-                    real deltaObj = mfd.speculativeBistellarDelta(bm, currentObjective, params);
-
-                    immutable nFacetsBefore = cast(real) mfd.fVector[dim];
-                    immutable deltaFacets = dim + 2 - 2 * cast(int) bm.center.length;
-                    immutable nFacetsAfter = nFacetsBefore + deltaFacets;
-                    real logAlpha = -deltaObj + log(nFacetsBefore) - log(nFacetsAfter);
-
-                    if ((logAlpha >= 0) || (uniform01 <= exp(logAlpha)))
-                    {
-                        // Accepted — now execute
-                        mfd.doMove(bm);
-                        if (bm.coCenter.length == 1) unusedVertices.popBack;
-                        if (bm.center.length == 1) unusedVertices ~= bm.center;
-                        currentObjective += deltaObj;
-                        accepted = true;
-                    }
-                }
-            },
-            (HM hm)
+            }
+            else
             {
-                // Hinge moves: always execute-check-undo
-                version (TrackValidMoves)
-                {
-                    immutable vBefore = cast(real) mfd.validMoveCount;
-                    mfd.doMove(hm);
+                currentObjective = newObjective;
+                accepted = true;
+            }
+        }
+        else
+        {
+            // Speculative delta — avoid executing rejected moves.
+            // Approximate Hastings correction using nFacets ratio.
+            real deltaObj = mfd.speculativeBistellarDelta(bm, currentObjective, params);
 
-                    real newObjective = mfd.objective(params);
-                    real deltaObj = newObjective - currentObjective;
-                    immutable vAfter = cast(real) mfd.validMoveCount;
+            immutable nFacetsBefore = cast(real) mfd.fVector[dim];
+            immutable deltaFacets = dim + 2 - 2 * cast(int) bm.center.length;
+            immutable nFacetsAfter = nFacetsBefore + deltaFacets;
+            real logAlpha = -deltaObj + log(nFacetsBefore) - log(nFacetsAfter);
 
-                    real logAlpha = -deltaObj + log(vBefore) - log(vAfter);
-
-                    if ((logAlpha < 0) && (uniform01 > exp(logAlpha)))
-                    {
-                        mfd.undoMove(hm);
-                    }
-                    else
-                    {
-                        currentObjective = newObjective;
-                        accepted = true;
-                    }
-                }
-                else
-                {
-                    immutable nFacetsBefore = cast(real) mfd.fVector[dim];
-                    mfd.doMove(hm);
-                    immutable nFacetsAfter = cast(real) mfd.fVector[dim];
-
-                    real newObjective = mfd.objective(params);
-                    real deltaObj = newObjective - currentObjective;
-
-                    real logAlpha = -deltaObj + log(nFacetsBefore) - log(nFacetsAfter);
-
-                    if ((logAlpha < 0) && (uniform01 > exp(logAlpha)))
-                    {
-                        mfd.undoMove(hm);
-                    }
-                    else
-                    {
-                        currentObjective = newObjective;
-                        accepted = true;
-                    }
-                }
-            });
+            if ((logAlpha >= 0) || (uniform01 <= exp(logAlpha)))
+            {
+                // Accepted — now execute
+                mfd.doMove(bm);
+                if (bm.coCenter.length == 1) unusedVertices.popBack;
+                if (bm.center.length == 1) unusedVertices ~= bm.center;
+                currentObjective += deltaObj;
+                accepted = true;
+            }
+        }
 
         if (accepted)
         {
-            incrementMoveCounts(bistellarAccepts, hingeAccepts, chosenMove);
+            ++bistellarAccepts[bm.coCenter.length - 1];
         }
 
         //--------------------------- MAKE REPORT ----------------------------
@@ -236,7 +175,7 @@ int main(string[] args)
         {
             stdout.write("\033c");  // Clear the screen
             stdout.writeReports(mfd, startTime, timer, bistellarTries[],
-                bistellarAccepts[], hingeTries[], hingeAccepts[], params);
+                bistellarAccepts[], params);
             stdout.flush();
         }
 
@@ -244,7 +183,7 @@ int main(string[] args)
         if ((numMovesAccepted == csvLineThreshold) || doneSampling)
         {
             mfd.writeCSVreport(columnReportNumber, startTime, timer, bistellarTries[],
-                bistellarAccepts[], hingeTries[], hingeAccepts[], params);
+                bistellarAccepts[], params);
             ++columnReportNumber;
             csvLineThreshold += params.numFacetsTarget * params.sweepsPerCSVline;
         }
@@ -253,7 +192,7 @@ int main(string[] args)
         if ((numMovesAccepted == sampleThreshold) || doneSampling)
         {
             mfd.saveSample(sampleNumber, startTime, timer,
-                bistellarTries[], bistellarAccepts[], hingeTries[], hingeAccepts[], params);
+                bistellarTries[], bistellarAccepts[], params);
             ++sampleNumber;
             sampleThreshold += params.numFacetsTarget * params.sweepsPerSample;
         }
@@ -289,12 +228,10 @@ void writeReports(M, S, T, W, P)(
     T timer,
     ulong[] bistellarTries,
     ulong[] bistellarAccepts,
-    ulong[] hingeTries,
-    ulong[] hingeAccepts,
     P params)
 {
-    auto numMovesTried = bistellarTries.sum + hingeTries.sum;
-    auto numMovesAccepted = bistellarAccepts.sum + hingeAccepts.sum;
+    auto numMovesTried = bistellarTries.sum;
+    auto numMovesAccepted = bistellarAccepts.sum;
     
     typeof(timer.peek()) timePerMove;
     if (numMovesTried > 0)
@@ -306,7 +243,7 @@ void writeReports(M, S, T, W, P)(
     sink.writeTimingAndTargetsReport(mfd, numMovesAccepted, startTime, timePerMove, acceptFrac, params);
     sink.writeSimplexReport(mfd);
     sink.writeObjectiveReport(mfd, params);
-    sink.writeMoveReport(bistellarTries, bistellarAccepts, hingeTries, hingeAccepts, params);
+    sink.writeMoveReport(bistellarTries, bistellarAccepts, params);
     sink.writeHistogramReport(mfd, params);
 }
 
@@ -506,7 +443,6 @@ real speculativeBistellarDelta(int dim, Vertex, P)(
         real numHingesCoef = 0.05;
         real hingeDegreeVarianceCoef = 0.2;
         real coDim3DegreeVarianceCoef = 0.1;
-        bool useHingeMoves = false;
     }
 
     // Start from a sphere and do some 1→4 moves to get a nontrivial triangulation
@@ -537,7 +473,7 @@ real speculativeBistellarDelta(int dim, Vertex, P)(
 }
 
 void writeCSVreport(M, S, T, P)(M manifold, ulong reportNumber, S startTime, T timer, ulong[] bistellarTries,
-    ulong[] bistellarAccepts, ulong[] hingeTries, ulong[] hingeAccepts, P params)
+    ulong[] bistellarAccepts, P params)
 {
     auto file = File(params.sampleFilesPrefix ~ ".dat", "a");
     auto dim = manifold.dimension;
@@ -546,7 +482,7 @@ void writeCSVreport(M, S, T, P)(M manifold, ulong reportNumber, S startTime, T t
     string[] values;
 
     columnLabels ~= "total_moves_accepted";
-    values ~= (bistellarAccepts[].sum + hingeAccepts[].sum).to!string;
+    values ~= bistellarAccepts[].sum.to!string;
 
     columnLabels ~= "objective";
     values ~= manifold.objective(params).to!string;
@@ -564,7 +500,7 @@ void writeCSVreport(M, S, T, P)(M manifold, ulong reportNumber, S startTime, T t
     values ~= manifold.penalties(params).localSolidAngleCurvPenalty.to!string;
 
     columnLabels ~= "total_moves_tried";
-    values ~= (bistellarTries[].sum + hingeTries[].sum).to!string;
+    values ~= bistellarTries[].sum.to!string;
 
     foreach(n; 1 .. dim+2)
     {
@@ -575,15 +511,6 @@ void writeCSVreport(M, S, T, P)(M manifold, ulong reportNumber, S startTime, T t
         values ~= bistellarTries[n-1].to!string;
     }
 
-    foreach(n; 0 .. hingeAccepts.length)
-    {
-        columnLabels ~= "num_%s_%s_hinge_accepted".format(n+4, (n+2)*(dim-1));
-        values ~= hingeAccepts[n].to!string;
-
-        columnLabels ~= "num_%s_%s_hinge_tried".format(n+4, (n+2)*(dim-1));
-        values ~= hingeTries[n].to!string;
-    }
-    
     foreach(d; 0 .. dim+1)
     {
         columnLabels ~= "num_%s_simplices".format(d);
@@ -730,7 +657,7 @@ void writeObjectiveReport(int dim, Vertex, W, P)(W sink, const ref Manifold!(dim
         mfd.objective(params));
 }
 
-void writeMoveReport(S, T, W, P)(W sink, S bistellarTries, S bistellarAccepts, T hingeTries, T hingeAccepts, P params)
+void writeMoveReport(S, W, P)(W sink, S bistellarTries, S bistellarAccepts, P params)
 {
     sink.writeln("-".repeat(80).joiner);
     sink.writeln("Bistellar Moves      # Accepted          # Tried    %    ");
@@ -742,20 +669,8 @@ void writeMoveReport(S, T, W, P)(W sink, S bistellarTries, S bistellarAccepts, T
             i + 1, dim + 1 - i, accepts, tries,
             double(bistellarAccepts[i]) / bistellarTries[i]);
     }
-    if (params.useHingeMoves)
-    {
-        sink.writeln("Hinge Moves");
-        foreach (i; 0 .. hingeAccepts.length)
-        {
-            auto accepts = "%10,d".format(hingeAccepts[i]);
-            auto tries = "%10,d".format(hingeTries[i]);
-            sink.writefln("    %2s → %2-s    : %14s / %14s (%5.3f)", i + 4,
-                (i + 2) * (dim - 1), accepts, tries,
-                double(hingeAccepts[i]) / hingeTries[i]);
-        }
-    }
-    auto totAccepts = hingeAccepts.sum + bistellarAccepts[].sum;
-    auto totTries = hingeTries.sum + bistellarTries[].sum;
+    auto totAccepts = bistellarAccepts[].sum;
+    auto totTries = bistellarTries[].sum;
     auto accepts = "%10,d".format(totAccepts);
     auto tries = "%10,d".format(totTries);
     sink.writefln("Total Moves    : %14s / %14s (%5.3f)", accepts, tries,
@@ -854,16 +769,15 @@ auto getFirstTwoParts(T)(T time)
 
 }
 
-auto chooseRandomMove(int dim, Vertex, P)(Manifold!(dim, Vertex) manifold, Vertex newVertex, P parameters)
+BistellarMove!(dim, Vertex) chooseRandomMove(int dim, Vertex, P)(Manifold!(dim, Vertex) manifold, Vertex newVertex, P parameters)
 {
-    SumType!(BistellarMove!(dim, Vertex), HingeMove!(dim, Vertex)) chosenMove;
+    alias BM = BistellarMove!(dim, Vertex);
     enum nVerts = dim + 1;
     enum maxMask = (1 << nVerts) - 1; // 2^(dim+1) - 1
 
-    auto done = false;
-    while(!done)
+    while(true)
     {
-        auto facet = manifold.asSimplicialComplex.randomFacetOfDim(dim);
+        auto facet = manifold.randomFacetOfDim(dim);
 
         // Pick a random non-empty subset via bitmask (avoids materializing all subsets)
         auto mask = uniform(1, maxMask + 1);
@@ -879,58 +793,29 @@ auto chooseRandomMove(int dim, Vertex, P)(Manifold!(dim, Vertex) manifold, Verte
 
         auto centerDim = centerLen - 1;
         auto centerDeg = manifold.degree(center);
-        auto centerIsHinge = (centerDim == dim - 2);
 
-        // Check if the chosen center simplex has an appropriate degree
-        // to be a bistellar move or hinge move
-        if ((parameters.useHingeMoves) && (centerDim == dim - 2))
-        {
-            if (centerDeg > maxHingeMoveDeg)
-            {
-                continue;
-            }
-        }
-        else if (centerDeg + centerDim != dim + 1)
-        {
+        if (centerDeg + centerDim != dim + 1)
             continue;
-        }
 
-        bool isHingeMove = centerIsHinge && (centerDeg > 3);
-        bool isBistellarMove = !isHingeMove;
-
-        if (isHingeMove)
+        BM bm;
+        if (centerDim == dim)
         {
-            int triangIndx = uniform(0, numNgonTriangs(centerDeg));
-            auto rimVertices = manifold.orderedHingeLinkVertices(center);
-            chosenMove = HingeMove!(dim, Vertex)(center, rimVertices, triangIndx);
+            bm = BM(center, newVertex.only);
         }
-
-        if (isBistellarMove)
+        else
         {
-            if (centerDim == dim)
-            {
-                chosenMove = BistellarMove!(dim, Vertex)(center, newVertex.only);
-            }
-            else
-            {
-                auto coCenter = manifold.coCenter(center, facet);
-                chosenMove = BistellarMove!(dim, Vertex)(center, coCenter);
-            }
+            auto coCenter = manifold.coCenter(center, facet);
+            bm = BM(center, coCenter);
         }
 
         if (uniform01 > 2.0 / centerDeg)
-        {
             continue;
-        }
 
-        if (!manifold.hasValidMove(chosenMove))
-        {
+        if (!manifold.hasValidMove(bm))
             continue;
-        }
 
-        return chosenMove;
+        return bm;
     }
-    return chosenMove;
 }
 ///
 @Name("chooseRandomMove") @safe unittest
@@ -953,84 +838,9 @@ auto chooseRandomMove(int dim, Vertex, P)(Manifold!(dim, Vertex) manifold, Verte
     // }
 }
 
-void updateUnusedVertices(int dim, Vertex)(ref Vertex[] unusedVertices, SumType!(BistellarMove!(dim,Vertex), HingeMove!(dim,Vertex)) move)
-{
-    alias BM = BistellarMove!(dim, Vertex);
-    move.match!(
-        (BM bistellarMove)
-        {
-            if (bistellarMove.coCenter.length == 1)
-            {
-                unusedVertices.popBack;
-            }
-            if (bistellarMove.center.length == 1)
-            {
-                unusedVertices ~= bistellarMove.center;
-            }                   
-        },
-        (_) {});
-}
-
-void undoUpdateUnusedVertices(int dim, Vertex)(ref Vertex[] unusedVertices, SumType!(BistellarMove!(dim,Vertex), HingeMove!(dim,Vertex)) move)
-{
-    alias BM = BistellarMove!(dim, Vertex);
-    move.match!(
-        (BM bistellarMove)
-        {
-            if (bistellarMove.coCenter.length == 1)
-            {
-                unusedVertices ~= bistellarMove.coCenter;
-            }
-            if (bistellarMove.center.length == 1)
-            {
-                assert(bistellarMove.center.front == unusedVertices.back);
-                unusedVertices.popBack;
-            }                   
-        },
-        (_) {});
-}
-
-void incrementMoveCounts(int dim, Vertex)(
-    size_t[] bistellarTries,
-    size_t[] hingeTries,
-    SumType!(BistellarMove!(dim,Vertex), HingeMove!(dim,Vertex)) move)
-{
-    alias BM = BistellarMove!(dim, Vertex);
-    alias HM = HingeMove!(dim, Vertex);
-
-    move.match!(
-        (BM bistellarMove)
-        {
-            ++bistellarTries[bistellarMove.coCenter.length - 1];
-        },
-        (HM hingeMove)
-        {
-            ++hingeTries[hingeMove.rim.length - 4];
-        });
-}
-
-void decrementMoveCounts(int dim, Vertex)(
-    size_t[] bistellarTries,
-    size_t[] hingeTries,
-    SumType!(BistellarMove!(dim,Vertex), HingeMove!(dim,Vertex)) move)
-{
-    alias BM = BistellarMove!(dim, Vertex);
-    alias HM = HingeMove!(dim, Vertex);
-
-    move.match!(
-        (BM bistellarMove)
-        {
-            --bistellarTries[bistellarMove.coCenter.length - 1];
-        },
-        (HM hingeMove)
-        {
-            --hingeTries[hingeMove.rim.length - 4];
-        });
-}
-
 void saveSample(M, S, T, P)(M manifold, ulong sampleNumber,
                 S startTime, T timer, ulong[] bistellarTries, ulong[] bistellarAccepts,
-                ulong[] hingeTries, ulong[] hingeAccepts, P parameters)
+                P parameters)
 {
     string prefix = parameters.sampleFilesPrefix ~ "_sample_"
         ~ sampleNumber.to!string;
@@ -1040,7 +850,7 @@ void saveSample(M, S, T, P)(M manifold, ulong sampleNumber,
     auto saveFile = File(prefix ~ ".mfd", "a");       
     saveFile.writeln;
     saveFile.writeReports(manifold, startTime, timer,
-        bistellarTries[], bistellarAccepts[], hingeTries[], hingeAccepts[], parameters);
+        bistellarTries[], bistellarAccepts[], parameters);
     saveFile.writeln(toPrettyString(parameters));
 
     // To make sure we know history of a sample, we copy the

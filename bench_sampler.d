@@ -5,7 +5,7 @@ module bench_sampler;
 version (unittest) {} else {
 
 import std.algorithm, std.array, std.conv, std.datetime.stopwatch, std.math,
-    std.range, std.stdio, std.string, std.sumtype;
+    std.range, std.stdio, std.string;
 import std.random : uniform, uniform01, rndChoice = choice;
 import manifold, manifold_examples, manifold_moves, simplicial_complex, utility;
 
@@ -19,7 +19,6 @@ struct BenchParams
     real numHingesCoef = 0.05;
     real hingeDegreeVarianceCoef = 0.2;
     real coDim3DegreeVarianceCoef = 0.1;
-    bool useHingeMoves = false;
 }
 
 // --- Penalty computation (same formulas as manifold_sampler.d) ---
@@ -190,9 +189,7 @@ Manifold!dim grow(ref Manifold!dim seed, int targetTets)
 
     while (mfd.fVector[dim] < targetTets)
     {
-        auto facets_ = mfd.asSimplicialComplex.facets(dim);
-        auto nFacets = cast(int) facets_.walkLength;
-        auto facet = facets_[uniform(0, nFacets)].array;
+        auto facet = mfd.randomFacetOfDim(dim).array;
         auto newV = nextVertex;
         auto move = BistellarMove!dim(facet, [newV]);
         if (!mfd.contains(move.coCenter))
@@ -220,7 +217,7 @@ ProposedMove proposeMove(ref Manifold!dim mfd, int newVertex)
 
     while (true)
     {
-        auto facet = mfd.asSimplicialComplex.randomFacetOfDim(dim);
+        auto facet = mfd.randomFacetOfDim(dim);
         auto center = facet.subsets.array.rndChoice.array;
 
         auto centerLen = cast(int) center.walkLength;
@@ -241,9 +238,7 @@ ProposedMove proposeMove(ref Manifold!dim mfd, int newVertex)
         if (uniform01 > 2.0 / centerDeg)
             continue;
 
-        alias HM = HingeMove!(dim, int);
-        SumType!(BM, HM) wrapped = bm;
-        if (!mfd.hasValidMove(wrapped))
+        if (!mfd.hasValidMove(bm))
             continue;
 
         return ProposedMove(bm);
@@ -259,7 +254,7 @@ ProposedMove proposeMoveOptimized(ref Manifold!dim mfd, int newVertex)
 
     while (true)
     {
-        auto facet = mfd.asSimplicialComplex.randomFacetOfDim(dim);
+        auto facet = mfd.randomFacetOfDim(dim);
 
         auto mask = uniform(1, maxMask + 1);
         int[nVerts] centerBuf;
@@ -288,9 +283,7 @@ ProposedMove proposeMoveOptimized(ref Manifold!dim mfd, int newVertex)
         if (uniform01 > 2.0 / centerDeg)
             continue;
 
-        alias HM = HingeMove!(dim, int);
-        SumType!(BM, HM) wrapped = bm;
-        if (!mfd.hasValidMove(wrapped))
+        if (!mfd.hasValidMove(bm))
             continue;
 
         return ProposedMove(bm);
@@ -301,7 +294,6 @@ ProposedMove proposeMoveOptimized(ref Manifold!dim mfd, int newVertex)
 void benchmarkBaseline(ref Manifold!dim mfd, int targetTets)
 {
     alias BM = BistellarMove!(dim, int);
-    alias HM = HingeMove!(dim, int);
 
     int totalAccepted = 0;
     int totalTried = 0;
@@ -324,9 +316,7 @@ void benchmarkBaseline(ref Manifold!dim mfd, int targetTets)
 
         auto proposed = proposeMove(mfd, unusedVertices.back);
         auto bm = proposed.move;
-        SumType!(BM, HM) chosenMove = bm;
-
-        mfd.doMove(chosenMove);
+        mfd.doMove(bm);
 
         if (bm.coCenter.length == 1) unusedVertices.popBack;
         if (bm.center.length == 1) unusedVertices ~= bm.center;
@@ -338,7 +328,7 @@ void benchmarkBaseline(ref Manifold!dim mfd, int targetTets)
 
         if ((deltaObj > 0) && (uniform01 > exp(-deltaObj)))
         {
-            mfd.undoMove(chosenMove);
+            mfd.undoMove(bm);
             if (bm.coCenter.length == 1) unusedVertices ~= bm.coCenter;
             if (bm.center.length == 1)
             {
@@ -361,7 +351,6 @@ void benchmarkBaseline(ref Manifold!dim mfd, int targetTets)
 void benchmarkSpeculative(bool optimizedProposal)(ref Manifold!dim mfd, int targetTets)
 {
     alias BM = BistellarMove!(dim, int);
-    alias HM = HingeMove!(dim, int);
 
     int totalAccepted = 0;
     int totalTried = 0;
@@ -417,7 +406,6 @@ void benchmarkSpeculative(bool optimizedProposal)(ref Manifold!dim mfd, int targ
 void benchmarkExactHastings(ref Manifold!dim mfd, int targetTets)
 {
     alias BM = BistellarMove!(dim, int);
-    alias HM = HingeMove!(dim, int);
 
     int totalAccepted = 0;
     int totalTried = 0;
@@ -440,11 +428,9 @@ void benchmarkExactHastings(ref Manifold!dim mfd, int targetTets)
 
         auto proposed = proposeMoveOptimized(mfd, unusedVertices.back);
         auto bm = proposed.move;
-        SumType!(BM, HM) chosenMove = bm;
-
         immutable vBefore = cast(real) mfd.countValidBistellarMoves;
 
-        mfd.doMove(chosenMove);
+        mfd.doMove(bm);
 
         if (bm.coCenter.length == 1) unusedVertices.popBack;
         if (bm.center.length == 1) unusedVertices ~= bm.center;
@@ -459,7 +445,7 @@ void benchmarkExactHastings(ref Manifold!dim mfd, int targetTets)
 
         if ((logAlpha < 0) && (uniform01 > exp(logAlpha)))
         {
-            mfd.undoMove(chosenMove);
+            mfd.undoMove(bm);
             if (bm.coCenter.length == 1) unusedVertices ~= bm.coCenter;
             if (bm.center.length == 1)
             {
@@ -484,7 +470,6 @@ version (TrackValidMoves)
 void benchmarkExactHastingsIncremental(ref Manifold!dim mfd, int targetTets)
 {
     alias BM = BistellarMove!(dim, int);
-    alias HM = HingeMove!(dim, int);
 
     int totalAccepted = 0;
     int totalTried = 0;
@@ -507,11 +492,9 @@ void benchmarkExactHastingsIncremental(ref Manifold!dim mfd, int targetTets)
 
         auto proposed = proposeMoveOptimized(mfd, unusedVertices.back);
         auto bm = proposed.move;
-        SumType!(BM, HM) chosenMove = bm;
-
         immutable vBefore = cast(real) mfd.validMoveCount;
 
-        mfd.doMove(chosenMove);
+        mfd.doMove(bm);
 
         if (bm.coCenter.length == 1) unusedVertices.popBack;
         if (bm.center.length == 1) unusedVertices ~= bm.center;
@@ -526,7 +509,7 @@ void benchmarkExactHastingsIncremental(ref Manifold!dim mfd, int targetTets)
 
         if ((logAlpha < 0) && (uniform01 > exp(logAlpha)))
         {
-            mfd.undoMove(chosenMove);
+            mfd.undoMove(bm);
             if (bm.coCenter.length == 1) unusedVertices ~= bm.coCenter;
             if (bm.center.length == 1)
             {
@@ -553,7 +536,6 @@ void benchmarkRejectionFree(ref Manifold!dim mfd, int targetTets)
 {
     import std.random : Mt19937;
     alias BM = BistellarMove!(dim, int);
-    alias HM = HingeMove!(dim, int);
 
     int totalAccepted = 0;
     int totalTried = 0;
@@ -579,9 +561,7 @@ void benchmarkRejectionFree(ref Manifold!dim mfd, int targetTets)
 
         // O(1) rejection-free proposal
         auto bm = mfd.sampleValidMove(rng, unusedVertices.back);
-        SumType!(BM, HM) chosenMove = bm;
-
-        mfd.doMove(chosenMove);
+        mfd.doMove(bm);
 
         if (bm.coCenter.length == 1) unusedVertices.popBack;
         if (bm.center.length == 1) unusedVertices ~= bm.center;
@@ -596,7 +576,7 @@ void benchmarkRejectionFree(ref Manifold!dim mfd, int targetTets)
 
         if ((logAlpha < 0) && (uniform01 > exp(logAlpha)))
         {
-            mfd.undoMove(chosenMove);
+            mfd.undoMove(bm);
             if (bm.coCenter.length == 1) unusedVertices ~= bm.coCenter;
             if (bm.center.length == 1)
             {

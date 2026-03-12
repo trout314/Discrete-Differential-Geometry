@@ -2,13 +2,14 @@
 module manifold;
 
 import std.algorithm, std.array, std.conv, std.exception, std.math, std.range,
-    std.stdio, std.sumtype, std.traits, std.typecons;
+    std.stdio, std.traits, std.typecons;
 import unit_threaded;
-import algorithms, hashmap, manifold_examples, manifold_moves, polygons,
+import algorithms, hashmap, manifold_examples, manifold_moves,
     simplicial_complex, utility;
 
 alias isIRof = isInputRangeOf;
 alias isIRofIRof = isInputRangeOfInputRangeOf;
+
 
 //dfmt off
 /*******************************************************************************
@@ -21,7 +22,10 @@ struct Manifold(int dimension_, Vertex_ = int)
 {
 private:
     alias SimpComp = SimplicialComplex!Vertex_;
-    SimpComp simpComp;
+    // Dummy field: forces DMD to instantiate SimpComp postblit in this context,
+    // which is needed for correct purity inference in algorithms.d tests.
+    // Can be removed once SmallMap/HashMap get explicit pure @safe attributes.
+    SimpComp _scDummy;
 
     // --- Per-dimension index maps ---
     // For each dimension d (0..dimension), a separate hash map keyed by
@@ -123,7 +127,6 @@ public:
     this(F)(F initialFacets) if (isIRofIRof!(F, const(Vertex)))
     {
         initialFacets.each!(f => this.insertFacet(f));
-        numSimplices[] = simpComp.fVector[];
         foreach (d; 0 .. dimension - 1)
         {
             totSqrDegrees[d] = simplices(d).map!(s => this.degree(s)^^2).sum;
@@ -272,7 +275,6 @@ public:
     */
     const(size_t)[] fVector()() const
     {
-        assert(numSimplices[] == this.simpComp.fVector);
         return numSimplices[];
     }
 
@@ -350,8 +352,6 @@ public:
         assert(facetBuffer !in dimMap!dimension,
             "tried to insert a facet already in the manifold");
 
-        this.simpComp.insertFacet!(No.checkForFacetFaces)(facet);
-
         static foreach (d; 0 .. dimension + 1)
         {{
             foreach (subset; facet[].subsetsOfSize(d + 1))
@@ -426,8 +426,6 @@ public:
 
         facet.assertValidSimplex(dimension);
         assert(facetBuffer in dimMap!dimension);
-
-        this.simpComp.removeFacet(facet);
 
         static foreach (d; 0 .. dimension + 1)
         {{
@@ -523,20 +521,116 @@ public:
             }
         }
 
-        assert(!this.simpComp.containsFacet(facet));
+        assert(facetBuffer !in dimMap!dimension);
     }
 
-    /// We provide access to the manifold as a simplicial complex
-    ref const(SimplicialComplex!Vertex) asSimplicialComplex() const pure nothrow @nogc @safe 
+    /// Build a SimplicialComplex from the manifold's facets (on demand).
+    SimpComp toSimplicialComplex()() const
     {
-        return simpComp; 
+        return SimpComp(facets);
     }
 
-    alias asSimplicialComplex this;
-
-    const(Move)[] moves()() const
+    /// Return all simplices of the given dimension as arrays of vertices.
+    const(Vertex)[][] simplices()(int dim) const
     {
-        return moves_[];
+        final switch (cast(int) dim)
+        {
+            static foreach (d; 0 .. dimension + 1)
+            {
+                case d:
+                {
+                    const(Vertex)[][] result;
+                    foreach (kv; dimMap!d.byKeyValue())
+                        result ~= cast(const(Vertex)[]) kv.key[].dup;
+                    return result;
+                }
+            }
+        }
+    }
+
+    /// Return all facets as an array of vertex arrays, sorted for determinism.
+    const(Vertex)[][] facets()() const
+    {
+        const(Vertex)[][] result;
+        foreach (kv; dimMap!dimension.byKeyValue())
+            result ~= cast(const(Vertex)[]) kv.key[].dup;
+        result.sort();
+        return result;
+    }
+
+    /// Return the number of facets.
+    size_t numFacets()() const
+    {
+        return numSimplices[dimension];
+    }
+
+    /// Return true if the given simplex is a facet.
+    bool containsFacet(S)(S simplex) const if (isIRof!(S, const(Vertex)))
+    {
+        auto key = toFacet(simplex);
+        return (key in dimMap!dimension) !is null;
+    }
+
+    /// Return a randomly chosen facet of the given dimension.
+    const(Vertex)[] randomFacetOfDim()(int dim) const
+    {
+        assert(dim == dimension, "manifolds only have facets of one dimension");
+        import std.random : uniform;
+        auto idx = uniform(0, numSimplices[dimension]);
+        size_t i = 0;
+        foreach (kv; dimMap!dimension.byKeyValue())
+        {
+            if (i == idx)
+                return cast(const(Vertex)[]) kv.key[].dup;
+            i++;
+        }
+        assert(false);
+    }
+
+    /// Return the star of a simplex (facets containing it).
+    auto star(S)(S simplex) const if (isIRof!(S, const(Vertex)))
+    {
+        return facets.filter!(f => simplex.isSubsetOf(f));
+    }
+
+    /// Return the link of a simplex.
+    auto link(S)(S simplex) const if (isIRof!(S, const(Vertex)))
+    {
+        return star(simplex).map!(f => f.setDifference(simplex));
+    }
+
+    /// Save the manifold to a file.
+    void saveTo()(string fileName) const
+    {
+        toSimplicialComplex.saveTo(fileName);
+    }
+
+    /// Save the edge graph to a file.
+    void saveEdgeGraphTo()(string fileName) const
+    {
+        toSimplicialComplex.saveEdgeGraphTo(fileName);
+    }
+
+    /// Euler characteristic computed from the f-vector.
+    int eulerCharacteristic()() const
+    {
+        int chi = 0;
+        foreach (d; 0 .. dimension + 1)
+            chi += (d % 2 == 0 ? 1 : -1) * cast(int) numSimplices[d];
+        return chi;
+    }
+
+    /// Equality comparison.
+    bool opEquals()(const ref Manifold rhs) const
+    {
+        return numSimplices == rhs.numSimplices
+            && facets.sort.array == rhs.facets.sort.array;
+    }
+
+    /// String representation (list of facets).
+    string toString()() const
+    {
+        return facets.to!string;
     }
 }
 
@@ -707,7 +801,7 @@ version (TrackValidMoves)
         // Add stellar subdivisions too
         if (uniform(0, 3, rng) == 0)
         {
-            auto facet = mfd.asSimplicialComplex.facets(2).front.array;
+            auto facet = mfd.facets.front.array;
             mfd.doMove(BM(facet, [nextV]));
             nextV++;
         }
@@ -735,7 +829,7 @@ version (TrackValidMoves)
     foreach (_; 0 .. 30)
     {
         // Do a stellar subdivision to grow
-        auto facet = mfd.asSimplicialComplex.facets(3).front.array;
+        auto facet = mfd.facets.front.array;
         mfd.doMove(BM(facet, [nextV]));
         nextV++;
 
@@ -1092,23 +1186,6 @@ BistellarMove!(dim, Vertex) sampleValidMove(Vertex, int dim, Rng)(
     octahedron.doMove(BM([99], [0,1,2]));
 }
 
-void doMove(int dim, Vertex)(
-    ref Manifold!(dim, Vertex) manifold,
-    SumType!(BistellarMove!(dim,Vertex), HingeMove!(dim,Vertex)) move)
-{
-    alias BM = BistellarMove!(dim, Vertex);
-    alias HM = HingeMove!(dim, Vertex);
-    
-    move.match!(
-        (BM bistellarMove) {
-            manifold.doMove(bistellarMove);
-            
-        },
-        (HM hingeMove) {
-            manifold.doMove(hingeMove);
-        });
-}
-
 ///
 unittest
 {
@@ -1227,117 +1304,26 @@ if (isIRof!(C, const(Vertex)) && isIRof!(F, const(Vertex)))
 
 
 ///
-@Name("facets(dim) (pure nothrow @nogc @safe)") pure @safe unittest
+@Name("facets") pure @safe unittest
 {
-    auto sc = Manifold!1([[0,1],[0,2],[1,2]]);
-    int[2] edge01 = [0,1];
-    int[2] edge02 = [0,2];
-    int[2] edge12 = [1,2];
-
-    () pure nothrow @nogc @safe {
-        auto facetsRange = sc.facets(1);
-        auto savedRange = facetsRange.save;
-
-        int[2][3] facs;
-        facs[0] = facetsRange.front;
-        facetsRange.popFront;
-        facs[1] = facetsRange.front;
-        facetsRange.popFront;
-        facs[2] = facetsRange.front;
-        facetsRange.popFront;
-        
-        facs[].sort();
-
-        assert(facs[0] == edge01);
-        assert(facs[1] == edge02);
-        assert(facs[2] == edge12);
-
-        assert(facetsRange.empty);    
-        assert(!savedRange.empty);    
-    }();
+    auto mfd = Manifold!1([[0,1],[0,2],[1,2]]);
+    mfd.facets.sort.shouldBeSameSetAs([[0,1],[0,2],[1,2]]);
 }
 
 ///
-@Name("facets() (pure nothrow @nogc @safe)") pure @safe unittest
+@Name("star") pure @safe unittest
 {
-    auto sc = Manifold!1([[0,1],[0,2],[1,2]]);
-    int[2] edge01 = [0,1];
-    int[2] edge02 = [0,2];
-    int[2] edge12 = [1,2];
-
-    () pure nothrow @nogc @safe {
-        auto facetsRange = sc.facets;
-        auto savedRange = facetsRange.save;
-
-        int[2][3] facs;
-        facs[0] = facetsRange.front;
-        facetsRange.popFront;
-        facs[1] = facetsRange.front;
-        facetsRange.popFront;
-        facs[2] = facetsRange.front;
-        facetsRange.popFront;
-        
-        facs[].sort();
-
-        assert(facs[0] == edge01);
-        assert(facs[1] == edge02);
-        assert(facs[2] == edge12);
-
-        assert(facetsRange.empty);    
-        assert(!savedRange.empty);    
-    }();
+    auto mfd = Manifold!1([[0,1],[0,2],[1,2]]);
+    mfd.star([1]).map!array.array.sort.shouldBeSameSetAs([[0,1],[1,2]]);
 }
 
 ///
-@Name("star(range) (pure nothrow @nogc @safe)") pure @safe unittest
+@Name("link") pure @safe unittest
 {
-    auto sc = Manifold!1([[0,1],[0,2],[1,2]]);
-    int[2] edge01 = [0,1];
-    int[2] edge12 = [1,2];
-    int[1] vertex1 = [1];
+    auto mfd = Manifold!1([[0,1],[0,2],[1,2]]);
+    mfd.link([1]).map!(r => r.array).array.sort.shouldBeSameSetAs([[0],[2]]);
 
-    () pure nothrow @nogc @safe {
-        auto starRange = sc.star(vertex1[]);
-        auto savedRange = starRange.save;
-
-        int[2][2] edges;
-        edges[0][] = starRange.front[];
-        starRange.popFront;
-        edges[1][] = starRange.front[];
-        starRange.popFront;
-
-        edges[].sort();        
-        assert(edges[0] == edge01);
-        assert(edges[1] == edge12);
-
-        assert(starRange.empty);    
-        assert(!savedRange.empty);    
-    }();
-}
-
-///
-@Name("link(range) (pure nothrow @nogc @safe)") pure @safe unittest
-{
-    auto sc = Manifold!1([[0,1],[0,2],[1,2]]);
-    immutable(int[1]) v = [1];
-
-    () pure nothrow @nogc @safe {
-        auto linkRange = sc.link(v[]);
-        auto savedRange = linkRange.save;
-
-        int[2] vertices;
-        vertices[0] = linkRange.front.front;
-        linkRange.popFront;
-        vertices[1] = linkRange.front.front;
-        linkRange.popFront;
-
-        vertices[].sort();        
-        assert(vertices[0] == 0);
-        assert(vertices[1] == 2);
-
-        assert(linkRange.empty);    
-        assert(!savedRange.empty);    
-    }();
+    assert(mfd.link([1]).empty == false);
 }
 
 ///
@@ -1583,191 +1569,12 @@ real degreeVariance(Vertex, int mfdDim)(
 
 }
 
-/******************************************************************************
-Does the 'diskIndx'-th hinge move associated at 'hinge'. Must give the
-link of this hinge as `hingeLink`
-*/
-void doMove(int dim, Vertex)(
-    ref Manifold!(dim, Vertex) manifold,
-    ref const(HingeMove!(dim, Vertex)) move)
-{
-    // TO DO: Clean this function up! Use new functionality built into HingeMove type?
-    assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
-
-    // TO DO: Make hinge moves work in dimension 2! 
-    // static assert(dim >= 3,
-    //     "no hinge moves in dimension less than 3");
-    auto hingeBuffer = move.hinge.staticArray!(dim - 1);
-    auto hinge = hingeBuffer[];
-    auto linkVertices_ = move.rim;
-    auto diskIndx = move.triangIndx;
-
-    // TO DO: Decide what to do about this magic constant 7
-    // (It comes from nGonTriangs only supporting up to 7-gon.)
-    auto deg = linkVertices_.walkLength.to!int;
-    Unqual!Vertex[7] linkVerticesBuff = linkVertices_.staticArray!7;
-    auto linkVertices = linkVerticesBuff[0 .. deg];
-
-    auto linkEdgeBuffer = chain(linkVertices[], linkVertices.front.only)
-        .slide(2).take(deg).joiner.toStackArray!(Unqual!Vertex, 14);
-    auto linkEdges = linkEdgeBuffer[];
-    deg.iota.each!(indx => linkEdges[2*indx .. 2*(indx + 1)].sort);
-
-    assert(diskIndx < deg.nGonTriangs.walkLength);
-    auto diskFacets = deg.nGonTriangs[diskIndx];
-
-    auto oldPiece = productUnion(hinge.only, linkEdges.chunks(2));
-    auto newPiece = productUnion(
-        hinge.subsetsOfSize(dim - 2),
-        diskFacets.map!(f => f.map!(i => linkVertices[i]).array.dup.sort));
-
-    alias SC = SimplicialComplex!(Vertex, dim);
-    assert(SC(newPiece).isPureOfDim(dim));   
-    assert(SC(oldPiece).isPureOfDim(dim));
-    assert(manifold.star(hinge).map!array.array.sort
-        .equal!equal(oldPiece.map!array.array.sort));
-
-    version (TrackValidMoves)
-    {
-        // Build allVerts = hinge ∪ linkVertices
-        Vertex[dim + 7] allVertsBuf; // hinge has dim-1 verts, link up to 7
-        int avLen = 0;
-        foreach (v; hinge) allVertsBuf[avLen++] = v;
-        foreach (v; linkVertices) allVertsBuf[avLen++] = v;
-        auto allVerts = allVertsBuf[0 .. avLen];
-        allVerts.sort();
-
-        manifold.updateValidMoveArrays!false(allVerts);
-    }
-
-    foreach (f; oldPiece)
-    {
-        manifold.removeFacet(f);
-    }
-
-    newPiece.each!(f => manifold.insertFacet(f));
-
-    version (TrackValidMoves)
-    {
-        manifold.updateValidMoveArrays!true(allVerts);
-    }
-
-    assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
-}
-
-void undoMove(int dim, Vertex)(
-    ref Manifold!(dim, Vertex) manifold,
-    SumType!(BistellarMove!(dim,Vertex), HingeMove!(dim,Vertex)) move)
-{
-    alias BM = BistellarMove!(dim, Vertex);
-    alias HM = HingeMove!(dim, Vertex);
-    
-    move.match!(
-        (BM bistellarMove) {
-            manifold.undoMove(bistellarMove);
-            
-        },
-        (HM hingeMove) {
-            manifold.undoMove(hingeMove);
-        });
-}
-
 void undoMove(int dim, Vertex)(
     ref Manifold!(dim, Vertex) manifold,
     ref const(BistellarMove!(dim, Vertex)) move)
 {
     auto inverseMove = BistellarMove!(dim, Vertex)(move.coCenter, move.center);
     manifold.doMove(inverseMove);
-};
-
-
-void undoMove(int dim, Vertex)(
-    ref Manifold!(dim, Vertex) manifold,
-    ref const(HingeMove!(dim, Vertex)) move)
-{
-    // TO DO: Make hinge moves work in dimension 2! 
-    // static assert(dim >= 3,
-    //     "no hinge moves in dimension less than 3");
-
-    // TO DO: Clean this function up! Use new functionality built into HingeMove type?
-    assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
-
-    // static assert(dim >= 3,
-    //     "no hinge moves in dimension less than 3");
-    auto hingeBuffer = move.hinge.staticArray!(dim - 1);
-    auto hinge = hingeBuffer[];
-    auto linkVertices_ = move.rim;
-    auto diskIndx = move.triangIndx;
-    
-    // TO DO: Decide what to do about this magic constant 7
-    // (It comes from nGonTriangs only supporting up to 7-gon.)
-    auto deg = linkVertices_.walkLength.to!int;
-    Unqual!Vertex[7] linkVerticesBuff = linkVertices_.staticArray!7;
-    auto linkVertices = linkVerticesBuff[0 .. deg];
-
-    auto linkEdgeBuffer = chain(linkVertices[], linkVertices.front.only)
-        .slide(2).take(deg).joiner.toStackArray!(Unqual!Vertex, 14);
-    auto linkEdges = linkEdgeBuffer[];
-    deg.iota.each!(indx => linkEdges[2*indx .. 2*(indx + 1)].sort);
-
-    assert(diskIndx < deg.nGonTriangs.walkLength);
-
-    auto diskFacetsBuffer = deg.nGonTriangs[diskIndx]
-        .joiner.map!(i => linkVertices[i])
-        .toStackArray!(Unqual!Vertex, (7 - 2) * 3);
-    foreach (indx; 0 .. deg - 2)
-    {
-        diskFacetsBuffer[][3*indx .. 3*indx + 3].sort;
-    }
-
-    auto diskFacets = diskFacetsBuffer[].chunks(3);
-
-    auto newPiece = productUnion(hinge.only, linkEdges.chunks(2));
-    auto oldPiece = productUnion(hinge.subsetsOfSize(dim - 2), diskFacets);
-
-    // All of the disk should be in manifold
-    assert(diskFacets.all!(f => manifold.contains(f)));
-    alias SC = SimplicialComplex!(Vertex, dim);
-    assert(SC(newPiece).isPureOfDim(dim));   
-    assert(SC(oldPiece).isPureOfDim(dim));
-
-    oldPiece.each!(f => manifold.removeFacet(f));
-
-    newPiece.each!(f => manifold.insertFacet(f));
-
-    assert(manifold.fVector == manifold.asSimplicialComplex.fVector);
-}
-
-///
-@Name("hinge moves") pure /* @safe */ unittest
-{
-    auto octahedron = [[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
-        [2,3,5], [3,4,5], [1,4,5]];
-    
-    auto twoPts = [[6], [7]];
-    auto mfd = Manifold!3(productUnion(octahedron, twoPts));
-
-    auto hm3 = HingeMove!3([0,6], [1,2,3,4], 1);
-
-    assert(mfd.hasValidHingeMove(hm3));
-    mfd.doMove(hm3);
-    mfd.facets.shouldBeSameSetAs([[1, 4, 5, 7], [0, 1, 2, 7], [1, 4, 5, 6],
-        [0, 2, 3, 7], [3, 4, 5, 7], [0, 3, 4, 7], [3, 4, 5, 6], [0, 1, 4, 7],
-        [1, 2, 5, 6], [1, 2, 5, 7], [2, 3, 5, 6], [2, 3, 5, 7],[0, 1, 2, 4],
-        [0, 2, 3, 4], [1, 2, 4, 6], [2, 3, 4, 6]]);
-
-    mfd.undoMove(hm3);
-    mfd.facets.shouldBeSameSetAs(productUnion(octahedron, twoPts).map!array);
-
-    auto twoOtherPts = [[8], [9]];
-    auto mfd4 = Manifold!4(
-        productUnion(productUnion(octahedron, twoPts), twoOtherPts));
-
-    auto hm4 = HingeMove!4([0,6,8], [1,2,3,4], 1);
-    mfd4.doMove(hm4);
-    mfd4.undoMove(hm4);
-    mfd4.facets.shouldBeSameSetAs(productUnion(
-        productUnion(octahedron, twoPts), twoOtherPts).map!array);    
 }
 
 
@@ -1794,15 +1601,15 @@ string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
     alias SC = SimplicialComplex!Vertex;
     string[] problems;
 
-    // TO DO: Create a findProblems function for simplicial complexes
-    // and check that here
+    // Build a SimplicialComplex for topology checks
+    auto sc = mfd.toSimplicialComplex;
 
-    if (!mfd.simpComp.isPureOfDim(dim))
+    if (!sc.isPureOfDim(dim))
     {
         problems ~= "not all facets have the correct dimension";
     }
-    
-    if (!mfd.simpComp.isConnected)
+
+    if (!sc.isConnected)
     {
         problems ~= "facets do not define a connected simplicial complex";
     }
@@ -1810,7 +1617,7 @@ string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
     static if (dim >= 1)
     {
         if (!mfd.simplices(dim - 1).all!(
-            s => mfd.simpComp.star(s).walkLength == 2))
+            s => sc.star(s).walkLength == 2))
         {
             problems ~= "found a ridge with degree not equal to 2";
         }
@@ -1818,7 +1625,7 @@ string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
 
     static if (dim >= 2)
     {
-        if (!mfd.simplices(dim - 2).all!(s => SC(mfd.simpComp.link(s)).isCircle))
+        if (!mfd.simplices(dim - 2).all!(s => SC(sc.link(s)).isCircle))
         {
             problems ~= "found a hinge whose link is not a circle";
         }
@@ -1826,15 +1633,15 @@ string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
 
     static if (dim >= 3)
     {
-        if (!mfd.simplices(dim - 3).all!(s => SC(mfd.simpComp.link(s)).is2Sphere))
+        if (!mfd.simplices(dim - 3).all!(s => SC(sc.link(s)).is2Sphere))
         {
             problems ~= "found a codimension-3 simplex whose link is not a 2-sphere";
         }
     }
 
-    if (mfd.numSimplices[] != mfd.simpComp.fVector[])
+    if (mfd.numSimplices[] != sc.fVector[])
     {
-        problems ~= "number of simplices incorrect";        
+        problems ~= "number of simplices incorrect";
     }
 
     foreach (d; 0 .. dim - 1)
@@ -1847,32 +1654,32 @@ string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
         }
     }
 
-    // Check simpComp simplices are in dimMaps
+    // Check SC simplices are in dimMaps
     foreach (d; 0 .. dim + 1)
     {
-        foreach (s; mfd.simpComp.simplices(d))
+        foreach (s; sc.simplices(d))
         {
             if (!mfd.contains(s))
             {
-                problems ~= "found a simplex in simpComp that is not in dimMaps";
+                problems ~= "found a simplex in SC that is not in dimMaps";
                 goto done;
             }
         }
     }
     done:
 
-    // Check dimMap simplices are in simpComp, and degrees match
+    // Check dimMap simplices are in SC, and degrees match
     static foreach (d; 0 .. dim + 1)
     {{
         foreach (kv; mfd.dimMap!d.byKeyValue)
         {
-            if (!mfd.simpComp.contains(kv.key[]))
+            if (!sc.contains(kv.key[]))
             {
-                problems ~= "found a simplex in dimMaps that is not in simpComp";
+                problems ~= "found a simplex in dimMaps that is not in SC";
                 goto done2;
             }
             auto deg = mfd.extractDegree(kv.value);
-            if (deg != mfd.simpComp.star(kv.key[]).walkLength)
+            if (deg != sc.star(kv.key[]).walkLength)
             {
                 problems ~= "found a simplex in dimMaps with incorrect degree";
                 goto done2;
@@ -1887,24 +1694,24 @@ string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
         auto ridge = kv.key[];
         auto link = kv.value.link[];
 
-        if (link.walkLength != mfd.simpComp.star(ridge).walkLength)
+        if (link.walkLength != sc.star(ridge).walkLength)
         {
             problems ~= "found a ridge in dimMaps whose link has incorrect number of vertices";
             break;
         }
 
-        if (link.array != mfd.simpComp.link(ridge).joiner.array.dup.sort.array)
+        if (link.array != sc.link(ridge).joiner.array.dup.sort.array)
         {
             problems ~= "found a ridge in dimMaps whose link has the wrong vertices";
             break;
         }
     }
 
-    foreach (ridge; mfd.simpComp.simplices(dim - 1))
+    foreach (ridge; sc.simplices(dim - 1))
     {
         if (mfd.toRidge(ridge) !in mfd.dimMap!(dim - 1))
         {
-            problems ~= "found a ridge in simpComp that is not in dimMaps";
+            problems ~= "found a ridge in SC that is not in dimMaps";
             break;
         }
     }
