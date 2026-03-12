@@ -473,6 +473,53 @@ BistellarMove!(dim, Vertex)[] allBistellarMoves(Vertex, int dim)(
     return result;
 }
 
+/*******************************************************************************
+Returns the number of valid bistellar moves (including 1->(dim+1) stellar
+subdivisions). Used for exact Hastings correction.
+*/
+size_t countValidBistellarMoves(Vertex, int dim)(
+    const ref Manifold!(dim, Vertex) mfd)
+{
+    size_t count = 0;
+    // Moves with center of dimension 0..dim-1 (same iteration as allBistellarMoves)
+    static foreach (d; 0 .. dim)
+    {{
+        foreach (kv; mfd.dimMap!d.byKeyValue())
+        {
+            auto deg = mfd.extractDegree(kv.value);
+            if (deg == dim + 1 - d)
+            {
+                auto simp = kv.key[];
+                auto coCenter_ = mfd.findCoCenter(simp);
+                if (!mfd.contains(coCenter_))
+                    count++;
+            }
+        }
+    }}
+    // Every facet is a valid center for a 1->(dim+1) stellar subdivision
+    count += mfd.fVector[dim];
+    return count;
+}
+
+///
+@Name("countValidBistellarMoves") pure unittest
+{
+    // Standard sphere has no moves except stellar subdivisions
+    auto sphere = standardSphere!2;
+    // allBistellarMoves is empty for standard sphere, so count = nFacets
+    sphere.countValidBistellarMoves.shouldEqual(sphere.fVector[2]);
+
+    // Trigonal bipyramid
+    auto tb = Manifold!2([[0,1,2],[0,1,3],[0,2,3],[1,2,4],[1,3,4],[2,3,4]]);
+    // 5 moves from allBistellarMoves + 6 facets
+    tb.countValidBistellarMoves.shouldEqual(tb.allBistellarMoves.length + tb.fVector[2]);
+
+    // Octahedron
+    auto oct = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
+        [2,3,5], [3,4,5], [1,4,5]]);
+    oct.countValidBistellarMoves.shouldEqual(oct.allBistellarMoves.length + oct.fVector[2]);
+}
+
 ///
 @Name("Manifold doc tests") pure @safe unittest
 {
