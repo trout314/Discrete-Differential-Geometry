@@ -12,6 +12,9 @@ sweepsPerCSVline = 0.5
 numFacetsTarget = 500
 numFacetsCoef = 0.1
 
+growthStepSize = 500
+eqSweepsPerStep = 5
+
 hingeDegreeTarget = 5.1
 numHingesCoef = 0.0
 

@@ -50,6 +50,8 @@ int main(string[] args)
         ["real", "hingeDegreeVarianceCoef"],
         ["real", "coDim3DegreeVarianceCoef"],
         ["real", "maxSweeps"],
+        ["int", "growthStepSize"],
+        ["int", "eqSweepsPerStep"],
         ["string", "sampleFilesPrefix"],
         ["string", "initialManifoldFile"]
     ];
@@ -82,6 +84,91 @@ int main(string[] args)
     StopWatch timer;
     timer.start;    
     
+    //----------------------- RAMPED GROWTH PHASE --------------------------
+    // Grow from seed size to numFacetsTarget in steps, equilibrating at each.
+    if (mfd.fVector[dim] < params.numFacetsTarget)
+    {
+        // Start from the first step boundary above current size
+        int startTarget = params.growthStepSize;
+        while (startTarget <= cast(int) mfd.fVector[dim])
+            startTarget += params.growthStepSize;
+
+        for (int stepTarget = startTarget; stepTarget <= params.numFacetsTarget;
+             stepTarget += params.growthStepSize)
+        {
+            // Override numFacetsTarget for this step
+            auto stepParams = params;
+            stepParams.numFacetsTarget = stepTarget;
+            auto stepObjective = mfd.objective(stepParams);
+
+            // Phase 1: MCMC until we reach stepTarget
+            while (mfd.fVector[dim] < stepTarget)
+            {
+                if (unusedVertices.empty)
+                    unusedVertices ~= mfd.fVector[0].to!int;
+                assert(unusedVertices.all!(v => !mfd.contains(v.only)));
+
+                auto bm = mfd.chooseRandomMove(unusedVertices.back, stepParams);
+                ++bistellarTries[bm.coCenter.length - 1];
+
+                real deltaObj = mfd.speculativeBistellarDelta(bm, stepObjective, stepParams);
+                immutable nFacetsBefore = cast(real) mfd.fVector[dim];
+                immutable deltaFacets = dim + 2 - 2 * cast(int) bm.center.length;
+                immutable nFacetsAfter = nFacetsBefore + deltaFacets;
+                real logAlpha = -deltaObj + log(nFacetsBefore) - log(nFacetsAfter);
+
+                if ((logAlpha >= 0) || (uniform01 <= exp(logAlpha)))
+                {
+                    mfd.doMove(bm);
+                    if (bm.coCenter.length == 1) unusedVertices.popBack;
+                    if (bm.center.length == 1) unusedVertices ~= bm.center;
+                    stepObjective += deltaObj;
+                    ++bistellarAccepts[bm.coCenter.length - 1];
+                }
+            }
+
+            // Phase 2: equilibration sweeps at this step size
+            ulong eqAccepted = 0;
+            immutable eqTarget = cast(ulong) params.eqSweepsPerStep * stepTarget;
+            while (eqAccepted < eqTarget)
+            {
+                if (unusedVertices.empty)
+                    unusedVertices ~= mfd.fVector[0].to!int;
+                assert(unusedVertices.all!(v => !mfd.contains(v.only)));
+
+                auto bm = mfd.chooseRandomMove(unusedVertices.back, stepParams);
+                ++bistellarTries[bm.coCenter.length - 1];
+
+                real deltaObj = mfd.speculativeBistellarDelta(bm, stepObjective, stepParams);
+                immutable nFacetsBefore = cast(real) mfd.fVector[dim];
+                immutable deltaFacets = dim + 2 - 2 * cast(int) bm.center.length;
+                immutable nFacetsAfter = nFacetsBefore + deltaFacets;
+                real logAlpha = -deltaObj + log(nFacetsBefore) - log(nFacetsAfter);
+
+                if ((logAlpha >= 0) || (uniform01 <= exp(logAlpha)))
+                {
+                    mfd.doMove(bm);
+                    if (bm.coCenter.length == 1) unusedVertices.popBack;
+                    if (bm.center.length == 1) unusedVertices ~= bm.center;
+                    stepObjective += deltaObj;
+                    ++bistellarAccepts[bm.coCenter.length - 1];
+                    ++eqAccepted;
+                }
+            }
+
+            if (params.doStdoutReport)
+            {
+                "Ramping: step %d/%d, %d tets".writefln(
+                    stepTarget, params.numFacetsTarget, mfd.fVector[dim]);
+                stdout.flush();
+            }
+        }
+
+        // Reset counters so sampling phase starts fresh
+        bistellarTries[] = 0;
+        bistellarAccepts[] = 0;
+    }
+
     auto currentObjective = mfd.objective(params);
     auto doneSampling = false;
 
@@ -295,6 +382,8 @@ private Penalty penaltiesFromValues(int dim_, P)(
 
     penalty.localCurvPenalty = (
         degTarget ^^ 2 * nHinges - 2 * degTarget * hingesPerFacet * nFacets + hingeTotSqDeg) - minPenalty;
+    // Intensive: divide by count to get mean variance per hinge
+    if (nHinges > 0) penalty.localCurvPenalty /= nHinges;
 
     static if (dim_ > 2)
     {
@@ -304,6 +393,8 @@ private Penalty penaltiesFromValues(int dim_, P)(
 
         penalty.localSolidAngleCurvPenalty = (
             coDim3DegTarget ^^ 2 * nCoDim3 - 2 * coDim3DegTarget * coDim3PerFacet * nFacets + coDim3TotSqDeg) - minPenalty;
+        // Intensive: divide by count to get mean variance per codim-3 face
+        if (nCoDim3 > 0) penalty.localSolidAngleCurvPenalty /= nCoDim3;
     }
     else
     {
