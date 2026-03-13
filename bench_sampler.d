@@ -144,35 +144,22 @@ void main()
 
     auto seed = loadManifold!dim("standard_triangulations/dim_3_sphere.mfd");
 
-    foreach (targetTets; [100, 200])
+    foreach (targetTets; [50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000])
     {
         auto mfd = grow(seed, targetTets);
 
         auto mfd1 = mfd;
-        writef("  baseline (exec/undo):  ");
-        benchmarkBaseline(mfd1, targetTets);
-
-        auto mfd2 = mfd;
-        writef("  speculative (full obj):");
-        benchmarkSpeculative!false(mfd2, targetTets);
-
-        auto mfd3 = mfd;
-        writef("  spec+bitmask proposal: ");
-        benchmarkSpeculative!true(mfd3, targetTets);
-
-        auto mfd4 = mfd;
-        writef("  exact naive (V recount):");
-        benchmarkExactHastings(mfd4, targetTets);
+        writef("  speculative delta:     ");
+        benchmarkSpeculative!true(mfd1, targetTets);
 
         version (TrackValidMoves)
         {
-            auto mfd5 = mfd;
-            writef("  exact incr (V tracked):");
-            benchmarkExactHastingsIncremental(mfd5, targetTets);
-
-            auto mfd6 = mfd;
-            writef("  exact+rej-free sample: ");
-            benchmarkRejectionFree(mfd6, targetTets);
+            if (targetTets <= 200)
+            {
+                auto mfd2 = mfd;
+                writef("  exact incr (V tracked):");
+                benchmarkExactHastingsIncremental(mfd2, targetTets);
+            }
         }
 
         writeln();
@@ -400,6 +387,88 @@ void benchmarkSpeculative(bool optimizedProposal)(ref Manifold!dim mfd, int targ
 
     timer.stop();
     printResult(timer.peek(), totalAccepted, totalTried, targetTets);
+}
+
+// --- PROFILED SPECULATIVE: breaks down time by operation ---
+void benchmarkSpeculativeProfiled(ref Manifold!dim mfd, int targetTets)
+{
+    alias BM = BistellarMove!(dim, int);
+
+    int totalAccepted = 0;
+    int totalTried = 0;
+    int targetAccepted = min(5000, targetTets * 2);
+
+    auto params = BenchParams(targetTets);
+
+    int nextUnused = mfd.simplices(0).joiner.array.dup.sort.array.back + 1;
+    int[] unusedVertices = [nextUnused];
+
+    auto currentObjective = computeObjective(mfd, params);
+
+    Duration tPropose, tDelta, tDoMove;
+    long nProposeCalls = 0;
+
+    StopWatch timer, sw;
+    timer.start();
+
+    while (totalAccepted < targetAccepted)
+    {
+        if (unusedVertices.empty)
+            unusedVertices ~= mfd.fVector[0].to!int;
+
+        sw.reset(); sw.start();
+        auto proposed = proposeMoveOptimized(mfd, unusedVertices.back);
+        sw.stop(); tPropose += sw.peek();
+        nProposeCalls++;
+
+        auto bm = proposed.move;
+        totalTried++;
+
+        sw.reset(); sw.start();
+        real deltaObj = speculativeDelta(mfd, bm, currentObjective, params);
+        sw.stop(); tDelta += sw.peek();
+
+        if ((deltaObj > 0) && (uniform01 > exp(-deltaObj)))
+        {
+            // Rejected
+        }
+        else
+        {
+            sw.reset(); sw.start();
+            mfd.doMove(bm);
+            sw.stop(); tDoMove += sw.peek();
+
+            if (bm.coCenter.length == 1) unusedVertices.popBack;
+            if (bm.center.length == 1) unusedVertices ~= bm.center;
+
+            currentObjective += deltaObj;
+            totalAccepted++;
+        }
+    }
+
+    timer.stop();
+    printResult(timer.peek(), totalAccepted, totalTried, targetTets);
+
+    auto total = timer.peek().total!"usecs";
+    writefln("    propose: %7d μs (%4.1f%%)  [%d calls, %d μs/call]",
+        tPropose.total!"usecs", 100.0 * tPropose.total!"usecs" / total,
+        nProposeCalls, tPropose.total!"usecs" / nProposeCalls);
+    writefln("    delta:   %7d μs (%4.1f%%)", tDelta.total!"usecs", 100.0 * tDelta.total!"usecs" / total);
+    writefln("    doMove:  %7d μs (%4.1f%%)  [%d calls, %d μs/call]",
+        tDoMove.total!"usecs", 100.0 * tDoMove.total!"usecs" / total,
+        totalAccepted, tDoMove.total!"usecs" / totalAccepted);
+    writefln("    other:   %7d μs (%4.1f%%)",
+        total - tPropose.total!"usecs" - tDelta.total!"usecs" - tDoMove.total!"usecs",
+        100.0 * (total - tPropose.total!"usecs" - tDelta.total!"usecs" - tDoMove.total!"usecs") / total);
+
+    // Report GC stats
+    import core.memory : GC;
+    auto stats = GC.stats;
+    auto profStats = GC.profileStats;
+    writefln("    GC: used=%d KB, collections=%d, total_pause=%d μs",
+        stats.usedSize / 1024, profStats.numCollections,
+        profStats.totalPauseTime.total!"usecs");
+    stdout.flush();
 }
 
 // --- EXACT HASTINGS: execute, compute objective + valid move count, undo if rejected ---

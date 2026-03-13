@@ -575,15 +575,23 @@ public:
     {
         assert(dim == dimension, "manifolds only have facets of one dimension");
         import std.random : uniform;
-        auto idx = uniform(0, numSimplices[dimension]);
-        size_t i = 0;
-        foreach (kv; dimMap!dimension.byKeyValue())
+        version (TrackValidMoves)
         {
-            if (i == idx)
-                return cast(const(Vertex)[]) kv.key[].dup;
-            i++;
+            auto idx = uniform(0, _facetArray.length);
+            return cast(const(Vertex)[]) _facetArray[idx][].dup;
         }
-        assert(false);
+        else
+        {
+            auto idx = uniform(0, numSimplices[dimension]);
+            size_t i = 0;
+            foreach (kv; dimMap!dimension.byKeyValue())
+            {
+                if (i == idx)
+                    return cast(const(Vertex)[]) kv.key[].dup;
+                i++;
+            }
+            assert(false);
+        }
     }
 
     /// Return the star of a simplex (facets containing it).
@@ -869,8 +877,8 @@ private bool isValidNonFacetCenter(int d, Vertex, int dim)(
     if (ptr is null) return false;
     auto deg = mfd.extractDegree(*ptr);
     if (deg != dim + 1 - d) return false;
-    auto coCenter_ = mfd.findCoCenter(key[]);
-    return !mfd.contains(coCenter_);
+    auto coCenter_ = mfd.localCoCenter!d(key);
+    return !mfd.contains(coCenter_[]);
 }
 
 /*******************************************************************************
@@ -950,9 +958,12 @@ private void updateValidMoveArrays(bool adding, Vertex, int dim)(
     }}
 
     // --- Type B: non-subsets with coCenter ⊆ allVerts ---
-    // Collect facets incident to any vertex in allVerts
+    // Collect facets incident to any vertex in allVerts.
+    // Use static thread-local buffers to avoid GC allocation per call.
     alias MFacet = Vertex[dim + 1];
-    MFacet[] incidentFacets;
+    static MFacet[] incidentFacets;
+    incidentFacets.length = 0;
+    incidentFacets.assumeSafeAppend;
     foreach (v; allVerts)
     {
         auto ptr = v in mfd._vertexFacets;
@@ -967,7 +978,9 @@ private void updateValidMoveArrays(bool adding, Vertex, int dim)(
         enum targetDeg = dim + 1 - d;
 
         // Collect d-faces of unique incident facets
-        Vertex[d + 1][] candidates;
+        static Vertex[d + 1][] candidates;
+        candidates.length = 0;
+        candidates.assumeSafeAppend;
         MFacet prevFacet;
         bool havePrevFacet = false;
         foreach (ref facet; incidentFacets)
