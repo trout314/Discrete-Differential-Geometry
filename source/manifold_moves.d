@@ -2,7 +2,6 @@
 module manifold_moves;
 
 import std.algorithm, std.array, std.conv, std.random, std.range, std.traits;
-import unit_threaded;
 import manifold, simplicial_complex, utility;
 
 alias isIRof = isInputRangeOf;
@@ -63,14 +62,14 @@ private:
     Vertex[dim + 2] vertices;
 }
 ///
-@Name("BistellarMove") pure /* nothrow */ @safe unittest
+pure /* nothrow */ @safe unittest
 {
     auto mv = BistellarMove!4([1,2,3],[4,5,6]);
     mv.center.shouldBeSameSetAs([1,2,3]);
     mv.coCenter.shouldBeSameSetAs([4,5,6]);
 }
 ///
-@Name("BistellarMove (errors)") pure @system unittest
+pure @system unittest
 {
     BistellarMove!4([1,2,3],[4,5]).throwsWithMsg(
         "total number of vertices in center and co-center must be dim + 2");
@@ -113,7 +112,7 @@ auto modifyFVector(Move)(size_t[] fVector_, Move move)
     }
 }
 ///
-@Name("modifyFVector (dim 3)") pure @safe unittest
+pure @safe unittest
 {
     alias BMove = BistellarMove!3;
 
@@ -137,7 +136,7 @@ auto modifyFVector(Move)(size_t[] fVector_, Move move)
 }
 
 ///
-@Name("modifyFVector (dim 2)") pure @safe unittest
+pure @safe unittest
 {
     alias BMove = BistellarMove!2;
     

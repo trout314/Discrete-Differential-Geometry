@@ -2,7 +2,6 @@
 module factoring;
 
 import std.algorithm, std.range, std.traits, std.typecons;
-import unit_threaded;
 
 /*******************************************************************************
 Returns a forward range that computes the prime factors of `num`` in increasing 
@@ -22,7 +21,7 @@ PrimeFactorsRange primeFactors(int num) pure nothrow @nogc @safe
 }
 
 ///
-@Name("primeFactors") pure nothrow @safe unittest
+pure nothrow @safe unittest
 {
     assert(primeFactors(1).array == []);
     assert(primeFactors(2 * 3 * 5).array == [2, 3, 5]);
@@ -62,7 +61,7 @@ auto squareFreePrimeFactors(int num) pure nothrow @nogc @safe
 }
 
 ///
-@Name("squareFreePrimeFactors") pure nothrow @safe unittest
+pure nothrow @safe unittest
 {
     assert(squareFreePrimeFactors(1).array == []);
     assert(squareFreePrimeFactors(11 * 11).array == []);
@@ -94,7 +93,7 @@ auto squarePrimeFactors(int num) pure nothrow @nogc @safe
 }
 
 ///
-@Name("squarePrimeFactors") pure nothrow @safe unittest
+pure nothrow @safe unittest
 {
     assert(squarePrimeFactors(1).array == []);
     assert(squarePrimeFactors(11 * 11).array == [11, 11]);
@@ -126,7 +125,7 @@ auto sqrtSquarePrimeFactors(int num) pure nothrow @nogc @safe
 }
 
 ///
-@Name("sqrtSquarePrimeFactors") pure nothrow @safe unittest
+pure nothrow @safe unittest
 {
     assert(sqrtSquarePrimeFactors(1).array == []);
     assert(sqrtSquarePrimeFactors(11 * 11).array == [11]);
@@ -155,7 +154,7 @@ assert(num > 0);
 }
 
 ///
-@Name("squareFreePart") pure nothrow @nogc @safe unittest
+pure nothrow @nogc @safe unittest
 {
     assert(squareFreePart(1) == 1);
     assert(squareFreePart(11 * 11) == 1);
@@ -182,7 +181,7 @@ int squarePart(int num) pure nothrow @nogc @safe
 }
 
 ///
-@Name("squarePart") pure nothrow @nogc @safe unittest
+pure nothrow @nogc @safe unittest
 {
     assert(squarePart(1) == 1);
     assert(squarePart(11 * 11) == 11 * 11);
@@ -209,7 +208,7 @@ int sqrtSquarePart(int num) pure nothrow @nogc @safe
 }
 
 ///
-@Name("sqrtSquarePart") pure nothrow @nogc @safe unittest
+pure nothrow @nogc @safe unittest
 {
     assert(sqrtSquarePart(1) == 1);
     assert(sqrtSquarePart(11 * 11) == 11);
@@ -218,7 +217,7 @@ int sqrtSquarePart(int num) pure nothrow @nogc @safe
 }
 
 // Some additional tests
-@Name("additional tests") pure nothrow @safe unittest
+pure nothrow @safe unittest
 {
     static assert(primeFactors(1).array == []);
     static assert(squareFreePrimeFactors(1).array == []);
@@ -309,7 +308,7 @@ int lowestFactor(int num) pure nothrow @nogc @safe
 }
 
 ///
-@Name("lowestFactor") pure nothrow @nogc @safe unittest
+pure nothrow @nogc @safe unittest
 {
     assert(lowestFactor(1) == 1);
     assert(lowestFactor(2) == 2);
@@ -369,7 +368,7 @@ struct PrimeFactorsRange
     }
 }
 
-@Name("primeFactors save") pure nothrow @safe unittest
+pure nothrow @safe unittest
 {
     auto pf = primeFactors(6);
     auto pfCopy = pf.save;

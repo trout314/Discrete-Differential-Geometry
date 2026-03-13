@@ -15,7 +15,52 @@ import std.string : strip;
 import std.traits : lvalueOf, rvalueOf, hasAliasing, Unqual;
 
 
-import unit_threaded : Name, shouldBeSameSetAs, shouldEqual;
+// ---------------------------------------------------------------------------
+// Test assertion helpers (replacements for unit-threaded)
+// ---------------------------------------------------------------------------
+
+/// Assert that `actual` equals `expected`.
+void shouldEqual(A, B)(auto ref A actual, auto ref B expected,
+    string file = __FILE__, size_t line = __LINE__)
+{
+    static if (isInputRange!A && isInputRange!B)
+        assert(actual.equal(expected),
+            format("Expected %s but got %s", expected, actual));
+    else
+        assert(actual == expected,
+            format("Expected %s but got %s", expected, actual));
+}
+
+/// Assert that the range `actual` contains the same elements (in any order)
+/// as `expected`, after converting inner elements to arrays and sorting.
+void shouldBeSameSetAs(R1, R2)(R1 actual, R2 expected,
+    string file = __FILE__, size_t line = __LINE__)
+{
+    static if (isInputRange!(ElementType!R1))
+    {
+        auto a = actual.map!array.array.sort;
+        auto b = expected.map!array.array.sort;
+    }
+    else static if (__traits(compiles, actual.array.sort))
+    {
+        auto a = actual.array.sort;
+        auto b = expected.array.sort;
+    }
+    else
+    {
+        // Fall back to string comparison for non-sortable types
+        auto a = actual.map!(to!string).array.sort;
+        auto b = expected.map!(to!string).array.sort;
+    }
+    assert(a.equal(b),
+        format("Sets differ.\n  Actual:   %s\n  Expected: %s", a, b));
+}
+
+/// Assert that the range is empty.
+void shouldBeEmpty(R)(R range, string file = __FILE__, size_t line = __LINE__)
+{
+    assert(range.empty, format("Expected empty but got %s", range));
+}
 
 import std.array : staticArray;
 
@@ -62,7 +107,7 @@ template isLessThanComparable(T)
 }
 
 /// Basic type tests
-@Name("isLessThanComparable (basic types)")
+
 @safe pure nothrow @nogc unittest
 {
     alias ComparableTypes = AliasSeq!(bool, byte, ubyte, short, ushort, int,
@@ -75,7 +120,7 @@ template isLessThanComparable(T)
 }
 
 /// Struct tests
-@Name("isLessThanComparable (structs)")
+
 @safe pure nothrow @nogc unittest
 {
     struct A {}
@@ -147,7 +192,7 @@ template isLessThanComparable(T)
 }
 
 /// Class tests    
-@Name("isLessThanComparable (classes)")
+
 @safe pure nothrow @nogc unittest
 {
     class A {}
@@ -202,7 +247,7 @@ template isEqualityComparable(T)
 }
 
 /// Basic type tests
-@Name("isEqualityComparable (basic types)")
+
 pure nothrow @nogc @safe unittest
 {
     import std.meta : AliasSeq, allSatisfy, anySatisfy;
@@ -214,7 +259,7 @@ pure nothrow @nogc @safe unittest
 }
 
 /// Struct Tests
-@Name("isEqualityComparable (structs)")
+
 pure nothrow @nogc @safe unittest
 {
     struct A
@@ -283,7 +328,7 @@ pure nothrow @nogc @safe unittest
 }
 
 /// Class tests
-@Name("isEqualityComparable (classes)") pure nothrow @nogc @safe unittest
+pure nothrow @nogc @safe unittest
 {
     class A
     {
@@ -311,7 +356,7 @@ enum bool isConstructible(From, To) = is(From : To) || is(typeof({
             auto t = To(From());
         }));
 
-@Name("isConstructible")
+
 pure nothrow @nogc @safe unittest
 {
     // static assert(!isConstructible!(int, ubyte));
@@ -393,7 +438,7 @@ void throwsWithMsg(ThrownType : Throwable = Error, E)(lazy E expression,
 }
 
 ///
-@Name("throwsWithMsg") pure @system unittest
+pure @system unittest
 {
     static void throwException()
     {
@@ -450,7 +495,7 @@ auto binarySequences(size_t length, size_t numOnes)
             binarySequences(length - 1, numOnes - 1).map!(seq => [1] ~ seq)).array;
 }
 ///
-@Name("binarySequences") @safe pure nothrow unittest
+@safe pure nothrow unittest
 {
     assert(binarySequences(3, 0) == [[0, 0, 0]]);
     assert(binarySequences(3, 1) == [[0, 0, 1], [0, 1, 0], [1, 0, 0]]);
@@ -477,7 +522,7 @@ auto binarySequences(size_t length, size_t numOnes)
 }
 
 ///
-@Name("binarySequences (errors)") pure @system unittest
+pure @system unittest
 {
     binarySequences(5,6).throwsWithMsg("the number of ones must be at most the length");
 }
@@ -538,7 +583,7 @@ public:
     }
 }
 ///
-@Name("SmallMap") pure @safe unittest
+pure @safe unittest
 {
     SmallMap!(int, string) sm;
     sm.insert(5, "hello");
@@ -576,7 +621,7 @@ public:
 }
 
 ///
-@Name("SmallMap (errors)") pure @system unittest
+pure @system unittest
 {
     SmallMap!(int, string) sm;
     sm.insert(5, "hello");
@@ -584,7 +629,7 @@ public:
 }
 
 ///
-@Name("SmallMap.dup") pure @safe unittest
+pure @safe unittest
 {
     SmallMap!(int, string) sm;
     sm.insert(1, "hello");
@@ -605,7 +650,7 @@ public:
 }
 
 ///
-@Name("SmallMap.keys (pure nothrow @nogc @safe)") pure @safe unittest
+pure @safe unittest
 {
     SmallMap!(int, string) sm;
     sm.insert(1, "hello");
@@ -613,7 +658,7 @@ public:
 }
 
 ///
-@Name("SmallMap.values (pure nothrow @nogc @safe)") pure @safe unittest
+pure @safe unittest
 {
     SmallMap!(int, string) sm;
     sm.insert(1, "hello");
@@ -621,7 +666,7 @@ public:
 }
 
 ///
-@Name("SmallMap.opIndex (pure nothrow @nogc @safe)") pure @safe unittest
+pure @safe unittest
 {
     SmallMap!(int, string) sm;
     sm.insert(1, "hello");
@@ -639,7 +684,7 @@ bool isSubsetOf(A, B)(A setA, B setB)
     return setA.all!(element => setB.canFind(element));
 }
 ///
-@Name("isSubsetOf") pure nothrow @safe unittest
+pure nothrow @safe unittest
 {
     assert([1, 3].isSubsetOf([1, 3, 4]));
     assert(![2, 3].isSubsetOf([1, 3, 4]));
@@ -653,7 +698,7 @@ bool isSubsetOf(A, B)(A setA, B setB)
     static assert(!__traits(compiles, [].isSubsetOf([6, 8])));
 }
 ///
-@Name("isSubsetOf (pure nothrow @nogc @safe)") pure nothrow @safe unittest
+pure nothrow @safe unittest
 {
     assert([1, 2, 3].isSubsetOf([1, 2, 3, 4]));
     assert(2.iota.isSubsetOf(8.iota));
@@ -671,7 +716,7 @@ bool hasOneAtBit(uint x, size_t pos) pure nothrow @nogc @safe
     return ((1 << pos) & x) > 0;
 }
 ///
-@Name("hasOneAtBit") pure nothrow @nogc @safe unittest
+pure nothrow @nogc @safe unittest
 {
     assert(1.hasOneAtBit(0));
     assert(iota(1, 32).all!(pos => !1.hasOneAtBit(pos)));
@@ -686,7 +731,7 @@ bool hasOneAtBit(uint x, size_t pos) pure nothrow @nogc @safe
 }
 
 ///
-@Name("hasOneAtBit (errors)") pure @system unittest
+pure @system unittest
 {
     // An error is thrown if the bit position is outside the uint
     7.hasOneAtBit(32).throwsWithMsg("bad bit position");
@@ -754,7 +799,7 @@ private auto subsetFromUint(R)(R set, uint whichToKeep) if (isInputRange!R)
     return SubsetFromUintRange(set, whichToKeep);
 }
 ///
-@Name("subsetsFromUint") pure nothrow @safe unittest
+pure nothrow @safe unittest
 {
     assert([3, 4, 5].subsetFromUint(0).empty);
     assert([3, 4, 5].subsetFromUint(1).array == [3]);
@@ -767,14 +812,14 @@ private auto subsetFromUint(R)(R set, uint whichToKeep) if (isInputRange!R)
 }
 
 ///
-@Name("subsetsFromUint (errors)") pure nothrow @system unittest
+pure nothrow @system unittest
 {
     [3, 4, 5].subsetFromUint(1 << 3).throwsWithMsg(
             "1 bits found in positions not corresponsing to elements in set");
 }
 
 ///
-@Name("subsetsFromUint (pure nothrow @nogc @safe)") pure nothrow @nogc @safe unittest
+pure nothrow @nogc @safe unittest
 {
     auto r = iota(1, 5).subsetFromUint(7);
     assert(r.front == 1);
@@ -890,7 +935,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
     return SubsetsOfSizeRange((1 << subsetSize) - 1, set);
 }
 ///
-@Name("subsetsOfSize") pure @safe unittest
+pure @safe unittest
 {
 
     [1, 2, 3, 4].subsetsOfSize(1).map!array.shouldBeSameSetAs([[1], [2], [3], [4]]);
@@ -905,7 +950,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
 
     [1].subsetsOfSize(1).map!array.shouldBeSameSetAs([[1]]);
 
-    0.iota.subsetsOfSize(0).map!array.shouldBeSameSetAs([[]]);
+    assert(0.iota.subsetsOfSize(0).map!array.equal([cast(int[])[]]) );
     assert(iota(3).subsetsOfSize(0).front.empty);
 
     3.iota.subsetsOfSize(1).map!array.shouldBeSameSetAs([[0], [1], [2]]);
@@ -917,7 +962,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
 }
 
 ///
-@Name("subsetsOfSize (errors)") pure nothrow @system unittest
+pure nothrow @system unittest
 {
     [1,2].subsetsOfSize(-1).throwsWithMsg("subset size must be non-negative");
     3.iota.subsetsOfSize(4).throwsWithMsg("subset size must be at most the size of the set");
@@ -925,7 +970,7 @@ auto subsetsOfSize(R)(R set, int subsetSize) if (isInputRange!R)
 }
 
 ///
-@Name("subsetsOfSize (pure nothrow @nogc @safe)") pure nothrow @safe unittest
+pure nothrow @safe unittest
 {
     int[4] set = [1, 2, 3, 4];
     int[2][6] expectedSubsets = [[1, 2], [1, 3], [1, 4], [2, 3], [2, 4], [3, 4]];
@@ -1001,7 +1046,7 @@ auto subsets(R)(R set) if (isInputRange!R)
     return SubsetsRange(set, 1);
 }
 ///
-@Name("subsets") pure @safe unittest
+pure @safe unittest
 {
     [1, 2, 3].subsets.map!array.shouldBeSameSetAs([[1], [2], [3], [1, 2],
             [1, 3], [2, 3], [1, 2, 3]]);
@@ -1016,7 +1061,7 @@ auto subsets(R)(R set) if (isInputRange!R)
     assert(iota(6).subsets.walkLength == 63);
 }
 ///
-@Name("subsets (pure nothrow @nogc @safe)") pure nothrow @nogc @safe unittest
+pure nothrow @nogc @safe unittest
 {
     auto subsetRange = 3.iota.subsets;
     auto saved = subsetRange.save;
@@ -1029,7 +1074,7 @@ auto subsets(R)(R set) if (isInputRange!R)
     // TO DO: Improve this test. Ugly...
 }
 
-@Name("subsets bug") pure @safe unittest
+pure @safe unittest
 {
     auto set = [1,2,3];
    
@@ -1062,7 +1107,7 @@ template staticIota(int begin, int end)
     }
 }
 ///
-@Name("staticIota") pure nothrow @nogc @safe unittest
+pure nothrow @nogc @safe unittest
 {
     alias seq = staticIota!(3, 6);
     static assert(seq[0] == 3);
@@ -1085,7 +1130,7 @@ if (isInputRangeOfInputRangeOf!(R1, const(Vertex))
     return cartesianProduct(range1, range2).map!(p => merge(p[0], p[1]));
 }
 ///
-@Name("productUnion") pure @safe unittest
+pure @safe unittest
 {
     auto f1 = [[1,2],[3]];
     auto f2 = [[4,5,6], [7,8], [9]];
@@ -1146,7 +1191,7 @@ auto capture(Range, Data...)(Range range, Data data) if (isInputRange!Range)
     return CaptureRange(range, data);
 }
 ///
-@Name("capture (pure nothrow @nogc @safe)") pure nothrow @nogc @safe unittest
+pure nothrow @nogc @safe unittest
 {
     auto r = 10.iota.capture(1, "hello");
     assert(r.front == 0);
@@ -1244,7 +1289,7 @@ if (isForwardRange!R && (is(ElementType!R : T)))
 }
 
 ///
-@Name("StackArray") pure @safe unittest
+pure @safe unittest
 {
     int[2] toAppend = [4, 5];
 
@@ -1284,7 +1329,7 @@ if (isForwardRange!R && (is(ElementType!R : T)))
 }
 
 ///
-@Name("StackArray (errors)") pure @system unittest
+pure @system unittest
 {
     StackArray!(int, 3) sa;
     sa ~= 1;   
@@ -1307,7 +1352,7 @@ ulong factorial(ulong n) pure nothrow @nogc @safe
     return n == 0 ? 1 : iota(1UL, n + 1).fold!((a, b) => a * b)(1UL);
 }
 ///
-@Name("factorial") pure nothrow @nogc @safe unittest
+pure nothrow @nogc @safe unittest
 {
     // Might as well test all the input values
     
@@ -1344,7 +1389,7 @@ ulong factorial(ulong n) pure nothrow @nogc @safe
 }
 
 ///
-@Name("factorial (errors)") pure @system unittest
+pure @system unittest
 {
     factorial(21).throwsWithMsg("factorial only accepts arguments up to 20");
 }
@@ -1356,7 +1401,7 @@ ulong binomial(ulong n, ulong k) pure nothrow @nogc @safe
     return (factorial(n) / factorial(k)) / factorial(n - k);
 }
 ///
-@Name("binomial") pure nothrow @nogc @safe unittest
+pure nothrow @nogc @safe unittest
 {
     // Test exhaustively up to n=5
     assert(binomial(0, 0) == 1);
@@ -1402,7 +1447,7 @@ template isInputRangeOf(T, E)
     enum isInputRangeOf = isEmptySlice || (isInputRange!T && is(ElementType!T : E));
 }
 ///
-@Name("isInputRangeOf") pure @safe unittest
+pure @safe unittest
 {
     alias AI = int[];
     alias ACI = const(int)[];
@@ -1434,7 +1479,7 @@ template isInputRangeOfInputRangeOf(T, E)
         && is(ElementType!(ElementType!T) : E);
 }
 ///
-@Name("isInputRangeOfInputRangeOf") unittest
+unittest
 {
     alias AAI = int[][];
     alias AACI = const(int)[][];
@@ -1485,7 +1530,7 @@ auto replaceEmptyLiteral(R, T)(T input)
     }
 }
 ///
-@Name("replaceEmptyLiteral") pure nothrow @nogc @safe unittest
+pure nothrow @nogc @safe unittest
 {
     static assert(is(typeof(replaceEmptyLiteral!int([])) == int[]));
     int[] x;

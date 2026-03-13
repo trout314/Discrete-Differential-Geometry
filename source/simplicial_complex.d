@@ -3,14 +3,13 @@ module simplicial_complex;
 
 import std.algorithm, std.conv, std.datetime, std.exception, std.random,
     std.range, std.stdio, std.string, std.typecons, std.traits;
-import unit_threaded;
 import algorithms, hashmap, utility;
 
 alias isIRof = isInputRangeOf;
 alias isIRofIRof = isInputRangeOfInputRangeOf;
 
 /// Basic Functionality
-@Name("doc tests") pure @safe unittest
+pure @safe unittest
 {
     // create an empty simplicial complex with vertices of default type `int`
     SimplicialComplex!() sc;
@@ -95,7 +94,7 @@ alias isIRofIRof = isInputRangeOfInputRangeOf;
 }
 
 ///
-@Name("toHash (@safe)") @safe unittest
+@safe unittest
 {
     auto sc1 = simplicialComplex([[4,5], [1,2,3], [2,3,4], [5,6]]);
     auto sc2 = simplicialComplex([[4,5], [5,6], [2,3,4], [1,2,3]]);  
@@ -107,7 +106,7 @@ alias isIRofIRof = isInputRangeOfInputRangeOf;
 } 
 
 ///
-@Name("works as AA KeyType") pure @safe unittest
+pure @safe unittest
 {
     int[SimplicialComplex!()] aa;
     auto sc1 = simplicialComplex([[4,5]]);
@@ -126,7 +125,7 @@ alias isIRofIRof = isInputRangeOfInputRangeOf;
 }
 
 /// Some restrictions
-@Name("doc tests (errors)") pure @system unittest
+pure @system unittest
 {
     auto sc = simplicialComplex([[4,5], [5,6], [1,2,3], [2,3,4]]);
 
@@ -148,7 +147,7 @@ alias isIRofIRof = isInputRangeOfInputRangeOf;
     sc.facets(-1).throwsWithMsg("expected a non-negative dimension");
 }
 
-@Name("additional tests") pure @safe unittest
+pure @safe unittest
 {
     alias sComp = simplicialComplex;
 
@@ -185,7 +184,7 @@ alias isIRofIRof = isInputRangeOfInputRangeOf;
     }
 }
 
-@Name("insertFacet") pure @safe unittest
+pure @safe unittest
 {
     auto sc = SimplicialComplex!()();
     sc.insertFacet([1,2]);
@@ -198,7 +197,7 @@ alias isIRofIRof = isInputRangeOfInputRangeOf;
     sc.facets.shouldBeSameSetAs([[1,2], [2,3,4], [1,5,6,7]]);
 }
 
-@Name("insertFacet/removeFacet") pure @safe unittest
+pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [1,3], [1,4], [4,5,6]]);
 
@@ -228,7 +227,7 @@ alias isIRofIRof = isInputRangeOfInputRangeOf;
     assert(sc3.facets.empty);
 }
 
-@Name("insertFacet!(No.checkForFacetFaces)") pure @safe unittest
+pure @safe unittest
 {
     SimplicialComplex!() sc;
     sc.insertFacet!(No.checkForFacetFaces)([1,2]);
@@ -545,7 +544,7 @@ public:
 }
 
 ///
-@Name("randomFacetOfDim") @safe unittest
+@safe unittest
 {
     auto sc = simplicialComplex([[1,2,3]]);
     assert(sc.randomFacetOfDim(2) == [1,2,3]);
@@ -571,7 +570,7 @@ public:
 }
 
 ///
-@Name("containsFacet") pure @safe unittest
+pure @safe unittest
 {
     auto sc = simplicialComplex([[1], [2,3], [3,4,5], [3,4,6]]);
     assert(sc.containsFacet([1]));
@@ -589,7 +588,7 @@ public:
     assert(!simplicialComplex([[1,2]]).containsFacet([2]));
 }
 
-@Name("opEquals (pure @safe nothrow)") pure @safe unittest
+pure @safe unittest
 {
     auto s1 = simplicialComplex([[1,2], [2,3,4]]);
     auto s2 = simplicialComplex([[1,3], [2,3,4]]);
@@ -616,7 +615,7 @@ size_t[] fVector(Vertex)(const ref SimplicialComplex!Vertex sc)
     return iota(maxDim + 1).map!(dim => sc.simplices(dim).walkLength).array; 
 }
 ///
-@Name("fVector (pure @safe)") pure @safe unittest
+pure @safe unittest
 {
     SimplicialComplex!() sc;
     sc.insertFacet([1,2]);
@@ -633,7 +632,7 @@ if (isInputRange!F && isInputRange!(ElementType!F))
     return SimplicialComplex!(Unqual!(ElementType!(ElementType!F)))(initialFacets);
 }
 ///
-@Name("simplicialComplex (pure @safe)") pure @safe unittest
+pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,3], [3,4,5], [6,7,8]]);
     sc.facets.shouldBeSameSetAs([[1,2], [2,3], [3,4,5], [6,7,8]]);
@@ -645,7 +644,7 @@ if (isInputRange!F && isInputRange!(ElementType!F))
 }
 
 ///
-@Name("facets(dim) (pure nothrow @nogc @safe)") pure @safe unittest
+pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,4,5]]);
     int[2] edge = [1,2];
@@ -671,7 +670,7 @@ if (isInputRange!F && isInputRange!(ElementType!F))
 }
 
 ///
-@Name("facets (pure nothrow @nogc @safe)") pure @safe unittest
+pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,4,5]]);
     int[2] edge = [1,2];
@@ -692,7 +691,7 @@ if (isInputRange!F && isInputRange!(ElementType!F))
 }
 
 ///
-@Name("star(range) (pure nothrow @nogc @safe)") pure @safe unittest
+pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,4,5]]);
     int[2] edge = [1,2];
@@ -713,7 +712,7 @@ if (isInputRange!F && isInputRange!(ElementType!F))
 }
 
 ///
-@Name("link(range) (pure nothrow @nogc @safe)") pure @safe unittest
+pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,4,5]]);
     int[1] vertex = [1];
@@ -731,7 +730,7 @@ if (isInputRange!F && isInputRange!(ElementType!F))
 }
 
 ///
-@Name("contains (pure nothrow @nogc @safe)") pure @safe unittest
+pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,4,5]]);
     int[2] edge = [1,2];
@@ -746,7 +745,7 @@ if (isInputRange!F && isInputRange!(ElementType!F))
 }
 
 ///
-@Name("removeFacet (pure @safe)") pure @safe unittest
+pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,4,5]]);
     int[2] edge = [1,2];
@@ -757,7 +756,7 @@ if (isInputRange!F && isInputRange!(ElementType!F))
 }
 
 ///
-@Name("numFacets (pure nothrow @nogc @safe)") pure @safe unittest
+pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,4,5]]);
     () pure nothrow @nogc @safe {
@@ -855,7 +854,7 @@ public:
     }
 }
 
-@Name("StarRange (pure nothrow @nogc @safe)") pure @safe unittest
+pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,3,4], [2,3,5]]);
     int[] vertex = [3];
@@ -917,7 +916,7 @@ public:
     }
 }
 
-@Name("LinkRange (pure nothrow @nogc @safe)") pure @safe unittest
+pure @safe unittest
 {
     auto sc = simplicialComplex([[1,2], [2,3,4], [2,3,5]]);
     int[] vertex = [3];
@@ -971,7 +970,7 @@ SimplicialComplex!Vertex loadSimplicialComplex(Vertex = int)(string fileName)
 }
 
 ///
-@Name("loadSimplicialComplex") @system unittest
+@system unittest
 {
     auto sc = loadSimplicialComplex(
         "data/manifold_sampler_unittest_load.dat");
@@ -994,7 +993,7 @@ void saveTo(Vertex)(const SimplicialComplex!Vertex sc, string fileName)
 }
 
 ///
-@Name("saveTo") unittest
+unittest
 {
     auto fileName = "data/simplicial_complex_unittest_save.dat";
     auto sc = simplicialComplex([[1,2],[3],[2,4,5], [2,4,6]]);

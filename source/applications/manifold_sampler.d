@@ -8,7 +8,6 @@ import std.random : uniform, uniform01;
 import core.memory : GC;
 import algorithms, manifold, manifold_examples, manifold_moves,
     simplicial_complex, utility;
-import unit_threaded;
 
 enum dim = 3;
 
@@ -430,7 +429,7 @@ real speculativeBistellarDelta(int dim, Vertex, P)(
 }
 
 ///
-@Name("speculativeBistellarDelta") unittest
+unittest
 {
     import std.random : Mt19937;
 
@@ -818,7 +817,7 @@ BistellarMove!(dim, Vertex) chooseRandomMove(int dim, Vertex, P)(Manifold!(dim, 
     }
 }
 ///
-@Name("chooseRandomMove") @safe unittest
+@safe unittest
 {
     // http://page.math.tu-berlin.de/~lutz/stellar/RP3
     auto rp3 = Manifold!3([[1, 2, 3, 7], [1, 2, 3, 11], [1, 2, 6, 9], [1,

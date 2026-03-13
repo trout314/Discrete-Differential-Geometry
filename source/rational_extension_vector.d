@@ -2,7 +2,6 @@
 module rational_extension_vector;
 
 import std.algorithm, std.bigint, std.conv, std.meta, std.range, std.traits;
-import unit_threaded;
 import factoring, rational_number, utility;
 
 /*******************************************************************************
@@ -24,7 +23,7 @@ auto simplexPoints(int dim, RationalType = Rational!BigInt)()
     return (dim + 1).iota.map!(k => Vec(simplexCoefs(dim)[k]));
 }
 ///
-@Name("simplexPoints") @safe unittest
+@safe unittest
 {
     assert(simplexPoints!3.map!(pt => pt.toString).equal([
         "(0, 0, 0)",
@@ -185,7 +184,7 @@ private:
     RationalType[dimension] coefs;
 }
 
-@Name("compile-time tests") unittest
+unittest
 {
     alias r = rational;
     immutable v = reVector!(3,5,11)(r(1), r(2, 3), r(6));
@@ -194,7 +193,7 @@ private:
 }
 
 ///
-@Name("coefficients") pure nothrow @safe unittest
+pure nothrow @safe unittest
 {
     alias r = rational;
     immutable v = reVector!(3,5,11)(r(1), r(2, 3), r(6));
@@ -202,7 +201,7 @@ private:
 }
 // TO DO: BigInt won't allow @safe unittest here
 ///
-@Name("vector operations") pure nothrow @system unittest
+pure nothrow @system unittest
 {
     alias vec = reVector!(1, 3, 6);
     alias r = (a, b) => rational(BigInt(a), BigInt(b));
@@ -244,7 +243,7 @@ template reVector(R...)
 }
 
 ///
-@Name("reVector") pure @safe unittest
+pure @safe unittest
 {
     alias r = rational;
     immutable v = reVector!(3,5,11)(r(1), r(2, 3), r(6));
@@ -275,7 +274,7 @@ RationalType dotProduct(int[] roots, RationalType)(
 }
 
 ///
-@Name("dotProduct") pure @safe unittest
+pure @safe unittest
 {
     alias vec = reVector!(1,3);
     alias r = rational;
@@ -300,7 +299,7 @@ RationalType distanceSquared(int[] roots, RationalType)(
 }
 
 ///
-@Name("distanceSquared") pure @safe unittest
+pure @safe unittest
 {
     alias r = rational;
     alias vec = reVector!(1,2,3);
@@ -309,7 +308,7 @@ RationalType distanceSquared(int[] roots, RationalType)(
         vec(r(0), r(1, 5), r(11, 2))) == r(27,25));
 }
 // TO DO: BigInt won't allow @safe unittest here
-@Name("additional tests") pure nothrow @system unittest
+pure nothrow @system unittest
 {
     // TO DO: BigInt won't allow @safe.
 
@@ -338,7 +337,7 @@ auto simplexRoots(int dim)
     return iota(1, dim + 1).map!(k => squareFreePart(k * (k + 1) / 2));
 }
 
-@Name("simplexRoots") pure nothrow @safe unittest
+pure nothrow @safe unittest
 {
     assert(simplexRoots(10).array == [1, 3, 6, 10, 15, 21, 7, 1, 5, 55]);
     foreach (radicand; simplexRoots(50))
@@ -378,7 +377,7 @@ auto simplexCoefs(int dim)
 
 }
 
-@Name("toString") pure @safe unittest
+pure @safe unittest
 {
     alias r = rational;
     alias vec = reVector!(1,3,6);

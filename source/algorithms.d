@@ -2,7 +2,6 @@
 module algorithms;
 
 import std.algorithm, std.conv, std.range;
-import unit_threaded;
 import manifold, simplicial_complex, utility;
 
 alias isIRofIRof = isInputRangeOfInputRangeOf;
@@ -94,7 +93,7 @@ bool isOrientable(Vertex, int dim)(const auto ref Manifold!(dim, Vertex) manifol
     return true;
 }
 ///
-@Name("isOrientable") pure @safe unittest
+pure @safe unittest
 {
     assert(Manifold!2().isOrientable);
 
@@ -287,7 +286,7 @@ auto connectedComponents(Vertex)(const auto ref SimplicialComplex!Vertex sc)
         .map!(rList => SimplicialComplex!Vertex(rList.map!(r => r.facet).array)).array; } ();
 }
 ///
-@Name("connectedComponents") pure @safe unittest
+pure @safe unittest
 {
     alias sComp = simplicialComplex;
 
@@ -312,7 +311,7 @@ int eulerCharacteristic(Vertex)(const auto ref SimplicialComplex!Vertex sc)
     return sc.fVector.enumerate.map!(f => (-1)^^f.index.to!int * f.value.to!int).sum;
 }
 ///
-@Name("eulerCharacteristic") pure @safe unittest
+pure @safe unittest
 {
     SimplicialComplex!() sc;
     sc.insertFacet([1,2]);
@@ -335,7 +334,7 @@ bool is2Sphere(Vertex)(SimplicialComplex!Vertex sc)
     return sc.isOrientableSurfaceOfGenus(0);
 }
 ///
-@Name("is2Sphere") pure @safe unittest
+pure @safe unittest
 {
     auto s1 = simplicialComplex([[1,2,3], [1,2,4], [1,3,4], [2,3,4]]);
     assert(s1.is2Sphere);
@@ -367,7 +366,7 @@ bool is2Torus(Vertex)(SimplicialComplex!Vertex sc)
     return sc.isOrientableSurfaceOfGenus(1);
 }
 ///
-@Name("is2Torus") pure @safe unittest
+pure @safe unittest
 {
     // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n10_o1_g1
     // Surface #2105 on genus 1 list
@@ -391,7 +390,7 @@ bool isCircle(Vertex)(const SimplicialComplex!Vertex sc)
         && sc.isConnected;
 }
 ///
-@Name("isCircle") pure @safe unittest
+pure @safe unittest
 {
     // Start with a circle with 4 edges
     auto s = simplicialComplex([[1,2], [2,3], [3,4], [1,4]]);
@@ -424,7 +423,7 @@ bool isConnected(Vertex)(const auto ref SimplicialComplex!Vertex sc)
     return sc.connectedComponents.walkLength <= 1;
 }
 ///
-@Name("isConnected") pure @safe unittest
+pure @safe unittest
 {
     auto disjointCircles = simplicialComplex([
         [1,2], [2,3], [1,3],
@@ -455,7 +454,7 @@ bool isPure(Vertex, int maxDim)(const auto ref SimplicialComplex!(Vertex, maxDim
     return sc.facets(firstFacetDim).walkLength == sc.numFacets;
 }
 ///
-@Name("isPure") pure @safe unittest
+pure @safe unittest
 {
     auto sc = SimplicialComplex!()();
 
@@ -505,7 +504,7 @@ bool isPureOfDim(Vertex, int maxDim)(const auto ref SimplicialComplex!(Vertex, m
     return sc.facets(d).walkLength == sc.numFacets;
 }
 ///
-@Name("isPureOfDim") pure @safe unittest
+pure @safe unittest
 {
     auto sc = SimplicialComplex!()();
 
@@ -527,7 +526,7 @@ bool isPureOfDim(Vertex, int maxDim)(const auto ref SimplicialComplex!(Vertex, m
 // NOTE: The following unittest cannot be @safe since throwsWithMsg 
 // catches an Error
 ///
-@Name("isPureOfDim (errors)") pure @system unittest
+pure @system unittest
 {
     auto sc = SimplicialComplex!()();
     sc.isPureOfDim(-2).throwsWithMsg("expected a non-negative dimension");
@@ -549,7 +548,7 @@ bool isOrientableSurfaceOfGenus(Vertex)(const auto ref SimplicialComplex!Vertex 
         && Manifold!2(sc.facets).isOrientable;
 }
 ///
-@Name("isSurfaceOfGenus") pure @safe unittest
+pure @safe unittest
 {
     // http://page.math.tu-berlin.de/~lutz/stellar/manifolds_lex/manifolds_lex_d2_n10_o1_g2
     // Surface #514 in the genus 2 list 
@@ -593,7 +592,7 @@ auto join(Vertex, int maxDim1, int maxDim2)(const SimplicialComplex!(Vertex, max
     return SimplicialComplex!(Vertex, maxDim1 + maxDim2 + 1)(result);
 }
 ///
-@Name("join") @safe unittest
+@safe unittest
 {
     auto sc1 = simplicialComplex([[1,2], [2,3,4], [5]]);
     auto sc2 = simplicialComplex([[6,7], [8]]);

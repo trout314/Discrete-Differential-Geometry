@@ -2,7 +2,7 @@
 module polygons;
 
 import std.algorithm, std.range;
-import unit_threaded;
+import utility;
 
 /******************************************************************************
 Returns the set of symmetries of the a regular polygon with n sides.
@@ -12,7 +12,7 @@ auto nGonSymmetries()(ulong n)
     return chain(nGonRotations(n), nGonReflections(n));
 }
 ///
-@Name("nGonSymmetries") pure @safe unittest
+pure @safe unittest
 {
     3.nGonSymmetries.shouldBeSameSetAs([
         [0,1,2], [1,2,0], [2,0,1],  // rotations
@@ -33,7 +33,7 @@ auto nGonRotations(ulong n)
     return n.iota.map!(k => n.iota.cycle(k).take(n).array);
 }
 ///
-@Name("nGonRotations") pure @safe unittest
+pure @safe unittest
 {
     3.nGonRotations.shouldBeSameSetAs([
         [0,1,2], [1,2,0], [2,0,1]
@@ -51,7 +51,7 @@ auto nGonReflections(ulong n)
     return n.iota.map!(k => n.iota.cycle(k).take(n).retro.array);
 }
 ///
-@Name("nGonReflections") pure @safe unittest
+pure @safe unittest
 {
     3.nGonReflections.shouldBeSameSetAs([
         [2,1,0], [0,2,1], [1,0,2]
@@ -106,7 +106,7 @@ const(ulong)[][][] nGonTriangReps()(ulong n)
     assert(0, "unsupported nubmer of sides");
 }
 
-@Name("nGonTriangReps") pure @safe unittest
+pure @safe unittest
 {
     foreach (n; 3 .. 8)
     {
@@ -156,7 +156,7 @@ ulong[][][] nGonTriangs()(ulong n)
     return ans.sort.uniq.array;
 }
 ///
-@Name("nGonTriangs") pure @safe unittest
+pure @safe unittest
 {
     // import std.stdio : writeln;
     // 7.nGonTriangs.each!writeln;

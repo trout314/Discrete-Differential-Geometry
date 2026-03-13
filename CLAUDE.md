@@ -4,25 +4,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A D language symbolic math package for discrete differential geometry, focused on efficient sampling of combinatorial n-manifold triangulations via Metropolis-Hastings with bistellar (Pachner) and hinge moves.
+A D language symbolic math package for discrete differential geometry, focused on efficient sampling of combinatorial n-manifold triangulations via Metropolis-Hastings with bistellar (Pachner) moves.
 
 ## Build Commands
 
-This project uses **DUB** (D package manager) with the `dub.json` build file.
+This project uses **Meson** as its build system. DMD must be on your PATH.
 
 ```bash
-# Build a specific application
-dub build --config=manifold_sampler
-dub build --config=edge_graph
-dub build --config=dual_graph
-dub build --config=surface_cross_S1
+# Initial setup (one time)
+meson setup builddir
 
-# Run tests (uses unit-threaded framework)
-dub test
+# Build all targets
+meson compile -C builddir
 
-# Run a specific test module
-dub test -- --filter=simplicial_complex
-dub test -- --filter=manifold
+# Run tests
+meson test -C builddir
+
+# Build a specific target
+meson compile -C builddir manifold_sampler
+meson compile -C builddir edge_graph
+meson compile -C builddir dual_graph
+meson compile -C builddir surface_cross_S1
+
+# Reconfigure after editing meson.build
+meson setup builddir --reconfigure
 ```
 
 ## Architecture
@@ -37,11 +42,11 @@ dub test -- --filter=manifold
 
 - **`algorithms.d`** — Topological algorithms operating on manifolds: orientability testing, connected components, Euler characteristic, join of complexes.
 
-- **`manifold_examples.d`** — Factory functions for standard manifolds: `standardSphere`, `octahedron`, `trigonalBipyramid`, etc.
+- **`manifold_examples.d`** — Factory function `standardSphere` for generating standard sphere triangulations.
 
 ### Supporting Modules
 
-- **`utility.d`** — `StackArray` (fixed-capacity array on the stack), range utilities, `dump` debug helper, and `flatDegreeInDim` lookup table for regular triangulation degrees.
+- **`utility.d`** — `StackArray` (fixed-capacity array on the stack), range utilities, test assertion helpers (`shouldEqual`, `shouldBeSameSetAs`, `shouldBeEmpty`, `throwsWithMsg`), `dump` debug helper, and `flatDegreeInDim` lookup table for regular triangulation degrees.
 - **`polygons.d`** — Polygon symmetry group computations (rotations, reflections) and triangulation enumeration.
 - **`rational_number.d`** — Rational number arithmetic (templated on integer type, supports BigInt).
 - **`rational_extension_vector.d`** — Vectors over rational extensions (for exact simplex point coordinates using square roots).
@@ -49,7 +54,7 @@ dub test -- --filter=manifold
 
 ### Applications (source/applications/)
 
-Each application has its own `main()` guarded by `version (unittest) {} else`. DUB configurations in `dub.json` build each one by excluding the other application source files.
+Each application has its own `main()` guarded by `version (unittest) {} else`. Meson builds each as a separate executable target.
 
 - **`manifold_sampler.d`** — The main application. Runs Metropolis-Hastings sampling of manifold triangulations. Reads parameters from a `.params` file (key-value format). Outputs `.mfd` manifold files and optional CSV data, edge graphs, and dual graphs.
 - **`edge_graph.d`** — Extracts edge graph from a simplicial complex file.
@@ -63,7 +68,7 @@ Each application has its own `main()` guarded by `version (unittest) {} else`. D
 
 ## Key Patterns
 
-- Tests are co-located with source code using D's `unittest` blocks and the `unit-threaded` framework. Test assertions use `shouldBeSameSetAs`, `shouldEqual`, etc.
+- Tests are co-located with source code using D's built-in `unittest` blocks. Test assertions use helpers in `utility.d`: `shouldBeSameSetAs`, `shouldEqual`, `shouldBeEmpty`, `throwsWithMsg`.
 - Template-heavy D code: most types are parameterized on dimension and/or vertex type.
 - Application `main()` functions are wrapped in `version (unittest) {} else` so they don't conflict with the test runner.
 - The manifold sampler reads parameters from a plain-text `.params` file (see `source/applications/manifold_sampler.params` for an example).

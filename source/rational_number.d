@@ -17,10 +17,9 @@ License:    $(WEB boost.org/LICENSE_1_0.txt, Boost License 1.0)
 import std.algorithm, std.bigint, std.conv, std.exception, std.format, std.math,
     std.stdio, std.traits;
 
-import unit_threaded;
 
 ///
-@Name("pi approximation") pure @safe unittest
+pure @safe unittest
 {
     enum maxTerm = 30;
 
@@ -84,7 +83,7 @@ template isIntegerLike(T)
             }));
 }
 ///
-@Name("isIntegerLike")
+
 @safe unittest
 {
     static assert(isIntegerLike!BigInt);
@@ -123,7 +122,7 @@ template CommonInteger(I1, I2) if (isIntegerLike!I1 && isIntegerLike!I2)
     alias CommonInteger = typeof(I1.init * I2.init);
 }
 ///
-@Name("CommonInteger")
+
 @safe unittest
 {
     static assert(is(CommonInteger!(BigInt, int) == BigInt));
@@ -157,7 +156,7 @@ Rational!(CommonInteger!(I1, I2)) rational(I1, I2)(const I1 i1, const I2 i2)
     return ret;
 }
 ///
-@Name("rational 2-arg") @system unittest
+@system unittest
 {
     auto r1 = rational(BigInt("314159265"), BigInt("27182818"));
     auto r2 = rational(BigInt("8675309"), BigInt("362436"));
@@ -175,7 +174,7 @@ Rational!I rational(I)(const I val) if (isIntegerLike!I)
     return rational(val, 1);
 }
 ///
-@Name("rational 1-arg") @system unittest
+@system unittest
 {
     assert(rational(5) == rational(5, 1));
     assert(rational(BigInt("94362349639838383827627")) == rational(
@@ -583,7 +582,7 @@ public:
         return this;
     }
     ///
-    @Name("invert") pure nothrow @nogc @safe unittest
+    pure nothrow @nogc @safe unittest
     {
         assert(rational(2, 3).invert == rational(3, 2));
     }
@@ -673,7 +672,7 @@ public:
         }
     }
     ///
-    @Name("convert to floating point") pure nothrow @nogc @safe unittest
+    pure nothrow @nogc @safe unittest
     {
         assert(rational(10, 1).to!double == 10.0);
     }
@@ -695,7 +694,7 @@ public:
         return numer;
     }
     ///
-    @Name("numerator") pure @system unittest
+    pure @system unittest
     {
         assert(rational(23, 44).numerator == 23);
         assert(rational(BigInt("8"), BigInt("17")).numerator == BigInt("8"));
@@ -709,7 +708,7 @@ public:
         return denom;
     }
     ///
-    @Name("denominator") pure @system unittest
+    pure @system unittest
     {
         assert(rational(17, 324).denominator == 324);
         assert(rational(BigInt("82"), BigInt("7")).denominator == BigInt("7"));
@@ -723,7 +722,7 @@ public:
         return numer / denom;
     }
     ///
-    @Name("integerPart") pure @system unittest
+    pure @system unittest
     {
         alias r = rational;
 
@@ -741,7 +740,7 @@ public:
         return this - integerPart;
     }
     ///
-    @Name("fractionPart") pure @system unittest
+    pure @system unittest
     {
         alias r = rational;
 
@@ -768,7 +767,7 @@ public:
         }
     }
     ///
-    @Name("toString") @system unittest
+    @system unittest
     {
         assert(rational(3, 4).toString == "3/4");
         assert(rational(BigInt(3), BigInt(4)).toString == "3/4");
@@ -812,7 +811,7 @@ private:
 }
 
 ///
-@Name("toString") @system unittest
+@system unittest
 {
     // All reference values from the Maxima computer algebra system.
 
@@ -1009,7 +1008,7 @@ private Rational!Int toRationalImpl(Int)(real floatNum, real epsilon)
 }
 
 ///
-@Name("toRational") @system unittest
+@system unittest
 {
     // Start with simple cases.
     assert(toRational!int(0.5) == rational(1, 2));
@@ -1064,7 +1063,7 @@ CommonInteger!(I1, I2) gcf(I1, I2)(const I1 num1, const I2 num2)
 }
 
 ///
-@Name("gcf") pure @system unittest
+pure @system unittest
 {
     // Values from the Maxima computer algebra system.
     assert(gcf(BigInt(314_156_535UL), BigInt(27_182_818_284UL)) == BigInt(3));
@@ -1123,7 +1122,7 @@ Int floor(Int)(Rational!Int r)
 }
 
 ///
-@Name("floor") pure nothrow @nogc @safe unittest
+pure nothrow @nogc @safe unittest
 {
     assert(floor(rational(1, 2)) == 0);
     assert(floor(rational(-1, 2)) == -1);
@@ -1149,7 +1148,7 @@ Int ceil(Int)(Rational!Int r)
     }
 }
 
-@Name("ceil") pure nothrow @nogc @safe unittest
+pure nothrow @nogc @safe unittest
 {
     assert(ceil(rational(1, 2)) == 1);
     assert(ceil(rational(0)) == 0);
@@ -1187,7 +1186,7 @@ Int round(Int)(Rational!Int r)
 }
 
 ///
-@Name("round") @system unittest
+@system unittest
 {
     assert(round(rational(1, 3)) == 0);
     assert(round(rational(7, 2)) == 4);

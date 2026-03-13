@@ -2,7 +2,6 @@
 module manifold_examples;
 
 import std.range;
-import unit_threaded;
 import manifold, utility;
 
 /******************************************************************************
@@ -15,7 +14,7 @@ Manifold!(dim, int) standardSphere(int dim)()
     return Manifold!(dim, int)(iota(dim + 2).subsetsOfSize(dim + 1));
 }
 ///
-@Name("standardSphere") unittest
+unittest
 {
     standardSphere!1.facets.shouldBeSameSetAs(
         [[0,1], [1,2], [0,2]]); 

@@ -3,7 +3,6 @@ module manifold;
 
 import std.algorithm, std.array, std.conv, std.exception, std.math, std.range,
     std.stdio, std.traits, std.typecons;
-import unit_threaded;
 import algorithms, hashmap, manifold_examples, manifold_moves,
     simplicial_complex, utility;
 
@@ -637,7 +636,7 @@ public:
 
 
 ///
-@Name("allBistellarMoves") pure @safe unittest
+pure @safe unittest
 {
     static foreach (d; 2 .. 8)
     {
@@ -750,7 +749,7 @@ size_t countValidBistellarMoves(Vertex, int dim)(
 }
 
 ///
-@Name("countValidBistellarMoves") pure unittest
+pure unittest
 {
     // Standard sphere has no moves except stellar subdivisions
     auto sphere = standardSphere!2;
@@ -772,7 +771,7 @@ version (TrackValidMoves)
 {
 
 ///
-@Name("incrementalValidMoveCount") unittest
+unittest
 {
     import std.random : uniform, Mt19937;
     alias BM = BistellarMove!2;
@@ -813,7 +812,7 @@ version (TrackValidMoves)
 }
 
 ///
-@Name("incrementalValidMoveCount dim 3") unittest
+unittest
 {
     import std.random : uniform, Mt19937;
     alias BM = BistellarMove!3;
@@ -1070,7 +1069,7 @@ BistellarMove!(dim, Vertex) sampleValidMove(Vertex, int dim, Rng)(
 } // version (TrackValidMoves)
 
 ///
-@Name("Manifold doc tests") pure @safe unittest
+pure @safe unittest
 {
     auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
         [2,3,5], [3,4,5], [1,4,5]]);
@@ -1099,7 +1098,7 @@ BistellarMove!(dim, Vertex) sampleValidMove(Vertex, int dim, Rng)(
 // NOTE: The following unittest cannot be @safe since throwsWithMsg 
 // catches an Error
 ///
-@Name("Manifold (errors)") pure @system unittest
+pure @system unittest
 {
     Manifold!2([[1,2,3,4]]).throwsWithMsg("facet has wrong dimension");
 
@@ -1110,7 +1109,7 @@ BistellarMove!(dim, Vertex) sampleValidMove(Vertex, int dim, Rng)(
 }
 
 ///
-@Name("allBistellarMoves") pure @safe unittest
+pure @safe unittest
 {
     auto m = Manifold!2(
         [[1,2,3], [1,2,4], [1,3,4], [2,3,5], [2,4,5],[3,4,5]]);
@@ -1131,7 +1130,7 @@ BistellarMove!(dim, Vertex) sampleValidMove(Vertex, int dim, Rng)(
 // NOTE: The following unittest cannot be @safe since throwsWithMsg 
 // catches an Error
 ///
-@Name("doMove (errors)") pure @system unittest
+pure @system unittest
 {
     // Can't do 2->2 move on the boundary of a 3-simplex
     auto manifold = Manifold!2([[1,2,3],[1,2,4], [1,3,4], [2,3,4]]);
@@ -1140,7 +1139,7 @@ BistellarMove!(dim, Vertex) sampleValidMove(Vertex, int dim, Rng)(
 }
 
 ///
-@Name("doMove") pure unittest
+pure unittest
 {
     alias BM = BistellarMove!2;
     auto manifold = standardSphere!2;
@@ -1301,7 +1300,7 @@ if (isIRof!(C, const(Vertex)) && isIRof!(F, const(Vertex)))
 }
 
 ///
-@Name("findCoCenter: vertex center on octahedron") pure @safe unittest
+pure @safe unittest
 {
     // Octahedron: 6 vertices, 8 triangular facets
     auto oct = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
@@ -1318,7 +1317,7 @@ if (isIRof!(C, const(Vertex)) && isIRof!(F, const(Vertex)))
 }
 
 ///
-@Name("findCoCenter: edge center on octahedron") pure @safe unittest
+pure @safe unittest
 {
     auto oct = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
         [2,3,5], [3,4,5], [1,4,5]]);
@@ -1337,7 +1336,7 @@ if (isIRof!(C, const(Vertex)) && isIRof!(F, const(Vertex)))
 }
 
 ///
-@Name("findCoCenter: facet center on octahedron") pure @safe unittest
+pure @safe unittest
 {
     auto oct = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
         [2,3,5], [3,4,5], [1,4,5]]);
@@ -1357,7 +1356,7 @@ if (isIRof!(C, const(Vertex)) && isIRof!(F, const(Vertex)))
 }
 
 ///
-@Name("findCoCenter: on 1-manifold (circle)") pure @safe unittest
+pure @safe unittest
 {
     // Triangle as a 1-manifold (circle with 3 edges)
     auto circle = Manifold!1([[0,1], [1,2], [0,2]]);
@@ -1372,7 +1371,7 @@ if (isIRof!(C, const(Vertex)) && isIRof!(F, const(Vertex)))
 }
 
 ///
-@Name("findCoCenter: on standard spheres") pure @safe unittest
+pure @safe unittest
 {
     // Standard 1-sphere: boundary of a triangle (3 edges, 3 vertices)
     immutable s1 = standardSphere!1;
@@ -1392,7 +1391,7 @@ if (isIRof!(C, const(Vertex)) && isIRof!(F, const(Vertex)))
 }
 
 ///
-@Name("findCoCenter: co-center length matches degree") pure @safe unittest
+pure @safe unittest
 {
     // For any center, |co-center| = degree(center) - |center| + 1
     // because the link of a k-simplex in a d-manifold consists of
@@ -1419,21 +1418,21 @@ if (isIRof!(C, const(Vertex)) && isIRof!(F, const(Vertex)))
 }
 
 ///
-@Name("facets") pure @safe unittest
+pure @safe unittest
 {
     auto mfd = Manifold!1([[0,1],[0,2],[1,2]]);
     mfd.facets.sort.shouldBeSameSetAs([[0,1],[0,2],[1,2]]);
 }
 
 ///
-@Name("star") pure @safe unittest
+pure @safe unittest
 {
     auto mfd = Manifold!1([[0,1],[0,2],[1,2]]);
     mfd.star([1]).map!array.array.sort.shouldBeSameSetAs([[0,1],[1,2]]);
 }
 
 ///
-@Name("link") pure @safe unittest
+pure @safe unittest
 {
     auto mfd = Manifold!1([[0,1],[0,2],[1,2]]);
     mfd.link([1]).map!(r => r.array).array.sort.shouldBeSameSetAs([[0],[2]]);
@@ -1442,7 +1441,7 @@ if (isIRof!(C, const(Vertex)) && isIRof!(F, const(Vertex)))
 }
 
 ///
-@Name("contains (pure nothrow @nogc @safe)") pure @safe unittest
+pure @safe unittest
 {
     auto sc = Manifold!1([[0,1],[0,2],[1,2]]);
     int[2] edge01 = [0,1];
@@ -1465,7 +1464,7 @@ Manifold!(dim, Vertex) loadManifold(int dim, Vertex = int)(string fileName)
 }
 
 ///
-@Name("loadManifold") @system unittest
+@system unittest
 {
     auto m = loadManifold!2(
         "data/manifold_sampler_unittest_load.dat");
@@ -1478,7 +1477,7 @@ Manifold!(dim, Vertex) loadManifold(int dim, Vertex = int)(string fileName)
 }
 
 ///
-@Name("saveTo") @system unittest
+@system unittest
 {
     auto fileName = "data/manifold_sampler_unittest_save.dat";
     auto sphere = standardSphere!4;
@@ -1502,7 +1501,7 @@ real meanDegree(Vertex, int mfdDim)(
     return simpsPerFacet * nFacets / real(nSimps);
 }
 ///
-@Name("meanDegree") pure @safe unittest
+pure @safe unittest
 {
     foreach (dim; staticIota!(1, 8))
     {
@@ -1541,7 +1540,7 @@ ulong totalSquareDegree(Vertex, int mfdDim)(
     return mfd.totSqrDegrees[dim];
 }
 ///
-@Name("totalSquareDegree") pure @safe unittest
+pure @safe unittest
 {
     foreach (dim; staticIota!(1, 8))
     {
@@ -1582,7 +1581,7 @@ real degreeVariance(Vertex, int mfdDim)(
     return meanSqrDeg - meanDeg^^2;
 }
 ///
-@Name("degreeVariance") pure @safe unittest
+pure @safe unittest
 {
     foreach (dim; staticIota!(1, 8))
     {
@@ -1612,7 +1611,7 @@ void undoMove(int dim, Vertex)(
 }
 
 ///
-@Name("undoMove: round-trip restores manifold") pure @safe unittest
+pure @safe unittest
 {
     alias BM = BistellarMove!2;
 
@@ -1631,7 +1630,7 @@ void undoMove(int dim, Vertex)(
 }
 
 ///
-@Name("undoMove: 2-2 move round-trip") pure @safe unittest
+pure @safe unittest
 {
     alias BM = BistellarMove!2;
 
@@ -1657,7 +1656,7 @@ void undoMove(int dim, Vertex)(
 }
 
 ///
-@Name("undoMove: multiple moves undone in reverse order") pure @safe unittest
+pure @safe unittest
 {
     alias BM = BistellarMove!2;
 
@@ -1681,7 +1680,7 @@ void undoMove(int dim, Vertex)(
 }
 
 ///
-@Name("undoMove: 3-1 move round-trip") pure @safe unittest
+pure @safe unittest
 {
     alias BM = BistellarMove!2;
 
@@ -1703,7 +1702,7 @@ void undoMove(int dim, Vertex)(
 
 
 
-@Name("fVector") @system unittest
+@system unittest
 {
     auto hyperbolicDodecahedral = loadManifold!3(
         "data/manifold_sampler_unittest_dodecahedral.dat");
@@ -1842,7 +1841,7 @@ string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
     return problems;
 }
 ///
-@Name("findProblems") pure @safe unittest
+pure @safe unittest
 {
     auto m3 = standardSphere!3;
     assert(m3.findProblems.empty);
@@ -1970,7 +1969,7 @@ void saveDualGraphTo(int dimension, Vertex = int)(
 /// TO DO: Unittests for saveDualGraph
 
 
-@Name("value semantics") pure /* @safe */ unittest
+pure /* @safe */ unittest
 {
     auto octahedron = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
         [2,3,5], [3,4,5], [1,4,5]]);
@@ -1980,12 +1979,12 @@ void saveDualGraphTo(int dimension, Vertex = int)(
     auto move = BistellarMove!2([0,1],[2,4]);
     m2.doMove(move);
 
-    m2.facets.should.not ~ octahedron.facets;
-    m2.facets.should.not ~ m1.facets;
-    m1.facets.should ~ octahedron.facets;
+    assert(m2.facets.array.sort != octahedron.facets.array.sort);
+    assert(m2.facets.array.sort != m1.facets.array.sort);
+    assert(m1.facets.array.sort == octahedron.facets.array.sort);
 }
 
-@Name("value semantics for contained simplices") pure @safe unittest
+pure @safe unittest
 {
     auto vertices = [0,1,2];
     auto edge1 = vertices[0..2];
@@ -1997,6 +1996,6 @@ void saveDualGraphTo(int dimension, Vertex = int)(
     auto m = Manifold!1([edge1, edge2, edge3]);
     m.facets.shouldBeSameSetAs([[0,1],[1,2],[0,2]]);
     vertices[1] = 42;
-    [42].should.not in m.simplices(0);
+    assert(!m.simplices(0).canFind([42]));
     m.facets.shouldBeSameSetAs([[0,1],[1,2],[0,2]]);
 }

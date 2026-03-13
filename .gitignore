@@ -22,24 +22,17 @@ manifold_sampler
 #unittest coverage files
 *.lst
 
-# DUB
-.dub
-docs.json
-*.html
-dub.selections.json
+# Meson
+builddir/
 
 # data files created by unittests
 data/manifold_sampler_unittest_save.dat
 data/simplicial_complex_unittest_save.dat
 
-#unit_threaded test runner
-ut.d
-
 #data files
 *.dat
 ./*.mfd
 *.edge_graph
-*.exe
 
 #jupyter notebook checkpoints
 *checkpoints
