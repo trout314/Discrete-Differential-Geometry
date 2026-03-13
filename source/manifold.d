@@ -1300,8 +1300,123 @@ if (isIRof!(C, const(Vertex)) && isIRof!(F, const(Vertex)))
     return coCenterVerts;
 }
 
-// TO DO: Separate unittesting for findCoCenter
+///
+@Name("findCoCenter: vertex center on octahedron") pure @safe unittest
+{
+    // Octahedron: 6 vertices, 8 triangular facets
+    auto oct = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
+        [2,3,5], [3,4,5], [1,4,5]]);
 
+    // Co-center of vertex 0 is its link: the ring of neighbors [1,2,3,4]
+    oct.findCoCenter([0]).sort.shouldEqual([1, 2, 3, 4]);
+
+    // Co-center of vertex 5 is its link: [1,2,3,4]
+    oct.findCoCenter([5]).sort.shouldEqual([1, 2, 3, 4]);
+
+    // Co-center of vertex 1 is its link: [0,2,4,5]
+    oct.findCoCenter([1]).sort.shouldEqual([0, 2, 4, 5]);
+}
+
+///
+@Name("findCoCenter: edge center on octahedron") pure @safe unittest
+{
+    auto oct = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
+        [2,3,5], [3,4,5], [1,4,5]]);
+
+    // Edge [0,1] is shared by facets [0,1,2] and [0,1,4].
+    // Link of [0,1] is the two opposite vertices: {2, 4}
+    oct.findCoCenter([0, 1]).sort.shouldEqual([2, 4]);
+
+    // Edge [1,2] is shared by facets [0,1,2] and [1,2,5].
+    // Link of [1,2] is {0, 5}
+    oct.findCoCenter([1, 2]).sort.shouldEqual([0, 5]);
+
+    // Edge [2,3] is shared by facets [0,2,3] and [2,3,5].
+    // Link of [2,3] is {0, 5}
+    oct.findCoCenter([2, 3]).sort.shouldEqual([0, 5]);
+}
+
+///
+@Name("findCoCenter: facet center on octahedron") pure @safe unittest
+{
+    auto oct = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
+        [2,3,5], [3,4,5], [1,4,5]]);
+
+    // Link of a facet (triangle) in a 2-manifold is a single vertex
+    // (the one that would be added in a 3->1 move... but that vertex
+    // must not already be in the manifold for the move to be valid).
+    // For the octahedron, the link of every facet is empty since
+    // all vertices are already present. findCoCenter returns the
+    // flattened link vertices regardless of move validity.
+
+    // Facet [0,1,2]: the link is the set of vertices completing each ridge.
+    // Ridges [0,1]->{2,4}, [0,2]->{1,3}, [1,2]->{0,5} → flattened unique: {0,1,2,3,4,5} minus center {0,1,2} ...
+    // Actually, link of a facet = vertices v such that facet ∪ {v} would be a (dim+1)-simplex in the complex.
+    // In a 2-manifold there are no 3-simplices, so the link of a facet is empty.
+    oct.findCoCenter([0, 1, 2]).shouldBeEmpty;
+}
+
+///
+@Name("findCoCenter: on 1-manifold (circle)") pure @safe unittest
+{
+    // Triangle as a 1-manifold (circle with 3 edges)
+    auto circle = Manifold!1([[0,1], [1,2], [0,2]]);
+
+    // Link of vertex 0 in a circle is its two neighbors: {1, 2}
+    circle.findCoCenter([0]).sort.shouldEqual([1, 2]);
+    circle.findCoCenter([1]).sort.shouldEqual([0, 2]);
+    circle.findCoCenter([2]).sort.shouldEqual([0, 1]);
+
+    // Link of an edge (facet) in a 1-manifold is empty
+    circle.findCoCenter([0, 1]).shouldBeEmpty;
+}
+
+///
+@Name("findCoCenter: on standard spheres") pure @safe unittest
+{
+    // Standard 1-sphere: boundary of a triangle (3 edges, 3 vertices)
+    immutable s1 = standardSphere!1;
+    // Each vertex links to the other two
+    foreach (v; 0 .. 3)
+        s1.findCoCenter([v]).length.shouldEqual(2);
+
+    // Standard 2-sphere: boundary of a tetrahedron (4 triangles, 4 vertices)
+    immutable s2 = standardSphere!2;
+    // Each vertex links to the other three
+    foreach (v; 0 .. 4)
+        s2.findCoCenter([v]).length.shouldEqual(3);
+    // Each edge links to the other two vertices
+    s2.findCoCenter([0, 1]).sort.shouldEqual([2, 3]);
+    s2.findCoCenter([0, 2]).sort.shouldEqual([1, 3]);
+    s2.findCoCenter([1, 3]).sort.shouldEqual([0, 2]);
+}
+
+///
+@Name("findCoCenter: co-center length matches degree") pure @safe unittest
+{
+    // For any center, |co-center| = degree(center) - |center| + 1
+    // because the link of a k-simplex in a d-manifold consists of
+    // (d-k)-simplices, and its vertex set has degree - |center| + 1 elements.
+    // More precisely: |co-center| = degree(center) - |center| + 1...
+    // Let's just verify the relationship empirically on the octahedron.
+    auto oct = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
+        [2,3,5], [3,4,5], [1,4,5]]);
+
+    // Vertices: degree 4, co-center length 4
+    foreach (v; 0 .. 6)
+    {
+        auto cc = oct.findCoCenter([v]);
+        cc.length.shouldEqual(oct.degree([v]));
+    }
+
+    // Edges: degree 2 (each edge in 2 triangles), co-center length 2
+    auto edges = oct.simplices(1);
+    foreach (e; edges)
+    {
+        auto cc = oct.findCoCenter(e);
+        cc.length.shouldEqual(oct.degree(e));
+    }
+}
 
 ///
 @Name("facets") pure @safe unittest
