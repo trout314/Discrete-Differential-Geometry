@@ -481,3 +481,324 @@ unittest
     ++map[5];
     assert(map[5] == 2);
 }
+
+unittest
+{
+    // Decrement operator on absent and present keys
+    HashMap!(int, int) map;
+    --map[1];
+    assert(map[1] == -1);
+    --map[1];
+    assert(map[1] == -2);
+    assert(map.length == 1);
+}
+
+unittest
+{
+    // Compound assignment operators: -=, *=
+    HashMap!(int, int) map;
+
+    // -= on absent key (starts from V.init == 0)
+    map[1] -= 3;
+    assert(map[1] == -3);
+
+    // *= on present key
+    map[2] = 5;
+    map[2] *= 4;
+    assert(map[2] == 20);
+
+    // += on present key
+    map[2] += 10;
+    assert(map[2] == 30);
+}
+
+unittest
+{
+    // 'in' operator returns usable pointer to value
+    HashMap!(int, int) map;
+    map[7] = 42;
+
+    auto p = 7 in map;
+    assert(p !is null);
+    assert(*p == 42);
+
+    // Mutate through pointer
+    *p = 99;
+    assert(map[7] == 99);
+
+    // Absent key returns null
+    auto q = 8 in map;
+    assert(q is null);
+}
+
+unittest
+{
+    // 'in' on empty map returns null
+    HashMap!(int, int) map;
+    assert(42 !in map);
+}
+
+unittest
+{
+    // remove on empty map returns false
+    HashMap!(int, int) map;
+    assert(!map.remove(1));
+}
+
+unittest
+{
+    // remove on non-existent key returns false
+    HashMap!(int, int) map;
+    map[1] = 10;
+    assert(!map.remove(2));
+    assert(map.length == 1);
+}
+
+unittest
+{
+    // clear deallocates and resets
+    HashMap!(int, int) map;
+    map[1] = 10;
+    map[2] = 20;
+    assert(map.length == 2);
+
+    map.clear();
+    assert(map.length == 0);
+    assert(1 !in map);
+    assert(2 !in map);
+
+    // Can reuse after clear
+    map[3] = 30;
+    assert(map.length == 1);
+    assert(map[3] == 30);
+}
+
+unittest
+{
+    // keys() returns all inserted keys
+    HashMap!(int, int) map;
+    map[5] = 50;
+    map[3] = 30;
+    map[8] = 80;
+
+    auto k = map.keys();
+    assert(k.length == 3);
+
+    // Sort for deterministic comparison
+    import std.algorithm : sort;
+    k.sort();
+    assert(k == [3, 5, 8]);
+}
+
+unittest
+{
+    // keys() on empty map returns empty array
+    HashMap!(int, int) map;
+    assert(map.keys().length == 0);
+}
+
+unittest
+{
+    // keys() excludes removed entries
+    HashMap!(int, int) map;
+    map[1] = 10;
+    map[2] = 20;
+    map[3] = 30;
+    map.remove(2);
+
+    auto k = map.keys();
+    assert(k.length == 2);
+
+    import std.algorithm : sort;
+    k.sort();
+    assert(k == [1, 3]);
+}
+
+unittest
+{
+    // byKey iteration
+    HashMap!(int, int) map;
+    map[10] = 100;
+    map[20] = 200;
+    map[30] = 300;
+
+    int sum = 0;
+    int count = 0;
+    foreach (k; map.byKey())
+    {
+        sum += k;
+        count++;
+    }
+    assert(count == 3);
+    assert(sum == 60);
+}
+
+unittest
+{
+    // byKey on empty map yields nothing
+    HashMap!(int, int) map;
+    foreach (k; map.byKey())
+        assert(false, "should not iterate");
+}
+
+unittest
+{
+    // byKeyValue on empty map yields nothing
+    HashMap!(int, int) map;
+    foreach (kv; map.byKeyValue())
+        assert(false, "should not iterate");
+}
+
+unittest
+{
+    // byKeyValue skips tombstones
+    HashMap!(int, int) map;
+    map[1] = 10;
+    map[2] = 20;
+    map[3] = 30;
+    map.remove(2);
+
+    int keySum = 0;
+    int valSum = 0;
+    foreach (kv; map.byKeyValue())
+    {
+        keySum += kv.key;
+        valSum += kv.value;
+    }
+    assert(keySum == 4);  // 1 + 3
+    assert(valSum == 40); // 10 + 30
+}
+
+unittest
+{
+    // Tombstone reuse: re-insert a removed key
+    HashMap!(int, int) map;
+    map[1] = 10;
+    map.remove(1);
+    assert(1 !in map);
+    assert(map.length == 0);
+
+    map[1] = 20;
+    assert(map.length == 1);
+    assert(map[1] == 20);
+}
+
+unittest
+{
+    // Insert-remove-insert cycle with multiple keys (tombstone handling)
+    HashMap!(int, int) map;
+    foreach (i; 0 .. 50)
+        map[i] = i;
+    foreach (i; 0 .. 50)
+        map.remove(i);
+    assert(map.length == 0);
+
+    // Reinsert — triggers rehash since tombstones fill the table
+    foreach (i; 0 .. 50)
+        map[i] = i * 3;
+    assert(map.length == 50);
+    foreach (i; 0 .. 50)
+        assert(map[i] == i * 3);
+}
+
+unittest
+{
+    // Update does not change length
+    HashMap!(int, int) map;
+    map[1] = 10;
+    map[1] = 20;
+    map[1] = 30;
+    assert(map.length == 1);
+    assert(map[1] == 30);
+}
+
+unittest
+{
+    // dup produces independent copy — mutations don't cross
+    HashMap!(int, int) map;
+    map[1] = 10;
+    map[2] = 20;
+
+    auto copy = map.dup;
+    copy[3] = 30;
+    copy.remove(1);
+
+    assert(map.length == 2);
+    assert(map[1] == 10);
+    assert(3 !in map);
+
+    assert(copy.length == 2);
+    assert(1 !in copy);
+    assert(copy[3] == 30);
+}
+
+unittest
+{
+    // String keys
+    HashMap!(string, int) map;
+    map["hello"] = 1;
+    map["world"] = 2;
+    assert(map.length == 2);
+    assert(map["hello"] == 1);
+    assert(map["world"] == 2);
+
+    map.remove("hello");
+    assert("hello" !in map);
+    assert(map.length == 1);
+}
+
+unittest
+{
+    // Const map: lookup and iteration work
+    HashMap!(int, int) map;
+    map[1] = 10;
+    map[2] = 20;
+
+    const cmap = map;
+    assert(cmap.length == 2);
+    assert(1 in cmap);
+    assert(cmap[1] == 10);
+
+    int sum = 0;
+    foreach (kv; cmap.byKeyValue())
+        sum += kv.value;
+    assert(sum == 30);
+
+    int keySum = 0;
+    foreach (k; cmap.byKey())
+        keySum += k;
+    assert(keySum == 3);
+}
+
+unittest
+{
+    // Negative integer keys
+    HashMap!(int, int) map;
+    map[-1] = 10;
+    map[-100] = 20;
+    map[0] = 30;
+    assert(map.length == 3);
+    assert(map[-1] == 10);
+    assert(map[-100] == 20);
+    assert(map[0] == 30);
+}
+
+unittest
+{
+    // Large resize: ensure correctness across multiple grow() calls
+    HashMap!(int, int) map;
+    enum N = 10_000;
+    foreach (i; 0 .. N)
+        map[i] = i;
+    assert(map.length == N);
+
+    // Spot-check values
+    assert(map[0] == 0);
+    assert(map[N / 2] == N / 2);
+    assert(map[N - 1] == N - 1);
+
+    // Remove all
+    foreach (i; 0 .. N)
+        map.remove(i);
+    assert(map.length == 0);
+}
