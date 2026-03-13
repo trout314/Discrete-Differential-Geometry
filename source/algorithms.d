@@ -454,7 +454,47 @@ bool isPure(Vertex, int maxDim)(const auto ref SimplicialComplex!(Vertex, maxDim
 
     return sc.facets(firstFacetDim).walkLength == sc.numFacets;
 }
-/// TO DO: unittest for isPure
+///
+@Name("isPure") pure @safe unittest
+{
+    auto sc = SimplicialComplex!()();
+
+    // Empty complex is pure
+    assert(sc.isPure);
+
+    // Single facet is always pure
+    sc.insertFacet([1, 2]);
+    assert(sc.isPure);
+
+    // Two facets of the same dimension: still pure
+    sc.insertFacet([3, 4]);
+    assert(sc.isPure);
+
+    // Adding a facet of different dimension: no longer pure
+    sc.insertFacet([5, 6, 7]);
+    assert(!sc.isPure);
+
+    // A complex where all facets are triangles: pure
+    auto triangles = SimplicialComplex!()();
+    triangles.insertFacet([0, 1, 2]);
+    triangles.insertFacet([1, 2, 3]);
+    triangles.insertFacet([2, 3, 4]);
+    assert(triangles.isPure);
+
+    // Single vertex (0-dimensional facet) is pure
+    auto point = SimplicialComplex!()();
+    point.insertFacet([0]);
+    assert(point.isPure);
+
+    // Multiple vertices (all 0-dimensional) is pure
+    point.insertFacet([1]);
+    point.insertFacet([2]);
+    assert(point.isPure);
+
+    // Vertex + edge: not pure
+    point.insertFacet([3, 4]);
+    assert(!point.isPure);
+}
 
 /*******************************************************************************
 Decide if a simplicial complex is pure of dimension `d`
