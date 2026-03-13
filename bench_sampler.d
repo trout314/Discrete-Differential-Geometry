@@ -144,52 +144,231 @@ void main()
 
     auto seed = loadManifold!dim("standard_triangulations/dim_3_sphere.mfd");
 
-    foreach (targetTets; [50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000])
+    int[] benchSizes = [5000];
+
+    // Grow once with equilibration, benchmarking at each target size
+    auto mfd = growWithBenchmarks(seed, benchSizes);
+}
+
+Manifold!dim growWithBenchmarks(ref Manifold!dim seed, int[] benchSizes)
+{
+    auto mfd = seed;
+    int nextVertex = mfd.simplices(0).joiner.array.dup.sort.array.back + 1;
+    int[] unusedVertices;
+
+    int finalTarget = benchSizes[$ - 1];
+
+    // Build milestone list: double from 50 up to finalTarget, including bench sizes
+    int[] milestones;
     {
-        auto mfd = grow(seed, targetTets);
-
-        auto mfd1 = mfd;
-        writef("  speculative delta:     ");
-        benchmarkSpeculative!true(mfd1, targetTets);
-
-        version (TrackValidMoves)
+        int sz = 50;
+        while (sz < finalTarget)
         {
-            if (targetTets <= 200)
+            milestones ~= sz;
+            sz = cast(int)(sz * 2);
+        }
+        // Merge in bench sizes
+        foreach (bs; benchSizes)
+            if (!milestones.canFind(bs))
+                milestones ~= bs;
+        milestones.sort();
+    }
+
+    // Which bench sizes have we reported?
+    int benchIdx = 0;
+
+    foreach (milestone; milestones)
+    {
+        if (mfd.fVector[dim] >= milestone)
+            continue;
+
+        // Growth phase: add vertices via stellar subdivision until we hit milestone
+        writef("  growing %d -> %d...", mfd.fVector[dim], milestone);
+        stdout.flush();
+        while (mfd.fVector[dim] < milestone)
+        {
+            auto facet = mfd.randomFacetOfDim(dim).array;
+            auto newV = nextVertex;
+            auto move = BistellarMove!dim(facet, [newV]);
+            if (!mfd.contains(move.coCenter))
+            {
+                mfd.doMove(move);
+                nextVertex++;
+            }
+        }
+        writefln(" %d tets", mfd.fVector[dim]);
+
+        // Equilibration phase
+        equilibrate(mfd, milestone, unusedVertices, nextVertex);
+
+        // Update nextVertex to be above the max vertex label in the manifold
+        nextVertex = mfd.simplices(0).joiner.array.dup.sort.array.back + 1;
+
+        // Benchmark if this milestone matches (or exceeds) a bench size
+        while (benchIdx < benchSizes.length && milestone >= benchSizes[benchIdx])
+        {
+            int actualTets = cast(int) mfd.fVector[dim];
+            writeln();
+            writefln("=== Benchmark at ~%d tets (%d actual) ===", benchSizes[benchIdx], actualTets);
+            stdout.flush();
+            printDegreeStats(mfd);
+
+            auto mfd1 = mfd;
+            writef("  speculative (profiled):");
+            benchmarkSpeculativeProfiled(mfd1, actualTets);
+
+            version (TrackValidMoves)
             {
                 auto mfd2 = mfd;
                 writef("  exact incr (V tracked):");
-                benchmarkExactHastingsIncremental(mfd2, targetTets);
+                benchmarkExactHastingsIncremental(mfd2, actualTets);
             }
-        }
 
-        writeln();
+            writeln();
+            stdout.flush();
+            benchIdx++;
+        }
     }
+
+    return mfd;
 }
 
-Manifold!dim grow(ref Manifold!dim seed, int targetTets)
+void equilibrate(ref Manifold!dim mfd, int targetSize,
+    ref int[] unusedVertices, ref int nextVertex)
 {
-    auto mfd = seed;
-    int nextVertex = 6;
+    auto eqParams = BenchParams(targetSize);
+    auto currentObjective = computeObjective(mfd, eqParams);
+    unusedVertices.length = 0;
+    unusedVertices ~= nextVertex;
 
-    writef("Growing to %d tets...", targetTets);
-    stdout.flush();
+    int currentSize = cast(int) mfd.fVector[dim];
+    int eqTarget = currentSize * 10;
+    int eqAccepted = 0;
 
-    while (mfd.fVector[dim] < targetTets)
+    // Track degree variance over windows to check convergence
+    int windowSize = max(1000, currentSize);
+    int windowAccepted = 0;
+    real[] windowTotSqDegs;
+
+    StopWatch eqTimer;
+    eqTimer.start();
+
+    int eqTrials = 0;
+    while (eqAccepted < eqTarget)
     {
-        auto facet = mfd.randomFacetOfDim(dim).array;
-        auto newV = nextVertex;
-        auto move = BistellarMove!dim(facet, [newV]);
-        if (!mfd.contains(move.coCenter))
+        if (unusedVertices.empty)
         {
-            mfd.doMove(move);
             nextVertex++;
+            unusedVertices ~= nextVertex;
+        }
+
+        auto proposed = proposeMoveOptimized(mfd, unusedVertices.back);
+        auto bm = proposed.move;
+        eqTrials++;
+
+        // Periodic progress
+        if (eqTrials % 100000 == 0)
+        {
+            writef("\r    eq %d/%d accepted (%d trials, %.1f%%), %d tets   ",
+                eqAccepted, eqTarget, eqTrials,
+                100.0 * eqAccepted / eqTrials, mfd.fVector[dim]);
+            stdout.flush();
+        }
+
+        real deltaObj = speculativeDelta(mfd, bm, currentObjective, eqParams);
+
+        if ((deltaObj > 0) && (uniform01 > exp(-deltaObj)))
+        {
+            // Rejected
+        }
+        else
+        {
+            mfd.doMove(bm);
+            if (bm.coCenter.length == 1) unusedVertices.popBack;
+            if (bm.center.length == 1) unusedVertices ~= bm.center;
+            currentObjective += deltaObj;
+            eqAccepted++;
+            windowAccepted++;
+
+            // Update nextVertex if a new vertex was consumed
+            if (bm.coCenter.length == 1 && bm.coCenter[0] >= nextVertex)
+                nextVertex = bm.coCenter[0] + 1;
+
+            // Record degree variance at window boundaries
+            if (windowAccepted >= windowSize)
+            {
+                windowTotSqDegs ~= cast(real) mfd.totalSquareDegree(0);
+                windowAccepted = 0;
+            }
         }
     }
 
-    writefln(" done (%d tets, %d edges, %d vertices)",
-        mfd.fVector[dim], mfd.fVector[dim-2], mfd.fVector[0]);
+    eqTimer.stop();
+
+    // Report equilibration convergence
+    real finalTotSqDeg = cast(real) mfd.totalSquareDegree(0);
+    real avgDeg = cast(real)(dim + 1) * mfd.fVector[dim] / mfd.fVector[0];
+    writef("\r    eq %d acc/%d try (%.1f%%, %.1fs), %d tets, deg_var=%.1f",
+        eqAccepted, eqTrials, 100.0 * eqAccepted / eqTrials,
+        eqTimer.peek.total!"msecs" / 1000.0,
+        mfd.fVector[dim],
+        finalTotSqDeg / mfd.fVector[0] - avgDeg * avgDeg);
+
+    // Check convergence: compare first and last half of windows
+    if (windowTotSqDegs.length >= 4)
+    {
+        auto nw = windowTotSqDegs.length;
+        real firstHalf = 0, secondHalf = 0;
+        auto half = nw / 2;
+        foreach (i; 0 .. half)
+            firstHalf += windowTotSqDegs[i];
+        foreach (i; half .. nw)
+            secondHalf += windowTotSqDegs[i];
+        firstHalf /= half;
+        secondHalf /= (nw - half);
+        real pctChange = 100.0 * (secondHalf - firstHalf) / firstHalf;
+        writefln(", drift=%.2f%%", pctChange);
+    }
+    else
+        writeln();
+
     stdout.flush();
-    return mfd;
+}
+
+void printDegreeStats(ref const Manifold!dim mfd)
+{
+    // Vertex degree = number of top-dimensional facets containing the vertex
+    auto verts = mfd.simplices(0);
+    int nVerts = cast(int) mfd.fVector[0];
+    int maxDeg = 0, minDeg = int.max;
+    long sumDeg = 0;
+    long sumSqDeg = 0;
+    int[int] degHist;
+    foreach (v; verts)
+    {
+        int deg = cast(int) mfd.degree(v);
+        sumDeg += deg;
+        sumSqDeg += deg * deg;
+        if (deg > maxDeg) maxDeg = deg;
+        if (deg < minDeg) minDeg = deg;
+        degHist[deg]++;
+    }
+    real avgDeg = cast(real) sumDeg / nVerts;
+    real variance = cast(real) sumSqDeg / nVerts - avgDeg * avgDeg;
+
+    writefln("  Vertex degree: avg=%.1f, min=%d, max=%d, stddev=%.1f",
+        avgDeg, minDeg, maxDeg, sqrt(variance));
+
+    // Show histogram of most common degrees
+    int[][] sorted;
+    foreach (k, v; degHist)
+        sorted ~= [k, v];
+    sorted.sort!((a, b) => a[0] < b[0]);
+    writef("  Degree histogram:");
+    foreach (kv; sorted)
+        writef(" %d:%d", kv[0], kv[1]);
+    writeln();
+    stdout.flush();
 }
 
 // --- Proposal (original: materializes all subsets) ---
