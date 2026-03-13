@@ -77,6 +77,10 @@ private:
     size_t[dimension_ + 1] numSimplices;
     ulong[dimension - 1] totSqrDegrees;
 
+    // Facet array for O(1) random access
+    Facet[] _facetArray;
+    HashMap!(Facet, size_t) _facetArrayIdx;
+
     version (TrackValidMoves)
     {
         Facet[][Vertex] _vertexFacets;
@@ -87,13 +91,23 @@ private:
             mixin("Vertex_[" ~ to!string(_d_vm + 1) ~ "][] _validMoves" ~ to!string(_d_vm) ~ ";");
             mixin("HashMap!(Vertex_[" ~ to!string(_d_vm + 1) ~ "], size_t) _validMoveIdx" ~ to!string(_d_vm) ~ ";");
         }
-
-        // Facet array for O(1) random access (every facet is a valid stellar subdivision)
-        Facet[] _facetArray;
-        HashMap!(Facet, size_t) _facetArrayIdx;
     }
 
     //--------------- Helper Functions ---------------
+
+    /// Find the vertex in `facet` that is not in `subset` (for ridge computations).
+    private static Vertex_ oppositeVertex(const Vertex_[] facet, const Vertex_[dimension_] subset) pure nothrow @nogc @safe
+    {
+        foreach (v; facet)
+        {
+            bool found = false;
+            foreach (s; subset)
+                if (v == s) { found = true; break; }
+            if (!found) return v;
+        }
+        assert(false, "no opposite vertex found");
+    }
+
     static NSimplex toNSimp(R)(R range) if (isIRof!(R, Vertex_))
     {
         return range.toStackArray!(Vertex_, dimension + 1, R);
@@ -156,6 +170,9 @@ public:
         static foreach (d; 0 .. dimension_ + 1)
             mixin("_dimMap" ~ to!string(d) ~ " = _dimMap" ~ to!string(d) ~ ".dup;");
 
+        _facetArray = _facetArray.dup;
+        _facetArrayIdx = _facetArrayIdx.dup;
+
         version (TrackValidMoves)
         {
             Facet[][Vertex] newVF;
@@ -168,8 +185,6 @@ public:
                 mixin("_validMoves" ~ to!string(_d_dup) ~ " = _validMoves" ~ to!string(_d_dup) ~ ".dup;");
                 mixin("_validMoveIdx" ~ to!string(_d_dup) ~ " = _validMoveIdx" ~ to!string(_d_dup) ~ ".dup;");
             }}
-            _facetArray = _facetArray.dup;
-            _facetArrayIdx = _facetArrayIdx.dup;
         }
     }
 
@@ -364,7 +379,7 @@ public:
                     if (ptr is null)
                     {
                         numSimplices[d]++;
-                        auto oppVert = facet[].filter!(v => !subset.canFind(v)).front;
+                        auto oppVert = oppositeVertex(facet, key);
                         RidgeInfo ri;
                         ri.degree = 1;
                         ri.link ~= oppVert;
@@ -374,7 +389,7 @@ public:
                     {
                         ptr.degree++;
                         assert(ptr.degree == 2);
-                        auto oppVert = facet[].filter!(v => !subset.canFind(v)).front;
+                        auto oppVert = oppositeVertex(facet, key);
                         ptr.link ~= oppVert;
                         ptr.link[].sort;
                     }
@@ -404,13 +419,13 @@ public:
             }
         }}
 
+        _facetArrayIdx[facetBuffer] = _facetArray.length;
+        _facetArray ~= facetBuffer;
+
         version (TrackValidMoves)
         {
             foreach (v; facet)
                 _vertexFacets[v] ~= facetBuffer;
-
-            _facetArrayIdx[facetBuffer] = _facetArray.length;
-            _facetArray ~= facetBuffer;
         }
     }
 
@@ -441,7 +456,7 @@ public:
 
                     if (ptr.degree == 1)
                     {
-                        auto oppVert = facet[].filter!(v => !subset.canFind(v)).front;
+                        auto oppVert = oppositeVertex(facet, key);
                         assert(ptr.link[].canFind(oppVert));
                         if (ptr.link.length == 2)
                         {
@@ -486,9 +501,8 @@ public:
             }
         }}
 
-        version (TrackValidMoves)
+        // Remove facet from _facetArray (swap with last)
         {
-            // Remove facet from _facetArray (swap with last)
             auto fIdxPtr = facetBuffer in _facetArrayIdx;
             assert(fIdxPtr !is null);
             auto fIdx = *fIdxPtr;
@@ -501,7 +515,10 @@ public:
             }
             _facetArray = _facetArray[0 .. fLastIdx];
             _facetArrayIdx.remove(facetBuffer);
+        }
 
+        version (TrackValidMoves)
+        {
             // Remove facet from per-vertex adjacency
             foreach (v; facet)
             {
@@ -575,23 +592,8 @@ public:
     {
         assert(dim == dimension, "manifolds only have facets of one dimension");
         import std.random : uniform;
-        version (TrackValidMoves)
-        {
-            auto idx = uniform(0, _facetArray.length);
-            return cast(const(Vertex)[]) _facetArray[idx][].dup;
-        }
-        else
-        {
-            auto idx = uniform(0, numSimplices[dimension]);
-            size_t i = 0;
-            foreach (kv; dimMap!dimension.byKeyValue())
-            {
-                if (i == idx)
-                    return cast(const(Vertex)[]) kv.key[].dup;
-                i++;
-            }
-            assert(false);
-        }
+        auto idx = uniform(0, _facetArray.length);
+        return cast(const(Vertex)[]) _facetArray[idx][].dup;
     }
 
     /// Return the star of a simplex (facets containing it).
@@ -1264,8 +1266,10 @@ void doMove(Vertex, int dim)(
         manifold.updateValidMoveArrays!false(allVerts);
     }
 
-    oldPiece.each!(f => manifold.removeFacet(f));
-    newPiece.each!(f => manifold.insertFacet(f));
+    foreach (f; oldPiece)
+        manifold.removeFacet(f);
+    foreach (f; newPiece)
+        manifold.insertFacet(f);
 
     version (TrackValidMoves)
     {
