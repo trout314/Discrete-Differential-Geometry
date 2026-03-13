@@ -1214,10 +1214,10 @@ struct StackArray(T, size_t maxLength)
 {
 private:
     T[maxLength] data;
-    size_t currentLength;
+    uint currentLength;
 public:
     /// Returns the currently used length
-    auto length() const
+    size_t length() const
     {
         return currentLength;
     }
@@ -1232,7 +1232,7 @@ public:
             data[newLength .. currentLength] = T.init;
         }
 
-        currentLength = newLength;
+        currentLength = cast(uint) newLength;
     }
 
     @disable void opBinary(string op : "~")(T){}
@@ -1253,7 +1253,7 @@ public:
         assert(currentLength + sliceToConcatenate.length <= maxLength,
             "slice to concatenate is too long");
         auto start = currentLength;
-        currentLength += sliceToConcatenate.length;
+        currentLength += cast(uint) sliceToConcatenate.length;
         return data[start .. currentLength] = sliceToConcatenate[];
     }
 

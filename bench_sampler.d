@@ -92,7 +92,7 @@ real speculativeDelta(
     auto allVerts = allVertsBuf[0 .. cenLen + coCenLen];
     allVerts.sort();
 
-    size_t[dim + 1] newFVector = mfd.fVector[0 .. dim + 1];
+    uint[dim + 1] newFVector = mfd.fVector[0 .. dim + 1];
     newFVector[].modifyFVector(move);
 
     long[dim - 1] newTotSqDeg;
@@ -586,6 +586,10 @@ void benchmarkSpeculativeProfiled(ref Manifold!dim mfd, int targetTets)
 
     Duration tPropose, tDelta, tDoMove;
     long nProposeCalls = 0;
+    int[dim + 1] moveTypeCounts; // index by center length - 1
+
+    import core.memory : GC;
+    auto gcBefore = GC.profileStats;
 
     StopWatch timer, sw;
     timer.start();
@@ -616,6 +620,7 @@ void benchmarkSpeculativeProfiled(ref Manifold!dim mfd, int targetTets)
             sw.reset(); sw.start();
             mfd.doMove(bm);
             sw.stop(); tDoMove += sw.peek();
+            moveTypeCounts[bm.center.length - 1]++;
 
             if (bm.coCenter.length == 1) unusedVertices.popBack;
             if (bm.center.length == 1) unusedVertices ~= bm.center;
@@ -640,13 +645,16 @@ void benchmarkSpeculativeProfiled(ref Manifold!dim mfd, int targetTets)
         total - tPropose.total!"usecs" - tDelta.total!"usecs" - tDoMove.total!"usecs",
         100.0 * (total - tPropose.total!"usecs" - tDelta.total!"usecs" - tDoMove.total!"usecs") / total);
 
-    // Report GC stats
-    import core.memory : GC;
-    auto stats = GC.stats;
-    auto profStats = GC.profileStats;
-    writefln("    GC: used=%d KB, collections=%d, total_pause=%d μs",
-        stats.usedSize / 1024, profStats.numCollections,
-        profStats.totalPauseTime.total!"usecs");
+    // Report GC stats (delta from benchmark start)
+    auto gcAfter = GC.profileStats;
+    auto gcCollections = gcAfter.numCollections - gcBefore.numCollections;
+    auto gcPause = (gcAfter.totalPauseTime - gcBefore.totalPauseTime).total!"usecs";
+    writefln("    GC: collections=%d, pause=%d μs (%.1f%%)",
+        gcCollections, gcPause, 100.0 * gcPause / total);
+    writef("    Move types:");
+    static foreach (i; 0 .. dim + 1)
+        writef(" %d→%d:%d", i + 1, dim + 2 - (i + 1), moveTypeCounts[i]);
+    writeln();
     stdout.flush();
 }
 

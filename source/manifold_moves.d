@@ -91,7 +91,7 @@ pure @system unittest
 Takes as input a bistellar move and a slice containing the starting fVector
 and modifies the fVector as if the given move were performed
 */
-auto modifyFVector(Move)(size_t[] fVector_, Move move)
+auto modifyFVector(T, Move)(T[] fVector_, Move move)
 {
     static assert(isInstanceOf!(BistellarMove, Move),
         "must be a bistellar move");

@@ -36,17 +36,18 @@ private:
 
     struct RidgeInfo
     {
-        size_t degree;
+        uint degree;
         RidgeLink link;
     }
 
     // Generate one HashMap field per dimension: _dimMap0, _dimMap1, ..., _dimMap{dimension}
+    // Degree values use uint (max ~10^8 simplices) for cache-friendly entries.
     static foreach (_d_; 0 .. dimension_ + 1)
     {
         static if (_d_ == dimension_ - 1)
             mixin("HashMap!(Vertex_[" ~ to!string(_d_ + 1) ~ "], RidgeInfo) _dimMap" ~ to!string(_d_) ~ ";");
         else
-            mixin("HashMap!(Vertex_[" ~ to!string(_d_ + 1) ~ "], size_t) _dimMap" ~ to!string(_d_) ~ ";");
+            mixin("HashMap!(Vertex_[" ~ to!string(_d_ + 1) ~ "], uint) _dimMap" ~ to!string(_d_) ~ ";");
     }
 
     // Compile-time accessor for per-dimension maps
@@ -61,7 +62,7 @@ private:
     }
 
     // Extract degree from a per-dimension map value (size_t or RidgeInfo)
-    private static size_t extractDegree(V)(V value)
+    private static uint extractDegree(V)(V value)
     {
         static if (is(V == RidgeInfo) || is(V == const(RidgeInfo)))
             return value.degree;
@@ -74,12 +75,12 @@ private:
     alias Ridge = Vertex[dimension_];
     alias Facet = Vertex[dimension_ + 1];
 
-    size_t[dimension_ + 1] numSimplices;
+    uint[dimension_ + 1] numSimplices;
     ulong[dimension - 1] totSqrDegrees;
 
     // Facet array for O(1) random access
     Facet[] _facetArray;
-    HashMap!(Facet, size_t) _facetArrayIdx;
+    HashMap!(Facet, uint) _facetArrayIdx;
 
     version (TrackValidMoves)
     {
@@ -287,7 +288,7 @@ public:
     Returns an array containing the number of simplices in each dimension.
     This is called the "fVector" of the manifold.
     */
-    const(size_t)[] fVector()() const
+    const(uint)[] fVector()() const
     {
         return numSimplices[];
     }
@@ -419,7 +420,7 @@ public:
             }
         }}
 
-        _facetArrayIdx[facetBuffer] = _facetArray.length;
+        _facetArrayIdx[facetBuffer] = cast(uint) _facetArray.length;
         _facetArray ~= facetBuffer;
 
         version (TrackValidMoves)

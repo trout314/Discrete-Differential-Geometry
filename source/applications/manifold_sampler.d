@@ -375,7 +375,7 @@ real speculativeBistellarDelta(int dim, Vertex, P)(
     allVerts.sort();
 
     // Compute speculative f-vector
-    size_t[dim + 1] newFVector = mfd.fVector[0 .. dim + 1];
+    uint[dim + 1] newFVector = mfd.fVector[0 .. dim + 1];
     newFVector[].modifyFVector(move);
 
     // Compute speculative totSqDeg for dimensions 0 through dim-2.
