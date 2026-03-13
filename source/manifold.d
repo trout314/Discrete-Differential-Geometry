@@ -1611,6 +1611,95 @@ void undoMove(int dim, Vertex)(
     manifold.doMove(inverseMove);
 }
 
+///
+@Name("undoMove: round-trip restores manifold") pure @safe unittest
+{
+    alias BM = BistellarMove!2;
+
+    // 1->3 move then undo on standard sphere
+    auto sphere = standardSphere!2;
+    auto origFacets = sphere.facets.sort;
+    auto origFVector = sphere.fVector;
+
+    auto move1to3 = BM([1,2,3], [4]);
+    sphere.doMove(move1to3);
+    assert(sphere.facets.sort != origFacets);
+
+    sphere.undoMove(move1to3);
+    sphere.facets.sort.shouldEqual(origFacets);
+    sphere.fVector.shouldEqual(origFVector);
+}
+
+///
+@Name("undoMove: 2-2 move round-trip") pure @safe unittest
+{
+    alias BM = BistellarMove!2;
+
+    auto oct = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4],
+        [1,2,5], [2,3,5], [3,4,5], [1,4,5]]);
+    auto origFacets = oct.facets.sort;
+
+    // 2->2 move swaps the diagonal of a quadrilateral
+    auto move2to2 = BM([1,2], [0,5]);
+    oct.doMove(move2to2);
+
+    // Degrees changed
+    oct.degree([1]).shouldEqual(3);
+    oct.degree([2]).shouldEqual(3);
+    oct.degree([0]).shouldEqual(5);
+    oct.degree([5]).shouldEqual(5);
+
+    oct.undoMove(move2to2);
+    oct.facets.sort.shouldEqual(origFacets);
+
+    // All degrees restored to 4
+    assert(oct.simplices(0).all!(s => oct.degree(s) == 4));
+}
+
+///
+@Name("undoMove: multiple moves undone in reverse order") pure @safe unittest
+{
+    alias BM = BistellarMove!2;
+
+    auto sphere = standardSphere!2;
+    auto origFacets = sphere.facets.sort;
+    auto origFVector = sphere.fVector;
+
+    // Apply two moves
+    auto move1 = BM([1,2,3], [4]);
+    sphere.doMove(move1);
+
+    auto move2 = BM([0,2,3], [7]);
+    sphere.doMove(move2);
+
+    // Undo in reverse order
+    sphere.undoMove(move2);
+    sphere.undoMove(move1);
+
+    sphere.facets.sort.shouldEqual(origFacets);
+    sphere.fVector.shouldEqual(origFVector);
+}
+
+///
+@Name("undoMove: 3-1 move round-trip") pure @safe unittest
+{
+    alias BM = BistellarMove!2;
+
+    // Start with octahedron, do a 1->3 move, then undo it
+    auto oct = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4],
+        [1,2,5], [2,3,5], [3,4,5], [1,4,5]]);
+    auto origFacets = oct.facets.sort;
+
+    auto move1to3 = BM([0,1,2], [99]);
+    oct.doMove(move1to3);
+    oct.numFacets.shouldEqual(10);
+
+    // Now do a 3->1 to undo it
+    oct.undoMove(move1to3);
+    oct.facets.sort.shouldEqual(origFacets);
+    oct.numFacets.shouldEqual(8);
+}
+
 
 
 
