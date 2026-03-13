@@ -1972,16 +1972,17 @@ void saveDualGraphTo(int dimension, Vertex = int)(
 
 @Name("value semantics") pure /* @safe */ unittest
 {
-    auto m1 = octahedron;
+    auto oct = Manifold!2([[0,1,2], [0,2,3], [0,3,4], [0,1,4], [1,2,5],
+        [2,3,5], [3,4,5], [1,4,5]]);
+    auto m1 = oct;
     auto m2 = m1;
 
     auto move = BistellarMove!2([0,1],[2,4]);
     m2.doMove(move);
 
-
-    m2.facets.should.not ~ octahedron.facets;
+    m2.facets.should.not ~ oct.facets;
     m2.facets.should.not ~ m1.facets;
-    m1.facets.should ~ octahedron.facets;
+    m1.facets.should ~ oct.facets;
 }
 
 @Name("value semantics for contained simplices") pure @safe unittest
