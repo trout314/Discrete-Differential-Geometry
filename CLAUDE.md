@@ -8,11 +8,11 @@ A D language symbolic math package for discrete differential geometry, focused o
 
 ## Build Commands
 
-This project uses **Meson** as its build system. DMD must be on your PATH.
+This project uses **Meson** as its build system with the **LDC** compiler. LDC must be on your PATH (set `DC=ldc2` if needed).
 
 ```bash
-# Initial setup (one time)
-meson setup builddir
+# Initial setup — debug build (one time)
+DC=ldc2 meson setup builddir
 
 # Build all targets
 meson compile -C builddir
@@ -22,9 +22,10 @@ meson test -C builddir
 
 # Build a specific target
 meson compile -C builddir manifold_sampler
-meson compile -C builddir edge_graph
-meson compile -C builddir dual_graph
-meson compile -C builddir surface_cross_S1
+
+# Release build (optimized, asserts removed — use for production runs)
+DC=ldc2 meson setup builddir-release --buildtype=release -Db_ndebug=true
+meson compile -C builddir-release manifold_sampler
 
 # Reconfigure after editing meson.build
 meson setup builddir --reconfigure

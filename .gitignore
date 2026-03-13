@@ -24,6 +24,7 @@ manifold_sampler
 
 # Meson
 builddir/
+builddir-release/
 
 # data files created by unittests
 data/manifold_sampler_unittest_save.dat

@@ -3,11 +3,16 @@ project('discrete-differential-geometry', 'd',
   license : 'GPL-2.0',
 )
 
-# Find the D runtime library directory for rpath.
+# Find the D runtime library directory for rpath so executables can find
+# the shared phobos/druntime libraries at runtime.
 dc = meson.get_compiler('d')
-dmd_path = run_command('which', dc.cmd_array()[0], check : true).stdout().strip()
-dmd_lib_dir = run_command('dirname', dmd_path, check : true).stdout().strip() / '..' / 'lib64'
-d_link_args = ['-L=-rpath=' + dmd_lib_dir]
+dc_path = run_command('which', dc.cmd_array()[0], check : true).stdout().strip()
+dc_dir = run_command('dirname', dc_path, check : true).stdout().strip()
+
+# LDC uses ../lib, DMD uses ../lib64
+dc_lib_dir = dc_dir / '..' / 'lib'
+dc_lib64_dir = dc_dir / '..' / 'lib64'
+d_link_args = ['-L=-rpath=' + dc_lib_dir, '-L=-rpath=' + dc_lib64_dir]
 
 # ---------------------------------------------------------------------------
 # Source files
@@ -44,7 +49,7 @@ executable('manifold_sampler',
 executable('manifold_sampler_exact',
   lib_sources + files('source/applications/manifold_sampler.d'),
   include_directories : d_import_dirs,
-  d_args : ['-version=TrackValidMoves'],
+  d_module_versions : ['TrackValidMoves'],
   link_args : d_link_args,
   install : true,
 )
@@ -79,14 +84,14 @@ executable('bench_sampler',
 executable('bench_sampler_exact',
   lib_sources + files('bench_sampler.d'),
   include_directories : d_import_dirs,
-  d_args : ['-version=TrackValidMoves'],
+  d_module_versions : ['TrackValidMoves'],
   link_args : d_link_args,
 )
 
 executable('test_valid_moves',
   lib_sources + files('test_valid_moves.d'),
   include_directories : d_import_dirs,
-  d_args : ['-version=TrackValidMoves'],
+  d_module_versions : ['TrackValidMoves'],
   link_args : d_link_args,
 )
 
@@ -103,7 +108,7 @@ test_exe = executable('unittest',
     'source/test_runner.d',
   ),
   include_directories : d_import_dirs,
-  d_args : ['-unittest'],
+  d_unittest : true,
   link_args : d_link_args,
 )
 

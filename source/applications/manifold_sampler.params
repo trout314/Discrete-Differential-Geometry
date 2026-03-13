@@ -1,6 +1,6 @@
 initialManifoldFile = standard_triangulations/dim_3_sphere.mfd
 
-sampleFilesPrefix = ../Data/S3_V500_test
+sampleFilesPrefix = data/S3_V500_test
 startingSampleNumber = 5
 
 maxSweeps = 5.0
