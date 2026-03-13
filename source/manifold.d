@@ -40,9 +40,13 @@ private:
         RidgeLink link;
     }
 
-    // Generate one HashMap field per dimension: _dimMap0, _dimMap1, ..., _dimMap{dimension}
-    // Degree values use uint (max ~10^8 simplices) for cache-friendly entries.
-    static foreach (_d_; 0 .. dimension_ + 1)
+    // Flat array for vertex degrees (dim 0): _vertexDegrees[v] = degree of vertex v.
+    // Zero means vertex not present. Avoids hashing for the most frequent lookups.
+    uint[] _vertexDegrees;
+
+    // Per-dimension HashMaps for dimensions 1 .. dimension-1 only.
+    // Dimension 0 uses _vertexDegrees; dimension `dimension` uses _facetArrayIdx.
+    static foreach (_d_; 1 .. dimension_)
     {
         static if (_d_ == dimension_ - 1)
             mixin("HashMap!(Vertex_[" ~ to!string(_d_ + 1) ~ "], RidgeInfo) _dimMap" ~ to!string(_d_) ~ ";");
@@ -50,13 +54,13 @@ private:
             mixin("HashMap!(Vertex_[" ~ to!string(_d_ + 1) ~ "], uint) _dimMap" ~ to!string(_d_) ~ ";");
     }
 
-    // Compile-time accessor for per-dimension maps
-    ref auto dimMap(int d)()
+    // Compile-time accessor for per-dimension maps (dimensions 1..dimension-1 only)
+    ref auto dimMap(int d)() if (d >= 1 && d <= dimension_ - 1)
     {
         return mixin("_dimMap" ~ to!string(d));
     }
 
-    ref auto dimMap(int d)() const
+    ref auto dimMap(int d)() const if (d >= 1 && d <= dimension_ - 1)
     {
         return mixin("_dimMap" ~ to!string(d));
     }
@@ -149,7 +153,22 @@ public:
         {
             // _vertexFacets and _facetArray already populated by insertFacet.
             // Build per-dimension valid move arrays.
-            static foreach (_d_init; 0 .. dimension)
+            // Dimension 0: iterate _vertexDegrees
+            {
+                enum _targetDeg = dimension + 1;
+                foreach (v; 0 .. cast(int) _vertexDegrees.length)
+                {
+                    if (_vertexDegrees[v] == _targetDeg)
+                    {
+                        Vertex[1] key = [cast(Vertex) v];
+                        auto cc = localCoCenter!(0, Vertex, dimension)(this, key);
+                        if (!this.contains(cc[]))
+                            this.addValidMoveToArray!0(key);
+                    }
+                }
+            }
+            // Dimensions 1..dimension-1: HashMap-backed
+            static foreach (_d_init; 1 .. dimension)
             {{
                 foreach (kv; dimMap!_d_init.byKeyValue())
                 {
@@ -168,7 +187,8 @@ public:
 
     this(this)
     {
-        static foreach (d; 0 .. dimension_ + 1)
+        _vertexDegrees = _vertexDegrees.dup;
+        static foreach (d; 1 .. dimension_)
             mixin("_dimMap" ~ to!string(d) ~ " = _dimMap" ~ to!string(d) ~ ".dup;");
 
         _facetArray = _facetArray.dup;
@@ -207,13 +227,23 @@ public:
 
         final switch (cast(int)(len - 1))
         {
-            static foreach (d; 0 .. dimension + 1)
+            case 0:
+            {
+                auto v = buf[0];
+                return v < _vertexDegrees.length && _vertexDegrees[v] > 0;
+            }
+            static foreach (d; 1 .. dimension)
             {
                 case d:
                 {
                     Vertex[d + 1] key = buf[0 .. d + 1];
                     return (key in dimMap!d) !is null;
                 }
+            }
+            case dimension:
+            {
+                Facet key = buf[0 .. dimension + 1];
+                return (key in _facetArrayIdx) !is null;
             }
         }
     }
@@ -237,7 +267,13 @@ public:
 
         final switch (cast(int)(len - 1))
         {
-            static foreach (d; 0 .. dimension + 1)
+            case 0:
+            {
+                auto v = buf[0];
+                assert(v < _vertexDegrees.length && _vertexDegrees[v] > 0, "Vertex not in manifold");
+                return _vertexDegrees[v];
+            }
+            static foreach (d; 1 .. dimension)
             {
                 case d:
                 {
@@ -246,6 +282,12 @@ public:
                     assert(ptr !is null, "Key not found in dimMap");
                     return extractDegree(*ptr);
                 }
+            }
+            case dimension:
+            {
+                Facet key = buf[0 .. dimension + 1];
+                assert((key in _facetArrayIdx) !is null, "Facet not in manifold");
+                return 1;  // facets always have degree 1
             }
         }
     }
@@ -262,7 +304,13 @@ public:
 
         final switch (cast(int)(len - 1))
         {
-            static foreach (d; 0 .. dimension + 1)
+            case 0:
+            {
+                auto v = buf[0];
+                if (v >= _vertexDegrees.length) return 0;
+                return _vertexDegrees[v];
+            }
+            static foreach (d; 1 .. dimension)
             {
                 case d:
                 {
@@ -272,16 +320,36 @@ public:
                     return extractDegree(*ptr);
                 }
             }
+            case dimension:
+            {
+                Facet key = buf[0 .. dimension + 1];
+                return (key in _facetArrayIdx) !is null ? 1 : 0;
+            }
         }
     }
 
     /// Fast compile-time dimension-aware degreeOrZero (avoids runtime dispatch).
     size_t degreeOrZero(int d, S)(S simplex) const if (isIRof!(S, const(Vertex)))
     {
-        auto key = simplex.staticArray!(d + 1);
-        auto ptr = key in dimMap!d;
-        if (ptr is null) return 0;
-        return extractDegree(*ptr);
+        static if (d == 0)
+        {
+            auto key = simplex.staticArray!1;
+            auto v = key[0];
+            if (v >= _vertexDegrees.length) return 0;
+            return _vertexDegrees[v];
+        }
+        else static if (d == dimension)
+        {
+            auto key = simplex.staticArray!(dimension + 1);
+            return (key in _facetArrayIdx) !is null ? 1 : 0;
+        }
+        else
+        {
+            auto key = simplex.staticArray!(d + 1);
+            auto ptr = key in dimMap!d;
+            if (ptr is null) return 0;
+            return extractDegree(*ptr);
+        }
     }
 
     /***************************************************************************
@@ -364,10 +432,32 @@ public:
         auto facet = facetBuffer[];
 
         facet.assertValidSimplex(dimension);
-        assert(facetBuffer !in dimMap!dimension,
+        assert(facetBuffer !in _facetArrayIdx,
             "tried to insert a facet already in the manifold");
 
-        static foreach (d; 0 .. dimension + 1)
+        // Dimension 0: vertex degrees via flat array
+        foreach (v; facet)
+        {
+            if (v >= _vertexDegrees.length)
+                _vertexDegrees.length = v + 1;
+
+            if (_vertexDegrees[v] == 0)
+            {
+                numSimplices[0]++;
+                _vertexDegrees[v] = 1;
+                static if (dimension > 1)
+                    totSqrDegrees[0] += 1; // 2*1 - 1
+            }
+            else
+            {
+                ++_vertexDegrees[v];
+                static if (dimension > 1)
+                    totSqrDegrees[0] += 2 * _vertexDegrees[v] - 1;
+            }
+        }
+
+        // Dimensions 1 .. dimension-1: HashMap-backed
+        static foreach (d; 1 .. dimension)
         {{
             foreach (subset; facet[].subsetsOfSize(d + 1))
             {
@@ -395,7 +485,7 @@ public:
                         ptr.link[].sort;
                     }
                 }
-                else static if (d < dimension - 1)
+                else
                 {
                     // Sub-ridge dimension: degree + totSqrDegrees
                     auto ptr = key in dimMap!d;
@@ -411,14 +501,11 @@ public:
                         totSqrDegrees[d] += 2 * (*ptr) - 1;
                     }
                 }
-                else
-                {
-                    // Facet dimension (d == dimension): just degree
-                    dimMap!d[key] = 1;
-                    numSimplices[d]++;
-                }
             }
         }}
+
+        // Facet dimension: tracked by _facetArrayIdx, just count
+        numSimplices[dimension]++;
 
         _facetArrayIdx[facetBuffer] = cast(uint) _facetArray.length;
         _facetArray ~= facetBuffer;
@@ -440,9 +527,22 @@ public:
         auto facet = facetBuffer[];
 
         facet.assertValidSimplex(dimension);
-        assert(facetBuffer in dimMap!dimension);
+        assert(facetBuffer in _facetArrayIdx);
 
-        static foreach (d; 0 .. dimension + 1)
+        // Dimension 0: vertex degrees via flat array
+        foreach (v; facet)
+        {
+            assert(v < _vertexDegrees.length && _vertexDegrees[v] > 0);
+            --_vertexDegrees[v];
+            static if (dimension > 1)
+                totSqrDegrees[0] -= 2 * _vertexDegrees[v] + 1;
+
+            if (_vertexDegrees[v] == 0)
+                numSimplices[0]--;
+        }
+
+        // Dimensions 1 .. dimension-1: HashMap-backed
+        static foreach (d; 1 .. dimension)
         {{
             foreach (subset; facet[].subsetsOfSize(d + 1))
             {
@@ -479,7 +579,7 @@ public:
                         dimMap!d.remove(key);
                     }
                 }
-                else static if (d < dimension - 1)
+                else
                 {
                     // Sub-ridge dimension
                     auto ptr = key in dimMap!d;
@@ -493,14 +593,11 @@ public:
                         dimMap!d.remove(key);
                     }
                 }
-                else
-                {
-                    // Facet dimension
-                    numSimplices[d]--;
-                    dimMap!d.remove(key);
-                }
             }
         }}
+
+        // Facet dimension: tracked by _facetArrayIdx, just count
+        numSimplices[dimension]--;
 
         // Remove facet from _facetArray (swap with last)
         {
@@ -538,7 +635,7 @@ public:
             }
         }
 
-        assert(facetBuffer !in dimMap!dimension);
+        assert(facetBuffer !in _facetArrayIdx);
     }
 
     /// Build a SimplicialComplex from the manifold's facets (on demand).
@@ -552,7 +649,15 @@ public:
     {
         final switch (cast(int) dim)
         {
-            static foreach (d; 0 .. dimension + 1)
+            case 0:
+            {
+                const(Vertex)[][] result;
+                foreach (v; 0 .. cast(int) _vertexDegrees.length)
+                    if (_vertexDegrees[v] > 0)
+                        result ~= [cast(const(Vertex)) v];
+                return result;
+            }
+            static foreach (d; 1 .. dimension)
             {
                 case d:
                 {
@@ -562,6 +667,13 @@ public:
                     return result;
                 }
             }
+            case dimension:
+            {
+                const(Vertex)[][] result;
+                foreach (ref f; _facetArray)
+                    result ~= cast(const(Vertex)[]) f[].dup;
+                return result;
+            }
         }
     }
 
@@ -569,8 +681,8 @@ public:
     const(Vertex)[][] facets()() const
     {
         const(Vertex)[][] result;
-        foreach (kv; dimMap!dimension.byKeyValue())
-            result ~= cast(const(Vertex)[]) kv.key[].dup;
+        foreach (ref f; _facetArray)
+            result ~= cast(const(Vertex)[]) f[].dup;
         result.sort();
         return result;
     }
@@ -585,7 +697,7 @@ public:
     bool containsFacet(S)(S simplex) const if (isIRof!(S, const(Vertex)))
     {
         auto key = toFacet(simplex);
-        return (key in dimMap!dimension) !is null;
+        return (key in _facetArrayIdx) !is null;
     }
 
     /// Return a randomly chosen facet of the given dimension.
@@ -711,8 +823,24 @@ BistellarMove!(dim, Vertex)[] allBistellarMoves(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) mfd)
 {
     BistellarMove!(dim, Vertex)[] result;
-    // Iterate over all dimensions except facet dimension
-    static foreach (d; 0 .. dim)
+
+    // Dimension 0: vertices from flat array
+    {
+        enum targetDeg = dim + 1;
+        foreach (v; 0 .. cast(int) mfd._vertexDegrees.length)
+        {
+            if (mfd._vertexDegrees[v] == targetDeg)
+            {
+                auto simp = [cast(const(Vertex)) v];
+                auto coCenter_ = mfd.findCoCenter(simp);
+                if (!mfd.contains(coCenter_))
+                    result ~= BistellarMove!(dim, Vertex)(simp, coCenter_);
+            }
+        }
+    }
+
+    // Dimensions 1..dim-1: HashMap-backed
+    static foreach (d; 1 .. dim)
     {{
         foreach (kv; mfd.dimMap!d.byKeyValue())
         {
@@ -739,8 +867,24 @@ size_t countValidBistellarMoves(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) mfd)
 {
     size_t count = 0;
-    // Moves with center of dimension 0..dim-1 (same iteration as allBistellarMoves)
-    static foreach (d; 0 .. dim)
+
+    // Dimension 0: vertices from flat array
+    {
+        enum targetDeg = dim + 1;
+        foreach (v; 0 .. cast(int) mfd._vertexDegrees.length)
+        {
+            if (mfd._vertexDegrees[v] == targetDeg)
+            {
+                auto simp = [cast(const(Vertex)) v];
+                auto coCenter_ = mfd.findCoCenter(simp);
+                if (!mfd.contains(coCenter_))
+                    count++;
+            }
+        }
+    }
+
+    // Dimensions 1..dim-1: HashMap-backed
+    static foreach (d; 1 .. dim)
     {{
         foreach (kv; mfd.dimMap!d.byKeyValue())
         {
@@ -876,9 +1020,21 @@ private bool isValidNonFacetCenter(int d, Vertex, int dim)(
     const ref Vertex[d + 1] key)
 {
     static assert(d < dim, "use fVector[dim] for facet centers");
-    auto ptr = key in mfd.dimMap!d;
-    if (ptr is null) return false;
-    auto deg = mfd.extractDegree(*ptr);
+
+    uint deg;
+    static if (d == 0)
+    {
+        auto v = key[0];
+        if (v >= mfd._vertexDegrees.length) return false;
+        deg = mfd._vertexDegrees[v];
+    }
+    else
+    {
+        auto ptr = key in mfd.dimMap!d;
+        if (ptr is null) return false;
+        deg = mfd.extractDegree(*ptr);
+    }
+
     if (deg != dim + 1 - d) return false;
     auto coCenter_ = mfd.localCoCenter!d(key);
     return !mfd.contains(coCenter_[]);
@@ -1015,9 +1171,19 @@ private void updateValidMoveArrays(bool adding, Vertex, int dim)(
             static if (adding)
             {
                 // Check full validity: degree, coCenter ⊆ allVerts, coCenter ∉ manifold
-                auto kptr = key in mfd.dimMap!d;
-                if (kptr is null) continue;
-                auto deg = mfd.extractDegree(*kptr);
+                uint deg;
+                static if (d == 0)
+                {
+                    auto v0 = key[0];
+                    if (v0 >= mfd._vertexDegrees.length || mfd._vertexDegrees[v0] == 0) continue;
+                    deg = mfd._vertexDegrees[v0];
+                }
+                else
+                {
+                    auto kptr = key in mfd.dimMap!d;
+                    if (kptr is null) continue;
+                    deg = mfd.extractDegree(*kptr);
+                }
                 if (deg != targetDeg) continue;
 
                 auto cc = mfd.localCoCenter!d(key);
@@ -1808,8 +1974,25 @@ string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
     }
     done:
 
-    // Check dimMap simplices are in SC, and degrees match
-    static foreach (d; 0 .. dim + 1)
+    // Check vertex degrees match SC
+    foreach (v; 0 .. cast(int) mfd._vertexDegrees.length)
+    {
+        if (mfd._vertexDegrees[v] > 0)
+        {
+            if (!sc.contains([cast(const(Vertex)) v]))
+            {
+                problems ~= "found a vertex in _vertexDegrees that is not in SC";
+                goto done2;
+            }
+            if (mfd._vertexDegrees[v] != sc.star([cast(const(Vertex)) v]).walkLength)
+            {
+                problems ~= "found a vertex with incorrect degree";
+                goto done2;
+            }
+        }
+    }
+    // Check dimMap simplices (dims 1..dim-1) are in SC, and degrees match
+    static foreach (d; 1 .. dim)
     {{
         foreach (kv; mfd.dimMap!d.byKeyValue)
         {
@@ -1826,6 +2009,15 @@ string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
             }
         }
     }}
+    // Check facets in _facetArrayIdx are in SC
+    foreach (ref f; mfd._facetArray)
+    {
+        if (!sc.contains(f[]))
+        {
+            problems ~= "found a facet in _facetArray that is not in SC";
+            goto done2;
+        }
+    }
     done2:
 
     // Check ridge links
@@ -1919,7 +2111,13 @@ size_t[] degreeHistogram(Vertex, int mfdDim)(
 
     final switch (cast(int) dim)
     {
-        static foreach (d; 0 .. mfdDim + 1)
+        case 0:
+        {
+            foreach (deg; mfd._vertexDegrees)
+                if (deg > 0) addToHistogram(deg);
+            return histogram;
+        }
+        static foreach (d; 1 .. mfdDim)
         {
             case d:
             {
@@ -1927,6 +2125,16 @@ size_t[] degreeHistogram(Vertex, int mfdDim)(
                     addToHistogram(mfd.extractDegree(kv.value));
                 return histogram;
             }
+        }
+        case mfdDim:
+        {
+            // All facets have degree 1
+            if (mfd._facetArray.length > 0)
+            {
+                histogram.length = 1;
+                histogram[0] = mfd._facetArray.length;
+            }
+            return histogram;
         }
     }
 }
