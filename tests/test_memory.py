@@ -28,31 +28,15 @@ def main():
     gc_collect()
     print(f"Baseline GC used: {gc_used_mb():.2f} MB\n")
 
-    # Test A: One big run of 5000 moves
-    gc_collect()
-    before = gc_used_mb()
-    sampler.run(moves=5000, exact=False)
-    gc_collect()
-    after = gc_used_mb()
-    print(f"1x run(5000 moves):  GC delta = {after - before:+.2f} MB  ({(after-before)/5000*1000:.1f} KB/move)")
-
-    # Test B: 100x run of 50 moves each
-    gc_collect()
-    before = gc_used_mb()
-    for _ in range(100):
-        sampler.run(moves=50, exact=False)
-    gc_collect()
-    after = gc_used_mb()
-    print(f"100x run(50 moves):  GC delta = {after - before:+.2f} MB  ({(after-before)/5000*1000:.1f} KB/move)")
-
-    # Test C: 5000x run of 1 move each
-    gc_collect()
-    before = gc_used_mb()
-    for _ in range(5000):
-        sampler.run(moves=1, exact=False)
-    gc_collect()
-    after = gc_used_mb()
-    print(f"5000x run(1 move):   GC delta = {after - before:+.2f} MB  ({(after-before)/5000*1000:.1f} KB/move)")
+    # Run successive batches to see if growth rate stabilizes
+    print("Successive batches of 1000 moves each:")
+    for batch in range(10):
+        gc_collect()
+        before = gc_used_mb()
+        sampler.run(moves=1000, exact=False)
+        gc_collect()
+        after = gc_used_mb()
+        print(f"  Batch {batch+1}: GC delta = {after - before:+.2f} MB  ({(after-before)/1000*1000:.1f} KB/move)")
 
 
 if __name__ == "__main__":

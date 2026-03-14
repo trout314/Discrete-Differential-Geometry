@@ -434,6 +434,7 @@ public:
                 validMoveIdx!d[last] = idx;
             }
             validMoves!d = validMoves!d[0 .. lastIdx];
+            reclaimCapacity(validMoves!d);
             validMoveIdx!d.remove(key);
         }
     }

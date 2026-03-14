@@ -24,13 +24,11 @@ struct HashMap(K, V)
 {
     private enum ubyte EMPTY = 0;
     private enum ubyte OCCUPIED = 1;
-    private enum ubyte TOMBSTONE = 2;
 
     private K[] _keys;
     private V[] _values;
     private ubyte[] _ctrl;
     private size_t _length;
-    private size_t _tombstones;
     private size_t _mask; // capacity - 1
 
     /// Return the number of entries.
@@ -79,17 +77,41 @@ struct HashMap(K, V)
         mixin("return _values[i] " ~ op ~ "= rhs;");
     }
 
-    /// Remove a key. Returns true if it was present.
+    /// Remove a key using backward-shift deletion (Knuth's Algorithm R).
+    /// Avoids tombstones entirely, so the table never needs rehashing
+    /// just to clear accumulated tombstones.
     bool remove(K key)
     {
         if (_ctrl.length == 0) return false;
         auto i = locate(key);
         if (i == size_t.max) return false;
-        _ctrl[i] = TOMBSTONE;
+
+        // Backward-shift: scan forward from the deleted slot.  For each
+        // occupied slot j, compute its ideal slot k.  If the entry at j
+        // was displaced past the gap at i (i.e. its probe distance from k
+        // is >= the distance from i to j), shift it back into the gap.
+        auto j = i;
+        while (true)
+        {
+            j = (j + 1) & _mask;
+            if (_ctrl[j] != OCCUPIED)
+                break;
+
+            auto k = computeHash(_keys[j]) & _mask;
+            // Move if entry at j was probed past the gap at i.
+            // Works correctly with wrapping for power-of-2 tables.
+            if (((j - k) & _mask) >= ((j - i) & _mask))
+            {
+                _keys[i] = _keys[j];
+                _values[i] = _values[j];
+                _ctrl[i] = OCCUPIED;
+                i = j;
+            }
+        }
+        _ctrl[i] = EMPTY;
         _keys[i] = K.init;
         _values[i] = V.init;
         _length--;
-        _tombstones++;
         return true;
     }
 
@@ -100,7 +122,6 @@ struct HashMap(K, V)
         _values = null;
         _ctrl = null;
         _length = 0;
-        _tombstones = 0;
         _mask = 0;
     }
 
@@ -123,7 +144,6 @@ struct HashMap(K, V)
         copy._values = _values.dup;
         copy._ctrl = _ctrl.dup;
         copy._length = _length;
-        copy._tombstones = _tombstones;
         copy._mask = _mask;
         return copy;
     }
@@ -208,27 +228,20 @@ struct HashMap(K, V)
         }
     }
 
-    /// Find slot for key (existing or first available for insert).
+    /// Find slot for key (existing or first EMPTY for insert).
     private size_t locateOrInsert(K key)
     {
         auto h = computeHash(key) & _mask;
-        size_t firstTombstone = size_t.max;
         while (true)
         {
             if (_ctrl[h] == EMPTY)
             {
-                auto slot = firstTombstone != size_t.max ? firstTombstone : h;
-                if (firstTombstone != size_t.max) _tombstones--;
-                _ctrl[slot] = OCCUPIED;
-                _keys[slot] = key;
+                _ctrl[h] = OCCUPIED;
+                _keys[h] = key;
                 _length++;
-                return slot;
+                return h;
             }
-            if (_ctrl[h] == TOMBSTONE)
-            {
-                if (firstTombstone == size_t.max) firstTombstone = h;
-            }
-            else if (_keys[h] == key)
+            if (_keys[h] == key)
             {
                 return h;
             }
@@ -237,6 +250,8 @@ struct HashMap(K, V)
     }
 
     /// Grow the table if load factor exceeds 75%.
+    /// With backward-shift deletion (no tombstones), this only triggers
+    /// when the actual number of entries exceeds the threshold.
     private void ensureCapacity()
     {
         if (_ctrl.length == 0)
@@ -244,7 +259,7 @@ struct HashMap(K, V)
             allocate(16);
             return;
         }
-        if ((_length + _tombstones) * 4 >= _ctrl.length * 3)
+        if (_length * 4 >= _ctrl.length * 3)
             grow();
     }
 
@@ -266,7 +281,6 @@ struct HashMap(K, V)
         auto newCap = _ctrl.length * 2;
         allocate(newCap);
         _length = 0;
-        _tombstones = 0;
 
         foreach (i; 0 .. oldCtrl.length)
         {
