@@ -65,6 +65,23 @@ private void unpinForC(void* ptr) nothrow
 }
 
 // ---------------------------------------------------------------------------
+// GC control
+// ---------------------------------------------------------------------------
+
+/// Trigger a D garbage collection cycle. Call this periodically from Python
+/// to reclaim temporaries created by chooseRandomMove, coCenter, etc.
+extern(C) void ddg_gc_collect() nothrow
+{
+    try { GC.collect(); } catch (Exception) {}
+}
+
+/// Minimize the D GC heap, returning free pages to the OS.
+extern(C) void ddg_gc_minimize() nothrow
+{
+    try { GC.minimize(); } catch (Exception) {}
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -308,65 +325,31 @@ extern(C) int ddg_manifold_num_connected_components(void* handle) nothrow
 extern(C) long ddg_manifold_facets(void* handle, int* out_data) nothrow
 {
     clearError();
-    try
+    if (handle is null) { setError("null handle"); return -1; }
+    auto h = cast(ManifoldHandle*) handle;
+
+    switch (h.dim)
     {
-        if (handle is null) { setError("null handle"); return -1; }
-        auto h = cast(ManifoldHandle*) handle;
-
-        long writeFacets(int dim)(ManifoldWrapper!dim* mw, int* buf)
-        {
-            auto f = mw.mfd.facets;
-            if (buf !is null)
-            {
-                int idx = 0;
-                foreach (facet; f)
-                    foreach (v; facet)
-                        buf[idx++] = v;
-            }
-            return cast(long) f.length;
-        }
-
-        switch (h.dim)
-        {
-            case 2: return writeFacets!2(cast(ManifoldWrapper!2*) h.ptr, out_data);
-            case 3: return writeFacets!3(cast(ManifoldWrapper!3*) h.ptr, out_data);
-            case 4: return writeFacets!4(cast(ManifoldWrapper!4*) h.ptr, out_data);
-            default: setError("bad dimension"); return -1;
-        }
+        case 2: return (cast(ManifoldWrapper!2*) h.ptr).mfd.writeFacetsToBuffer(out_data);
+        case 3: return (cast(ManifoldWrapper!3*) h.ptr).mfd.writeFacetsToBuffer(out_data);
+        case 4: return (cast(ManifoldWrapper!4*) h.ptr).mfd.writeFacetsToBuffer(out_data);
+        default: setError("bad dimension"); return -1;
     }
-    catch (Exception e) { setError(e.msg); return -1; }
 }
 
 extern(C) long ddg_manifold_simplices(void* handle, int simp_dim, int* out_data) nothrow
 {
     clearError();
-    try
+    if (handle is null) { setError("null handle"); return -1; }
+    auto h = cast(ManifoldHandle*) handle;
+
+    switch (h.dim)
     {
-        if (handle is null) { setError("null handle"); return -1; }
-        auto h = cast(ManifoldHandle*) handle;
-
-        long writeSimplices(int dim)(ManifoldWrapper!dim* mw, int sdim, int* buf)
-        {
-            auto s = mw.mfd.simplices(sdim);
-            if (buf !is null)
-            {
-                int idx = 0;
-                foreach (simp; s)
-                    foreach (v; simp)
-                        buf[idx++] = v;
-            }
-            return cast(long) s.length;
-        }
-
-        switch (h.dim)
-        {
-            case 2: return writeSimplices!2(cast(ManifoldWrapper!2*) h.ptr, simp_dim, out_data);
-            case 3: return writeSimplices!3(cast(ManifoldWrapper!3*) h.ptr, simp_dim, out_data);
-            case 4: return writeSimplices!4(cast(ManifoldWrapper!4*) h.ptr, simp_dim, out_data);
-            default: setError("bad dimension"); return -1;
-        }
+        case 2: return (cast(ManifoldWrapper!2*) h.ptr).mfd.writeSimplicesToBuffer(simp_dim, out_data);
+        case 3: return (cast(ManifoldWrapper!3*) h.ptr).mfd.writeSimplicesToBuffer(simp_dim, out_data);
+        case 4: return (cast(ManifoldWrapper!4*) h.ptr).mfd.writeSimplicesToBuffer(simp_dim, out_data);
+        default: setError("bad dimension"); return -1;
     }
-    catch (Exception e) { setError(e.msg); return -1; }
 }
 
 extern(C) long ddg_manifold_degree(void* handle, const(int)* simplex_data, int simplex_len) nothrow

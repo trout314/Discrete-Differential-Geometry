@@ -390,3 +390,13 @@ _lib.ddg_sampler_degree.argtypes = [
 ]
 _lib.ddg_sampler_degree.restype = ctypes.c_long
 _lib.ddg_sampler_degree.errcheck = _check_int
+
+# ---------------------------------------------------------------------------
+# GC control
+# ---------------------------------------------------------------------------
+
+_lib.ddg_gc_collect.argtypes = []
+_lib.ddg_gc_collect.restype = None
+
+_lib.ddg_gc_minimize.argtypes = []
+_lib.ddg_gc_minimize.restype = None

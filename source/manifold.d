@@ -677,6 +677,65 @@ public:
         }
     }
 
+    /// Write simplices of the given dimension directly to a caller-provided
+    /// buffer, avoiding all GC allocation. Returns the number of simplices.
+    /// If buf is null, just returns the count. Each simplex is written as
+    /// (dim+1) consecutive ints.
+    long writeSimplicesToBuffer()(int dim, int* buf) const nothrow @nogc
+    {
+        final switch (cast(int) dim)
+        {
+            case 0:
+            {
+                if (buf is null)
+                    return cast(long) numSimplices[0];
+                int idx = 0;
+                foreach (v; 0 .. cast(int) _vertexDegrees.length)
+                    if (_vertexDegrees[v] > 0)
+                        buf[idx++] = v;
+                return cast(long) idx;
+            }
+            static foreach (d; 1 .. dimension)
+            {
+                case d:
+                {
+                    if (buf is null)
+                        return cast(long) numSimplices[d];
+                    int idx = 0;
+                    foreach (ref key; dimMap!d.byKey())
+                        foreach (v; key[])
+                            buf[idx++] = v;
+                    return cast(long) numSimplices[d];
+                }
+            }
+            case dimension:
+            {
+                if (buf is null)
+                    return cast(long) numSimplices[dimension];
+                int idx = 0;
+                foreach (ref f; _facetArray)
+                    foreach (v; f[])
+                        buf[idx++] = v;
+                return cast(long) numSimplices[dimension];
+            }
+        }
+    }
+
+    /// Write all facets directly to a caller-provided buffer, avoiding all GC
+    /// allocation. Returns the number of facets. Each facet is written as
+    /// (dimension+1) consecutive ints. Facets are in internal array order
+    /// (not sorted).
+    long writeFacetsToBuffer()(int* buf) const nothrow @nogc
+    {
+        if (buf is null)
+            return cast(long) numSimplices[dimension];
+        int idx = 0;
+        foreach (ref f; _facetArray)
+            foreach (v; f[])
+                buf[idx++] = v;
+        return cast(long) numSimplices[dimension];
+    }
+
     /// Return all facets as an array of vertex arrays, sorted for determinism.
     const(Vertex)[][] facets()() const
     {
