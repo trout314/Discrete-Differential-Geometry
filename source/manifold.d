@@ -88,7 +88,10 @@ private:
 
     version (TrackValidMoves)
     {
-        Facet[][Vertex] _vertexFacets;
+        // Per-vertex facet adjacency list, indexed by vertex (like _vertexDegrees).
+        // Uses a flat array instead of a built-in AA to avoid GC allocations
+        // on every insert/remove.
+        Facet[][] _vertexFacets;
 
         // Per-dimension valid move arrays (swap-with-last) and reverse index maps
         static foreach (_d_vm; 0 .. dimension_)
@@ -127,6 +130,21 @@ private:
     {
         return range.staticArray!(dimension_ + 1);
     }
+
+    /// Tell the GC that the capacity beyond the current slice end is
+    /// safe to reuse.  Wrapped in @trusted pure so callers stay pure/@safe.
+    /// assumeSafeAppend is technically impure/@system but has no observable
+    /// side effects — it only updates GC-internal capacity metadata.
+    static void reclaimCapacity(T)(ref T[] arr) @trusted pure nothrow
+    {
+        (cast(void function(ref T[]) @trusted pure nothrow) &_reclaimCapacityImpl!T)(arr);
+    }
+
+    static void _reclaimCapacityImpl(T)(ref T[] arr) @trusted nothrow
+    {
+        arr.assumeSafeAppend;
+    }
+
 public:
     /// Dimension of the manifold
     static immutable dimension = dimension_;
@@ -196,10 +214,10 @@ public:
 
         version (TrackValidMoves)
         {
-            Facet[][Vertex] newVF;
-            foreach (k, v; _vertexFacets)
-                newVF[k] = v.dup;
-            _vertexFacets = newVF;
+            _vertexFacets = _vertexFacets.dup;
+            foreach (i; 0 .. _vertexFacets.length)
+                if (_vertexFacets[i].length > 0)
+                    _vertexFacets[i] = _vertexFacets[i].dup;
 
             static foreach (_d_dup; 0 .. dimension_)
             {{
@@ -513,7 +531,11 @@ public:
         version (TrackValidMoves)
         {
             foreach (v; facet)
+            {
+                if (v >= _vertexFacets.length)
+                    _vertexFacets.length = v + 1;
                 _vertexFacets[v] ~= facetBuffer;
+            }
         }
     }
 
@@ -612,6 +634,7 @@ public:
                 _facetArrayIdx[fLast] = fIdx;
             }
             _facetArray = _facetArray[0 .. fLastIdx];
+            reclaimCapacity(_facetArray);
             _facetArrayIdx.remove(facetBuffer);
         }
 
@@ -626,12 +649,14 @@ public:
                     if (arr[i] == facetBuffer)
                     {
                         arr[i] = arr[$ - 1];
-                        _vertexFacets[v] = arr[0 .. $ - 1];
+                        auto shortened = arr[0 .. $ - 1];
+                        reclaimCapacity(shortened);
+                        _vertexFacets[v] = shortened;
                         break;
                     }
                 }
                 if (_vertexFacets[v].length == 0)
-                    _vertexFacets.remove(v);
+                    _vertexFacets[v] = null;
             }
         }
 
@@ -1124,9 +1149,8 @@ private auto localCoCenter(int d, Vertex, int dim)(
     else
     {
         // Find star(center) via _vertexFacets[center[0]]
-        auto ptr = center[0] in mfd._vertexFacets;
-        assert(ptr !is null);
-        foreach (ref facet; *ptr)
+        assert(center[0] < mfd._vertexFacets.length && mfd._vertexFacets[center[0]].length > 0);
+        foreach (ref facet; mfd._vertexFacets[center[0]])
         {
             // Check facet contains all of center
             bool containsAll = true;
@@ -1186,9 +1210,8 @@ private void updateValidMoveArrays(bool adding, Vertex, int dim)(
     incidentFacets.assumeSafeAppend;
     foreach (v; allVerts)
     {
-        auto ptr = v in mfd._vertexFacets;
-        if (ptr is null) continue;
-        foreach (ref f; *ptr)
+        if (v >= mfd._vertexFacets.length || mfd._vertexFacets[v].length == 0) continue;
+        foreach (ref f; mfd._vertexFacets[v])
             incidentFacets ~= f;
     }
     incidentFacets.sort();
@@ -1537,12 +1560,15 @@ if (isIRof!(C, const(Vertex)) && isIRof!(F, const(Vertex)))
     assert(center.walkLength < dim + 1);
 
     // Collect unique link vertices from ridges containing the center.
+    // Avoids using .filter! with a lambda to prevent GC closure allocation.
     StackArray!(Vertex, dim + 1) result;
 
-    foreach (r; facet.subsetsOfSize(dim)
-        .filter!(r => center.isSubsetOf(r)).map!(r => mfd.toRidge(r)))
+    foreach (subset; facet.subsetsOfSize(dim))
     {
-        foreach (v; mfd.dimMap!(dim - 1)[r].link[])
+        if (!center.isSubsetOf(subset))
+            continue;
+        auto ridge = mfd.toRidge(subset);
+        foreach (v; mfd.dimMap!(dim - 1)[ridge].link[])
             if (!result[].canFind(v))
                 result ~= v;
     }

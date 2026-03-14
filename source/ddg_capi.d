@@ -1118,10 +1118,6 @@ extern(C) long ddg_sampler_run(void* sampler_handle, long num_moves,
                         return accepted;
                 }
 
-                // Periodic GC collection to reclaim chooseRandomMove temporaries
-                if (moveNum % 50 == 0 && moveNum > 0)
-                    GC.collect();
-
                 if (s.unusedVertices.length == 0)
                     s.unusedVertices ~= cast(int) mw.mfd.fVector[0];
 
@@ -1139,16 +1135,16 @@ extern(C) long ddg_sampler_run(void* sampler_handle, long num_moves,
                     if (bm.coCenter.length == 1)
                     {
                         if (s.unusedVertices.length > 0)
+                        {
                             s.unusedVertices = s.unusedVertices[0 .. $ - 1];
+                            s.unusedVertices.assumeSafeAppend;
+                        }
                     }
                     if (bm.center.length == 1) s.unusedVertices ~= bm.center;
                     currentObjective += deltaObj;
                     accepted++;
                 }
             }
-
-            // Final GC collection after the run
-            GC.collect();
 
             if (cb !is null)
                 cb(numMoves, numMoves, ud);
@@ -1214,10 +1210,6 @@ extern(C) long ddg_sampler_run_exact(void* sampler_handle, long num_moves,
                         return accepted;
                 }
 
-                // Periodic GC collection to reclaim chooseRandomMove temporaries
-                if (moveNum % 50 == 0 && moveNum > 0)
-                    GC.collect();
-
                 if (s.unusedVertices.length == 0)
                     s.unusedVertices ~= cast(int) mw.mfd.fVector[0];
 
@@ -1230,7 +1222,10 @@ extern(C) long ddg_sampler_run_exact(void* sampler_handle, long num_moves,
                 if (bm.coCenter.length == 1)
                 {
                     if (s.unusedVertices.length > 0)
+                    {
                         s.unusedVertices = s.unusedVertices[0 .. $ - 1];
+                        s.unusedVertices.assumeSafeAppend;
+                    }
                 }
                 if (bm.center.length == 1) s.unusedVertices ~= bm.center;
 
@@ -1249,6 +1244,7 @@ extern(C) long ddg_sampler_run_exact(void* sampler_handle, long num_moves,
                     {
                         assert(bm.center.front == s.unusedVertices[$ - 1]);
                         s.unusedVertices = s.unusedVertices[0 .. $ - 1];
+                        s.unusedVertices.assumeSafeAppend;
                     }
                 }
                 else
@@ -1257,9 +1253,6 @@ extern(C) long ddg_sampler_run_exact(void* sampler_handle, long num_moves,
                     accepted++;
                 }
             }
-
-            // Final GC collection after the run
-            GC.collect();
 
             if (cb !is null)
                 cb(numMoves, numMoves, ud);
