@@ -1,0 +1,41 @@
+initialManifoldFile = standard_triangulations/dim_3_sphere.mfd
+
+# Each chain gets its own prefix via the launcher script
+sampleFilesPrefix = data/convergence_chain
+
+maxSweeps = 50.0
+sweepsPerSample = 10.0
+
+writeCSVdataFile = true
+sweepsPerCSVline = 0.25
+
+numFacetsTarget = 2000
+numFacetsCoef = 0.1
+
+growthStepSize = 500
+eqSweepsPerStep = 5
+
+hingeDegreeTarget = 5.1
+numHingesCoef = 0.0
+
+hingeDegreeVarianceCoef = 0.0
+coDim3DegreeVarianceCoef = 0.1
+
+saveEdgeGraph = false
+saveDualGraph = false
+startingSampleNumber = 0
+
+checkForProblems = false
+movesTriedPerProblemCheck = 10
+
+disableGC = true
+movesTriedPerGCcollect = 1000
+
+doStdoutReport = false
+movesTriedPerStdoutReport = 1000
+
+coDim2DegreeHistogramBins = 12
+coDim2DegreeHistogramBars = 77
+
+coDim3DegreeHistogramBins = 22
+coDim3DegreeHistogramBars = 77

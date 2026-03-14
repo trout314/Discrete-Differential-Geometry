@@ -760,12 +760,14 @@ public:
     }
 
     /// Return a randomly chosen facet of the given dimension.
+    /// Returns a const slice into the internal facet array (no GC allocation).
+    /// The slice is valid until the next mutation of the manifold.
     const(Vertex)[] randomFacetOfDim()(int dim) const
     {
         assert(dim == dimension, "manifolds only have facets of one dimension");
         import std.random : uniform;
         auto idx = uniform(0, _facetArray.length);
-        return cast(const(Vertex)[]) _facetArray[idx][].dup;
+        return _facetArray[idx][];
     }
 
     /// Return the star of a simplex (facets containing it).
@@ -1519,8 +1521,10 @@ if (isIRof!(C, const(Vertex)))
 /*******************************************************************************
 Returns the coCenter for the Pachner move with given center. For efficiency we
 also need to know a facet with face center.
+
+Uses a stack-allocated StackArray to avoid GC allocation.
 */
-auto coCenter(Vertex, int dim, C, F)(
+StackArray!(Vertex, dim + 1) coCenter(Vertex, int dim, C, F)(
     const ref Manifold!(dim, Vertex) mfd,
     C center,
     F facet
@@ -1530,18 +1534,20 @@ if (isIRof!(C, const(Vertex)) && isIRof!(F, const(Vertex)))
     assert(mfd.contains(facet));
     assert(mfd.contains(center));
     assert(center.isSubsetOf(facet));
-    
-    // The coCenter of a facet is a new vertex not in the manifold.
     assert(center.walkLength < dim + 1);
 
-    // TO DO: Clean this up!
-    auto ridges = facet.subsetsOfSize(dim)
-        .filter!(r => center.isSubsetOf(r)).map!(r => mfd.toRidge(r));
-    auto coCenterVerts = ridges.map!(r => mfd.dimMap!(dim - 1)[r].link[])
-        .joiner.array.dup.sort.uniq.array;
+    // Collect unique link vertices from ridges containing the center.
+    StackArray!(Vertex, dim + 1) result;
 
-    assert(coCenterVerts.equal(mfd.findCoCenter(center.array)));
-    return coCenterVerts;
+    foreach (r; facet.subsetsOfSize(dim)
+        .filter!(r => center.isSubsetOf(r)).map!(r => mfd.toRidge(r)))
+    {
+        foreach (v; mfd.dimMap!(dim - 1)[r].link[])
+            if (!result[].canFind(v))
+                result ~= v;
+    }
+    result[].sort();
+    return result;
 }
 
 ///

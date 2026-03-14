@@ -265,7 +265,7 @@ BistellarMove!(dim, Vertex) chooseRandomMove(int dim, Vertex, P)(
         else
         {
             auto coCenter = manifold.coCenter(center, facet);
-            bm = BM(center, coCenter);
+            bm = BM(center, coCenter[]);
         }
 
         if (uniform01 > 2.0 / centerDeg)

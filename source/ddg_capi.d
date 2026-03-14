@@ -81,6 +81,18 @@ extern(C) void ddg_gc_minimize() nothrow
     try { GC.minimize(); } catch (Exception) {}
 }
 
+/// Return D GC heap stats: used bytes, free bytes, total mapped bytes.
+extern(C) void ddg_gc_stats(long* used_bytes, long* free_bytes) nothrow
+{
+    try
+    {
+        auto stats = GC.stats;
+        if (used_bytes !is null) *used_bytes = cast(long) stats.usedSize;
+        if (free_bytes !is null) *free_bytes = cast(long) stats.freeSize;
+    }
+    catch (Exception) {}
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -1106,6 +1118,10 @@ extern(C) long ddg_sampler_run(void* sampler_handle, long num_moves,
                         return accepted;
                 }
 
+                // Periodic GC collection to reclaim chooseRandomMove temporaries
+                if (moveNum % 50 == 0 && moveNum > 0)
+                    GC.collect();
+
                 if (s.unusedVertices.length == 0)
                     s.unusedVertices ~= cast(int) mw.mfd.fVector[0];
 
@@ -1130,6 +1146,9 @@ extern(C) long ddg_sampler_run(void* sampler_handle, long num_moves,
                     accepted++;
                 }
             }
+
+            // Final GC collection after the run
+            GC.collect();
 
             if (cb !is null)
                 cb(numMoves, numMoves, ud);
@@ -1195,6 +1214,10 @@ extern(C) long ddg_sampler_run_exact(void* sampler_handle, long num_moves,
                         return accepted;
                 }
 
+                // Periodic GC collection to reclaim chooseRandomMove temporaries
+                if (moveNum % 50 == 0 && moveNum > 0)
+                    GC.collect();
+
                 if (s.unusedVertices.length == 0)
                     s.unusedVertices ~= cast(int) mw.mfd.fVector[0];
 
@@ -1234,6 +1257,9 @@ extern(C) long ddg_sampler_run_exact(void* sampler_handle, long num_moves,
                     accepted++;
                 }
             }
+
+            // Final GC collection after the run
+            GC.collect();
 
             if (cb !is null)
                 cb(numMoves, numMoves, ud);
