@@ -90,9 +90,9 @@ private:
     version (TrackValidMoves)
     {
         // Per-vertex facet adjacency list, indexed by vertex (like _vertexDegrees).
-        // Uses a flat array instead of a built-in AA to avoid GC allocations
-        // on every insert/remove.
-        Facet[][] _vertexFacets;
+        // Inner arrays use MallocArray — completely invisible to D's GC,
+        // so no false-pointer retention and no per-move GC allocation.
+        MallocArray!Facet[] _vertexFacets;
 
         // Per-dimension valid move arrays (swap-with-last) and reverse index maps
         static foreach (_d_vm; 0 .. dimension_)
@@ -222,10 +222,13 @@ public:
 
         version (TrackValidMoves)
         {
-            _vertexFacets = _vertexFacets.dup;
-            foreach (i; 0 .. _vertexFacets.length)
-                if (_vertexFacets[i].length > 0)
-                    _vertexFacets[i] = _vertexFacets[i].dup;
+            {
+                auto oldVF = _vertexFacets;
+                _vertexFacets = new MallocArray!Facet[oldVF.length];
+                foreach (i; 0 .. oldVF.length)
+                    if (oldVF[i].length > 0)
+                        _vertexFacets[i] = oldVF[i].dup();
+            }
 
             static foreach (_d_dup; 0 .. dimension_)
             {{
@@ -648,23 +651,18 @@ public:
 
         version (TrackValidMoves)
         {
-            // Remove facet from per-vertex adjacency
+            // Remove facet from per-vertex adjacency (swap-with-last)
             foreach (v; facet)
             {
-                auto arr = _vertexFacets[v];
-                foreach (i; 0 .. arr.length)
+                foreach (i; 0 .. _vertexFacets[v].length)
                 {
-                    if (arr[i] == facetBuffer)
+                    if (_vertexFacets[v][i] == facetBuffer)
                     {
-                        arr[i] = arr[$ - 1];
-                        auto shortened = arr[0 .. $ - 1];
-                        reclaimCapacity(shortened);
-                        _vertexFacets[v] = shortened;
+                        _vertexFacets[v][i] = _vertexFacets[v][_vertexFacets[v].length - 1];
+                        _vertexFacets[v].length = _vertexFacets[v].length - 1;
                         break;
                     }
                 }
-                if (_vertexFacets[v].length == 0)
-                    _vertexFacets[v] = null;
             }
         }
 
@@ -1158,7 +1156,7 @@ private auto localCoCenter(int d, Vertex, int dim)(
     {
         // Find star(center) via _vertexFacets[center[0]]
         assert(center[0] < mfd._vertexFacets.length && mfd._vertexFacets[center[0]].length > 0);
-        foreach (ref facet; mfd._vertexFacets[center[0]])
+        foreach (ref facet; mfd._vertexFacets[center[0]][])
         {
             // Check facet contains all of center
             bool containsAll = true;
@@ -1219,7 +1217,7 @@ private void updateValidMoveArrays(bool adding, Vertex, int dim)(
     foreach (v; allVerts)
     {
         if (v >= mfd._vertexFacets.length || mfd._vertexFacets[v].length == 0) continue;
-        foreach (ref f; mfd._vertexFacets[v])
+        foreach (ref f; mfd._vertexFacets[v][])
             incidentFacets ~= f;
     }
     incidentFacets.sort();

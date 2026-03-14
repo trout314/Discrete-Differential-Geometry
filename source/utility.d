@@ -1344,6 +1344,113 @@ pure @system unittest
 }
 
 /*******************************************************************************
+Resizable array backed by C malloc/realloc/free.  Completely invisible to
+the D GC — no false-pointer retention, no GC allocation on append/remove.
+Must be explicitly freed or deep-copied (no automatic cleanup).
+*/
+struct MallocArray(T)
+{
+    import core.stdc.stdlib : malloc, realloc, free;
+    import core.stdc.string : memcpy, memset;
+
+private:
+    T* _ptr;
+    uint _length;
+    uint _capacity;
+
+public:
+    @disable this(this); // prevent accidental shallow copies
+
+    size_t length() const pure nothrow @nogc @safe { return _length; }
+
+    void length(size_t n) pure nothrow @nogc @safe
+    {
+        assert(n <= _capacity, "MallocArray length exceeds capacity");
+        _length = cast(uint) n;
+    }
+
+    size_t capacity() const pure nothrow @nogc @safe { return _capacity; }
+
+    /// Append. Doubles capacity via realloc if needed.
+    void opOpAssign(string op : "~")(T item) nothrow @nogc
+    {
+        if (_length >= _capacity)
+        {
+            auto newCap = _capacity < 8 ? 8 : _capacity * 2;
+            auto nbytes = newCap * T.sizeof;
+            auto p = cast(T*) realloc(cast(void*) _ptr, nbytes);
+            assert(p !is null, "MallocArray: realloc failed");
+            _ptr = p;
+            _capacity = cast(uint) newCap;
+        }
+        _ptr[_length++] = item;
+    }
+
+    ref inout(T) opIndex(size_t i) inout pure nothrow @nogc @trusted
+    {
+        return _ptr[i];
+    }
+
+    /// Return a D slice of the used portion.
+    inout(T)[] opSlice() inout pure nothrow @nogc @trusted
+    {
+        return _ptr[0 .. _length];
+    }
+
+    /// Deep copy into a new MallocArray.
+    MallocArray dup() const nothrow @nogc
+    {
+        MallocArray copy;
+        if (_length > 0)
+        {
+            auto nbytes = _capacity * T.sizeof;
+            copy._ptr = cast(T*) malloc(nbytes);
+            assert(copy._ptr !is null);
+            memcpy(cast(void*) copy._ptr, cast(const(void)*) _ptr, _length * T.sizeof);
+            copy._length = _length;
+            copy._capacity = _capacity;
+        }
+        return copy;
+    }
+
+    /// Release the backing memory.
+    void dispose() nothrow @nogc
+    {
+        if (_ptr !is null)
+        {
+            free(cast(void*) _ptr);
+            _ptr = null;
+            _length = 0;
+            _capacity = 0;
+        }
+    }
+}
+
+///
+unittest
+{
+    MallocArray!int ma;
+    ma ~= 10;
+    ma ~= 20;
+    ma ~= 30;
+    assert(ma.length == 3);
+    assert(ma[0] == 10);
+    assert(ma[] == [10, 20, 30]);
+
+    ma[0] = ma[2]; // swap
+    ma.length = 2;
+    assert(ma[] == [30, 20]);
+
+    auto copy = ma.dup();
+    copy ~= 99;
+    assert(copy[] == [30, 20, 99]);
+    assert(ma[] == [30, 20]); // original unchanged
+
+    ma.dispose();
+    copy.dispose();
+}
+
+/*******************************************************************************
 Heap-allocated resizable array with manual length tracking.  Pre-allocate
 with reserve() so that subsequent ~= / length= are GC-free.
 No `alias this` — all access is explicit to avoid overload ambiguity.
