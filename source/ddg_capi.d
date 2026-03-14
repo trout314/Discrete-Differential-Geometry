@@ -374,9 +374,9 @@ extern(C) long ddg_manifold_count_valid_moves(void* handle) nothrow
         auto h = cast(ManifoldHandle*) handle;
         switch (h.dim)
         {
-            case 2: return cast(long)(cast(ManifoldWrapper!2*) h.ptr).mfd.countValidBistellarMoves;
-            case 3: return cast(long)(cast(ManifoldWrapper!3*) h.ptr).mfd.countValidBistellarMoves;
-            case 4: return cast(long)(cast(ManifoldWrapper!4*) h.ptr).mfd.countValidBistellarMoves;
+            case 2: return cast(long)(cast(ManifoldWrapper!2*) h.ptr).mfd.validMoveCount;
+            case 3: return cast(long)(cast(ManifoldWrapper!3*) h.ptr).mfd.validMoveCount;
+            case 4: return cast(long)(cast(ManifoldWrapper!4*) h.ptr).mfd.validMoveCount;
             default: setError("bad dimension"); return -1;
         }
     }
@@ -395,7 +395,7 @@ extern(C) double ddg_manifold_importance_weight(void* handle) nothrow
 
         double compute(int dim)(ManifoldWrapper!dim* mw)
         {
-            auto V = cast(double) mw.mfd.countValidBistellarMoves;
+            auto V = cast(double) mw.mfd.validMoveCount;
             auto F = cast(double) mw.mfd.numFacets;
             return F / V;
         }
@@ -1185,7 +1185,7 @@ extern(C) long ddg_sampler_run_exact(void* sampler_handle, long num_moves,
                 auto bm = mw.mfd.chooseRandomMove(s.unusedVertices[$ - 1], params);
 
                 // Exact Hastings: execute, compute V_after, accept or undo
-                immutable vBefore = cast(real) mw.mfd.countValidBistellarMoves;
+                immutable vBefore = cast(real) mw.mfd.validMoveCount;
 
                 mw.mfd.doMove(bm);
                 if (bm.coCenter.length == 1)
@@ -1197,7 +1197,7 @@ extern(C) long ddg_sampler_run_exact(void* sampler_handle, long num_moves,
 
                 real newObjective = mw.mfd.objective(params);
                 real deltaObj = newObjective - currentObjective;
-                immutable vAfter = cast(real) mw.mfd.countValidBistellarMoves;
+                immutable vAfter = cast(real) mw.mfd.validMoveCount;
 
                 real logAlpha = -deltaObj + log(vBefore) - log(vAfter);
 

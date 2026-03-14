@@ -75,6 +75,7 @@ class ManifoldSampler:
         *,
         sweeps: float | None = None,
         moves: int | None = None,
+        exact: bool = False,
         callback: Callable[[int, int], bool] | None = None,
     ) -> int:
         """Run the sampler.
@@ -87,6 +88,11 @@ class ManifoldSampler:
             Number of sweeps (1 sweep = num_facets attempted moves).
         moves : int, optional
             Raw number of attempted moves.
+        exact : bool, optional
+            If True, use exact Hastings correction (execute-then-undo with
+            countValidBistellarMoves). Slower but samples from the exact
+            target distribution exp(-objective). Default False uses the
+            approximate nFacets ratio.
         callback : callable, optional
             Called periodically with ``(moves_done, moves_total)``.
             Return ``True`` to stop early.
@@ -118,7 +124,8 @@ class ManifoldSampler:
             c_callback = _dlang.CALLBACK_TYPE()
             self._callback_ref = c_callback
 
-        return _lib.ddg_sampler_run(self._handle, moves, c_callback, None)
+        run_fn = _lib.ddg_sampler_run_exact if exact else _lib.ddg_sampler_run
+        return run_fn(self._handle, moves, c_callback, None)
 
     @property
     def manifold(self) -> Manifold:
