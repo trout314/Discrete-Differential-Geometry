@@ -86,7 +86,7 @@ shared_library('ddg_dlang',
   ),
   include_directories : d_import_dirs,
   d_module_versions : ['TrackValidMoves'],
-  d_args : ['-link-defaultlib-shared=false'],
+  d_args : ['-link-defaultlib-shared=false', '-O3', '-release'],
   name_prefix : '',
   install : true,
 )

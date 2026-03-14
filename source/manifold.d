@@ -1395,29 +1395,31 @@ void doMove(Vertex, int dim)(
 
     assert(manifold.contains(center), "center of move not in manifold");
     assert(!manifold.contains(coCenter), "coCenter of move in manifold");
-    if (coCenter.walkLength > 1)
+    version (ExpensiveAsserts)
     {
-        auto pm = BistellarMove!(dim, Vertex)(center, coCenter);
-        assert(manifold.allBistellarMoves.canFind(pm), "not a valid pachner move");
+        if (coCenter.walkLength > 1)
+        {
+            auto pm = BistellarMove!(dim, Vertex)(center, coCenter);
+            assert(manifold.allBistellarMoves.canFind(pm), "not a valid pachner move");
+        }
     }
- 
-    // Buffer for holding vertices in center (followed by coCenter)
-    const(Vertex)[dim + 2] cBuffer = chain(center, coCenter)
-        .staticArray!(dim + 2);
 
     auto coCenDim = coCenter.length.to!int - 1;
     auto cenDim = center.length.to!int - 1;
     auto oldPiece = productUnion(coCenter.subsetsOfSize(coCenDim), center.only);
     auto newPiece = productUnion(center.subsetsOfSize(cenDim), coCenter.only);
 
-    alias SC = SimplicialComplex!(Vertex, dim);
-    alias MFD = Manifold!(dim, Vertex);
-    
-    assert(SC(oldPiece).isPureOfDim(dim));
-    assert(SC(newPiece).isPureOfDim(dim));
-    assert(MFD(chain(oldPiece, newPiece)).numFacets == dim + 2);
-    assert(manifold.star(center).map!array.array.sort
-        .equal!equal(oldPiece.map!array.array.sort));
+    version (ExpensiveAsserts)
+    {
+        alias SC = SimplicialComplex!(Vertex, dim);
+        alias MFD = Manifold!(dim, Vertex);
+
+        assert(SC(oldPiece).isPureOfDim(dim));
+        assert(SC(newPiece).isPureOfDim(dim));
+        assert(MFD(chain(oldPiece, newPiece)).numFacets == dim + 2);
+        assert(manifold.star(center).map!array.array.sort
+            .equal!equal(oldPiece.map!array.array.sort));
+    }
 
     version (TrackValidMoves)
     {
