@@ -29,6 +29,7 @@ lib_sources = files(
   'source/polygons.d',
   'source/rational_extension_vector.d',
   'source/rational_number.d',
+  'source/sampler.d',
   'source/simplicial_complex.d',
   'source/utility.d',
 )
@@ -82,7 +83,6 @@ executable('surface_cross_S1',
 shared_library('ddg_dlang',
   lib_sources + files(
     'source/ddg_capi.d',
-    'source/applications/manifold_sampler.d',
   ),
   include_directories : d_import_dirs,
   d_args : ['-link-defaultlib-shared=false'],
@@ -119,7 +119,6 @@ executable('test_valid_moves',
 # Application main() functions are guarded by version(unittest){} else.
 test_exe = executable('unittest',
   lib_sources + files(
-    'source/applications/manifold_sampler.d',
     'source/test_runner.d',
   ),
   include_directories : d_import_dirs,

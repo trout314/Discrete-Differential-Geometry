@@ -355,6 +355,12 @@ _lib.ddg_sampler_run.argtypes = [
 _lib.ddg_sampler_run.restype = ctypes.c_long
 _lib.ddg_sampler_run.errcheck = _check_int
 
+_lib.ddg_sampler_run_exact.argtypes = [
+    ctypes.c_void_p, ctypes.c_long, CALLBACK_TYPE, ctypes.c_void_p,
+]
+_lib.ddg_sampler_run_exact.restype = ctypes.c_long
+_lib.ddg_sampler_run_exact.errcheck = _check_int
+
 _lib.ddg_sampler_get_manifold.argtypes = [ctypes.c_void_p]
 _lib.ddg_sampler_get_manifold.restype = ctypes.c_void_p
 _lib.ddg_sampler_get_manifold.errcheck = _check_null

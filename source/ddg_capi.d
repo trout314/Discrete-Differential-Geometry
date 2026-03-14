@@ -6,9 +6,7 @@ import std.algorithm, std.array, std.conv, std.range, std.stdio, std.string,
     std.math, std.random;
 import core.memory : GC;
 import algorithms, manifold, manifold_examples, manifold_moves,
-    simplicial_complex, utility;
-import applications.manifold_sampler : objective, chooseRandomMove,
-    speculativeBistellarDelta;
+    sampler, simplicial_complex, utility;
 
 // ---------------------------------------------------------------------------
 // Thread-local error string
@@ -64,22 +62,6 @@ private string toStr(const(char)* s)
     return s[0 .. strlen(s)].idup;
 }
 
-/// Compute unused vertices for the sampler (same logic as manifold_sampler.d).
-private int[] computeUnusedVertices(int dim)(ref const Manifold!(dim, int) mfd)
-{
-    auto verts = mfd.simplices(0).joiner.array.dup.sort.array;
-    if (verts.length == 0) return [];
-
-    int[] unused;
-    if (verts[0] != 0)
-        unused ~= iota(verts[0]).array;
-    foreach (i; 0 .. cast(int) verts.length - 1)
-    {
-        if (verts[i] + 1 != verts[i + 1])
-            unused ~= iota(verts[i] + 1, verts[i + 1]).array;
-    }
-    return unused;
-}
 
 // ---------------------------------------------------------------------------
 // Manifold lifecycle
@@ -1052,9 +1034,9 @@ extern(C) void* ddg_sampler_create(void* manifold_handle,
 
         switch (mh.dim)
         {
-            case 2: state.unusedVertices = computeUnusedVertices!2((cast(ManifoldWrapper!2*)(cast(ManifoldHandle*) state.manifoldHandle).ptr).mfd); break;
-            case 3: state.unusedVertices = computeUnusedVertices!3((cast(ManifoldWrapper!3*)(cast(ManifoldHandle*) state.manifoldHandle).ptr).mfd); break;
-            case 4: state.unusedVertices = computeUnusedVertices!4((cast(ManifoldWrapper!4*)(cast(ManifoldHandle*) state.manifoldHandle).ptr).mfd); break;
+            case 2: state.unusedVertices = getUnusedVertices!2((cast(ManifoldWrapper!2*)(cast(ManifoldHandle*) state.manifoldHandle).ptr).mfd); break;
+            case 3: state.unusedVertices = getUnusedVertices!3((cast(ManifoldWrapper!3*)(cast(ManifoldHandle*) state.manifoldHandle).ptr).mfd); break;
+            case 4: state.unusedVertices = getUnusedVertices!4((cast(ManifoldWrapper!4*)(cast(ManifoldHandle*) state.manifoldHandle).ptr).mfd); break;
             default: setError("bad dimension"); return null;
         }
 
@@ -1144,6 +1126,110 @@ extern(C) long ddg_sampler_run(void* sampler_handle, long num_moves,
             case 2: return runSampler!2(state, num_moves, callback, user_data);
             case 3: return runSampler!3(state, num_moves, callback, user_data);
             case 4: return runSampler!4(state, num_moves, callback, user_data);
+            default: setError("bad dimension"); return -1;
+        }
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Run the sampler with exact Hastings correction using countValidBistellarMoves.
+/// Execute-then-undo approach: slower per move but produces the exact target distribution.
+extern(C) long ddg_sampler_run_exact(void* sampler_handle, long num_moves,
+    CCallback callback, void* user_data) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null sampler handle"); return -1; }
+        auto state = cast(SamplerState*) sampler_handle;
+
+        long runExact(int dim)(SamplerState* s, long numMoves,
+            CCallback cb, void* ud)
+        {
+            auto smh = cast(ManifoldHandle*) s.manifoldHandle;
+            auto mw = cast(ManifoldWrapper!dim*) smh.ptr;
+
+            struct Params
+            {
+                int numFacetsTarget;
+                real hingeDegreeTarget;
+                real numFacetsCoef;
+                real numHingesCoef;
+                real hingeDegreeVarianceCoef;
+                real coDim3DegreeVarianceCoef;
+            }
+
+            auto params = Params(
+                s.numFacetsTarget,
+                cast(real) s.hingeDegreeTarget,
+                cast(real) s.numFacetsCoef,
+                cast(real) s.numHingesCoef,
+                cast(real) s.hingeDegreeVarianceCoef,
+                cast(real) s.coDim3DegreeVarianceCoef
+            );
+
+            auto currentObjective = mw.mfd.objective(params);
+            long accepted = 0;
+
+            foreach (moveNum; 0 .. numMoves)
+            {
+                if (cb !is null && moveNum % 1000 == 0 && moveNum > 0)
+                {
+                    if (cb(moveNum, numMoves, ud) != 0)
+                        return accepted;
+                }
+
+                if (s.unusedVertices.length == 0)
+                    s.unusedVertices ~= cast(int) mw.mfd.fVector[0];
+
+                auto bm = mw.mfd.chooseRandomMove(s.unusedVertices[$ - 1], params);
+
+                // Exact Hastings: execute, compute V_after, accept or undo
+                immutable vBefore = cast(real) mw.mfd.countValidBistellarMoves;
+
+                mw.mfd.doMove(bm);
+                if (bm.coCenter.length == 1)
+                {
+                    if (s.unusedVertices.length > 0)
+                        s.unusedVertices = s.unusedVertices[0 .. $ - 1];
+                }
+                if (bm.center.length == 1) s.unusedVertices ~= bm.center;
+
+                real newObjective = mw.mfd.objective(params);
+                real deltaObj = newObjective - currentObjective;
+                immutable vAfter = cast(real) mw.mfd.countValidBistellarMoves;
+
+                real logAlpha = -deltaObj + log(vBefore) - log(vAfter);
+
+                if ((logAlpha < 0) && (uniform01 > exp(logAlpha)))
+                {
+                    // Rejected — undo
+                    mw.mfd.undoMove(bm);
+                    if (bm.coCenter.length == 1) s.unusedVertices ~= bm.coCenter;
+                    if (bm.center.length == 1)
+                    {
+                        assert(bm.center.front == s.unusedVertices[$ - 1]);
+                        s.unusedVertices = s.unusedVertices[0 .. $ - 1];
+                    }
+                }
+                else
+                {
+                    currentObjective = newObjective;
+                    accepted++;
+                }
+            }
+
+            if (cb !is null)
+                cb(numMoves, numMoves, ud);
+
+            return accepted;
+        }
+
+        switch (state.dim)
+        {
+            case 2: return runExact!2(state, num_moves, callback, user_data);
+            case 3: return runExact!3(state, num_moves, callback, user_data);
+            case 4: return runExact!4(state, num_moves, callback, user_data);
             default: setError("bad dimension"); return -1;
         }
     }

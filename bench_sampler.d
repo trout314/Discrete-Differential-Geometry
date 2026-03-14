@@ -7,7 +7,7 @@ version (unittest) {} else {
 import std.algorithm, std.array, std.conv, std.datetime.stopwatch, std.math,
     std.range, std.stdio, std.string;
 import std.random : uniform, uniform01, rndChoice = choice;
-import manifold, manifold_examples, manifold_moves, simplicial_complex, utility;
+import manifold, manifold_examples, manifold_moves, sampler, simplicial_complex, utility;
 
 enum dim = 3;
 
@@ -17,137 +17,318 @@ struct BenchParams
     real hingeDegreeTarget = 4.5;
     real numFacetsCoef = 0.1;
     real numHingesCoef = 0.05;
-    real hingeDegreeVarianceCoef = 0.2;
+    real hingeDegreeVarianceCoef = 0.0;
     real coDim3DegreeVarianceCoef = 0.1;
 }
 
-// --- Penalty computation (same formulas as manifold_sampler.d) ---
-
-private struct Penalty
-{
-    real volumePenalty;
-    real globalCurvPenalty;
-    real localCurvPenalty;
-    real localSolidAngleCurvPenalty;
-}
-
-private Penalty penaltiesFromValues(
-    long nFacets, long nHinges, ulong hingeTotSqDeg,
-    long nCoDim3, ulong coDim3TotSqDeg, BenchParams params)
-{
-    enum hingesPerFacet = dim * (dim + 1) / 2;
-    enum coDim3PerFacet = binomial(dim + 1, dim - 2);
-
-    Penalty penalty;
-    penalty.volumePenalty = (nFacets - params.numFacetsTarget) ^^ 2;
-
-    immutable nHingesTarget = hingesPerFacet * nFacets / params.hingeDegreeTarget;
-    penalty.globalCurvPenalty = (nHinges - nHingesTarget) ^^ 2;
-
-    immutable degTarget = hingesPerFacet * nFacets / cast(real) nHinges;
-    real _;
-    real x = modf(degTarget, _);
-    real minPenalty = (x - x ^^ 2) * nHinges;
-
-    penalty.localCurvPenalty = (
-        degTarget ^^ 2 * nHinges - 2 * degTarget * hingesPerFacet * nFacets + hingeTotSqDeg) - minPenalty;
-
-    immutable coDim3DegTarget = coDim3PerFacet * nFacets / cast(real) nCoDim3;
-    x = modf(coDim3DegTarget, _);
-    minPenalty = (x - x ^^ 2) * nCoDim3;
-
-    penalty.localSolidAngleCurvPenalty = (
-        coDim3DegTarget ^^ 2 * nCoDim3 - 2 * coDim3DegTarget * coDim3PerFacet * nFacets + coDim3TotSqDeg) - minPenalty;
-
-    return penalty;
-}
-
-real computeObjective(ref const Manifold!dim mfd, BenchParams params)
-{
-    auto pen = penaltiesFromValues(
-        cast(long) mfd.fVector[dim], cast(long) mfd.fVector[dim - 2],
-        mfd.totalSquareDegree(dim - 2),
-        cast(long) mfd.fVector[dim - 3], mfd.totalSquareDegree(dim - 3),
-        params);
-    return params.numFacetsCoef * pen.volumePenalty
-        + params.numHingesCoef * pen.globalCurvPenalty
-        + params.hingeDegreeVarianceCoef * pen.localCurvPenalty
-        + params.coDim3DegreeVarianceCoef * pen.localSolidAngleCurvPenalty;
-}
-
-real speculativeDelta(
-    ref const Manifold!dim mfd,
-    ref const BistellarMove!(dim, int) move,
-    real currentObjective,
-    BenchParams params)
-{
-    auto center = move.center;
-    auto coCenter = move.coCenter;
-    immutable cenLen = cast(int) center.length;
-    immutable coCenLen = cast(int) coCenter.length;
-
-    int[dim + 2] allVertsBuf;
-    allVertsBuf[0 .. cenLen] = center[];
-    allVertsBuf[cenLen .. cenLen + coCenLen] = coCenter[];
-    auto allVerts = allVertsBuf[0 .. cenLen + coCenLen];
-    allVerts.sort();
-
-    uint[dim + 1] newFVector = mfd.fVector[0 .. dim + 1];
-    newFVector[].modifyFVector(move);
-
-    long[dim - 1] newTotSqDeg;
-    foreach (d; 0 .. dim - 1)
-        newTotSqDeg[d] = cast(long) mfd.totalSquareDegree(d);
-
-    static foreach (d; 0 .. dim - 1)
-    {{
-        foreach (subset; allVerts[].subsetsOfSize(d + 1))
-        {
-            int s_C = 0;
-            foreach (v; subset)
-            {
-                if (center.canFind(v)) s_C++;
-            }
-            int s_CC = d + 1 - s_C;
-            int delta = (cenLen - s_C) - (coCenLen - s_CC);
-
-            if (delta == 0) continue;
-
-            long deg = cast(long) mfd.degreeOrZero!d(subset);
-            newTotSqDeg[d] += 2 * deg * delta + cast(long) delta * delta;
-        }
-    }}
-
-    auto newPen = penaltiesFromValues(
-        cast(long) newFVector[dim], cast(long) newFVector[dim - 2],
-        cast(ulong) newTotSqDeg[dim - 2],
-        cast(long) newFVector[dim - 3],
-        cast(ulong) newTotSqDeg[dim - 3],
-        params);
-
-    real newObj = params.numFacetsCoef * newPen.volumePenalty
-        + params.numHingesCoef * newPen.globalCurvPenalty
-        + params.hingeDegreeVarianceCoef * newPen.localCurvPenalty
-        + params.coDim3DegreeVarianceCoef * newPen.localSolidAngleCurvPenalty;
-
-    return newObj - currentObjective;
-}
+// Use shared sampler functions via UFCS (objective, penalties, etc.)
+// Aliases for backward compatibility with existing call sites
+alias computeObjective = sampler.objective;
+alias speculativeDelta = sampler.speculativeBistellarDelta;
 
 // --- Main ---
 
 void main()
 {
-    writeln("=== MCMC Sampler Benchmark ===");
-    writeln("Objective: volume + global curvature + hinge variance + codim-3 variance");
-    writeln();
+    writeln("=== Growth strategy comparison (3 strategies) ===");
+    writeln("strategy,sweep,acc_rate,objective,codim3_var,deg_var_vtx,nTets,elapsed_s");
     stdout.flush();
 
     auto seed = loadManifold!dim("standard_triangulations/dim_3_sphere.mfd");
+    enum targetSize = 10_000;
+    enum totalSweeps = 200;
 
-    int[] benchSizes = [5000];
+    // --- Strategy 1: Stellar subdivision then equilibrate ---
+    {
+        writeln("# Strategy 1: stellar growth then equilibrate");
+        stdout.flush();
 
-    // Grow once with equilibration, benchmarking at each target size
-    auto mfd = growWithBenchmarks(seed, benchSizes);
+        auto mfd = seed;
+        int nextVertex = mfd.simplices(0).joiner.array.dup.sort.array.back + 1;
+        while (mfd.fVector[dim] < targetSize)
+        {
+            auto facet = mfd.randomFacetOfDim(dim).array;
+            auto move = BistellarMove!dim(facet, [nextVertex]);
+            if (!mfd.contains(move.coCenter))
+            {
+                mfd.doMove(move);
+                nextVertex++;
+            }
+        }
+
+        runEquilibration(mfd, "stellar", targetSize, totalSweeps, nextVertex);
+    }
+
+    // --- Strategy 2: Penalty-driven growth (fixed target from start) ---
+    {
+        writeln("# Strategy 2: penalty-driven growth (fixed target)");
+        stdout.flush();
+
+        auto mfd = seed;
+        int nextVertex = mfd.simplices(0).joiner.array.dup.sort.array.back + 1;
+        int[] unusedVertices = [nextVertex];
+
+        auto params = BenchParams(targetSize);
+        auto currentObjective = computeObjective(mfd, params);
+
+        StopWatch timer;
+        timer.start();
+
+        ulong totalAccepted = 0;
+        ulong totalTried = 0;
+
+        bool reachedTarget = false;
+        int sweepsSinceTarget = 0;
+        int movesInSweep = 0;
+
+        while (sweepsSinceTarget <= totalSweeps)
+        {
+            if (unusedVertices.empty)
+            {
+                nextVertex++;
+                unusedVertices ~= nextVertex;
+            }
+
+            auto proposed = proposeMoveOptimized(mfd, unusedVertices.back);
+            auto bm = proposed.move;
+            totalTried++;
+
+            real deltaObj = speculativeDelta(mfd, bm, currentObjective, params);
+
+            if ((deltaObj > 0) && (uniform01 > exp(-deltaObj)))
+            {
+                // Rejected
+            }
+            else
+            {
+                mfd.doMove(bm);
+                if (bm.coCenter.length == 1) unusedVertices.popBack;
+                if (bm.center.length == 1) unusedVertices ~= bm.center;
+                currentObjective += deltaObj;
+                totalAccepted++;
+
+                if (bm.coCenter.length == 1 && bm.coCenter[0] >= nextVertex)
+                    nextVertex = bm.coCenter[0] + 1;
+
+                if (reachedTarget) movesInSweep++;
+            }
+
+            if (!reachedTarget && mfd.fVector[dim] >= targetSize)
+            {
+                reachedTarget = true;
+                movesInSweep = 0;
+                logSweep(mfd, "penalty", 0, totalAccepted, totalTried, params, timer);
+            }
+
+            if (reachedTarget && movesInSweep >= targetSize)
+            {
+                sweepsSinceTarget++;
+                movesInSweep = 0;
+                logSweep(mfd, "penalty", sweepsSinceTarget, totalAccepted, totalTried, params, timer);
+            }
+        }
+    }
+
+    // --- Strategy 3: Ramped target volume ---
+    {
+        writeln("# Strategy 3: ramped target volume (+500 per step, 5 eq sweeps each)");
+        stdout.flush();
+
+        auto mfd = seed;
+        int nextVertex = mfd.simplices(0).joiner.array.dup.sort.array.back + 1;
+        int[] unusedVertices = [nextVertex];
+
+        enum stepSize = 500;
+        enum eqSweepsPerStep = 5;
+
+        StopWatch timer;
+        timer.start();
+
+        ulong totalAccepted = 0;
+        ulong totalTried = 0;
+
+        // Ramp up from seed size to targetSize in increments
+        for (int currentTarget = stepSize; currentTarget <= targetSize; currentTarget += stepSize)
+        {
+            auto params = BenchParams(currentTarget);
+            auto currentObjective = computeObjective(mfd, params);
+
+            // Run until we reach currentTarget, then do eqSweepsPerStep sweeps
+            bool reachedStep = (mfd.fVector[dim] >= currentTarget);
+            int eqSweepsDone = 0;
+            int movesInSweep = 0;
+            int sweepSize = max(currentTarget, 1000);
+
+            while (eqSweepsDone < eqSweepsPerStep)
+            {
+                if (unusedVertices.empty)
+                {
+                    nextVertex++;
+                    unusedVertices ~= nextVertex;
+                }
+
+                auto proposed = proposeMoveOptimized(mfd, unusedVertices.back);
+                auto bm = proposed.move;
+                totalTried++;
+
+                real deltaObj = speculativeDelta(mfd, bm, currentObjective, params);
+
+                if ((deltaObj > 0) && (uniform01 > exp(-deltaObj)))
+                {
+                    // Rejected
+                }
+                else
+                {
+                    mfd.doMove(bm);
+                    if (bm.coCenter.length == 1) unusedVertices.popBack;
+                    if (bm.center.length == 1) unusedVertices ~= bm.center;
+                    currentObjective += deltaObj;
+                    totalAccepted++;
+
+                    if (bm.coCenter.length == 1 && bm.coCenter[0] >= nextVertex)
+                        nextVertex = bm.coCenter[0] + 1;
+
+                    if (reachedStep) movesInSweep++;
+                }
+
+                if (!reachedStep && mfd.fVector[dim] >= currentTarget)
+                {
+                    reachedStep = true;
+                    movesInSweep = 0;
+                }
+
+                if (reachedStep && movesInSweep >= sweepSize)
+                {
+                    eqSweepsDone++;
+                    movesInSweep = 0;
+                }
+            }
+        }
+
+        // Log sweep 0 at the moment we finish ramping
+        auto finalParams = BenchParams(targetSize);
+        auto currentObjective = computeObjective(mfd, finalParams);
+        logSweep(mfd, "ramped", 0, totalAccepted, totalTried, finalParams, timer);
+
+        // Now run totalSweeps of equilibration at final target
+        runEquilibrationFromState(mfd, "ramped", targetSize, totalSweeps,
+            nextVertex, unusedVertices, totalAccepted, totalTried, timer);
+    }
+
+    writeln("done");
+    stdout.flush();
+}
+
+void logSweep(ref const Manifold!dim mfd, string label, int sweep,
+    ulong totalAccepted, ulong totalTried, BenchParams params, ref StopWatch timer)
+{
+    auto pen = mfd.penalties(params);
+    auto obj = objectiveFromPenalty(pen, params);
+    auto elapsed = timer.peek.total!"msecs" / 1000.0;
+    writefln("%s,%d,%.4f,%.2f,%.2f,%.3f,%d,%.1f",
+        label, sweep,
+        totalTried > 0 ? cast(real) totalAccepted / totalTried : 0.0,
+        obj, pen.localSolidAngleCurvPenalty,
+        mfd.degreeVariance(0), mfd.fVector[dim], elapsed);
+    stdout.flush();
+}
+
+void runEquilibration(ref Manifold!dim mfd, string label, int targetSize,
+    int totalSweeps, int nextVertex)
+{
+    auto params = BenchParams(targetSize);
+    auto currentObjective = computeObjective(mfd, params);
+    int[] unusedVertices = [nextVertex];
+
+    ulong totalAccepted = 0;
+    ulong totalTried = 0;
+
+    StopWatch timer;
+    timer.start();
+
+    foreach (sweep; 0 .. totalSweeps)
+    {
+        logSweep(mfd, label, sweep, totalAccepted, totalTried, params, timer);
+
+        int accepted = 0;
+        while (accepted < targetSize)
+        {
+            if (unusedVertices.empty)
+            {
+                nextVertex++;
+                unusedVertices ~= nextVertex;
+            }
+
+            auto proposed = proposeMoveOptimized(mfd, unusedVertices.back);
+            auto bm = proposed.move;
+            totalTried++;
+
+            real deltaObj = speculativeDelta(mfd, bm, currentObjective, params);
+
+            if ((deltaObj > 0) && (uniform01 > exp(-deltaObj)))
+            {
+                // Rejected
+            }
+            else
+            {
+                mfd.doMove(bm);
+                if (bm.coCenter.length == 1) unusedVertices.popBack;
+                if (bm.center.length == 1) unusedVertices ~= bm.center;
+                currentObjective += deltaObj;
+                accepted++;
+                totalAccepted++;
+
+                if (bm.coCenter.length == 1 && bm.coCenter[0] >= nextVertex)
+                    nextVertex = bm.coCenter[0] + 1;
+            }
+        }
+    }
+}
+
+void runEquilibrationFromState(ref Manifold!dim mfd, string label, int targetSize,
+    int totalSweeps, ref int nextVertex, ref int[] unusedVertices,
+    ref ulong totalAccepted, ref ulong totalTried, ref StopWatch timer)
+{
+    auto params = BenchParams(targetSize);
+    auto currentObjective = computeObjective(mfd, params);
+
+    foreach (sweep; 1 .. totalSweeps + 1)
+    {
+        logSweep(mfd, label, sweep, totalAccepted, totalTried, params, timer);
+
+        int accepted = 0;
+        while (accepted < targetSize)
+        {
+            if (unusedVertices.empty)
+            {
+                nextVertex++;
+                unusedVertices ~= nextVertex;
+            }
+
+            auto proposed = proposeMoveOptimized(mfd, unusedVertices.back);
+            auto bm = proposed.move;
+            totalTried++;
+
+            real deltaObj = speculativeDelta(mfd, bm, currentObjective, params);
+
+            if ((deltaObj > 0) && (uniform01 > exp(-deltaObj)))
+            {
+                // Rejected
+            }
+            else
+            {
+                mfd.doMove(bm);
+                if (bm.coCenter.length == 1) unusedVertices.popBack;
+                if (bm.center.length == 1) unusedVertices ~= bm.center;
+                currentObjective += deltaObj;
+                accepted++;
+                totalAccepted++;
+
+                if (bm.coCenter.length == 1 && bm.coCenter[0] >= nextVertex)
+                    nextVertex = bm.coCenter[0] + 1;
+            }
+        }
+    }
 }
 
 Manifold!dim growWithBenchmarks(ref Manifold!dim seed, int[] benchSizes)
@@ -214,8 +395,8 @@ Manifold!dim growWithBenchmarks(ref Manifold!dim seed, int[] benchSizes)
             printDegreeStats(mfd);
 
             auto mfd1 = mfd;
-            writef("  speculative (profiled):");
-            benchmarkSpeculativeProfiled(mfd1, actualTets);
+            writef("  speculative:");
+            benchmarkSpeculative!true(mfd1, actualTets);
 
             version (TrackValidMoves)
             {
