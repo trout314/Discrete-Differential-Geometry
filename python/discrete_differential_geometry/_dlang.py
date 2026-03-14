@@ -367,3 +367,29 @@ _lib.ddg_sampler_get_manifold.errcheck = _check_null
 
 _lib.ddg_sampler_free.argtypes = [ctypes.c_void_p]
 _lib.ddg_sampler_free.restype = None
+
+_lib.ddg_sampler_set_gc_interval.argtypes = [ctypes.c_void_p, ctypes.c_long]
+_lib.ddg_sampler_set_gc_interval.restype = None
+
+# Sampler direct queries (avoid manifold copy)
+
+_lib.ddg_sampler_f_vector.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_long), ctypes.c_int,
+]
+_lib.ddg_sampler_f_vector.restype = ctypes.c_int
+_lib.ddg_sampler_f_vector.errcheck = _check_int
+
+_lib.ddg_sampler_importance_weight.argtypes = [ctypes.c_void_p]
+_lib.ddg_sampler_importance_weight.restype = ctypes.c_double
+
+_lib.ddg_sampler_simplices.argtypes = [
+    ctypes.c_void_p, ctypes.c_int, ctypes.POINTER(ctypes.c_int),
+]
+_lib.ddg_sampler_simplices.restype = ctypes.c_long
+_lib.ddg_sampler_simplices.errcheck = _check_int
+
+_lib.ddg_sampler_degree.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_int), ctypes.c_int,
+]
+_lib.ddg_sampler_degree.restype = ctypes.c_long
+_lib.ddg_sampler_degree.errcheck = _check_int

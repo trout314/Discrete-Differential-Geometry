@@ -51,7 +51,8 @@ class ManifoldSampler:
         Sampling parameters.
     """
 
-    def __init__(self, manifold: Manifold, params: SamplerParams):
+    def __init__(self, manifold: Manifold, params: SamplerParams, *,
+                 gc_collect_interval: int = 10_000):
         self._params = params
         self._handle = _lib.ddg_sampler_create(
             manifold._handle,
@@ -62,6 +63,8 @@ class ManifoldSampler:
             params.hinge_degree_variance_coef,
             params.codim3_degree_variance_coef,
         )
+        if gc_collect_interval != 10_000:  # only call if non-default
+            _lib.ddg_sampler_set_gc_interval(self._handle, gc_collect_interval)
         # Hold a reference to keep the callback alive
         self._callback_ref = None
 
@@ -129,10 +132,41 @@ class ManifoldSampler:
 
     @property
     def manifold(self) -> Manifold:
-        """Get the current manifold state (borrows handle, do not free)."""
+        """Get the current manifold state (copies the manifold)."""
         mfd_handle = _lib.ddg_sampler_get_manifold(self._handle)
         # Create a copy so the Python Manifold owns its handle
         copy_handle = _lib.ddg_manifold_copy(mfd_handle)
         obj = Manifold.__new__(Manifold)
         obj._handle = copy_handle
         return obj
+
+    # -- Direct queries (no copy) --
+
+    @property
+    def f_vector(self) -> "np.ndarray":
+        """Get the f-vector of the sampler's current manifold (no copy)."""
+        import numpy as np
+        buf = (ctypes.c_long * 10)()
+        n = _lib.ddg_sampler_f_vector(self._handle, buf, 10)
+        return np.array(buf[:n], dtype=np.int64)
+
+    def importance_weight(self) -> float:
+        """Get the importance weight of the sampler's current manifold (no copy)."""
+        return _lib.ddg_sampler_importance_weight(self._handle)
+
+    def simplices(self, dim: int) -> "np.ndarray":
+        """Get simplices of given dimension from the sampler's current manifold (no copy)."""
+        import numpy as np
+        count = _lib.ddg_sampler_simplices(self._handle, dim, None)
+        if count == 0:
+            return np.empty((0, dim + 1), dtype=np.intc)
+        buf = (ctypes.c_int * (count * (dim + 1)))()
+        _lib.ddg_sampler_simplices(self._handle, dim, buf)
+        return np.frombuffer(buf, dtype=np.intc).reshape(count, dim + 1).copy()
+
+    def degree(self, simplex) -> int:
+        """Get the degree of a simplex in the sampler's current manifold (no copy)."""
+        import numpy as np
+        arr = np.asarray(simplex, dtype=np.intc).ravel()
+        ptr = arr.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
+        return _lib.ddg_sampler_degree(self._handle, ptr, len(arr))

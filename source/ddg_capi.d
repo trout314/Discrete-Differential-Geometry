@@ -47,6 +47,24 @@ private struct ManifoldWrapper(int dim)
 }
 
 // ---------------------------------------------------------------------------
+// GC root management
+// ---------------------------------------------------------------------------
+// Objects allocated with `new` live on D's GC heap, but when the only
+// reference is held by Python (via ctypes void*), the GC cannot see it.
+// We pin objects with GC.addRoot when handing them to C and unpin with
+// GC.removeRoot when the C side calls _free.
+
+private void pinForC(void* ptr) nothrow
+{
+    if (ptr !is null) GC.addRoot(ptr);
+}
+
+private void unpinForC(void* ptr) nothrow
+{
+    if (ptr !is null) GC.removeRoot(ptr);
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -76,13 +94,14 @@ extern(C) void* ddg_manifold_standard_sphere(int dim) nothrow
         h.dim = dim;
         switch (dim)
         {
-            case 2: auto w = new ManifoldWrapper!2; w.mfd = standardSphere!2; h.ptr = cast(void*) w; break;
-            case 3: auto w = new ManifoldWrapper!3; w.mfd = standardSphere!3; h.ptr = cast(void*) w; break;
-            case 4: auto w = new ManifoldWrapper!4; w.mfd = standardSphere!4; h.ptr = cast(void*) w; break;
+            case 2: auto w = new ManifoldWrapper!2; w.mfd = standardSphere!2; h.ptr = cast(void*) w; pinForC(cast(void*) w); break;
+            case 3: auto w = new ManifoldWrapper!3; w.mfd = standardSphere!3; h.ptr = cast(void*) w; pinForC(cast(void*) w); break;
+            case 4: auto w = new ManifoldWrapper!4; w.mfd = standardSphere!4; h.ptr = cast(void*) w; pinForC(cast(void*) w); break;
             default:
                 setError("unsupported dimension: " ~ dim.to!string ~ " (must be 2, 3, or 4)");
                 return null;
         }
+        pinForC(cast(void*) h);
         return cast(void*) h;
     }
     catch (Exception e) { setError(e.msg); return null; }
@@ -102,13 +121,14 @@ extern(C) void* ddg_manifold_from_facets(int dim, const(int)* data, int num_face
         h.dim = dim;
         switch (dim)
         {
-            case 2: auto w = new ManifoldWrapper!2; w.mfd = Manifold!(2, int)(facets); h.ptr = cast(void*) w; break;
-            case 3: auto w = new ManifoldWrapper!3; w.mfd = Manifold!(3, int)(facets); h.ptr = cast(void*) w; break;
-            case 4: auto w = new ManifoldWrapper!4; w.mfd = Manifold!(4, int)(facets); h.ptr = cast(void*) w; break;
+            case 2: auto w = new ManifoldWrapper!2; w.mfd = Manifold!(2, int)(facets); h.ptr = cast(void*) w; pinForC(cast(void*) w); break;
+            case 3: auto w = new ManifoldWrapper!3; w.mfd = Manifold!(3, int)(facets); h.ptr = cast(void*) w; pinForC(cast(void*) w); break;
+            case 4: auto w = new ManifoldWrapper!4; w.mfd = Manifold!(4, int)(facets); h.ptr = cast(void*) w; pinForC(cast(void*) w); break;
             default:
                 setError("unsupported dimension: " ~ dim.to!string);
                 return null;
         }
+        pinForC(cast(void*) h);
         return cast(void*) h;
     }
     catch (Exception e) { setError(e.msg); return null; }
@@ -124,13 +144,14 @@ extern(C) void* ddg_manifold_load(const(char)* path, int dim) nothrow
         h.dim = dim;
         switch (dim)
         {
-            case 2: auto w = new ManifoldWrapper!2; w.mfd = loadManifold!2(fileName); h.ptr = cast(void*) w; break;
-            case 3: auto w = new ManifoldWrapper!3; w.mfd = loadManifold!3(fileName); h.ptr = cast(void*) w; break;
-            case 4: auto w = new ManifoldWrapper!4; w.mfd = loadManifold!4(fileName); h.ptr = cast(void*) w; break;
+            case 2: auto w = new ManifoldWrapper!2; w.mfd = loadManifold!2(fileName); h.ptr = cast(void*) w; pinForC(cast(void*) w); break;
+            case 3: auto w = new ManifoldWrapper!3; w.mfd = loadManifold!3(fileName); h.ptr = cast(void*) w; pinForC(cast(void*) w); break;
+            case 4: auto w = new ManifoldWrapper!4; w.mfd = loadManifold!4(fileName); h.ptr = cast(void*) w; pinForC(cast(void*) w); break;
             default:
                 setError("unsupported dimension: " ~ dim.to!string);
                 return null;
         }
+        pinForC(cast(void*) h);
         return cast(void*) h;
     }
     catch (Exception e) { setError(e.msg); return null; }
@@ -147,11 +168,12 @@ extern(C) void* ddg_manifold_copy(void* handle) nothrow
         h.dim = src.dim;
         switch (src.dim)
         {
-            case 2: auto w = new ManifoldWrapper!2; w.mfd = (cast(ManifoldWrapper!2*) src.ptr).mfd; h.ptr = cast(void*) w; break;
-            case 3: auto w = new ManifoldWrapper!3; w.mfd = (cast(ManifoldWrapper!3*) src.ptr).mfd; h.ptr = cast(void*) w; break;
-            case 4: auto w = new ManifoldWrapper!4; w.mfd = (cast(ManifoldWrapper!4*) src.ptr).mfd; h.ptr = cast(void*) w; break;
+            case 2: auto w = new ManifoldWrapper!2; w.mfd = (cast(ManifoldWrapper!2*) src.ptr).mfd; h.ptr = cast(void*) w; pinForC(cast(void*) w); break;
+            case 3: auto w = new ManifoldWrapper!3; w.mfd = (cast(ManifoldWrapper!3*) src.ptr).mfd; h.ptr = cast(void*) w; pinForC(cast(void*) w); break;
+            case 4: auto w = new ManifoldWrapper!4; w.mfd = (cast(ManifoldWrapper!4*) src.ptr).mfd; h.ptr = cast(void*) w; pinForC(cast(void*) w); break;
             default: setError("bad dimension"); return null;
         }
+        pinForC(cast(void*) h);
         return cast(void*) h;
     }
     catch (Exception e) { setError(e.msg); return null; }
@@ -159,7 +181,10 @@ extern(C) void* ddg_manifold_copy(void* handle) nothrow
 
 extern(C) void ddg_manifold_free(void* handle) nothrow
 {
-    // No-op: D's GC will collect.
+    if (handle is null) return;
+    auto h = cast(ManifoldHandle*) handle;
+    unpinForC(h.ptr);
+    unpinForC(handle);
 }
 
 // ---------------------------------------------------------------------------
@@ -551,6 +576,7 @@ extern(C) void* ddg_sc_create() nothrow
     try
     {
         auto w = new SimplicialComplex!int;
+        pinForC(cast(void*) w);
         return cast(void*) w;
     }
     catch (Exception e) { setError(e.msg); return null; }
@@ -567,6 +593,7 @@ extern(C) void* ddg_sc_from_facets(const(int)* data, int num_facets, int verts_p
 
         auto w = new SimplicialComplex!int;
         *w = SimplicialComplex!int(facets);
+        pinForC(cast(void*) w);
         return cast(void*) w;
     }
     catch (Exception e) { setError(e.msg); return null; }
@@ -580,6 +607,7 @@ extern(C) void* ddg_sc_load(const(char)* path) nothrow
         string fileName = toStr(path);
         auto w = new SimplicialComplex!int;
         *w = loadSimplicialComplex!int(fileName);
+        pinForC(cast(void*) w);
         return cast(void*) w;
     }
     catch (Exception e) { setError(e.msg); return null; }
@@ -594,6 +622,7 @@ extern(C) void* ddg_sc_copy(void* handle) nothrow
         auto src = cast(SimplicialComplex!int*) handle;
         auto w = new SimplicialComplex!int;
         *w = *src;
+        pinForC(cast(void*) w);
         return cast(void*) w;
     }
     catch (Exception e) { setError(e.msg); return null; }
@@ -601,7 +630,7 @@ extern(C) void* ddg_sc_copy(void* handle) nothrow
 
 extern(C) void ddg_sc_free(void* handle) nothrow
 {
-    // No-op: D's GC will collect.
+    unpinForC(handle);
 }
 
 // ---------------------------------------------------------------------------
@@ -893,6 +922,7 @@ extern(C) int ddg_sc_connected_components(void* handle, void** out_handles) noth
             {
                 auto w = new SimplicialComplex!int;
                 *w = comp;
+                pinForC(cast(void*) w);
                 out_handles[i] = cast(void*) w;
             }
         }
@@ -984,6 +1014,7 @@ extern(C) void* ddg_sc_join(void* handle1, void* handle2) nothrow
         auto result = join(*sc1, *sc2);
         auto w = new SimplicialComplex!int;
         *w = SimplicialComplex!int(result.facets);
+        pinForC(cast(void*) w);
         return cast(void*) w;
     }
     catch (Exception e) { setError(e.msg); return null; }
@@ -1007,6 +1038,8 @@ private struct SamplerState
     double numHingesCoef;
     double hingeDegreeVarianceCoef;
     double coDim3DegreeVarianceCoef;
+
+    long gcCollectInterval = 10_000;  // collect every N moves (0 = no periodic collection)
 }
 
 extern(C) void* ddg_sampler_create(void* manifold_handle,
@@ -1040,6 +1073,7 @@ extern(C) void* ddg_sampler_create(void* manifold_handle,
             default: setError("bad dimension"); return null;
         }
 
+        pinForC(cast(void*) state);
         return cast(void*) state;
     }
     catch (Exception e) { setError(e.msg); return null; }
@@ -1081,13 +1115,28 @@ extern(C) long ddg_sampler_run(void* sampler_handle, long num_moves,
 
             auto currentObjective = mw.mfd.objective(params);
             long accepted = 0;
+            immutable gcInterval = s.gcCollectInterval;
+
+            // Disable GC during hot loop; collect periodically to prevent
+            // unbounded memory growth from chooseRandomMove temporaries.
+            if (gcInterval > 0) GC.disable();
 
             foreach (moveNum; 0 .. numMoves)
             {
                 if (cb !is null && moveNum % 1000 == 0 && moveNum > 0)
                 {
                     if (cb(moveNum, numMoves, ud) != 0)
+                    {
+                        if (gcInterval > 0) { GC.enable(); GC.collect(); }
                         return accepted;
+                    }
+                }
+
+                if (gcInterval > 0 && moveNum % gcInterval == 0 && moveNum > 0)
+                {
+                    GC.enable();
+                    GC.collect();
+                    GC.disable();
                 }
 
                 if (s.unusedVertices.length == 0)
@@ -1114,6 +1163,8 @@ extern(C) long ddg_sampler_run(void* sampler_handle, long num_moves,
                     accepted++;
                 }
             }
+
+            if (gcInterval > 0) { GC.enable(); GC.collect(); }
 
             if (cb !is null)
                 cb(numMoves, numMoves, ud);
@@ -1170,13 +1221,26 @@ extern(C) long ddg_sampler_run_exact(void* sampler_handle, long num_moves,
 
             auto currentObjective = mw.mfd.objective(params);
             long accepted = 0;
+            immutable gcInterval = s.gcCollectInterval;
+
+            if (gcInterval > 0) GC.disable();
 
             foreach (moveNum; 0 .. numMoves)
             {
                 if (cb !is null && moveNum % 1000 == 0 && moveNum > 0)
                 {
                     if (cb(moveNum, numMoves, ud) != 0)
+                    {
+                        if (gcInterval > 0) { GC.enable(); GC.collect(); }
                         return accepted;
+                    }
+                }
+
+                if (gcInterval > 0 && moveNum % gcInterval == 0 && moveNum > 0)
+                {
+                    GC.enable();
+                    GC.collect();
+                    GC.disable();
                 }
 
                 if (s.unusedVertices.length == 0)
@@ -1219,6 +1283,8 @@ extern(C) long ddg_sampler_run_exact(void* sampler_handle, long num_moves,
                 }
             }
 
+            if (gcInterval > 0) { GC.enable(); GC.collect(); }
+
             if (cb !is null)
                 cb(numMoves, numMoves, ud);
 
@@ -1245,5 +1311,66 @@ extern(C) void* ddg_sampler_get_manifold(void* sampler_handle) nothrow
 
 extern(C) void ddg_sampler_free(void* handle) nothrow
 {
-    // No-op: D's GC will collect.
+    if (handle is null) return;
+    auto state = cast(SamplerState*) handle;
+    // Free the sampler's internal manifold copy
+    ddg_manifold_free(state.manifoldHandle);
+    unpinForC(handle);
+}
+
+/// Set the GC collection interval (in moves). The sampler disables the D GC
+/// during its hot loop and collects every `interval` moves to prevent unbounded
+/// memory growth from temporary allocations. Set to 0 to disable periodic
+/// collection (not recommended for long runs).
+extern(C) void ddg_sampler_set_gc_interval(void* sampler_handle, long interval) nothrow
+{
+    if (sampler_handle is null) return;
+    (cast(SamplerState*) sampler_handle).gcCollectInterval = interval;
+}
+
+// ---------------------------------------------------------------------------
+// Sampler direct queries (avoid copying the manifold)
+// ---------------------------------------------------------------------------
+
+extern(C) int ddg_sampler_f_vector(void* sampler_handle, long* out_buf, int buf_len) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null handle"); return -1; }
+        auto mfd_handle = (cast(SamplerState*) sampler_handle).manifoldHandle;
+        return ddg_manifold_f_vector(mfd_handle, out_buf, buf_len);
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+extern(C) double ddg_sampler_importance_weight(void* sampler_handle) nothrow
+{
+    if (sampler_handle is null) return double.nan;
+    auto mfd_handle = (cast(SamplerState*) sampler_handle).manifoldHandle;
+    return ddg_manifold_importance_weight(mfd_handle);
+}
+
+extern(C) long ddg_sampler_simplices(void* sampler_handle, int dim, int* out_data) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null handle"); return -1; }
+        auto mfd_handle = (cast(SamplerState*) sampler_handle).manifoldHandle;
+        return ddg_manifold_simplices(mfd_handle, dim, out_data);
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+extern(C) long ddg_sampler_degree(void* sampler_handle, const(int)* simplex, int len) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null handle"); return -1; }
+        auto mfd_handle = (cast(SamplerState*) sampler_handle).manifoldHandle;
+        return ddg_manifold_degree(mfd_handle, simplex, len);
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
 }
