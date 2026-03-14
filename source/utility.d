@@ -1343,6 +1343,97 @@ pure @system unittest
     (sa ~= [3,4]).throwsWithMsg("slice to concatenate is too long");
 }
 
+/*******************************************************************************
+Heap-allocated resizable array with manual length tracking.  Pre-allocate
+with reserve() so that subsequent ~= / length= are GC-free.
+No `alias this` — all access is explicit to avoid overload ambiguity.
+*/
+struct PreAllocArray(T)
+{
+private:
+    T[] _data;
+    uint _length;
+
+public:
+    void reserve(size_t cap)
+    {
+        if (_data.length < cap)
+        {
+            auto newData = new T[cap];
+            if (_length > 0)
+                newData[0 .. _length] = _data[0 .. _length];
+            _data = newData;
+        }
+    }
+
+    size_t length() const pure nothrow @nogc @safe { return _length; }
+
+    void length(size_t n) pure nothrow @nogc @safe
+    {
+        assert(n <= _data.length, "PreAllocArray length exceeds capacity");
+        _length = cast(uint) n;
+    }
+
+    size_t capacity() const pure nothrow @nogc @safe { return _data.length; }
+
+    void opOpAssign(string op : "~")(T item)
+    {
+        if (_length >= _data.length)
+            _data.length = _data.length < 16 ? 16 : _data.length * 2;
+        _data[_length++] = item;
+    }
+
+    void clear() pure nothrow @nogc @safe { _length = 0; }
+
+    inout(T)[] opSlice() inout pure nothrow @nogc @safe
+    {
+        return _data[0 .. _length];
+    }
+
+    ref inout(T) opIndex(size_t i) inout pure nothrow @nogc @safe
+    {
+        return _data[i];
+    }
+
+    inout(T)[] opSlice(size_t lo, size_t hi) inout pure nothrow @nogc @safe
+    {
+        return _data[lo .. hi];
+    }
+
+    size_t opDollar() const pure nothrow @nogc @safe { return _length; }
+
+    PreAllocArray dup() const
+    {
+        PreAllocArray copy;
+        if (_data.length > 0)
+        {
+            copy._data = _data.dup;
+            copy._length = _length;
+        }
+        return copy;
+    }
+}
+
+///
+unittest
+{
+    PreAllocArray!int pa;
+    pa.reserve(8);
+    pa ~= 10; pa ~= 20; pa ~= 30;
+    assert(pa[] == [10, 20, 30]);
+    assert(pa[1] == 20);
+    assert(pa[0 .. 2] == [10, 20]);
+
+    pa.length = 1;
+    pa ~= 99;
+    assert(pa[] == [10, 99]);
+
+    auto copy = pa.dup();
+    copy ~= 5;
+    assert(copy[] == [10, 99, 5]);
+    assert(pa[] == [10, 99]); // original unchanged
+}
+
 /******************************************************************************
 Returns the factorial of the input. Supports inputs up to 20.
 */

@@ -82,8 +82,9 @@ private:
     uint[dimension_ + 1] numSimplices;
     ulong[dimension - 1] totSqrDegrees;
 
-    // Facet array for O(1) random access
-    Facet[] _facetArray;
+    // Facet array for O(1) random access.
+    // PreAllocArray: once reserved, ~= and length= are GC-free.
+    PreAllocArray!Facet _facetArray;
     HashMap!(Facet, uint) _facetArrayIdx;
 
     version (TrackValidMoves)
@@ -203,13 +204,20 @@ public:
         }
     }
 
+    /// Pre-allocate _facetArray for at least `targetFacets` facets
+    /// so that subsequent insert/remove operations do not trigger GC.
+    void reserveCapacity()(size_t targetFacets)
+    {
+        _facetArray.reserve(targetFacets * 2 + 16);
+    }
+
     this(this)
     {
         _vertexDegrees = _vertexDegrees.dup;
         static foreach (d; 1 .. dimension_)
             mixin("_dimMap" ~ to!string(d) ~ " = _dimMap" ~ to!string(d) ~ ".dup;");
 
-        _facetArray = _facetArray.dup;
+        _facetArray = _facetArray.dup();
         _facetArrayIdx = _facetArrayIdx.dup;
 
         version (TrackValidMoves)
@@ -634,8 +642,7 @@ public:
                 _facetArray[fIdx] = fLast;
                 _facetArrayIdx[fLast] = fIdx;
             }
-            _facetArray = _facetArray[0 .. fLastIdx];
-            reclaimCapacity(_facetArray);
+            _facetArray.length = fLastIdx;
             _facetArrayIdx.remove(facetBuffer);
         }
 
@@ -696,7 +703,7 @@ public:
             case dimension:
             {
                 const(Vertex)[][] result;
-                foreach (ref f; _facetArray)
+                foreach (ref f; _facetArray[])
                     result ~= cast(const(Vertex)[]) f[].dup;
                 return result;
             }
@@ -739,7 +746,7 @@ public:
                 if (buf is null)
                     return cast(long) numSimplices[dimension];
                 int idx = 0;
-                foreach (ref f; _facetArray)
+                foreach (ref f; _facetArray[])
                     foreach (v; f[])
                         buf[idx++] = v;
                 return cast(long) numSimplices[dimension];
@@ -756,7 +763,7 @@ public:
         if (buf is null)
             return cast(long) numSimplices[dimension];
         int idx = 0;
-        foreach (ref f; _facetArray)
+        foreach (ref f; _facetArray[])
             foreach (v; f[])
                 buf[idx++] = v;
         return cast(long) numSimplices[dimension];
@@ -766,7 +773,7 @@ public:
     const(Vertex)[][] facets()() const
     {
         const(Vertex)[][] result;
-        foreach (ref f; _facetArray)
+        foreach (ref f; _facetArray[])
             result ~= cast(const(Vertex)[]) f[].dup;
         result.sort();
         return result;
@@ -2104,7 +2111,7 @@ string[] findProblems(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
         }
     }}
     // Check facets in _facetArrayIdx are in SC
-    foreach (ref f; mfd._facetArray)
+    foreach (ref f; mfd._facetArray[])
     {
         if (!sc.contains(f[]))
         {

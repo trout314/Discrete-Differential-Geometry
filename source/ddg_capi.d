@@ -1059,11 +1059,19 @@ extern(C) void* ddg_sampler_create(void* manifold_handle,
         state.hingeDegreeVarianceCoef = hingeDegreeVarianceCoef;
         state.coDim3DegreeVarianceCoef = coDim3DegreeVarianceCoef;
 
+        // Pre-allocate _facetArray so doMove doesn't trigger GC
+        void reserveAndGetUnused(int dim)(SamplerState* s)
+        {
+            auto mw = cast(ManifoldWrapper!dim*)(cast(ManifoldHandle*) s.manifoldHandle).ptr;
+            mw.mfd.reserveCapacity(s.numFacetsTarget);
+            s.unusedVertices = getUnusedVertices!dim(mw.mfd);
+        }
+
         switch (mh.dim)
         {
-            case 2: state.unusedVertices = getUnusedVertices!2((cast(ManifoldWrapper!2*)(cast(ManifoldHandle*) state.manifoldHandle).ptr).mfd); break;
-            case 3: state.unusedVertices = getUnusedVertices!3((cast(ManifoldWrapper!3*)(cast(ManifoldHandle*) state.manifoldHandle).ptr).mfd); break;
-            case 4: state.unusedVertices = getUnusedVertices!4((cast(ManifoldWrapper!4*)(cast(ManifoldHandle*) state.manifoldHandle).ptr).mfd); break;
+            case 2: reserveAndGetUnused!2(state); break;
+            case 3: reserveAndGetUnused!3(state); break;
+            case 4: reserveAndGetUnused!4(state); break;
             default: setError("bad dimension"); return null;
         }
 
