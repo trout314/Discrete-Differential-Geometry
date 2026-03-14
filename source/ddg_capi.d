@@ -382,6 +382,53 @@ extern(C) long ddg_manifold_degree(void* handle, const(int)* simplex_data, int s
     catch (Exception e) { setError(e.msg); return -1; }
 }
 
+/// Count the number of valid Pachner moves (including stellar subdivisions).
+extern(C) long ddg_manifold_count_valid_moves(void* handle) nothrow
+{
+    clearError();
+    try
+    {
+        if (handle is null) { setError("null handle"); return -1; }
+        auto h = cast(ManifoldHandle*) handle;
+        switch (h.dim)
+        {
+            case 2: return cast(long)(cast(ManifoldWrapper!2*) h.ptr).mfd.countValidBistellarMoves;
+            case 3: return cast(long)(cast(ManifoldWrapper!3*) h.ptr).mfd.countValidBistellarMoves;
+            case 4: return cast(long)(cast(ManifoldWrapper!4*) h.ptr).mfd.countValidBistellarMoves;
+            default: setError("bad dimension"); return -1;
+        }
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Return F(x)/V(x): the importance weight that corrects the approximate
+/// sampler's stationary distribution back to exp(-objective(x)).
+extern(C) double ddg_manifold_importance_weight(void* handle) nothrow
+{
+    clearError();
+    try
+    {
+        if (handle is null) { setError("null handle"); return -1; }
+        auto h = cast(ManifoldHandle*) handle;
+
+        double compute(int dim)(ManifoldWrapper!dim* mw)
+        {
+            auto V = cast(double) mw.mfd.countValidBistellarMoves;
+            auto F = cast(double) mw.mfd.numFacets;
+            return F / V;
+        }
+
+        switch (h.dim)
+        {
+            case 2: return compute!2(cast(ManifoldWrapper!2*) h.ptr);
+            case 3: return compute!3(cast(ManifoldWrapper!3*) h.ptr);
+            case 4: return compute!4(cast(ManifoldWrapper!4*) h.ptr);
+            default: setError("bad dimension"); return -1;
+        }
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
 extern(C) double ddg_manifold_mean_degree(void* handle, int simp_dim) nothrow
 {
     clearError();

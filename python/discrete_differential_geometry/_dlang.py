@@ -138,6 +138,13 @@ _lib.ddg_manifold_degree.argtypes = [
 _lib.ddg_manifold_degree.restype = ctypes.c_long
 _lib.ddg_manifold_degree.errcheck = _check_int
 
+_lib.ddg_manifold_count_valid_moves.argtypes = [ctypes.c_void_p]
+_lib.ddg_manifold_count_valid_moves.restype = ctypes.c_long
+_lib.ddg_manifold_count_valid_moves.errcheck = _check_int
+
+_lib.ddg_manifold_importance_weight.argtypes = [ctypes.c_void_p]
+_lib.ddg_manifold_importance_weight.restype = ctypes.c_double
+
 _lib.ddg_manifold_mean_degree.argtypes = [ctypes.c_void_p, ctypes.c_int]
 _lib.ddg_manifold_mean_degree.restype = ctypes.c_double
 

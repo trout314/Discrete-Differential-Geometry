@@ -118,6 +118,22 @@ class Manifold:
         """Return the mean degree of simplices of given dimension."""
         return _lib.ddg_manifold_mean_degree(self._handle, dim)
 
+    def count_valid_moves(self) -> int:
+        """Count valid Pachner moves (including stellar subdivisions)."""
+        return _lib.ddg_manifold_count_valid_moves(self._handle)
+
+    def importance_weight(self) -> float:
+        """Return F(x)/V(x), the importance weight correcting the approximate
+        sampler's stationary distribution back to exp(-objective(x)).
+
+        The approximate sampler (without TrackValidMoves) samples from
+        pi(x) ~ exp(-obj(x)) * V(x)/F(x) instead of exp(-obj(x)),
+        where V(x) is the number of valid Pachner moves and F(x) is the
+        number of facets. Multiplying observables by this weight corrects
+        for the bias.
+        """
+        return _lib.ddg_manifold_importance_weight(self._handle)
+
     # -- Moves --
 
     def do_move(self) -> None:

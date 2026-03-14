@@ -199,6 +199,39 @@ class TestDataAccess:
         assert m.mean_degree(2) == 3.0
         assert m.mean_degree(3) == 2.0
 
+    # -- Valid move count and importance weight --
+
+    def test_count_valid_moves_standard_spheres(self):
+        # Standard spheres have no bistellar moves, only stellar subdivisions
+        for dim in (2, 3, 4):
+            m = Manifold.standard_sphere(dim)
+            assert m.count_valid_moves() == m.num_facets
+
+    def test_count_valid_moves_after_subdivision(self):
+        m = Manifold.standard_sphere(3)
+        m.do_move()  # stellar subdivision creates new bistellar moves
+        assert m.count_valid_moves() > m.num_facets
+
+    def test_importance_weight_standard_sphere(self):
+        # V == F on standard spheres, so weight = 1
+        for dim in (2, 3, 4):
+            m = Manifold.standard_sphere(dim)
+            assert m.importance_weight() == 1.0
+
+    def test_importance_weight_after_moves(self):
+        m = Manifold.standard_sphere(3)
+        m.do_move()
+        w = m.importance_weight()
+        # V > F after subdivision, so weight = F/V < 1
+        assert 0 < w < 1.0
+
+    def test_importance_weight_equals_f_over_v(self):
+        m = Manifold.standard_sphere(3)
+        m.do_move()
+        m.do_move()
+        w = m.importance_weight()
+        assert abs(w - m.num_facets / m.count_valid_moves()) < 1e-12
+
 
 class TestMoves:
     def test_do_move_dim2(self):
