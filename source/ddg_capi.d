@@ -1171,6 +1171,112 @@ extern(C) long ddg_sampler_run(void* sampler_handle, long num_moves,
     catch (Exception e) { setError(e.msg); return -1; }
 }
 
+/// Run the sampler with NO Hastings correction — pure Metropolis on the objective.
+/// Stationary distribution is exp(-objective) * V, not exp(-objective).
+/// Use importance weight 1/V to correct.
+extern(C) long ddg_sampler_run_naive(void* sampler_handle, long num_moves,
+    CCallback callback, void* user_data) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null sampler handle"); return -1; }
+        auto state = cast(SamplerState*) sampler_handle;
+
+        long runNaive(int dim)(SamplerState* s, long numMoves,
+            CCallback cb, void* ud)
+        {
+            auto smh = cast(ManifoldHandle*) s.manifoldHandle;
+            auto mw = cast(ManifoldWrapper!dim*) smh.ptr;
+
+            struct Params
+            {
+                int numFacetsTarget;
+                real hingeDegreeTarget;
+                real numFacetsCoef;
+                real numHingesCoef;
+                real hingeDegreeVarianceCoef;
+                real coDim3DegreeVarianceCoef;
+            }
+
+            auto params = Params(
+                s.numFacetsTarget,
+                cast(real) s.hingeDegreeTarget,
+                cast(real) s.numFacetsCoef,
+                cast(real) s.numHingesCoef,
+                cast(real) s.hingeDegreeVarianceCoef,
+                cast(real) s.coDim3DegreeVarianceCoef
+            );
+
+            auto currentObjective = mw.mfd.objective(params);
+            long accepted = 0;
+
+            foreach (moveNum; 0 .. numMoves)
+            {
+                if (cb !is null && moveNum % 1000 == 0 && moveNum > 0)
+                {
+                    if (cb(moveNum, numMoves, ud) != 0)
+                        return accepted;
+                }
+
+                if (s.unusedVertices.length == 0)
+                    s.unusedVertices ~= cast(int) mw.mfd.fVector[0];
+
+                auto bm = mw.mfd.chooseRandomMove(s.unusedVertices[$ - 1], params);
+
+                real deltaObj = mw.mfd.speculativeBistellarDelta(bm, currentObjective, params);
+                // No Hastings correction — pure Metropolis
+                real logAlpha = -deltaObj;
+
+                if ((logAlpha >= 0) || (uniform01 <= exp(logAlpha)))
+                {
+                    mw.mfd.doMove(bm);
+                    if (bm.coCenter.length == 1)
+                    {
+                        if (s.unusedVertices.length > 0)
+                        {
+                            s.unusedVertices = s.unusedVertices[0 .. $ - 1];
+                            s.unusedVertices.assumeSafeAppend;
+                        }
+                    }
+                    if (bm.center.length == 1) s.unusedVertices ~= bm.center;
+                    currentObjective += deltaObj;
+                    accepted++;
+                }
+            }
+
+            if (cb !is null)
+                cb(numMoves, numMoves, ud);
+
+            return accepted;
+        }
+
+        switch (state.dim)
+        {
+            case 2: return runNaive!2(state, num_moves, callback, user_data);
+            case 3: return runNaive!3(state, num_moves, callback, user_data);
+            case 4: return runNaive!4(state, num_moves, callback, user_data);
+            default: setError("bad dimension"); return -1;
+        }
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Return 1/V importance weight for the naive sampler.
+extern(C) double ddg_sampler_naive_importance_weight(void* sampler_handle) nothrow
+{
+    if (sampler_handle is null) return double.nan;
+    auto mfd_handle = (cast(SamplerState*) sampler_handle).manifoldHandle;
+    auto h = cast(ManifoldHandle*) mfd_handle;
+    switch (h.dim)
+    {
+        case 2: return 1.0 / cast(double)(cast(ManifoldWrapper!2*) h.ptr).mfd.validMoveCount;
+        case 3: return 1.0 / cast(double)(cast(ManifoldWrapper!3*) h.ptr).mfd.validMoveCount;
+        case 4: return 1.0 / cast(double)(cast(ManifoldWrapper!4*) h.ptr).mfd.validMoveCount;
+        default: return double.nan;
+    }
+}
+
 /// Run the sampler with exact Hastings correction using countValidBistellarMoves.
 /// Execute-then-undo approach: slower per move but produces the exact target distribution.
 extern(C) long ddg_sampler_run_exact(void* sampler_handle, long num_moves,

@@ -76,6 +76,7 @@ class ManifoldSampler:
         sweeps: float | None = None,
         moves: int | None = None,
         exact: bool = False,
+        naive: bool = False,
         callback: Callable[[int, int], bool] | None = None,
     ) -> int:
         """Run the sampler.
@@ -91,8 +92,11 @@ class ManifoldSampler:
         exact : bool, optional
             If True, use exact Hastings correction (execute-then-undo with
             countValidBistellarMoves). Slower but samples from the exact
-            target distribution exp(-objective). Default False uses the
-            approximate nFacets ratio.
+            target distribution exp(-objective).
+        naive : bool, optional
+            If True, use NO Hastings correction (pure Metropolis on objective).
+            Stationary distribution is exp(-objective)*V. Use
+            naive_importance_weight() to correct.
         callback : callable, optional
             Called periodically with ``(moves_done, moves_total)``.
             Return ``True`` to stop early.
@@ -124,7 +128,12 @@ class ManifoldSampler:
             c_callback = _dlang.CALLBACK_TYPE()
             self._callback_ref = c_callback
 
-        run_fn = _lib.ddg_sampler_run_exact if exact else _lib.ddg_sampler_run
+        if exact:
+            run_fn = _lib.ddg_sampler_run_exact
+        elif naive:
+            run_fn = _lib.ddg_sampler_run_naive
+        else:
+            run_fn = _lib.ddg_sampler_run
         return run_fn(self._handle, moves, c_callback, None)
 
     @property
@@ -148,8 +157,12 @@ class ManifoldSampler:
         return np.array(buf[:n], dtype=np.int64)
 
     def importance_weight(self) -> float:
-        """Get the importance weight of the sampler's current manifold (no copy)."""
+        """Get F/V importance weight (corrects approximate sampler)."""
         return _lib.ddg_sampler_importance_weight(self._handle)
+
+    def naive_importance_weight(self) -> float:
+        """Get 1/V importance weight (corrects naive sampler with no Hastings)."""
+        return _lib.ddg_sampler_naive_importance_weight(self._handle)
 
     def simplices(self, dim: int) -> "np.ndarray":
         """Get simplices of given dimension from the sampler's current manifold (no copy)."""
