@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "discrete-differential-geometry"
+version = "0.1.0"
+description = "Python bindings for discrete differential geometry (combinatorial manifolds)"
+requires-python = ">=3.10"
+dependencies = ["numpy"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["python/discrete_differential_geometry"]
+artifacts = ["*.so", "*.dylib", "*.dll"]
+
+[tool.hatch.build.targets.wheel.sources]
+"python" = ""
+
+[tool.hatch.build.dev-mode-dirs]
+python = ""
+
+[tool.pytest.ini_options]
+pythonpath = ["python"]

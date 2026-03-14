@@ -75,6 +75,21 @@ executable('surface_cross_S1',
   install : true,
 )
 
+# ---------------------------------------------------------------------------
+# Shared library for Python/FFI bindings
+# ---------------------------------------------------------------------------
+
+shared_library('ddg_dlang',
+  lib_sources + files(
+    'source/ddg_capi.d',
+    'source/applications/manifold_sampler.d',
+  ),
+  include_directories : d_import_dirs,
+  d_args : ['-link-defaultlib-shared=false'],
+  name_prefix : '',
+  install : true,
+)
+
 executable('bench_sampler',
   lib_sources + files('bench_sampler.d'),
   include_directories : d_import_dirs,
