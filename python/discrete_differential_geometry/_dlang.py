@@ -368,9 +368,6 @@ _lib.ddg_sampler_get_manifold.errcheck = _check_null
 _lib.ddg_sampler_free.argtypes = [ctypes.c_void_p]
 _lib.ddg_sampler_free.restype = None
 
-_lib.ddg_sampler_set_gc_interval.argtypes = [ctypes.c_void_p, ctypes.c_long]
-_lib.ddg_sampler_set_gc_interval.restype = None
-
 # Sampler direct queries (avoid manifold copy)
 
 _lib.ddg_sampler_f_vector.argtypes = [

@@ -1039,7 +1039,6 @@ private struct SamplerState
     double hingeDegreeVarianceCoef;
     double coDim3DegreeVarianceCoef;
 
-    long gcCollectInterval = 10_000;  // collect every N moves (0 = no periodic collection)
 }
 
 extern(C) void* ddg_sampler_create(void* manifold_handle,
@@ -1115,28 +1114,13 @@ extern(C) long ddg_sampler_run(void* sampler_handle, long num_moves,
 
             auto currentObjective = mw.mfd.objective(params);
             long accepted = 0;
-            immutable gcInterval = s.gcCollectInterval;
-
-            // Disable GC during hot loop; collect periodically to prevent
-            // unbounded memory growth from chooseRandomMove temporaries.
-            if (gcInterval > 0) GC.disable();
 
             foreach (moveNum; 0 .. numMoves)
             {
                 if (cb !is null && moveNum % 1000 == 0 && moveNum > 0)
                 {
                     if (cb(moveNum, numMoves, ud) != 0)
-                    {
-                        if (gcInterval > 0) { GC.enable(); GC.collect(); }
                         return accepted;
-                    }
-                }
-
-                if (gcInterval > 0 && moveNum % gcInterval == 0 && moveNum > 0)
-                {
-                    GC.enable();
-                    GC.collect();
-                    GC.disable();
                 }
 
                 if (s.unusedVertices.length == 0)
@@ -1163,8 +1147,6 @@ extern(C) long ddg_sampler_run(void* sampler_handle, long num_moves,
                     accepted++;
                 }
             }
-
-            if (gcInterval > 0) { GC.enable(); GC.collect(); }
 
             if (cb !is null)
                 cb(numMoves, numMoves, ud);
@@ -1221,26 +1203,13 @@ extern(C) long ddg_sampler_run_exact(void* sampler_handle, long num_moves,
 
             auto currentObjective = mw.mfd.objective(params);
             long accepted = 0;
-            immutable gcInterval = s.gcCollectInterval;
-
-            if (gcInterval > 0) GC.disable();
 
             foreach (moveNum; 0 .. numMoves)
             {
                 if (cb !is null && moveNum % 1000 == 0 && moveNum > 0)
                 {
                     if (cb(moveNum, numMoves, ud) != 0)
-                    {
-                        if (gcInterval > 0) { GC.enable(); GC.collect(); }
                         return accepted;
-                    }
-                }
-
-                if (gcInterval > 0 && moveNum % gcInterval == 0 && moveNum > 0)
-                {
-                    GC.enable();
-                    GC.collect();
-                    GC.disable();
                 }
 
                 if (s.unusedVertices.length == 0)
@@ -1283,8 +1252,6 @@ extern(C) long ddg_sampler_run_exact(void* sampler_handle, long num_moves,
                 }
             }
 
-            if (gcInterval > 0) { GC.enable(); GC.collect(); }
-
             if (cb !is null)
                 cb(numMoves, numMoves, ud);
 
@@ -1318,15 +1285,6 @@ extern(C) void ddg_sampler_free(void* handle) nothrow
     unpinForC(handle);
 }
 
-/// Set the GC collection interval (in moves). The sampler disables the D GC
-/// during its hot loop and collects every `interval` moves to prevent unbounded
-/// memory growth from temporary allocations. Set to 0 to disable periodic
-/// collection (not recommended for long runs).
-extern(C) void ddg_sampler_set_gc_interval(void* sampler_handle, long interval) nothrow
-{
-    if (sampler_handle is null) return;
-    (cast(SamplerState*) sampler_handle).gcCollectInterval = interval;
-}
 
 // ---------------------------------------------------------------------------
 // Sampler direct queries (avoid copying the manifold)

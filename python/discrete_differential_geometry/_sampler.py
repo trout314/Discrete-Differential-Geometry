@@ -51,8 +51,7 @@ class ManifoldSampler:
         Sampling parameters.
     """
 
-    def __init__(self, manifold: Manifold, params: SamplerParams, *,
-                 gc_collect_interval: int = 10_000):
+    def __init__(self, manifold: Manifold, params: SamplerParams):
         self._params = params
         self._handle = _lib.ddg_sampler_create(
             manifold._handle,
@@ -63,8 +62,6 @@ class ManifoldSampler:
             params.hinge_degree_variance_coef,
             params.codim3_degree_variance_coef,
         )
-        if gc_collect_interval != 10_000:  # only call if non-default
-            _lib.ddg_sampler_set_gc_interval(self._handle, gc_collect_interval)
         # Hold a reference to keep the callback alive
         self._callback_ref = None
 
