@@ -1,4 +1,4 @@
-"""Pythonic wrapper for Manifold."""
+"""Read-only view of a Manifold, for use by ManifoldSampler."""
 
 from __future__ import annotations
 
@@ -8,57 +8,28 @@ from typing import Sequence
 import numpy as np
 
 from . import _dlang
-from ._simplicial_complex import SimplicialComplex
+from ._manifold import Manifold
 
 _lib = _dlang._lib
 
 
-class Manifold:
-    """A combinatorial manifold of a fixed dimension.
+class ManifoldView:
+    """Read-only view of a manifold.
 
-    Parameters
-    ----------
-    dimension : int
-        The dimension of the manifold (2, 3, or 4).
-    facets : sequence of sequences of int
-        The facets (maximal simplices). Each must have dimension+1 vertices.
+    Provides all query methods of Manifold but no mutation (do_move, save, etc.).
+    The view borrows the underlying handle — it does NOT own it, so it must not
+    outlive the object that created it (e.g. a ManifoldSampler).
+
+    Use ``dup()`` to get a mutable, independently-owned Manifold copy.
     """
 
-    def __init__(self, dimension: int, facets, *, _handle=None):
-        if _handle is not None:
-            self._handle = _handle
-            return
+    def __init__(self, handle):
+        self._handle = handle
 
-        facets_list = [list(f) for f in facets]
-        flat = []
-        for f in facets_list:
-            flat.extend(f)
-        arr = (ctypes.c_int * len(flat))(*flat)
-        self._handle = _lib.ddg_manifold_from_facets(dimension, arr, len(facets_list))
+    # No __del__ — we don't own the handle.
 
-    def __del__(self):
-        if hasattr(self, "_handle") and self._handle is not None:
-            _lib.ddg_manifold_free(self._handle)
-            self._handle = None
-
-    @classmethod
-    def standard_sphere(cls, dim: int) -> Manifold:
-        """Create the standard sphere triangulation of the given dimension."""
-        handle = _lib.ddg_manifold_standard_sphere(dim)
-        obj = cls.__new__(cls)
-        obj._handle = handle
-        return obj
-
-    @classmethod
-    def load(cls, path: str, dim: int) -> Manifold:
-        """Load a manifold from a .mfd file."""
-        handle = _lib.ddg_manifold_load(path.encode(), dim)
-        obj = cls.__new__(cls)
-        obj._handle = handle
-        return obj
-
-    def copy(self) -> Manifold:
-        """Return a deep copy."""
+    def dup(self) -> Manifold:
+        """Return a deep, mutable copy of this manifold."""
         obj = Manifold.__new__(Manifold)
         obj._handle = _lib.ddg_manifold_copy(self._handle)
         return obj
@@ -123,23 +94,12 @@ class Manifold:
         return _lib.ddg_manifold_count_valid_moves(self._handle)
 
     def importance_weight(self) -> float:
-        """Return 1/V(x), the importance weight correcting the sampler's
-        stationary distribution back to exp(-objective(x)).
-
-        The default sampler (pure Metropolis, no Hastings correction) samples
-        from pi(x) ~ exp(-obj(x)) * V(x), where V(x) is the number of valid
-        Pachner moves. Multiplying observables by this weight corrects for
-        the bias.
+        """Return 1/V, the importance weight correcting the sampler's
+        stationary distribution back to exp(-objective).
         """
         return _lib.ddg_manifold_importance_weight(self._handle)
 
-    # -- Moves --
-
-    def do_move(self) -> None:
-        """Perform a random Pachner move."""
-        _lib.ddg_manifold_do_pachner_move(self._handle)
-
-    # -- I/O --
+    # -- I/O (read-only: saves current state, does not mutate) --
 
     def save(self, path: str) -> None:
         """Save to a .mfd file."""
@@ -153,10 +113,5 @@ class Manifold:
         """Save the dual graph."""
         _lib.ddg_manifold_save_dual_graph(self._handle, path.encode())
 
-    def to_simplicial_complex(self) -> SimplicialComplex:
-        """Convert to a SimplicialComplex (copies data)."""
-        facets_arr = self.facets()
-        return SimplicialComplex(facets_arr.tolist())
-
     def __repr__(self):
-        return f"Manifold(dim={self.dimension}, num_facets={self.num_facets})"
+        return f"ManifoldView(dim={self.dimension}, num_facets={self.num_facets})"

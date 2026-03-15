@@ -58,10 +58,11 @@ sampler.run(moves=1000, exact=exact)  # burn-in
 num_facets, num_edges, weights = [], [], []
 for i in range(num_samples):
     sampler.run(moves=spacing, exact=exact)
-    fv = sampler.f_vector
+    m = sampler.manifold
+    fv = m.f_vector
     num_facets.append(int(fv[3]))
     num_edges.append(int(fv[1]))
-    weights.append(float(sampler.importance_weight()))
+    weights.append(float(m.importance_weight()))
 
 json.dump({"num_facets": num_facets, "num_edges": num_edges, "weights": weights},
           open(outpath, "w"))

@@ -2,6 +2,7 @@
 
 from ._simplicial_complex import SimplicialComplex, join
 from ._manifold import Manifold
+from ._manifold_view import ManifoldView
 from ._sampler import ManifoldSampler, SamplerParams
 from ._dlang import _lib as _lib
 
@@ -19,6 +20,7 @@ def gc_minimize():
 __all__ = [
     "SimplicialComplex",
     "Manifold",
+    "ManifoldView",
     "ManifoldSampler",
     "SamplerParams",
     "join",
