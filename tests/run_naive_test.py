@@ -1,11 +1,10 @@
-"""Test importance weights for the naive (no Hastings) sampler.
+"""Test importance weights for the default sampler (no Hastings correction).
 
-The naive sampler uses only exp(-deltaObj) for acceptance — no Hastings
-correction. Its stationary distribution is exp(-obj)*V, so 1/V importance
-weights should correct it back to exp(-obj).
+The sampler uses pure Metropolis acceptance — no Hastings correction for
+proposal asymmetry. Its stationary distribution is exp(-obj)*V, so 1/V
+importance weights correct it back to exp(-obj).
 
-This should show a much larger bias than the approximate sampler, making
-the importance weights clearly necessary.
+Compares default sampler (with 1/V weights) against exact sampler.
 
 Usage: python3 tests/run_naive_test.py [samples] [target] [spacing] [batch_size]
 """
@@ -53,21 +52,16 @@ params = SamplerParams(
 start = Manifold.load(start_mfd_path, 3)
 sampler = ManifoldSampler(start, params)
 
-if mode == "exact":
-    sampler.run(moves=1000, exact=True)
-else:
-    sampler.run(moves=1000, naive=True)
+exact = mode == "exact"
+sampler.run(moves=1000, exact=exact)  # burn-in
 
 num_facets, num_edges, weights = [], [], []
 for i in range(num_samples):
-    if mode == "exact":
-        sampler.run(moves=spacing, exact=True)
-    else:
-        sampler.run(moves=spacing, naive=True)
+    sampler.run(moves=spacing, exact=exact)
     fv = sampler.f_vector
     num_facets.append(int(fv[3]))
     num_edges.append(int(fv[1]))
-    weights.append(float(sampler.naive_importance_weight()))
+    weights.append(float(sampler.importance_weight()))
 
 json.dump({"num_facets": num_facets, "num_edges": num_edges, "weights": weights},
           open(outpath, "w"))
