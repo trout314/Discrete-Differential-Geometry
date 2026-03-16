@@ -122,16 +122,19 @@ def main():
         even_degrees = np.arange(1, len(even_freq) + 1) * 2
         vtx_total = even_freq.sum()
         even_rel = even_freq / vtx_total if vtx_total > 0 else even_freq
+        mean_vtx = mfd.mean_degree(0)
         ax_vtx.bar(even_degrees, even_rel, color=bar_color, width=2.0)
+        ax_vtx.axvline(mean_vtx, color="red", linewidth=1.2, linestyle="-")
         ax_vtx.set_xlabel("Vertex degree")
-        ax_vtx.set_title(f"Vertex degrees  (n={int(fv[0])}, var={dv:.1f})")
+        ax_vtx.set_title(f"Vertex degrees  (n={int(fv[0])})")
         ax_vtx.yaxis.set_major_locator(plt.MaxNLocator(10))
         ax_vtx.tick_params(axis="y", labelleft=False)
         nonzero = np.nonzero(even_rel)[0]
         if len(nonzero) > 0:
             ax_vtx.set_xlim(even_degrees[nonzero[0]] - 1, even_degrees[nonzero[-1]] + 3)
         if len(even_rel) > 0 and even_rel.max() > 0:
-            ax_vtx.text(0.97, 0.95, f"peak={even_rel.max():.3f}\nvar={dv:.1f}",
+            ax_vtx.text(0.97, 0.95,
+                        f"peak={even_rel.max():.3f}\nmean={mean_vtx:.1f}\nvar={dv:.1f}",
                         transform=ax_vtx.transAxes, ha="right", va="top",
                         fontsize=9, color="#444444")
 
@@ -140,10 +143,11 @@ def main():
         degrees_e = np.arange(1, len(edge_hist) + 1)
         edge_total = edge_hist.sum()
         edge_freq = edge_hist / edge_total if edge_total > 0 else edge_hist
-        ax_edge.bar(degrees_e, edge_freq, color=bar_color, width=1.0)
-        ax_edge.set_xlabel("Edge degree (hinge degree)")
         mean_edge = mfd.mean_degree(1)
-        ax_edge.set_title(f"Edge degrees  (n={int(fv[1])}, mean={mean_edge:.2f})")
+        ax_edge.bar(degrees_e, edge_freq, color=bar_color, width=1.0)
+        ax_edge.axvline(mean_edge, color="red", linewidth=1.2, linestyle="-")
+        ax_edge.set_xlabel("Edge degree (hinge degree)")
+        ax_edge.set_title(f"Edge degrees  (n={int(fv[1])})")
         ax_edge.yaxis.set_major_locator(plt.MaxNLocator(10))
         ax_edge.tick_params(axis="y", labelleft=False)
         nonzero_e = np.nonzero(edge_hist)[0]
@@ -151,7 +155,8 @@ def main():
             ax_edge.set_xlim(nonzero_e[0], nonzero_e[-1] + 2)
         edge_dv = mfd.degree_variance(1)
         if len(edge_freq) > 0 and edge_freq.max() > 0:
-            ax_edge.text(0.97, 0.95, f"peak={edge_freq.max():.3f}\nvar={edge_dv:.1f}",
+            ax_edge.text(0.97, 0.95,
+                         f"peak={edge_freq.max():.3f}\nmean={mean_edge:.2f}\nvar={edge_dv:.1f}",
                          transform=ax_edge.transAxes, ha="right", va="top",
                          fontsize=9, color="#444444")
 
