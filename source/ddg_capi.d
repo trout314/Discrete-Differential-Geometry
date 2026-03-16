@@ -1031,13 +1031,33 @@ private struct SamplerState
     double numHingesCoef;
     double hingeDegreeVarianceCoef;
     double coDim3DegreeVarianceCoef;
+    double hingeMoveProb = 0.0;
 
+    // MCMC state
+    real currentObjective = real.nan;
+
+    // Statistics (cumulative across run() calls; reset with ddg_sampler_reset_stats)
+    ulong hingeTries, hingeAccepts;
+    ulong[5] bistellarTries;   // indexed by coCenter.length - 1; max dim=4 -> 5 slots
+    ulong[5] bistellarAccepts;
+    long totalAccepted, totalTried;
 }
 
 extern(C) void* ddg_sampler_create(void* manifold_handle,
     int numFacetsTarget, double hingeDegreeTarget,
     double numFacetsCoef, double numHingesCoef,
     double hingeDegreeVarianceCoef, double coDim3DegreeVarianceCoef) nothrow
+{
+    return ddg_sampler_create_ext(manifold_handle, numFacetsTarget,
+        hingeDegreeTarget, numFacetsCoef, numHingesCoef,
+        hingeDegreeVarianceCoef, coDim3DegreeVarianceCoef, 0.0);
+}
+
+extern(C) void* ddg_sampler_create_ext(void* manifold_handle,
+    int numFacetsTarget, double hingeDegreeTarget,
+    double numFacetsCoef, double numHingesCoef,
+    double hingeDegreeVarianceCoef, double coDim3DegreeVarianceCoef,
+    double hingeMoveProb) nothrow
 {
     clearError();
     try
@@ -1056,6 +1076,7 @@ extern(C) void* ddg_sampler_create(void* manifold_handle,
         state.numHingesCoef = numHingesCoef;
         state.hingeDegreeVarianceCoef = hingeDegreeVarianceCoef;
         state.coDim3DegreeVarianceCoef = coDim3DegreeVarianceCoef;
+        state.hingeMoveProb = hingeMoveProb;
 
         // Pre-allocate _facetArray so doMove doesn't trigger GC
         void reserveAndGetUnused(int dim)(SamplerState* s)
@@ -1073,6 +1094,33 @@ extern(C) void* ddg_sampler_create(void* manifold_handle,
             default: setError("bad dimension"); return null;
         }
 
+        // Compute initial objective
+        void initObjective(int dim)(SamplerState* s)
+        {
+            auto mw = cast(ManifoldWrapper!dim*)(cast(ManifoldHandle*) s.manifoldHandle).ptr;
+            struct Params
+            {
+                int numFacetsTarget;
+                real hingeDegreeTarget;
+                real numFacetsCoef;
+                real numHingesCoef;
+                real hingeDegreeVarianceCoef;
+                real coDim3DegreeVarianceCoef;
+            }
+            auto p = Params(s.numFacetsTarget, cast(real) s.hingeDegreeTarget,
+                cast(real) s.numFacetsCoef, cast(real) s.numHingesCoef,
+                cast(real) s.hingeDegreeVarianceCoef, cast(real) s.coDim3DegreeVarianceCoef);
+            s.currentObjective = mw.mfd.objective(p);
+        }
+
+        switch (mh.dim)
+        {
+            case 2: initObjective!2(state); break;
+            case 3: initObjective!3(state); break;
+            case 4: initObjective!4(state); break;
+            default: break;
+        }
+
         pinForC(cast(void*) state);
         return cast(void*) state;
     }
@@ -1088,7 +1136,12 @@ extern(C) long ddg_sampler_run(void* sampler_handle, long num_moves,
         if (sampler_handle is null) { setError("null sampler handle"); return -1; }
         auto state = cast(SamplerState*) sampler_handle;
 
-        long runSampler(int dim)(SamplerState* s, long numMoves,
+        // dim=3 with hinge moves: use mcmcStep from sampler.d
+        if (state.dim == 3)
+            return runSamplerDim3(state, num_moves, callback, user_data);
+
+        // dim=2 or dim=4: bistellar-only path
+        long runBistellar(int dim)(SamplerState* s, long numMoves,
             CCallback cb, void* ud)
         {
             auto smh = cast(ManifoldHandle*) s.manifoldHandle;
@@ -1113,11 +1166,15 @@ extern(C) long ddg_sampler_run(void* sampler_handle, long num_moves,
                 cast(real) s.coDim3DegreeVarianceCoef
             );
 
-            auto currentObjective = mw.mfd.objective(params);
+            if (s.currentObjective != s.currentObjective) // NaN check
+                s.currentObjective = mw.mfd.objective(params);
+
             long accepted = 0;
 
             foreach (moveNum; 0 .. numMoves)
             {
+                s.totalTried++;
+
                 if (cb !is null && moveNum % 1000 == 0 && moveNum > 0)
                 {
                     if (cb(moveNum, numMoves, ud) != 0)
@@ -1128,10 +1185,9 @@ extern(C) long ddg_sampler_run(void* sampler_handle, long num_moves,
                     s.unusedVertices ~= cast(int) mw.mfd.fVector[0];
 
                 auto bm = mw.mfd.chooseRandomMove(s.unusedVertices[$ - 1], params);
+                s.bistellarTries[bm.coCenter.length - 1]++;
 
-                real deltaObj = mw.mfd.speculativeBistellarDelta(bm, currentObjective, params);
-                // Pure Metropolis — no Hastings correction for proposal asymmetry.
-                // Use 1/V importance weights to correct back to exp(-objective).
+                real deltaObj = mw.mfd.speculativeBistellarDelta(bm, s.currentObjective, params);
                 real logAlpha = -deltaObj;
 
                 if ((logAlpha >= 0) || (uniform01 <= exp(logAlpha)))
@@ -1146,8 +1202,10 @@ extern(C) long ddg_sampler_run(void* sampler_handle, long num_moves,
                         }
                     }
                     if (bm.center.length == 1) s.unusedVertices ~= bm.center;
-                    currentObjective += deltaObj;
+                    s.currentObjective += deltaObj;
+                    s.bistellarAccepts[bm.coCenter.length - 1]++;
                     accepted++;
+                    s.totalAccepted++;
                 }
             }
 
@@ -1159,11 +1217,89 @@ extern(C) long ddg_sampler_run(void* sampler_handle, long num_moves,
 
         switch (state.dim)
         {
-            case 2: return runSampler!2(state, num_moves, callback, user_data);
-            case 3: return runSampler!3(state, num_moves, callback, user_data);
-            case 4: return runSampler!4(state, num_moves, callback, user_data);
+            case 2: return runBistellar!2(state, num_moves, callback, user_data);
+            case 4: return runBistellar!4(state, num_moves, callback, user_data);
             default: setError("bad dimension"); return -1;
         }
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// dim=3 sampler using mcmcStep (supports hinge moves and full stats tracking).
+private long runSamplerDim3(SamplerState* s, long numMoves,
+    CCallback cb, void* ud) nothrow
+{
+    try
+    {
+        auto smh = cast(ManifoldHandle*) s.manifoldHandle;
+        auto mw = cast(ManifoldWrapper!3*) smh.ptr;
+
+        struct Params
+        {
+            int numFacetsTarget;
+            real hingeDegreeTarget;
+            real numFacetsCoef;
+            real numHingesCoef;
+            real hingeDegreeVarianceCoef;
+            real coDim3DegreeVarianceCoef;
+        }
+
+        auto params = Params(
+            s.numFacetsTarget,
+            cast(real) s.hingeDegreeTarget,
+            cast(real) s.numFacetsCoef,
+            cast(real) s.numHingesCoef,
+            cast(real) s.hingeDegreeVarianceCoef,
+            cast(real) s.coDim3DegreeVarianceCoef
+        );
+
+        if (s.currentObjective != s.currentObjective) // NaN check
+            s.currentObjective = mw.mfd.objective(params);
+
+        long accepted = 0;
+        // Narrow slices for mcmcStep ref params
+        auto hT = s.hingeTries;
+        auto hA = s.hingeAccepts;
+        ulong[4] bT = s.bistellarTries[0 .. 4];
+        ulong[4] bA = s.bistellarAccepts[0 .. 4];
+
+        foreach (moveNum; 0 .. numMoves)
+        {
+            s.totalTried++;
+
+            if (cb !is null && moveNum % 1000 == 0 && moveNum > 0)
+            {
+                // Write back stats before callback
+                s.hingeTries = hT;
+                s.hingeAccepts = hA;
+                s.bistellarTries[0 .. 4] = bT;
+                s.bistellarAccepts[0 .. 4] = bA;
+
+                if (cb(moveNum, numMoves, ud) != 0)
+                {
+                    s.totalAccepted += accepted;
+                    return accepted;
+                }
+            }
+
+            if (mw.mfd.mcmcStep(s.currentObjective, s.unusedVertices, params,
+                    s.hingeMoveProb, hT, hA, bT, bA))
+            {
+                accepted++;
+            }
+        }
+
+        // Write back stats
+        s.hingeTries = hT;
+        s.hingeAccepts = hA;
+        s.bistellarTries[0 .. 4] = bT;
+        s.bistellarAccepts[0 .. 4] = bA;
+        s.totalAccepted += accepted;
+
+        if (cb !is null)
+            cb(numMoves, numMoves, ud);
+
+        return accepted;
     }
     catch (Exception e) { setError(e.msg); return -1; }
 }
@@ -1346,7 +1482,140 @@ extern(C) int ddg_sampler_set_num_facets_target(void* sampler_handle, int target
     if (sampler_handle is null) { setError("null handle"); return -1; }
     auto state = cast(SamplerState*) sampler_handle;
     state.numFacetsTarget = target;
+    state.currentObjective = real.nan; // force recompute on next run
     return 0;
+}
+
+extern(C) int ddg_sampler_set_hinge_move_prob(void* sampler_handle, double prob) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    (cast(SamplerState*) sampler_handle).hingeMoveProb = prob;
+    return 0;
+}
+
+extern(C) int ddg_sampler_set_num_facets_coef(void* sampler_handle, double coef) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto state = cast(SamplerState*) sampler_handle;
+    state.numFacetsCoef = coef;
+    state.currentObjective = real.nan;
+    return 0;
+}
+
+extern(C) int ddg_sampler_set_num_hinges_coef(void* sampler_handle, double coef) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto state = cast(SamplerState*) sampler_handle;
+    state.numHingesCoef = coef;
+    state.currentObjective = real.nan;
+    return 0;
+}
+
+extern(C) int ddg_sampler_set_hinge_degree_variance_coef(void* sampler_handle, double coef) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto state = cast(SamplerState*) sampler_handle;
+    state.hingeDegreeVarianceCoef = coef;
+    state.currentObjective = real.nan;
+    return 0;
+}
+
+extern(C) int ddg_sampler_set_codim3_degree_variance_coef(void* sampler_handle, double coef) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto state = cast(SamplerState*) sampler_handle;
+    state.coDim3DegreeVarianceCoef = coef;
+    state.currentObjective = real.nan;
+    return 0;
+}
+
+extern(C) int ddg_sampler_set_hinge_degree_target(void* sampler_handle, double target) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto state = cast(SamplerState*) sampler_handle;
+    state.hingeDegreeTarget = target;
+    state.currentObjective = real.nan;
+    return 0;
+}
+
+/// Reset cumulative statistics counters.
+extern(C) int ddg_sampler_reset_stats(void* sampler_handle) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto s = cast(SamplerState*) sampler_handle;
+    s.hingeTries = 0;
+    s.hingeAccepts = 0;
+    s.bistellarTries[] = 0;
+    s.bistellarAccepts[] = 0;
+    s.totalAccepted = 0;
+    s.totalTried = 0;
+    return 0;
+}
+
+/// Get sampler statistics. All output pointers are optional (may be null).
+extern(C) int ddg_sampler_get_stats(void* sampler_handle,
+    long* out_total_tried, long* out_total_accepted,
+    long* out_hinge_tries, long* out_hinge_accepts,
+    long* out_bistellar_tries, long* out_bistellar_accepts,
+    int out_len) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto s = cast(SamplerState*) sampler_handle;
+
+    if (out_total_tried !is null) *out_total_tried = s.totalTried;
+    if (out_total_accepted !is null) *out_total_accepted = s.totalAccepted;
+    if (out_hinge_tries !is null) *out_hinge_tries = cast(long) s.hingeTries;
+    if (out_hinge_accepts !is null) *out_hinge_accepts = cast(long) s.hingeAccepts;
+    if (out_bistellar_tries !is null)
+        foreach (i; 0 .. out_len)
+            out_bistellar_tries[i] = cast(long) s.bistellarTries[i];
+    if (out_bistellar_accepts !is null)
+        foreach (i; 0 .. out_len)
+            out_bistellar_accepts[i] = cast(long) s.bistellarAccepts[i];
+    return 0;
+}
+
+extern(C) double ddg_sampler_current_objective(void* sampler_handle) nothrow
+{
+    if (sampler_handle is null) return double.nan;
+    return cast(double)(cast(SamplerState*) sampler_handle).currentObjective;
+}
+
+// ---------------------------------------------------------------------------
+// Degree variance
+// ---------------------------------------------------------------------------
+
+extern(C) double ddg_manifold_degree_variance(void* handle, int simp_dim) nothrow
+{
+    clearError();
+    try
+    {
+        if (handle is null) { setError("null handle"); return double.nan; }
+        auto h = cast(ManifoldHandle*) handle;
+        switch (h.dim)
+        {
+            case 2: return cast(double)(cast(ManifoldWrapper!2*) h.ptr).mfd.degreeVariance(simp_dim);
+            case 3: return cast(double)(cast(ManifoldWrapper!3*) h.ptr).mfd.degreeVariance(simp_dim);
+            case 4: return cast(double)(cast(ManifoldWrapper!4*) h.ptr).mfd.degreeVariance(simp_dim);
+            default: setError("bad dimension"); return double.nan;
+        }
+    }
+    catch (Exception e) { setError(e.msg); return double.nan; }
+}
+
+extern(C) double ddg_sampler_degree_variance(void* sampler_handle, int simp_dim) nothrow
+{
+    if (sampler_handle is null) return double.nan;
+    auto mfd_handle = (cast(SamplerState*) sampler_handle).manifoldHandle;
+    return ddg_manifold_degree_variance(mfd_handle, simp_dim);
 }
 
 // ---------------------------------------------------------------------------

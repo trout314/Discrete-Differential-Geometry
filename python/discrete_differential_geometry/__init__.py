@@ -3,7 +3,7 @@
 from ._simplicial_complex import SimplicialComplex, join
 from ._manifold import Manifold
 from ._manifold_view import ManifoldView
-from ._sampler import ManifoldSampler, SamplerParams
+from ._sampler import ManifoldSampler, SamplerParams, SamplerStats
 from ._dlang import _lib as _lib
 
 
@@ -23,6 +23,7 @@ __all__ = [
     "ManifoldView",
     "ManifoldSampler",
     "SamplerParams",
+    "SamplerStats",
     "join",
     "gc_collect",
     "gc_minimize",

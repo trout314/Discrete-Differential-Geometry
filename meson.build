@@ -55,18 +55,6 @@ shared_library('ddg_dlang',
   install : true,
 )
 
-executable('bench_sampler',
-  lib_sources + files('bench_sampler.d'),
-  include_directories : d_import_dirs,
-  link_args : d_link_args,
-)
-
-executable('bench_sampler_exact',
-  lib_sources + files('bench_sampler.d'),
-  include_directories : d_import_dirs,
-  d_module_versions : ['TrackValidMoves'],
-  link_args : d_link_args,
-)
 
 # ---------------------------------------------------------------------------
 # Unit tests

@@ -6,6 +6,8 @@ import ctypes
 from dataclasses import dataclass
 from typing import Callable, Optional
 
+import numpy as np
+
 from . import _dlang
 from ._manifold import Manifold
 from ._manifold_view import ManifoldView
@@ -31,6 +33,8 @@ class SamplerParams:
         Coefficient for the local curvature (hinge degree variance) penalty.
     codim3_degree_variance_coef : float
         Coefficient for the codimension-3 degree variance penalty.
+    hinge_move_prob : float
+        Probability of proposing a hinge (4-4) move per step (dim=3 only).
     """
 
     num_facets_target: int = 100
@@ -39,6 +43,19 @@ class SamplerParams:
     num_hinges_coef: float = 0.05
     hinge_degree_variance_coef: float = 0.2
     codim3_degree_variance_coef: float = 0.1
+    hinge_move_prob: float = 0.0
+
+
+@dataclass
+class SamplerStats:
+    """Cumulative MCMC statistics from a sampler."""
+
+    total_tried: int
+    total_accepted: int
+    hinge_tries: int
+    hinge_accepts: int
+    bistellar_tries: np.ndarray   # per move type, indexed by coCenter.length - 1
+    bistellar_accepts: np.ndarray
 
 
 class ManifoldSampler:
@@ -54,7 +71,7 @@ class ManifoldSampler:
 
     def __init__(self, manifold: Manifold, params: SamplerParams):
         self._params = params
-        self._handle = _lib.ddg_sampler_create(
+        self._handle = _lib.ddg_sampler_create_ext(
             manifold._handle,
             params.num_facets_target,
             params.hinge_degree_target,
@@ -62,6 +79,7 @@ class ManifoldSampler:
             params.num_hinges_coef,
             params.hinge_degree_variance_coef,
             params.codim3_degree_variance_coef,
+            params.hinge_move_prob,
         )
         # Hold a reference to keep the callback alive
         self._callback_ref = None
@@ -128,10 +146,80 @@ class ManifoldSampler:
         run_fn = _lib.ddg_sampler_run_exact if exact else _lib.ddg_sampler_run
         return run_fn(self._handle, moves, c_callback, None)
 
+    # -- Parameter setters --
+
     def set_num_facets_target(self, target: int) -> None:
-        """Update the target number of facets for the sampler."""
+        """Update the target number of facets."""
         _lib.ddg_sampler_set_num_facets_target(self._handle, target)
         self._params.num_facets_target = target
+
+    def set_hinge_move_prob(self, prob: float) -> None:
+        """Update the hinge move probability."""
+        _lib.ddg_sampler_set_hinge_move_prob(self._handle, prob)
+        self._params.hinge_move_prob = prob
+
+    def set_num_facets_coef(self, coef: float) -> None:
+        """Update the volume penalty coefficient."""
+        _lib.ddg_sampler_set_num_facets_coef(self._handle, coef)
+        self._params.num_facets_coef = coef
+
+    def set_num_hinges_coef(self, coef: float) -> None:
+        """Update the global curvature penalty coefficient."""
+        _lib.ddg_sampler_set_num_hinges_coef(self._handle, coef)
+        self._params.num_hinges_coef = coef
+
+    def set_hinge_degree_variance_coef(self, coef: float) -> None:
+        """Update the local curvature penalty coefficient."""
+        _lib.ddg_sampler_set_hinge_degree_variance_coef(self._handle, coef)
+        self._params.hinge_degree_variance_coef = coef
+
+    def set_codim3_degree_variance_coef(self, coef: float) -> None:
+        """Update the codimension-3 degree variance coefficient."""
+        _lib.ddg_sampler_set_codim3_degree_variance_coef(self._handle, coef)
+        self._params.codim3_degree_variance_coef = coef
+
+    def set_hinge_degree_target(self, target: float) -> None:
+        """Update the target hinge degree."""
+        _lib.ddg_sampler_set_hinge_degree_target(self._handle, target)
+        self._params.hinge_degree_target = target
+
+    # -- Statistics --
+
+    def get_stats(self) -> SamplerStats:
+        """Return cumulative MCMC statistics."""
+        dim = self.manifold.dimension
+        n = dim + 1
+        tt = ctypes.c_long()
+        ta = ctypes.c_long()
+        ht = ctypes.c_long()
+        ha = ctypes.c_long()
+        bt = (ctypes.c_long * n)()
+        ba = (ctypes.c_long * n)()
+        _lib.ddg_sampler_get_stats(
+            self._handle,
+            ctypes.byref(tt), ctypes.byref(ta),
+            ctypes.byref(ht), ctypes.byref(ha),
+            bt, ba, n,
+        )
+        return SamplerStats(
+            total_tried=tt.value,
+            total_accepted=ta.value,
+            hinge_tries=ht.value,
+            hinge_accepts=ha.value,
+            bistellar_tries=np.array(bt[:n], dtype=np.int64),
+            bistellar_accepts=np.array(ba[:n], dtype=np.int64),
+        )
+
+    def reset_stats(self) -> None:
+        """Reset cumulative statistics counters."""
+        _lib.ddg_sampler_reset_stats(self._handle)
+
+    @property
+    def current_objective(self) -> float:
+        """Return the current objective function value."""
+        return _lib.ddg_sampler_current_objective(self._handle)
+
+    # -- Ramped growth --
 
     def ramped_grow(
         self,

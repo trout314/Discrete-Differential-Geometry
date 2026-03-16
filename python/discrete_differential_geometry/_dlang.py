@@ -349,6 +349,16 @@ _lib.ddg_sampler_create.argtypes = [
 _lib.ddg_sampler_create.restype = ctypes.c_void_p
 _lib.ddg_sampler_create.errcheck = _check_null
 
+_lib.ddg_sampler_create_ext.argtypes = [
+    ctypes.c_void_p,
+    ctypes.c_int, ctypes.c_double,
+    ctypes.c_double, ctypes.c_double,
+    ctypes.c_double, ctypes.c_double,
+    ctypes.c_double,
+]
+_lib.ddg_sampler_create_ext.restype = ctypes.c_void_p
+_lib.ddg_sampler_create_ext.errcheck = _check_null
+
 _lib.ddg_sampler_run.argtypes = [
     ctypes.c_void_p, ctypes.c_long, CALLBACK_TYPE, ctypes.c_void_p,
 ]
@@ -394,6 +404,57 @@ _lib.ddg_sampler_degree.errcheck = _check_int
 _lib.ddg_sampler_set_num_facets_target.argtypes = [ctypes.c_void_p, ctypes.c_int]
 _lib.ddg_sampler_set_num_facets_target.restype = ctypes.c_int
 _lib.ddg_sampler_set_num_facets_target.errcheck = _check_int
+
+_lib.ddg_sampler_set_hinge_move_prob.argtypes = [ctypes.c_void_p, ctypes.c_double]
+_lib.ddg_sampler_set_hinge_move_prob.restype = ctypes.c_int
+_lib.ddg_sampler_set_hinge_move_prob.errcheck = _check_int
+
+_lib.ddg_sampler_set_num_facets_coef.argtypes = [ctypes.c_void_p, ctypes.c_double]
+_lib.ddg_sampler_set_num_facets_coef.restype = ctypes.c_int
+_lib.ddg_sampler_set_num_facets_coef.errcheck = _check_int
+
+_lib.ddg_sampler_set_num_hinges_coef.argtypes = [ctypes.c_void_p, ctypes.c_double]
+_lib.ddg_sampler_set_num_hinges_coef.restype = ctypes.c_int
+_lib.ddg_sampler_set_num_hinges_coef.errcheck = _check_int
+
+_lib.ddg_sampler_set_hinge_degree_variance_coef.argtypes = [ctypes.c_void_p, ctypes.c_double]
+_lib.ddg_sampler_set_hinge_degree_variance_coef.restype = ctypes.c_int
+_lib.ddg_sampler_set_hinge_degree_variance_coef.errcheck = _check_int
+
+_lib.ddg_sampler_set_codim3_degree_variance_coef.argtypes = [ctypes.c_void_p, ctypes.c_double]
+_lib.ddg_sampler_set_codim3_degree_variance_coef.restype = ctypes.c_int
+_lib.ddg_sampler_set_codim3_degree_variance_coef.errcheck = _check_int
+
+_lib.ddg_sampler_set_hinge_degree_target.argtypes = [ctypes.c_void_p, ctypes.c_double]
+_lib.ddg_sampler_set_hinge_degree_target.restype = ctypes.c_int
+_lib.ddg_sampler_set_hinge_degree_target.errcheck = _check_int
+
+_lib.ddg_sampler_reset_stats.argtypes = [ctypes.c_void_p]
+_lib.ddg_sampler_reset_stats.restype = ctypes.c_int
+_lib.ddg_sampler_reset_stats.errcheck = _check_int
+
+_lib.ddg_sampler_get_stats.argtypes = [
+    ctypes.c_void_p,
+    ctypes.POINTER(ctypes.c_long), ctypes.POINTER(ctypes.c_long),
+    ctypes.POINTER(ctypes.c_long), ctypes.POINTER(ctypes.c_long),
+    ctypes.POINTER(ctypes.c_long), ctypes.POINTER(ctypes.c_long),
+    ctypes.c_int,
+]
+_lib.ddg_sampler_get_stats.restype = ctypes.c_int
+_lib.ddg_sampler_get_stats.errcheck = _check_int
+
+_lib.ddg_sampler_current_objective.argtypes = [ctypes.c_void_p]
+_lib.ddg_sampler_current_objective.restype = ctypes.c_double
+
+# ---------------------------------------------------------------------------
+# Degree variance
+# ---------------------------------------------------------------------------
+
+_lib.ddg_manifold_degree_variance.argtypes = [ctypes.c_void_p, ctypes.c_int]
+_lib.ddg_manifold_degree_variance.restype = ctypes.c_double
+
+_lib.ddg_sampler_degree_variance.argtypes = [ctypes.c_void_p, ctypes.c_int]
+_lib.ddg_sampler_degree_variance.restype = ctypes.c_double
 
 # ---------------------------------------------------------------------------
 # Degree histogram

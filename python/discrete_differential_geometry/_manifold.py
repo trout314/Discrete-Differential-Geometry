@@ -127,6 +127,10 @@ class Manifold:
         """Return the mean degree of simplices of given dimension."""
         return _lib.ddg_manifold_mean_degree(self._handle, dim)
 
+    def degree_variance(self, dim: int) -> float:
+        """Return the variance of degree for simplices of given dimension."""
+        return _lib.ddg_manifold_degree_variance(self._handle, dim)
+
     def count_valid_moves(self) -> int:
         """Count valid Pachner moves (including stellar subdivisions)."""
         return _lib.ddg_manifold_count_valid_moves(self._handle)
