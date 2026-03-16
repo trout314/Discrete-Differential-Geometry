@@ -208,7 +208,6 @@ def main():
         ax_obj.plot(sweep_history, obj_history, color=line_color, linewidth=1)
         ax_obj.set_xlabel("Sweeps")
         ax_obj.set_ylabel("Objective")
-        ax_obj.set_title("Objective")
 
         # --- Info panel ---
         ax_info.clear()
@@ -249,7 +248,7 @@ def main():
                      fontsize=10, verticalalignment="top",
                      fontfamily="monospace")
 
-        fig.subplots_adjust(left=0.08, right=0.92, wspace=0.20, hspace=0.35, top=0.92)
+        fig.subplots_adjust(left=0.06, right=0.94, wspace=0.12, hspace=0.22, top=0.95, bottom=0.06)
         fig.canvas.draw_idle()
         fig.canvas.flush_events()
         plt.pause(0.05)
