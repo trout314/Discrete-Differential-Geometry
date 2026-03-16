@@ -121,21 +121,23 @@ def main():
         accepted = stats.total_accepted
         accept_pct = 100.0 * accepted / tried if tried > 0 else 0.0
 
-        # --- Vertex degree histogram ---
+        # --- Vertex degree histogram (even degrees only) ---
         ax_vtx.clear()
-        degrees = np.arange(1, len(vtx_hist) + 1)
-        vtx_total = vtx_hist.sum()
-        vtx_freq = vtx_hist / vtx_total if vtx_total > 0 else vtx_hist
-        ax_vtx.bar(degrees, vtx_freq, color=bar_color, width=1.0)
+        # Extract even-degree bins: index 1 = deg 2, index 3 = deg 4, ...
+        even_freq = vtx_hist[1::2]  # indices 1,3,5,... -> degrees 2,4,6,...
+        even_degrees = np.arange(1, len(even_freq) + 1) * 2
+        vtx_total = even_freq.sum()
+        even_rel = even_freq / vtx_total if vtx_total > 0 else even_freq
+        ax_vtx.bar(even_degrees, even_rel, color=bar_color, width=2.0)
         ax_vtx.set_xlabel("Vertex degree")
         ax_vtx.set_title(f"Vertex degrees  (n={int(fv[0])}, var={dv:.1f})")
         ax_vtx.yaxis.set_major_locator(plt.MaxNLocator(10))
         ax_vtx.tick_params(axis="y", labelleft=False)
-        nonzero = np.nonzero(vtx_hist)[0]
+        nonzero = np.nonzero(even_rel)[0]
         if len(nonzero) > 0:
-            ax_vtx.set_xlim(nonzero[0], nonzero[-1] + 2)
-        if len(vtx_freq) > 0 and vtx_freq.max() > 0:
-            ax_vtx.text(0.97, 0.95, f"peak={vtx_freq.max():.3f}",
+            ax_vtx.set_xlim(even_degrees[nonzero[0]] - 1, even_degrees[nonzero[-1]] + 3)
+        if len(even_rel) > 0 and even_rel.max() > 0:
+            ax_vtx.text(0.97, 0.95, f"peak={even_rel.max():.3f}",
                         transform=ax_vtx.transAxes, ha="right", va="top",
                         fontsize=9, color="#444444")
 
