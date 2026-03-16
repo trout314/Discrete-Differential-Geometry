@@ -124,11 +124,12 @@ def main():
         # --- Vertex degree histogram ---
         ax_vtx.clear()
         degrees = np.arange(1, len(vtx_hist) + 1)
-        ax_vtx.bar(degrees, vtx_hist, color=bar_color, width=0.8)
+        vtx_total = vtx_hist.sum()
+        vtx_freq = vtx_hist / vtx_total if vtx_total > 0 else vtx_hist
+        ax_vtx.bar(degrees, vtx_freq, color=bar_color, width=0.8)
         ax_vtx.set_xlabel("Vertex degree")
-        ax_vtx.set_ylabel("Count")
+        ax_vtx.set_ylabel("Frequency")
         ax_vtx.set_title(f"Vertex degrees  (n={int(fv[0])}, var={dv:.1f})")
-        # Trim x-axis to non-zero range
         nonzero = np.nonzero(vtx_hist)[0]
         if len(nonzero) > 0:
             ax_vtx.set_xlim(nonzero[0], nonzero[-1] + 2)
@@ -136,9 +137,11 @@ def main():
         # --- Edge degree histogram ---
         ax_edge.clear()
         degrees_e = np.arange(1, len(edge_hist) + 1)
-        ax_edge.bar(degrees_e, edge_hist, color=bar_color, width=0.8)
+        edge_total = edge_hist.sum()
+        edge_freq = edge_hist / edge_total if edge_total > 0 else edge_hist
+        ax_edge.bar(degrees_e, edge_freq, color=bar_color, width=0.8)
         ax_edge.set_xlabel("Edge degree (hinge degree)")
-        ax_edge.set_ylabel("Count")
+        ax_edge.set_ylabel("Frequency")
         mean_edge = mfd.mean_degree(1)
         ax_edge.set_title(f"Edge degrees  (n={int(fv[1])}, mean={mean_edge:.2f})")
         nonzero_e = np.nonzero(edge_hist)[0]
