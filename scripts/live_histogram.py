@@ -141,7 +141,6 @@ def main():
         edge_freq = edge_hist / edge_total if edge_total > 0 else edge_hist
         ax_edge.bar(degrees_e, edge_freq, color=bar_color, width=0.8)
         ax_edge.set_xlabel("Edge degree (hinge degree)")
-        ax_edge.set_ylabel("Frequency")
         mean_edge = mfd.mean_degree(1)
         ax_edge.set_title(f"Edge degrees  (n={int(fv[1])}, mean={mean_edge:.2f})")
         nonzero_e = np.nonzero(edge_hist)[0]
@@ -199,7 +198,7 @@ def main():
                      fontsize=10, verticalalignment="top",
                      fontfamily="monospace")
 
-        fig.tight_layout()
+        fig.subplots_adjust(left=0.08, right=0.92, wspace=0.20, hspace=0.35, top=0.92)
         fig.canvas.draw_idle()
         fig.canvas.flush_events()
         plt.pause(0.05)
