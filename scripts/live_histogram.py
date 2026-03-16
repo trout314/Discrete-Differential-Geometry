@@ -41,7 +41,6 @@ def main():
         num_hinges_coef=0.05,
         hinge_degree_variance_coef=0.0,
         codim3_degree_variance_coef=0.1,
-        hinge_move_prob=0.3,
     )
     sampler = ManifoldSampler(m, params)
     step_size = max(500, target_facets // 20)

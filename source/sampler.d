@@ -430,42 +430,68 @@ unittest
 }
 
 /******************************************************************************
-Run one MCMC step that is either a hinge move or a bistellar move.
-Returns true if a move was accepted.
+Run one MCMC step using a unified proposal that naturally includes both
+bistellar (Pachner) moves and 4-4 hinge moves.
 
-hingeMoveProb controls the probability of attempting a hinge move per step.
-When the hinge attempt fails (no degree-4 edge or no valid diagonal), falls
-through to a bistellar move.
+Proposal: pick a random facet, pick a random sub-simplex (center). Check the
+degree of the center. For edges (dim-1 center) with degree 4, propose a hinge
+move instead of the (invalid) 3→2 bistellar move. All other cases follow the
+standard Pachner move logic.
 
-This function uses the speculative delta path (no execute-undo) and
-approximate Hastings correction via nFacets ratio for bistellar moves.
-For hinge moves, no Hastings correction is needed (symmetric proposal,
-unchanged f-vector).
+This avoids a separate hinge move probability parameter — hinge moves are
+proposed at the natural rate determined by how many degree-4 edges exist.
 */
 bool mcmcStep(Vertex, P)(
     ref Manifold!(3, Vertex) mfd,
     ref real currentObjective,
     ref Vertex[] unusedVertices,
     P params,
-    real hingeMoveProb,
+    real hingeMoveProb,  // ignored (kept for API compatibility)
     ref ulong hingeTries,
     ref ulong hingeAccepts,
     ref ulong[4] bistellarTries,
     ref ulong[4] bistellarAccepts)
 {
     enum dim = 3;
+    enum nVerts = dim + 1;
+    enum maxMask = (1 << nVerts) - 1;
+    alias BM = BistellarMove!(dim, Vertex);
 
-    // With probability hingeMoveProb, try a hinge move
-    if (hingeMoveProb > 0 && uniform01 < hingeMoveProb)
+    // Unified proposal loop
+    while (true)
     {
-        auto hmResult = mfd.tryProposeHingeMove();
-        if (!hmResult.isNull)
-        {
-            auto hm = hmResult.get;
-            hingeTries++;
+        auto facet = mfd.randomFacetOfDim(dim);
 
+        auto mask = uniform(1, maxMask + 1);
+        Vertex[nVerts] centerBuf;
+        int centerLen = 0;
+        foreach (i; 0 .. nVerts)
+        {
+            if (mask & (1 << i))
+                centerBuf[centerLen++] = facet[i];
+        }
+        auto center = centerBuf[0 .. centerLen];
+        center.sort();
+
+        auto centerDim = centerLen - 1;
+        auto centerDeg = mfd.degree(center);
+
+        // --- Edge of degree 4: propose hinge move ---
+        if (centerDim == 1 && centerDeg == 4)
+        {
+            Vertex[2] edge = [center[0], center[1]];
+
+            // Find a start vertex (any facet vertex not in the edge)
+            Vertex startVertex = void;
+            foreach (v; facet)
+                if (v != edge[0] && v != edge[1]) { startVertex = v; break; }
+
+            auto hm = mfd.hingeMove(edge, startVertex, uniform(0, 2));
+            if (!mfd.hasValidHingeMove(hm))
+                continue;
+
+            hingeTries++;
             real deltaObj = mfd.speculativeHingeDelta(hm, currentObjective, params);
-            // No Hastings correction: proposal is symmetric, f-vector unchanged
             real logAlpha = -deltaObj;
 
             if (logAlpha >= 0 || uniform01 <= exp(logAlpha))
@@ -477,30 +503,45 @@ bool mcmcStep(Vertex, P)(
             }
             return false;
         }
-        // Hinge attempt failed — fall through to bistellar
+
+        // --- Standard bistellar move ---
+        if (centerDeg + centerDim != dim + 1)
+            continue;
+
+        BM bm;
+        if (centerDim == dim)
+        {
+            if (unusedVertices.empty)
+                unusedVertices ~= mfd.fVector[0].to!Vertex;
+            bm = BM(center, unusedVertices.back.only);
+        }
+        else
+        {
+            auto coCenter = mfd.coCenter(center, facet);
+            bm = BM(center, coCenter[]);
+        }
+
+        if (uniform01 > 2.0 / centerDeg)
+            continue;
+
+        if (!mfd.hasValidMove(bm))
+            continue;
+
+        bistellarTries[bm.coCenter.length - 1]++;
+        real deltaObj = mfd.speculativeBistellarDelta(bm, currentObjective, params);
+        real logAlpha = -deltaObj;
+
+        if (logAlpha >= 0 || uniform01 <= exp(logAlpha))
+        {
+            mfd.doMove(bm);
+            if (bm.coCenter.length == 1) unusedVertices.popBack;
+            if (bm.center.length == 1) unusedVertices ~= bm.center;
+            currentObjective += deltaObj;
+            bistellarAccepts[bm.coCenter.length - 1]++;
+            return true;
+        }
+        return false;
     }
-
-    // Bistellar move
-    if (unusedVertices.empty)
-        unusedVertices ~= mfd.fVector[0].to!Vertex;
-
-    auto bm = mfd.chooseRandomMove(unusedVertices.back, params);
-    bistellarTries[bm.coCenter.length - 1]++;
-
-    real deltaObj = mfd.speculativeBistellarDelta(bm, currentObjective, params);
-    // No Hastings correction: importance weight 1/V corrects at measurement time.
-    real logAlpha = -deltaObj;
-
-    if (logAlpha >= 0 || uniform01 <= exp(logAlpha))
-    {
-        mfd.doMove(bm);
-        if (bm.coCenter.length == 1) unusedVertices.popBack;
-        if (bm.center.length == 1) unusedVertices ~= bm.center;
-        currentObjective += deltaObj;
-        bistellarAccepts[bm.coCenter.length - 1]++;
-        return true;
-    }
-    return false;
 }
 
 ///

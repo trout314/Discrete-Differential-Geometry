@@ -35,8 +35,6 @@ class SamplerParams:
         Coefficient for the local curvature (hinge degree variance) penalty.
     codim3_degree_variance_coef : float
         Coefficient for the codimension-3 degree variance penalty.
-    hinge_move_prob : float
-        Probability of proposing a hinge (4-4) move per step (dim=3 only).
     """
 
     num_facets_target: int = 100
@@ -45,7 +43,6 @@ class SamplerParams:
     num_hinges_coef: float = 0.05
     hinge_degree_variance_coef: float = 0.2
     codim3_degree_variance_coef: float = 0.1
-    hinge_move_prob: float = 0.0
 
 
 @dataclass
@@ -73,7 +70,7 @@ class ManifoldSampler:
 
     def __init__(self, manifold: Manifold, params: SamplerParams):
         self._params = params
-        self._handle = _lib.ddg_sampler_create_ext(
+        self._handle = _lib.ddg_sampler_create(
             manifold._handle,
             params.num_facets_target,
             params.hinge_degree_target,
@@ -81,7 +78,6 @@ class ManifoldSampler:
             params.num_hinges_coef,
             params.hinge_degree_variance_coef,
             params.codim3_degree_variance_coef,
-            params.hinge_move_prob,
         )
         # Hold a reference to keep the callback alive
         self._callback_ref = None
@@ -295,11 +291,6 @@ class ManifoldSampler:
         """Update the target number of facets."""
         _lib.ddg_sampler_set_num_facets_target(self._handle, target)
         self._params.num_facets_target = target
-
-    def set_hinge_move_prob(self, prob: float) -> None:
-        """Update the hinge move probability."""
-        _lib.ddg_sampler_set_hinge_move_prob(self._handle, prob)
-        self._params.hinge_move_prob = prob
 
     def set_num_facets_coef(self, coef: float) -> None:
         """Update the volume penalty coefficient."""
