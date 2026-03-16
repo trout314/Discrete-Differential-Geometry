@@ -1036,6 +1036,9 @@ private struct SamplerState
     // MCMC state
     real currentObjective = real.nan;
 
+    // Callback interval: how many moves between callback invocations
+    long callbackInterval = 1000;
+
     // Statistics (cumulative across run() calls; reset with ddg_sampler_reset_stats)
     ulong hingeTries, hingeAccepts;
     ulong[5] bistellarTries;   // indexed by coCenter.length - 1; max dim=4 -> 5 slots
@@ -1175,7 +1178,7 @@ extern(C) long ddg_sampler_run(void* sampler_handle, long num_moves,
             {
                 s.totalTried++;
 
-                if (cb !is null && moveNum % 1000 == 0 && moveNum > 0)
+                if (cb !is null && s.callbackInterval > 0 && moveNum % s.callbackInterval == 0 && moveNum > 0)
                 {
                     if (cb(moveNum, numMoves, ud) != 0)
                         return accepted;
@@ -1267,7 +1270,7 @@ private long runSamplerDim3(SamplerState* s, long numMoves,
         {
             s.totalTried++;
 
-            if (cb !is null && moveNum % 1000 == 0 && moveNum > 0)
+            if (cb !is null && s.callbackInterval > 0 && moveNum % s.callbackInterval == 0 && moveNum > 0)
             {
                 // Write back stats before callback
                 s.hingeTries = hT;
@@ -1345,7 +1348,7 @@ extern(C) long ddg_sampler_run_exact(void* sampler_handle, long num_moves,
 
             foreach (moveNum; 0 .. numMoves)
             {
-                if (cb !is null && moveNum % 1000 == 0 && moveNum > 0)
+                if (cb !is null && s.callbackInterval > 0 && moveNum % s.callbackInterval == 0 && moveNum > 0)
                 {
                     if (cb(moveNum, numMoves, ud) != 0)
                         return accepted;
@@ -1483,6 +1486,14 @@ extern(C) int ddg_sampler_set_num_facets_target(void* sampler_handle, int target
     auto state = cast(SamplerState*) sampler_handle;
     state.numFacetsTarget = target;
     state.currentObjective = real.nan; // force recompute on next run
+    return 0;
+}
+
+extern(C) int ddg_sampler_set_callback_interval(void* sampler_handle, long interval) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    (cast(SamplerState*) sampler_handle).callbackInterval = interval;
     return 0;
 }
 

@@ -401,6 +401,10 @@ _lib.ddg_sampler_degree.argtypes = [
 _lib.ddg_sampler_degree.restype = ctypes.c_long
 _lib.ddg_sampler_degree.errcheck = _check_int
 
+_lib.ddg_sampler_set_callback_interval.argtypes = [ctypes.c_void_p, ctypes.c_long]
+_lib.ddg_sampler_set_callback_interval.restype = ctypes.c_int
+_lib.ddg_sampler_set_callback_interval.errcheck = _check_int
+
 _lib.ddg_sampler_set_num_facets_target.argtypes = [ctypes.c_void_p, ctypes.c_int]
 _lib.ddg_sampler_set_num_facets_target.restype = ctypes.c_int
 _lib.ddg_sampler_set_num_facets_target.errcheck = _check_int

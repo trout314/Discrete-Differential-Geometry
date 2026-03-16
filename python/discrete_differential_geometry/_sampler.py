@@ -96,6 +96,7 @@ class ManifoldSampler:
         moves: int | None = None,
         exact: bool = False,
         callback: Callable[[int, int], bool] | None = None,
+        callback_interval: int | None = None,
     ) -> int:
         """Run the sampler.
 
@@ -114,7 +115,12 @@ class ManifoldSampler:
             Metropolis (no Hastings); use importance_weight() to correct.
         callback : callable, optional
             Called periodically with ``(moves_done, moves_total)``.
-            Return ``True`` to stop early.
+            Return ``True`` to stop early. The callback can access
+            ``self.manifold``, ``self.current_objective``, etc. to
+            inspect the current state of the sampler.
+        callback_interval : int, optional
+            Number of moves between callback invocations. Default 1000.
+            Increase for large triangulations to reduce overhead.
 
         Returns
         -------
@@ -128,6 +134,9 @@ class ManifoldSampler:
             mfd_handle = _lib.ddg_sampler_get_manifold(self._handle)
             num_facets = _lib.ddg_manifold_num_facets(mfd_handle)
             moves = int(sweeps * num_facets)
+
+        if callback_interval is not None:
+            _lib.ddg_sampler_set_callback_interval(self._handle, callback_interval)
 
         if callback is not None:
 
