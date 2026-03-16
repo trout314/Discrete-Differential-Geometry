@@ -156,6 +156,13 @@ _lib.ddg_manifold_save.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
 _lib.ddg_manifold_save.restype = ctypes.c_int
 _lib.ddg_manifold_save.errcheck = _check_int
 
+_lib.ddg_manifold_save_with_comments.argtypes = [
+    ctypes.c_void_p, ctypes.c_char_p,
+    ctypes.POINTER(ctypes.c_char_p), ctypes.c_int,
+]
+_lib.ddg_manifold_save_with_comments.restype = ctypes.c_int
+_lib.ddg_manifold_save_with_comments.errcheck = _check_int
+
 _lib.ddg_manifold_save_edge_graph.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
 _lib.ddg_manifold_save_edge_graph.restype = ctypes.c_int
 _lib.ddg_manifold_save_edge_graph.errcheck = _check_int

@@ -985,11 +985,42 @@ SimplicialComplex!Vertex loadSimplicialComplex(Vertex = int)(string fileName)
 /******************************************************************************
 * Saves a simplicial complex to a file specified by fileName.
 */
-void saveTo(Vertex)(const SimplicialComplex!Vertex sc, string fileName)
+void saveTo(Vertex)(const SimplicialComplex!Vertex sc, string fileName, const(string)[] comments = null)
 {
     auto saveFile = File(fileName, "w"); // Open in write-only mode
+    foreach (comment; comments)
+        saveFile.writeln("# ", comment);
     saveFile.writeln("# created ", Clock.currTime.to!DateTime);
-    saveFile.write(sc);
+
+    // Collect all vertices, build contiguous relabeling, sort facets.
+    bool[Vertex] vertexSet;
+    const(Vertex)[][] facetList;
+    foreach (f; sc.facets)
+    {
+        facetList ~= f;
+        foreach (v; f)
+            vertexSet[v] = true;
+    }
+
+    Vertex[] sortedVerts = vertexSet.keys;
+    sortedVerts.sort();
+    Vertex[Vertex] relabel;
+    foreach (i, v; sortedVerts)
+        relabel[v] = cast(Vertex) i;
+
+    // Relabel each facet and sort facets lexicographically.
+    Vertex[][] relabeled;
+    foreach (f; facetList)
+    {
+        Vertex[] newFacet;
+        foreach (v; f)
+            newFacet ~= relabel[v];
+        newFacet.sort();
+        relabeled ~= newFacet;
+    }
+    relabeled.sort();
+
+    saveFile.write(relabeled.to!string);
 }
 
 ///
@@ -999,7 +1030,10 @@ unittest
     auto sc = simplicialComplex([[1,2],[3],[2,4,5], [2,4,6]]);
     sc.saveTo(fileName);
     auto loaded = loadSimplicialComplex(fileName);
-    assert(loaded == sc);
+    // saveTo relabels vertices to contiguous 0..n-1 and sorts facets,
+    // so the loaded complex has normalized labels.
+    auto expected = simplicialComplex([[0,1],[2],[1,3,4],[1,3,5]]);
+    assert(loaded == expected);
 }
 
 void saveEdgeGraphTo(Vertex)(const SimplicialComplex!Vertex sc, string fileName)

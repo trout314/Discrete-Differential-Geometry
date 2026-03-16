@@ -41,3 +41,10 @@ data/simplicial_complex_unittest_save.dat
 #jupyter notebook checkpoints
 *checkpoints
 *checkpoint.ipynb
+
+# Generated seed triangulations
+seeds/
+
+# D build artifacts
+bin/
+dub.selections.json

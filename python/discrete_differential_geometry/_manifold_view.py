@@ -114,9 +114,13 @@ class ManifoldView:
 
     # -- I/O (read-only: saves current state, does not mutate) --
 
-    def save(self, path: str) -> None:
+    def save(self, path: str, comments: list[str] | None = None) -> None:
         """Save to a .mfd file."""
-        _lib.ddg_manifold_save(self._handle, path.encode())
+        if comments:
+            arr = (ctypes.c_char_p * len(comments))(*[c.encode() for c in comments])
+            _lib.ddg_manifold_save_with_comments(self._handle, path.encode(), arr, len(comments))
+        else:
+            _lib.ddg_manifold_save(self._handle, path.encode())
 
     def save_edge_graph(self, path: str) -> None:
         """Save the 1-skeleton as an edge list."""

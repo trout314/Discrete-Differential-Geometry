@@ -814,9 +814,9 @@ public:
     }
 
     /// Save the manifold to a file.
-    void saveTo()(string fileName) const
+    void saveTo()(string fileName, const(string)[] comments = null) const
     {
-        toSimplicialComplex.saveTo(fileName);
+        toSimplicialComplex.saveTo(fileName, comments);
     }
 
     /// Save the edge graph to a file.

@@ -471,6 +471,31 @@ extern(C) int ddg_manifold_save(void* handle, const(char)* path) nothrow
     catch (Exception e) { setError(e.msg); return -1; }
 }
 
+extern(C) int ddg_manifold_save_with_comments(
+    void* handle, const(char)* path,
+    const(char*)* comments, int num_comments) nothrow
+{
+    clearError();
+    try
+    {
+        if (handle is null) { setError("null handle"); return -1; }
+        auto h = cast(ManifoldHandle*) handle;
+        string fileName = toStr(path);
+        string[] commentStrings;
+        foreach (i; 0 .. num_comments)
+            commentStrings ~= toStr(comments[i]);
+        switch (h.dim)
+        {
+            case 2: (cast(ManifoldWrapper!2*) h.ptr).mfd.saveTo(fileName, commentStrings); break;
+            case 3: (cast(ManifoldWrapper!3*) h.ptr).mfd.saveTo(fileName, commentStrings); break;
+            case 4: (cast(ManifoldWrapper!4*) h.ptr).mfd.saveTo(fileName, commentStrings); break;
+            default: setError("bad dimension"); return -1;
+        }
+        return 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
 extern(C) int ddg_manifold_save_edge_graph(void* handle, const(char)* path) nothrow
 {
     clearError();
