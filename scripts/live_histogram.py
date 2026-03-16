@@ -255,7 +255,6 @@ def main():
             f"  \u03b2_hinge_var:   {p.hinge_degree_variance_coef}\n"
             f"  \u03b2_codim3_var:  {p.codim3_degree_variance_coef}\n"
             f"  hinge_target:  {p.hinge_degree_target}\n"
-            f"  hinge_move_p:  {p.hinge_move_prob}\n"
             f"\n"
             f"Move acceptance:\n" + "\n".join(move_lines)
         )
