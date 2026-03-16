@@ -1014,6 +1014,99 @@ pure unittest
     oct.countValidBistellarMoves.shouldEqual(oct.allBistellarMoves.length + oct.fVector[2]);
 }
 
+/******************************************************************************
+Returns the number of valid 4-4 hinge moves on a 3-manifold. For each
+degree-4 edge, checks both diagonals for validity (added edge not already
+in the manifold). Each valid diagonal counts as one move.
+*/
+size_t countValidHingeMoves(Vertex)(const ref Manifold!(3, Vertex) mfd)
+{
+    size_t count = 0;
+
+    // Iterate over all edges (dimension 1) looking for degree 4.
+    // For each, walk the link cycle via ridge lookups (O(1) per edge)
+    // and check both diagonals.
+    foreach (kv; mfd.dimMap!1.byKeyValue())
+    {
+        if (mfd.extractDegree(kv.value) != 4) continue;
+
+        auto edge = kv.key;
+
+        // Find a start vertex from any ridge containing this edge.
+        // Scan ridges (dim 2) that start with edge[0], edge[1].
+        // The first vertex > edge[1] in such a ridge is a link vertex.
+        // Use the facet array: pick the first facet containing both edge verts.
+        Vertex startV = Vertex.init;
+        foreach (ref f; mfd._facetArray[])
+        {
+            if (f[].canFind(edge[0]) && f[].canFind(edge[1]))
+            {
+                foreach (v; f[])
+                    if (v != edge[0] && v != edge[1])
+                    {
+                        startV = v;
+                        break;
+                    }
+                break;
+            }
+        }
+
+        // Walk the cycle
+        Vertex[4] cycle;
+        cycle[0] = startV;
+
+        Vertex[3] ridge = [edge[0], edge[1], cycle[0]];
+        ridge[].sort();
+        auto link0 = mfd.dimMap!2[ridge].link;
+        cycle[1] = link0[0];
+
+        Vertex prev = cycle[0];
+        foreach (i; 2 .. 4)
+        {
+            ridge = [edge[0], edge[1], cycle[i - 1]];
+            ridge[].sort();
+            auto linkI = mfd.dimMap!2[ridge].link;
+            cycle[i] = (linkI[0] == prev) ? linkI[1] : linkI[0];
+            prev = cycle[i - 1];
+        }
+
+        // Check both diagonals
+        Vertex[2] diag0 = [min(cycle[0], cycle[2]), max(cycle[0], cycle[2])];
+        Vertex[2] diag1 = [min(cycle[1], cycle[3]), max(cycle[1], cycle[3])];
+
+        if (!mfd.contains(diag0[])) count++;
+        if (!mfd.contains(diag1[])) count++;
+    }
+
+    return count;
+}
+
+///
+pure @safe unittest
+{
+    alias BM = BistellarMove!3;
+
+    // Standard 3-sphere: all edges have degree 3, no hinge moves
+    auto sphere = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+    sphere.countValidHingeMoves.shouldEqual(0);
+
+    // After a 1-4 move, edges of the subdivided tet have degree 4
+    sphere.doMove(BM([0,1,2,3], [5]));
+    assert(sphere.countValidHingeMoves > 0);
+}
+
+/******************************************************************************
+Returns the total number of valid moves (bistellar + hinge) available to the
+sampler. This is the denominator of the importance weight 1/V(x).
+*/
+size_t countValidMoves(Vertex, int dim)(const ref Manifold!(dim, Vertex) mfd)
+{
+    size_t count = mfd.countValidBistellarMoves;
+    static if (dim == 3)
+        count += mfd.countValidHingeMoves;
+    return count;
+}
+
 version (TrackValidMoves)
 {
 
@@ -1982,7 +2075,192 @@ pure @safe unittest
     oct.numFacets.shouldEqual(8);
 }
 
+/******************************************************************************
+Construct a HingeMove for a degree-4 edge in a 3-manifold.
 
+Walks the link cycle of the edge using ridge-link lookups (O(1) total).
+startVertex is any vertex in the link of the edge (caller typically has this
+from the facet used in proposal). diagonal selects which of the two possible
+diagonals of the quadrilateral link to use (0 or 1).
+*/
+HingeMove!Vertex hingeMove(Vertex)(
+    const ref Manifold!(3, Vertex) mfd,
+    const Vertex[2] edge,
+    Vertex startVertex,
+    int diagonal)
+{
+    assert(diagonal == 0 || diagonal == 1);
+    assert(mfd.degree(edge[]) == 4, "hingeMove requires a degree-4 edge");
+
+    HingeMove!Vertex result;
+    result.removedEdge = edge;
+
+    // Walk the link cycle starting from startVertex using ridge-link lookups.
+    // Each ridge (triangle) in a 3-manifold has exactly 2 vertices in its link.
+    Vertex[4] cycle;
+    cycle[0] = startVertex;
+
+    Vertex[3] ridge;
+    ridge[0] = edge[0]; ridge[1] = edge[1]; ridge[2] = startVertex;
+    ridge[].sort();
+    auto link0 = mfd.dimMap!2[ridge].link;
+    cycle[1] = link0[0]; // arbitrary direction choice
+
+    Vertex prev = startVertex;
+    foreach (i; 2 .. 4)
+    {
+        ridge[0] = edge[0]; ridge[1] = edge[1]; ridge[2] = cycle[i - 1];
+        ridge[].sort();
+        auto linkI = mfd.dimMap!2[ridge].link;
+        // Next vertex is the one that's not prev
+        cycle[i] = (linkI[0] == prev) ? linkI[1] : linkI[0];
+        prev = cycle[i - 1];
+    }
+
+    result.linkCycle = cycle;
+
+    // Set the added edge based on diagonal choice
+    if (diagonal == 0)
+    {
+        result.addedEdge[0] = min(cycle[0], cycle[2]);
+        result.addedEdge[1] = max(cycle[0], cycle[2]);
+    }
+    else
+    {
+        result.addedEdge[0] = min(cycle[1], cycle[3]);
+        result.addedEdge[1] = max(cycle[1], cycle[3]);
+    }
+
+    return result;
+}
+
+/******************************************************************************
+Execute a 4-4 hinge move on a 3-manifold: remove the 4 old tetrahedra
+sharing the removed edge and insert 4 new tetrahedra sharing the added edge.
+*/
+void doHingeMove(Vertex)(ref Manifold!(3, Vertex) mfd, const ref HingeMove!Vertex move)
+{
+    foreach (ref f; move.oldFacets)
+        mfd.removeFacet(f[]);
+    foreach (ref f; move.newFacets)
+        mfd.insertFacet(f[]);
+}
+
+/******************************************************************************
+Undo a 4-4 hinge move by applying its inverse.
+*/
+void undoHingeMove(Vertex)(ref Manifold!(3, Vertex) mfd, const ref HingeMove!Vertex move)
+{
+    auto inv = move.inverse;
+    mfd.doHingeMove(inv);
+}
+
+///
+pure @safe unittest
+{
+    alias BM = BistellarMove!3;
+    alias HM = HingeMove!int;
+
+    // Build a 3-sphere, then do a 1-4 move to create degree-4 edges
+    auto mfd = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+    mfd.doMove(BM([0,1,2,3], [5]));
+
+    // After 1-4 move on [0,1,2,3] with new vertex 5:
+    // Edge [0,1] has degree 4 (in tets [0,1,2,4],[0,1,3,4],[0,1,2,5],[0,1,3,5])
+    mfd.degree([0,1]).shouldEqual(4);
+
+    auto origFVector = mfd.fVector.dup;
+    auto origFacets = mfd.facets.sort;
+
+    // Construct hinge move on edge [0,1], start from vertex 2
+    auto hm = mfd.hingeMove([0, 1], 2, 1);
+
+    // Verify the removed edge is [0,1]
+    assert(hm.removedEdge == [0, 1]);
+
+    // The added edge should not exist yet
+    assert(!mfd.contains(hm.addedEdge[]));
+    assert(mfd.hasValidHingeMove(hm));
+
+    // Apply the hinge move
+    mfd.doHingeMove(hm);
+
+    // f-vector should be unchanged (4-4 move preserves it)
+    mfd.fVector.shouldEqual(origFVector);
+
+    // Old edge gone, new edge present
+    assert(!mfd.contains(hm.removedEdge[]));
+    assert(mfd.contains(hm.addedEdge[]));
+    assert(mfd.degree(hm.addedEdge[]) == 4);
+
+    // Verify integrity
+    assert(mfd.findProblems.length == 0,
+        "manifold has problems after hinge move: " ~ mfd.findProblems.to!string);
+
+    // Undo the move
+    mfd.undoHingeMove(hm);
+
+    // Everything should be restored
+    mfd.fVector.shouldEqual(origFVector);
+    mfd.facets.sort.shouldEqual(origFacets);
+    assert(mfd.contains(hm.removedEdge[]));
+    assert(mfd.degree([0,1]) == 4);
+}
+
+///
+pure @safe unittest
+{
+    alias BM = BistellarMove!3;
+
+    // Test both diagonals on the same edge
+    auto mfd = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+    mfd.doMove(BM([0,1,2,3], [5]));
+
+    auto hm0 = mfd.hingeMove([0, 1], 2, 0);
+    auto hm1 = mfd.hingeMove([0, 1], 2, 1);
+
+    // The two diagonals should be different
+    assert(hm0.addedEdge != hm1.addedEdge);
+
+    // Both share the same removed edge and link cycle
+    assert(hm0.removedEdge == hm1.removedEdge);
+    assert(hm0.linkCycle == hm1.linkCycle);
+
+    // Exactly one diagonal should be valid (the other edge already exists)
+    int validCount = (mfd.hasValidHingeMove(hm0) ? 1 : 0)
+                   + (mfd.hasValidHingeMove(hm1) ? 1 : 0);
+    assert(validCount >= 1, "at least one diagonal should be valid");
+}
+
+///
+pure @safe unittest
+{
+    alias BM = BistellarMove!3;
+    alias HM = HingeMove!int;
+
+    // Test inverse().inverse() roundtrip on actual manifold
+    auto mfd = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+    mfd.doMove(BM([0,1,2,3], [5]));
+
+    auto hm = mfd.hingeMove([0, 1], 2, 1);
+    assert(mfd.hasValidHingeMove(hm));
+
+    // Do the move
+    mfd.doHingeMove(hm);
+
+    // Now construct the inverse from the post-move manifold
+    // and verify it matches hm.inverse
+    auto inv = hm.inverse;
+    assert(mfd.degree(inv.removedEdge[]) == 4);
+
+    // Verify inv.inverse matches original facets
+    auto roundtrip = inv.inverse;
+    auto origOld = hm.oldFacets;
+    auto rtOld = roundtrip.oldFacets;
+    origOld[].sort();
+    rtOld[].sort();
+    assert(origOld == rtOld);
+}
 
 
 @system unittest

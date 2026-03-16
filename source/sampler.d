@@ -225,11 +225,339 @@ unittest
 }
 
 // ---------------------------------------------------------------------------
+// Speculative delta for hinge moves
+// ---------------------------------------------------------------------------
+
+/******************************************************************************
+Compute the objective delta for a 4-4 hinge move without executing it.
+A hinge move preserves the f-vector; only totSqDeg changes for dims 0..dim-2.
+Enumerates all sub-simplices of the 6 involved vertices to compute degree deltas.
+*/
+real speculativeHingeDelta(Vertex, P)(
+    const ref Manifold!(3, Vertex) mfd,
+    const ref HingeMove!Vertex move,
+    real currentObjective,
+    P params)
+{
+    enum dim = 3;
+
+    // Collect the 6 involved vertices (sorted for subset enumeration)
+    Vertex[6] allVertsBuf;
+    allVertsBuf[0] = move.removedEdge[0];
+    allVertsBuf[1] = move.removedEdge[1];
+    allVertsBuf[2 .. 6] = move.linkCycle;
+    allVertsBuf[].sort();
+    auto allVerts = allVertsBuf[];
+
+    // Get old and new facets
+    auto oldFacets = move.oldFacets;
+    auto newFacets = move.newFacets;
+
+    // f-vector is unchanged by a 4-4 move
+    long[dim - 1] newTotSqDeg;
+    foreach (d; 0 .. dim - 1)
+        newTotSqDeg[d] = cast(long) mfd.totalSquareDegree(d);
+
+    // For each sub-simplex dimension d (0 and 1 for dim=3),
+    // enumerate all subsets of the 6 vertices and compute degree deltas.
+    static foreach (d; 0 .. dim - 1)
+    {{
+        foreach (subset; allVerts[].subsetsOfSize(d + 1))
+        {
+            // Count how many old facets contain this subset
+            int oldCount = 0;
+            foreach (ref f; oldFacets)
+                if (subset.isSubsetOf(f[]))
+                    oldCount++;
+
+            // Count how many new facets contain this subset
+            int newCount = 0;
+            foreach (ref f; newFacets)
+                if (subset.isSubsetOf(f[]))
+                    newCount++;
+
+            int delta = newCount - oldCount;
+            if (delta == 0) continue;
+
+            long deg = cast(long) mfd.degreeOrZero!d(subset);
+            newTotSqDeg[d] += 2 * deg * delta + cast(long) delta * delta;
+        }
+    }}
+
+    // Compute new objective from unchanged f-vector and updated totSqDeg
+    auto newPen = penaltiesFromValues!dim(
+        cast(long) mfd.fVector[dim], cast(long) mfd.fVector[dim - 2],
+        cast(ulong) newTotSqDeg[dim - 2],
+        cast(long) mfd.fVector[dim - 3],
+        cast(ulong) newTotSqDeg[dim - 3],
+        params);
+
+    return objectiveFromPenalty(newPen, params) - currentObjective;
+}
+
+///
+unittest
+{
+    // Test that speculativeHingeDelta matches actual delta
+    struct TestParams
+    {
+        int numFacetsTarget = 20;
+        real hingeDegreeTarget = 4.5;
+        real numFacetsCoef = 0.1;
+        real numHingesCoef = 0.05;
+        real hingeDegreeVarianceCoef = 0.2;
+        real coDim3DegreeVarianceCoef = 0.1;
+    }
+
+    alias BM = BistellarMove!3;
+
+    // Build a 3-sphere and do 1-4 moves to create degree-4 edges
+    auto mfd = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+    auto params = TestParams();
+
+    mfd.doMove(BM([0,1,2,3], [5]));
+    mfd.doMove(BM([0,1,2,4], [6]));
+
+    // Find all degree-4 edges and test speculative delta on valid hinge moves
+    int tested = 0;
+    foreach (edge; mfd.simplices(1))
+    {
+        if (mfd.degree(edge) != 4) continue;
+
+        int[2] edgeArr = [edge[0], edge[1]];
+        // Pick a start vertex from the link
+        // Use any facet containing this edge to find a link vertex
+        foreach (facet; mfd.facets)
+        {
+            if (!edgeArr[].isSubsetOf(facet[]))
+                continue;
+
+            // Find the two vertices not in the edge
+            int[2] others;
+            int oi = 0;
+            foreach (v; facet)
+                if (v != edgeArr[0] && v != edgeArr[1])
+                    others[oi++] = v;
+
+            foreach (diag; 0 .. 2)
+            {
+                auto hm = mfd.hingeMove(edgeArr, others[0], diag);
+                if (!mfd.hasValidHingeMove(hm)) continue;
+
+                auto currentObj = mfd.objective(params);
+                auto specDelta = mfd.speculativeHingeDelta(hm, currentObj, params);
+
+                // Actually execute and compute
+                auto mfdCopy = mfd;
+                mfdCopy.doHingeMove(hm);
+                auto actualNewObj = mfdCopy.objective(params);
+                auto actualDelta = actualNewObj - currentObj;
+
+                assert(isClose(specDelta, actualDelta, 1e-6),
+                    "speculative hinge delta mismatch: spec=%s actual=%s for move %s"
+                    .format(specDelta, actualDelta, hm));
+                tested++;
+            }
+            break; // only need one facet per edge
+        }
+    }
+    assert(tested > 0, "should have tested at least one hinge move");
+}
+
+// ---------------------------------------------------------------------------
+// Hinge move proposal
+// ---------------------------------------------------------------------------
+
+/******************************************************************************
+Try to propose a hinge move on a 3-manifold. Picks a random facet, a random
+edge from that facet, checks for degree 4, picks a random diagonal, and
+checks validity. Returns null if no valid move found in this single attempt.
+
+Proposal is symmetric: the forward and reverse proposal probabilities are
+equal (same number of containing facets, same edge count per facet, same
+f-vector), so no Hastings correction is needed beyond the objective delta.
+*/
+Nullable!(HingeMove!Vertex) tryProposeHingeMove(Vertex)(
+    ref Manifold!(3, Vertex) mfd)
+{
+    // Pick a random facet
+    auto facet = mfd.randomFacetOfDim(3);
+
+    // Pick a random edge from the facet (one of C(4,2)=6 edges)
+    static immutable int[2][6] edgePairs = [
+        [0,1],[0,2],[0,3],[1,2],[1,3],[2,3]];
+    auto pair = edgePairs[uniform(0, 6)];
+
+    Vertex[2] edge = [facet[pair[0]], facet[pair[1]]];
+    edge[].sort();
+
+    // Check degree 4
+    if (mfd.degree(edge[]) != 4)
+        return typeof(return).init;
+
+    // Find a start vertex (any facet vertex not in the edge)
+    Vertex startVertex = void;
+    foreach (v; facet)
+        if (v != edge[0] && v != edge[1]) { startVertex = v; break; }
+
+    // Pick a random diagonal and construct the move
+    auto hm = mfd.hingeMove(edge, startVertex, uniform(0, 2));
+
+    if (!mfd.hasValidHingeMove(hm))
+        return typeof(return).init;
+
+    return nullable(hm);
+}
+
+///
+unittest
+{
+    alias BM = BistellarMove!3;
+
+    // Build a manifold with some degree-4 edges
+    auto mfd = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+    mfd.doMove(BM([0,1,2,3], [5]));
+    mfd.doMove(BM([0,1,2,4], [6]));
+
+    // Try many proposals; at least some should succeed
+    int successes = 0;
+    foreach (_; 0 .. 200)
+    {
+        auto result = mfd.tryProposeHingeMove();
+        if (!result.isNull) successes++;
+    }
+    assert(successes > 0, "should have found at least one valid hinge move");
+}
+
+/******************************************************************************
+Run one MCMC step that is either a hinge move or a bistellar move.
+Returns true if a move was accepted.
+
+hingeMoveProb controls the probability of attempting a hinge move per step.
+When the hinge attempt fails (no degree-4 edge or no valid diagonal), falls
+through to a bistellar move.
+
+This function uses the speculative delta path (no execute-undo) and
+approximate Hastings correction via nFacets ratio for bistellar moves.
+For hinge moves, no Hastings correction is needed (symmetric proposal,
+unchanged f-vector).
+*/
+bool mcmcStep(Vertex, P)(
+    ref Manifold!(3, Vertex) mfd,
+    ref real currentObjective,
+    ref Vertex[] unusedVertices,
+    P params,
+    real hingeMoveProb,
+    ref ulong hingeTries,
+    ref ulong hingeAccepts,
+    ref ulong[4] bistellarTries,
+    ref ulong[4] bistellarAccepts)
+{
+    enum dim = 3;
+
+    // With probability hingeMoveProb, try a hinge move
+    if (hingeMoveProb > 0 && uniform01 < hingeMoveProb)
+    {
+        auto hmResult = mfd.tryProposeHingeMove();
+        if (!hmResult.isNull)
+        {
+            auto hm = hmResult.get;
+            hingeTries++;
+
+            real deltaObj = mfd.speculativeHingeDelta(hm, currentObjective, params);
+            // No Hastings correction: proposal is symmetric, f-vector unchanged
+            real logAlpha = -deltaObj;
+
+            if (logAlpha >= 0 || uniform01 <= exp(logAlpha))
+            {
+                mfd.doHingeMove(hm);
+                currentObjective += deltaObj;
+                hingeAccepts++;
+                return true;
+            }
+            return false;
+        }
+        // Hinge attempt failed — fall through to bistellar
+    }
+
+    // Bistellar move
+    if (unusedVertices.empty)
+        unusedVertices ~= mfd.fVector[0].to!Vertex;
+
+    auto bm = mfd.chooseRandomMove(unusedVertices.back, params);
+    bistellarTries[bm.coCenter.length - 1]++;
+
+    real deltaObj = mfd.speculativeBistellarDelta(bm, currentObjective, params);
+    // No Hastings correction: importance weight 1/V corrects at measurement time.
+    real logAlpha = -deltaObj;
+
+    if (logAlpha >= 0 || uniform01 <= exp(logAlpha))
+    {
+        mfd.doMove(bm);
+        if (bm.coCenter.length == 1) unusedVertices.popBack;
+        if (bm.center.length == 1) unusedVertices ~= bm.center;
+        currentObjective += deltaObj;
+        bistellarAccepts[bm.coCenter.length - 1]++;
+        return true;
+    }
+    return false;
+}
+
+///
+unittest
+{
+    // Integration test: run mixed MCMC for a number of steps, verify manifold integrity
+    struct TestParams
+    {
+        int numFacetsTarget = 20;
+        real hingeDegreeTarget = 4.5;
+        real numFacetsCoef = 0.1;
+        real numHingesCoef = 0.05;
+        real hingeDegreeVarianceCoef = 0.2;
+        real coDim3DegreeVarianceCoef = 0.1;
+    }
+
+    alias BM = BistellarMove!3;
+    auto mfd = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+    auto params = TestParams();
+
+    // Grow a bit first
+    mfd.doMove(BM([0,1,2,3], [5]));
+    mfd.doMove(BM([0,1,2,4], [6]));
+    mfd.doMove(BM([1,2,3,4], [7]));
+
+    auto currentObj = mfd.objective(params);
+    int[] unusedVertices = [8];
+    ulong hingeTries, hingeAccepts;
+    ulong[4] bTries, bAccepts;
+
+    int accepted = 0;
+    foreach (_; 0 .. 500)
+    {
+        if (mfd.mcmcStep(currentObj, unusedVertices, params, 0.5,
+                hingeTries, hingeAccepts, bTries, bAccepts))
+            accepted++;
+    }
+
+    assert(accepted > 0, "should have accepted some moves");
+    assert(hingeTries > 0, "should have attempted some hinge moves");
+
+    // Verify manifold integrity after many mixed moves
+    assert(mfd.findProblems.length == 0,
+        "manifold has problems after mixed MCMC: " ~ mfd.findProblems.to!string);
+
+    // Verify objective tracking is consistent
+    auto actualObj = mfd.objective(params);
+    assert(isClose(currentObj, actualObj, 1e-4),
+        "objective drift: tracked=%s actual=%s".format(currentObj, actualObj));
+}
+
+// ---------------------------------------------------------------------------
 // Move selection
 // ---------------------------------------------------------------------------
 
 BistellarMove!(dim, Vertex) chooseRandomMove(int dim, Vertex, P)(
-    Manifold!(dim, Vertex) manifold, Vertex newVertex, P parameters)
+    ref Manifold!(dim, Vertex) manifold, Vertex newVertex, P parameters)
 {
     alias BM = BistellarMove!(dim, Vertex);
     enum nVerts = dim + 1;
