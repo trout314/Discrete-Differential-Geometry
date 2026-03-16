@@ -60,6 +60,9 @@ def main():
     dv_history = []
     sweep_history = []
 
+    # Create twin axis for degree variance (once, not per frame)
+    ax_dv = ax_obj.twinx()
+
     # Style
     bar_color = "#4C72B0"
     line_color = "#C44E52"
@@ -144,6 +147,7 @@ def main():
 
         # --- Objective + degree variance trajectory ---
         ax_obj.clear()
+        ax_dv.clear()
         ax_obj.plot(sweep_history, obj_history, color=line_color, linewidth=1,
                     label="objective")
         ax_obj.set_xlabel("Sweeps")
@@ -151,7 +155,6 @@ def main():
         ax_obj.tick_params(axis="y", labelcolor=line_color)
         ax_obj.set_title("Objective & vertex degree variance")
 
-        ax_dv = ax_obj.twinx()
         ax_dv.plot(sweep_history, dv_history, color=dv_color, linewidth=1,
                    label="vtx deg var")
         ax_dv.set_ylabel("Vtx deg variance", color=dv_color)
