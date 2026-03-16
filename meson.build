@@ -56,12 +56,6 @@ executable('manifold_sampler_exact',
 )
 
 
-executable('surface_cross_S1',
-  lib_sources + files('source/applications/surface_cross_S1.d'),
-  include_directories : d_import_dirs,
-  link_args : d_link_args,
-  install : true,
-)
 
 # ---------------------------------------------------------------------------
 # Shared library for Python/FFI bindings
