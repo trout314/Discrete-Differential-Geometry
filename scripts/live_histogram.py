@@ -55,6 +55,24 @@ def main():
     fig.suptitle("Manifold Sampler — Live Histograms", fontsize=14)
     ax_vtx, ax_edge, ax_obj, ax_info = axes.flat
 
+    # Fixed histogram bins (determined from initial state)
+    vtx_hist_init = sampler.manifold.degree_histogram(0)
+    edge_hist_init = sampler.manifold.degree_histogram(1)
+
+    # Vertex: even degrees only. Pick enough bins to cover initial range + headroom.
+    nonzero_init = np.nonzero(vtx_hist_init)[0]
+    max_vtx_deg = (nonzero_init[-1] + 1) if len(nonzero_init) > 0 else 20
+    n_vtx_bins = max(20, max_vtx_deg // 2 + 5)  # number of even-degree bins
+    vtx_bin_degrees = np.arange(1, n_vtx_bins + 1) * 2  # 2, 4, 6, ...
+    vtx_max_deg = vtx_bin_degrees[-1]  # last regular bin degree
+
+    # Edge: integer degrees. Cover initial range + headroom.
+    nonzero_e_init = np.nonzero(edge_hist_init)[0]
+    max_edge_deg = (nonzero_e_init[-1] + 1) if len(nonzero_e_init) > 0 else 10
+    n_edge_bins = max(15, max_edge_deg + 5)
+    edge_bin_degrees = np.arange(1, n_edge_bins + 1)  # 1, 2, 3, ...
+    edge_max_deg = edge_bin_degrees[-1]
+
     # Objective trajectory
     obj_history = []
     sweep_history = []
@@ -115,48 +133,70 @@ def main():
         accepted = stats.total_accepted
         accept_pct = 100.0 * accepted / tried if tried > 0 else 0.0
 
-        # --- Vertex degree histogram (even degrees only) ---
+        # --- Vertex degree histogram (even degrees, fixed bins) ---
         ax_vtx.clear()
-        # Extract even-degree bins: index 1 = deg 2, index 3 = deg 4, ...
-        even_freq = vtx_hist[1::2]  # indices 1,3,5,... -> degrees 2,4,6,...
-        even_degrees = np.arange(1, len(even_freq) + 1) * 2
-        vtx_total = even_freq.sum()
-        even_rel = even_freq / vtx_total if vtx_total > 0 else even_freq
+        # Map raw histogram into fixed bins; overflow goes to last bin
+        raw_even = vtx_hist[1::2]  # indices 1,3,5,... -> degrees 2,4,6,...
+        vtx_binned = np.zeros(n_vtx_bins, dtype=np.int64)
+        n_copy = min(len(raw_even), n_vtx_bins - 1)
+        vtx_binned[:n_copy] = raw_even[:n_copy]
+        vtx_binned[-1] += raw_even[n_copy - 1:].sum() if n_copy > 0 else 0
+        # Correct: last bin = overflow from n_copy onward
+        vtx_binned[-1] = raw_even[n_vtx_bins - 1:].sum() if len(raw_even) >= n_vtx_bins else 0
+        vtx_binned[:min(len(raw_even), n_vtx_bins - 1)] = raw_even[:n_vtx_bins - 1]
+        if len(raw_even) >= n_vtx_bins:
+            vtx_binned[-1] = raw_even[n_vtx_bins - 1:].sum()
+
+        vtx_total = vtx_binned.sum()
+        vtx_rel = vtx_binned / vtx_total if vtx_total > 0 else vtx_binned.astype(float)
         mean_vtx = mfd.mean_degree(0)
-        ax_vtx.bar(even_degrees, even_rel, color=bar_color, width=2.0)
+        ax_vtx.bar(vtx_bin_degrees, vtx_rel, color=bar_color, width=2.0)
         ax_vtx.axvline(mean_vtx, color="red", linewidth=1.2, linestyle="-")
         ax_vtx.set_xlabel("Vertex degree")
         ax_vtx.set_title(f"Vertex degrees  (n={int(fv[0])})")
         ax_vtx.yaxis.set_major_locator(plt.MaxNLocator(10))
         ax_vtx.tick_params(axis="y", labelleft=False)
-        nonzero = np.nonzero(even_rel)[0]
-        if len(nonzero) > 0:
-            ax_vtx.set_xlim(even_degrees[nonzero[0]] - 1, even_degrees[nonzero[-1]] + 3)
-        if len(even_rel) > 0 and even_rel.max() > 0:
+        ax_vtx.set_xlim(vtx_bin_degrees[0] - 1, vtx_bin_degrees[-1] + 1)
+        # Label last bin as overflow if it has content
+        if vtx_binned[-1] > 0 and len(raw_even) >= n_vtx_bins:
+            labels = [str(d) for d in vtx_bin_degrees]
+            labels[-1] = f"{vtx_max_deg}+"
+            ax_vtx.set_xticks(vtx_bin_degrees[::4])
+            ax_vtx.set_xticklabels(labels[::4])
+        if vtx_rel.max() > 0:
             ax_vtx.text(0.97, 0.95,
-                        f"peak={even_rel.max():.3f}\nmean={mean_vtx:.1f}\nvar={dv:.1f}",
+                        f"peak={vtx_rel.max():.3f}\nmean={mean_vtx:.1f}\nvar={dv:.1f}",
                         transform=ax_vtx.transAxes, ha="right", va="top",
                         fontsize=9, color="#444444")
 
-        # --- Edge degree histogram ---
+        # --- Edge degree histogram (fixed bins) ---
         ax_edge.clear()
-        degrees_e = np.arange(1, len(edge_hist) + 1)
-        edge_total = edge_hist.sum()
-        edge_freq = edge_hist / edge_total if edge_total > 0 else edge_hist
+        # Map raw histogram into fixed bins; overflow goes to last bin
+        edge_binned = np.zeros(n_edge_bins, dtype=np.int64)
+        n_copy_e = min(len(edge_hist), n_edge_bins - 1)
+        edge_binned[:n_copy_e] = edge_hist[:n_copy_e]
+        if len(edge_hist) >= n_edge_bins:
+            edge_binned[-1] = edge_hist[n_edge_bins - 1:].sum()
+
+        edge_total = edge_binned.sum()
+        edge_rel = edge_binned / edge_total if edge_total > 0 else edge_binned.astype(float)
         mean_edge = mfd.mean_degree(1)
-        ax_edge.bar(degrees_e, edge_freq, color=bar_color, width=1.0)
+        ax_edge.bar(edge_bin_degrees, edge_rel, color=bar_color, width=1.0)
         ax_edge.axvline(mean_edge, color="red", linewidth=1.2, linestyle="-")
         ax_edge.set_xlabel("Edge degree (hinge degree)")
         ax_edge.set_title(f"Edge degrees  (n={int(fv[1])})")
         ax_edge.yaxis.set_major_locator(plt.MaxNLocator(10))
         ax_edge.tick_params(axis="y", labelleft=False)
-        nonzero_e = np.nonzero(edge_hist)[0]
-        if len(nonzero_e) > 0:
-            ax_edge.set_xlim(nonzero_e[0], nonzero_e[-1] + 2)
+        ax_edge.set_xlim(edge_bin_degrees[0] - 0.5, edge_bin_degrees[-1] + 0.5)
+        if edge_binned[-1] > 0 and len(edge_hist) >= n_edge_bins:
+            labels_e = [str(d) for d in edge_bin_degrees]
+            labels_e[-1] = f"{edge_max_deg}+"
+            ax_edge.set_xticks(edge_bin_degrees)
+            ax_edge.set_xticklabels(labels_e)
         edge_dv = mfd.degree_variance(1)
-        if len(edge_freq) > 0 and edge_freq.max() > 0:
+        if edge_rel.max() > 0:
             ax_edge.text(0.97, 0.95,
-                         f"peak={edge_freq.max():.3f}\nmean={mean_edge:.2f}\nvar={edge_dv:.1f}",
+                         f"peak={edge_rel.max():.3f}\nmean={mean_edge:.2f}\nvar={edge_dv:.1f}",
                          transform=ax_edge.transAxes, ha="right", va="top",
                          fontsize=9, color="#444444")
 
