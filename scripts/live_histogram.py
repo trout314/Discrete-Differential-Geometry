@@ -126,7 +126,7 @@ def main():
         degrees = np.arange(1, len(vtx_hist) + 1)
         vtx_total = vtx_hist.sum()
         vtx_freq = vtx_hist / vtx_total if vtx_total > 0 else vtx_hist
-        ax_vtx.bar(degrees, vtx_freq, color=bar_color, width=0.8)
+        ax_vtx.bar(degrees, vtx_freq, color=bar_color, width=1.0)
         ax_vtx.set_xlabel("Vertex degree")
         ax_vtx.set_title(f"Vertex degrees  (n={int(fv[0])}, var={dv:.1f})")
         ax_vtx.yaxis.set_major_locator(plt.MaxNLocator(10))
@@ -144,7 +144,7 @@ def main():
         degrees_e = np.arange(1, len(edge_hist) + 1)
         edge_total = edge_hist.sum()
         edge_freq = edge_hist / edge_total if edge_total > 0 else edge_hist
-        ax_edge.bar(degrees_e, edge_freq, color=bar_color, width=0.8)
+        ax_edge.bar(degrees_e, edge_freq, color=bar_color, width=1.0)
         ax_edge.set_xlabel("Edge degree (hinge degree)")
         mean_edge = mfd.mean_degree(1)
         ax_edge.set_title(f"Edge degrees  (n={int(fv[1])}, mean={mean_edge:.2f})")
