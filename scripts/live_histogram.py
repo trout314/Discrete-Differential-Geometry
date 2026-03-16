@@ -69,8 +69,8 @@ def main():
     # Edge: integer degrees. Cover initial range + headroom.
     nonzero_e_init = np.nonzero(edge_hist_init)[0]
     max_edge_deg = (nonzero_e_init[-1] + 1) if len(nonzero_e_init) > 0 else 10
-    n_edge_bins = max(15, max_edge_deg + 5)
-    edge_bin_degrees = np.arange(1, n_edge_bins + 1)  # 1, 2, 3, ...
+    n_edge_bins = max(15, max_edge_deg + 3)
+    edge_bin_degrees = np.arange(3, 3 + n_edge_bins)  # 3, 4, 5, ...
     edge_max_deg = edge_bin_degrees[-1]
 
     # Objective trajectory
@@ -153,7 +153,6 @@ def main():
         ax_vtx.bar(vtx_bin_degrees, vtx_rel, color=bar_color, width=2.0)
         ax_vtx.axvline(mean_vtx, color="red", linewidth=1.2, linestyle="-")
         ax_vtx.set_xlabel("Vertex degree")
-        ax_vtx.set_title(f"Vertex degrees  (n={int(fv[0])})")
         ax_vtx.yaxis.set_major_locator(plt.MaxNLocator(10))
         ax_vtx.tick_params(axis="y", labelleft=False)
         ax_vtx.set_xlim(vtx_bin_degrees[0] - 1, vtx_bin_degrees[-1] + 1)
@@ -169,14 +168,19 @@ def main():
                         transform=ax_vtx.transAxes, ha="right", va="top",
                         fontsize=9, color="#444444")
 
-        # --- Edge degree histogram (fixed bins) ---
+        # --- Edge degree histogram (fixed bins, starting at degree 3) ---
         ax_edge.clear()
-        # Map raw histogram into fixed bins; overflow goes to last bin
+        # Map raw histogram (0-indexed: index i = degree i+1) into bins starting at 3
         edge_binned = np.zeros(n_edge_bins, dtype=np.int64)
-        n_copy_e = min(len(edge_hist), n_edge_bins - 1)
-        edge_binned[:n_copy_e] = edge_hist[:n_copy_e]
-        if len(edge_hist) >= n_edge_bins:
-            edge_binned[-1] = edge_hist[n_edge_bins - 1:].sum()
+        raw_start = 2  # index 2 in edge_hist = degree 3
+        for i in range(n_edge_bins - 1):
+            raw_idx = raw_start + i
+            if raw_idx < len(edge_hist):
+                edge_binned[i] = edge_hist[raw_idx]
+        # Overflow: everything from degree (3 + n_edge_bins - 1) onward
+        overflow_start = raw_start + n_edge_bins - 1
+        if overflow_start < len(edge_hist):
+            edge_binned[-1] = edge_hist[overflow_start:].sum()
 
         edge_total = edge_binned.sum()
         edge_rel = edge_binned / edge_total if edge_total > 0 else edge_binned.astype(float)
@@ -184,7 +188,6 @@ def main():
         ax_edge.bar(edge_bin_degrees, edge_rel, color=bar_color, width=1.0)
         ax_edge.axvline(mean_edge, color="red", linewidth=1.2, linestyle="-")
         ax_edge.set_xlabel("Edge degree (hinge degree)")
-        ax_edge.set_title(f"Edge degrees  (n={int(fv[1])})")
         ax_edge.yaxis.set_major_locator(plt.MaxNLocator(10))
         ax_edge.tick_params(axis="y", labelleft=False)
         ax_edge.set_xlim(edge_bin_degrees[0] - 0.5, edge_bin_degrees[-1] + 0.5)
@@ -228,11 +231,14 @@ def main():
         if ht > 0:
             move_lines.append(f"  hinge:  {ha:,}/{ht:,} ({100*ha/ht:.0f}%)")
 
+        fv_str = "(" + ", ".join(str(int(x)) for x in fv) + ")"
+
         info = (
             f"Progress: {sw:.0f}/{total_sweeps} sweeps ({pct:.0f}%)\n"
             f"Elapsed: {elapsed:.1f}s   ETA: {eta}\n"
             f"\n"
             f"Facets: {nf:,}   (target {target_facets:,})\n"
+            f"f-vector: {fv_str}\n"
             f"Objective: {obj:.1f}\n"
             f"Acceptance: {accept_pct:.1f}%  "
             f"({accepted:,}/{tried:,})\n"
