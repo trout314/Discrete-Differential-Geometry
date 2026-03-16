@@ -128,11 +128,16 @@ def main():
         vtx_freq = vtx_hist / vtx_total if vtx_total > 0 else vtx_hist
         ax_vtx.bar(degrees, vtx_freq, color=bar_color, width=0.8)
         ax_vtx.set_xlabel("Vertex degree")
-        ax_vtx.set_ylabel("Frequency")
         ax_vtx.set_title(f"Vertex degrees  (n={int(fv[0])}, var={dv:.1f})")
+        ax_vtx.yaxis.set_major_locator(plt.MaxNLocator(10))
+        ax_vtx.tick_params(axis="y", labelleft=False)
         nonzero = np.nonzero(vtx_hist)[0]
         if len(nonzero) > 0:
             ax_vtx.set_xlim(nonzero[0], nonzero[-1] + 2)
+        if len(vtx_freq) > 0 and vtx_freq.max() > 0:
+            ax_vtx.text(0.97, 0.95, f"peak={vtx_freq.max():.3f}",
+                        transform=ax_vtx.transAxes, ha="right", va="top",
+                        fontsize=9, color="#444444")
 
         # --- Edge degree histogram ---
         ax_edge.clear()
@@ -143,9 +148,15 @@ def main():
         ax_edge.set_xlabel("Edge degree (hinge degree)")
         mean_edge = mfd.mean_degree(1)
         ax_edge.set_title(f"Edge degrees  (n={int(fv[1])}, mean={mean_edge:.2f})")
+        ax_edge.yaxis.set_major_locator(plt.MaxNLocator(10))
+        ax_edge.tick_params(axis="y", labelleft=False)
         nonzero_e = np.nonzero(edge_hist)[0]
         if len(nonzero_e) > 0:
             ax_edge.set_xlim(nonzero_e[0], nonzero_e[-1] + 2)
+        if len(edge_freq) > 0 and edge_freq.max() > 0:
+            ax_edge.text(0.97, 0.95, f"peak={edge_freq.max():.3f}",
+                         transform=ax_edge.transAxes, ha="right", va="top",
+                         fontsize=9, color="#444444")
 
         # --- Objective + degree variance trajectory ---
         ax_obj.clear()
