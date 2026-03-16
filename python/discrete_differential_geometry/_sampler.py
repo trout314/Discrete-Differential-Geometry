@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import ctypes
+import sys
+import time
 from dataclasses import dataclass
 from typing import Callable, Optional
 
@@ -154,6 +156,138 @@ class ManifoldSampler:
 
         run_fn = _lib.ddg_sampler_run_exact if exact else _lib.ddg_sampler_run
         return run_fn(self._handle, moves, c_callback, None)
+
+    def run_with_display(
+        self,
+        *,
+        sweeps: float | None = None,
+        moves: int | None = None,
+        exact: bool = False,
+        update_seconds: float = 0.5,
+        callback_interval: int = 10000,
+        histogram_dim: int | None = None,
+        histogram_width: int = 40,
+    ) -> int:
+        """Run the sampler with a live terminal display.
+
+        Parameters
+        ----------
+        sweeps, moves, exact : same as ``run()``.
+        update_seconds : float
+            Minimum seconds between display updates.
+        callback_interval : int
+            Moves between D-side callbacks. Default 10000.
+        histogram_dim : int, optional
+            If given, show a degree histogram for simplices of this dimension.
+            Typically 0 (vertex degrees) or dim-2 (hinge degrees).
+        histogram_width : int
+            Character width of histogram bars.
+
+        Returns
+        -------
+        int
+            Number of moves accepted.
+        """
+        t_start = time.monotonic()
+        last_display = 0.0
+        stats_before = self.get_stats()
+        dim = self.manifold.dimension
+
+        def _display(done, total):
+            nonlocal last_display
+            now = time.monotonic()
+            if now - last_display < update_seconds:
+                return False
+            last_display = now
+
+            elapsed = now - t_start
+            mfd = self.manifold
+            stats = self.get_stats()
+            tried = stats.total_tried - stats_before.total_tried
+            accepted = stats.total_accepted - stats_before.total_accepted
+            accept_pct = 100.0 * accepted / tried if tried > 0 else 0.0
+
+            # Progress line
+            pct = 100.0 * done / total if total > 0 else 0.0
+            eta = ""
+            if done > 0:
+                eta_secs = elapsed * (total - done) / done
+                if eta_secs < 120:
+                    eta = f"  ETA {eta_secs:.0f}s"
+                else:
+                    eta = f"  ETA {eta_secs / 60:.1f}m"
+
+            lines = []
+            lines.append(
+                f"  {done:,}/{total:,} moves ({pct:.1f}%)  "
+                f"{elapsed:.1f}s elapsed{eta}"
+            )
+
+            # State line
+            nf = mfd.num_facets
+            obj = self.current_objective
+            dv = mfd.degree_variance(0)
+            lines.append(
+                f"  facets={nf:,}  obj={obj:.1f}  "
+                f"vtx_deg_var={dv:.1f}  accept={accept_pct:.1f}%"
+            )
+
+            # Acceptance breakdown
+            bt = stats.bistellar_tries - stats_before.bistellar_tries
+            ba = stats.bistellar_accepts - stats_before.bistellar_accepts
+            parts = []
+            for i in range(dim + 1):
+                if bt[i] > 0:
+                    r = 100.0 * ba[i] / bt[i]
+                    parts.append(f"{i+1}->{dim+2-i-1}:{r:.0f}%")
+            move_str = "  " + "  ".join(parts)
+
+            ht = stats.hinge_tries - stats_before.hinge_tries
+            ha = stats.hinge_accepts - stats_before.hinge_accepts
+            if ht > 0:
+                move_str += f"  hinge:{100.0 * ha / ht:.0f}%"
+            lines.append(move_str)
+
+            # Optional histogram
+            if histogram_dim is not None:
+                h = mfd.degree_histogram(histogram_dim)
+                if len(h) > 0:
+                    max_count = max(h) if max(h) > 0 else 1
+                    lines.append(f"  deg histogram (dim={histogram_dim}):")
+                    for i, count in enumerate(h):
+                        if count == 0:
+                            continue
+                        deg = i + 1
+                        bar_len = int(histogram_width * count / max_count)
+                        bar = "\u2588" * bar_len
+                        lines.append(f"    {deg:3d}: {bar} {count}")
+
+            # Clear and print
+            output = "\n".join(lines)
+            # Move cursor up to overwrite previous display
+            if hasattr(_display, "_prev_lines"):
+                sys.stdout.write(f"\033[{_display._prev_lines}A\033[J")
+            sys.stdout.write(output + "\n")
+            sys.stdout.flush()
+            _display._prev_lines = len(lines)
+
+            return False
+
+        # Print blank lines to reserve space for first update
+        print()
+        _display._prev_lines = 1
+
+        result = self.run(
+            sweeps=sweeps,
+            moves=moves,
+            exact=exact,
+            callback=_display,
+            callback_interval=callback_interval,
+        )
+
+        # Final display
+        _display(1, 1)
+        return result
 
     # -- Parameter setters --
 
