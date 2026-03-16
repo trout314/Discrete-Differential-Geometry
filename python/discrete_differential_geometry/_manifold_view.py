@@ -85,6 +85,15 @@ class ManifoldView:
         ptr = arr.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
         return _lib.ddg_manifold_degree(self._handle, ptr, len(arr))
 
+    def degree_histogram(self, dim: int) -> np.ndarray:
+        """Return degree histogram: result[i] = count of simplices with degree i+1."""
+        n = _lib.ddg_manifold_degree_histogram(self._handle, dim, None)
+        if n == 0:
+            return np.empty(0, dtype=np.int64)
+        buf = (ctypes.c_long * n)()
+        _lib.ddg_manifold_degree_histogram(self._handle, dim, buf)
+        return np.array(buf[:n], dtype=np.int64)
+
     def mean_degree(self, dim: int) -> float:
         """Return the mean degree of simplices of given dimension."""
         return _lib.ddg_manifold_mean_degree(self._handle, dim)

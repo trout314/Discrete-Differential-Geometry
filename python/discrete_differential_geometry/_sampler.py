@@ -128,6 +128,52 @@ class ManifoldSampler:
         run_fn = _lib.ddg_sampler_run_exact if exact else _lib.ddg_sampler_run
         return run_fn(self._handle, moves, c_callback, None)
 
+    def set_num_facets_target(self, target: int) -> None:
+        """Update the target number of facets for the sampler."""
+        _lib.ddg_sampler_set_num_facets_target(self._handle, target)
+        self._params.num_facets_target = target
+
+    def ramped_grow(
+        self,
+        target_facets: int,
+        step_size: int = 500,
+        eq_sweeps_per_step: int = 5,
+        callback: Callable[[int, int], None] | None = None,
+    ) -> None:
+        """Grow the manifold to target_facets via ramped growth with equilibration.
+
+        At each step, the sampler's num_facets_target is increased by step_size,
+        MCMC is run until the manifold reaches the step target, then equilibration
+        sweeps are run.
+
+        Parameters
+        ----------
+        target_facets : int
+            Final target number of facets.
+        step_size : int
+            Increase num_facets_target by this much each step.
+        eq_sweeps_per_step : int
+            Equilibration sweeps to run after reaching each step target.
+        callback : callable, optional
+            Called with ``(current_facets, step_target)`` after each step completes.
+        """
+        current = self.manifold.num_facets
+        step_target = current
+
+        while step_target < target_facets:
+            step_target = min(step_target + step_size, target_facets)
+            self.set_num_facets_target(step_target)
+
+            # Run until we reach the step target
+            while self.manifold.num_facets < step_target:
+                self.run(sweeps=1)
+
+            # Equilibrate
+            self.run(sweeps=eq_sweeps_per_step)
+
+            if callback is not None:
+                callback(self.manifold.num_facets, step_target)
+
     @property
     def manifold(self) -> ManifoldView:
         """Read-only view of the sampler's current manifold.

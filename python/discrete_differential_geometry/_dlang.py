@@ -391,6 +391,26 @@ _lib.ddg_sampler_degree.argtypes = [
 _lib.ddg_sampler_degree.restype = ctypes.c_long
 _lib.ddg_sampler_degree.errcheck = _check_int
 
+_lib.ddg_sampler_set_num_facets_target.argtypes = [ctypes.c_void_p, ctypes.c_int]
+_lib.ddg_sampler_set_num_facets_target.restype = ctypes.c_int
+_lib.ddg_sampler_set_num_facets_target.errcheck = _check_int
+
+# ---------------------------------------------------------------------------
+# Degree histogram
+# ---------------------------------------------------------------------------
+
+_lib.ddg_manifold_degree_histogram.argtypes = [
+    ctypes.c_void_p, ctypes.c_int, ctypes.POINTER(ctypes.c_long),
+]
+_lib.ddg_manifold_degree_histogram.restype = ctypes.c_long
+_lib.ddg_manifold_degree_histogram.errcheck = _check_int
+
+_lib.ddg_sampler_degree_histogram.argtypes = [
+    ctypes.c_void_p, ctypes.c_int, ctypes.POINTER(ctypes.c_long),
+]
+_lib.ddg_sampler_degree_histogram.restype = ctypes.c_long
+_lib.ddg_sampler_degree_histogram.errcheck = _check_int
+
 # ---------------------------------------------------------------------------
 # GC control
 # ---------------------------------------------------------------------------

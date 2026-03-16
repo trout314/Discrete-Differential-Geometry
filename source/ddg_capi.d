@@ -1339,3 +1339,60 @@ extern(C) long ddg_sampler_degree(void* sampler_handle, const(int)* simplex, int
     }
     catch (Exception e) { setError(e.msg); return -1; }
 }
+
+extern(C) int ddg_sampler_set_num_facets_target(void* sampler_handle, int target) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto state = cast(SamplerState*) sampler_handle;
+    state.numFacetsTarget = target;
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Degree histogram
+// ---------------------------------------------------------------------------
+
+/// Returns degree histogram for simplices of given dimension.
+/// If out_buf is null, returns the histogram length.
+/// Otherwise fills out_buf with counts: out_buf[i] = number of simplices with degree i+1.
+extern(C) long ddg_manifold_degree_histogram(void* handle, int simp_dim, long* out_buf) nothrow
+{
+    clearError();
+    try
+    {
+        if (handle is null) { setError("null handle"); return -1; }
+        auto h = cast(ManifoldHandle*) handle;
+
+        size_t[] getHist(int dim)()
+        {
+            return (cast(ManifoldWrapper!dim*) h.ptr).mfd.degreeHistogram(simp_dim);
+        }
+
+        size_t[] hist;
+        switch (h.dim)
+        {
+            case 2: hist = getHist!2(); break;
+            case 3: hist = getHist!3(); break;
+            case 4: hist = getHist!4(); break;
+            default: setError("bad dimension"); return -1;
+        }
+
+        if (out_buf is null)
+            return cast(long) hist.length;
+
+        foreach (i, v; hist)
+            out_buf[i] = cast(long) v;
+
+        return cast(long) hist.length;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+extern(C) long ddg_sampler_degree_histogram(void* sampler_handle, int simp_dim, long* out_buf) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto mfd_handle = (cast(SamplerState*) sampler_handle).manifoldHandle;
+    return ddg_manifold_degree_histogram(mfd_handle, simp_dim, out_buf);
+}

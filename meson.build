@@ -40,22 +40,6 @@ d_import_dirs = include_directories('source')
 # Applications
 # ---------------------------------------------------------------------------
 
-executable('manifold_sampler',
-  lib_sources + files('source/applications/manifold_sampler.d'),
-  include_directories : d_import_dirs,
-  link_args : d_link_args,
-  install : true,
-)
-
-executable('manifold_sampler_exact',
-  lib_sources + files('source/applications/manifold_sampler.d'),
-  include_directories : d_import_dirs,
-  d_module_versions : ['TrackValidMoves'],
-  link_args : d_link_args,
-  install : true,
-)
-
-
 
 # ---------------------------------------------------------------------------
 # Shared library for Python/FFI bindings
