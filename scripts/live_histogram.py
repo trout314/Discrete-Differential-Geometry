@@ -149,11 +149,14 @@ def main():
 
         vtx_total = vtx_binned.sum()
         vtx_rel = vtx_binned / vtx_total if vtx_total > 0 else vtx_binned.astype(float)
+        vtx_peak = vtx_rel.max()
+        vtx_norm = vtx_rel / vtx_peak if vtx_peak > 0 else vtx_rel
         mean_vtx = mfd.mean_degree(0)
-        ax_vtx.bar(vtx_bin_degrees, vtx_rel, color=bar_color, width=2.0)
+        ax_vtx.bar(vtx_bin_degrees, vtx_norm, color=bar_color, width=2.0)
         ax_vtx.axvline(mean_vtx, color="red", linewidth=1.2, linestyle="-")
         ax_vtx.set_xlabel("Vertex degree")
-        ax_vtx.yaxis.set_major_locator(plt.MaxNLocator(10))
+        ax_vtx.set_ylim(0, 1.05)
+        ax_vtx.set_yticks(np.linspace(0, 1, 11))
         ax_vtx.tick_params(axis="y", labelleft=False)
         ax_vtx.set_xlim(vtx_bin_degrees[0] - 1, vtx_bin_degrees[-1] + 1)
         # Label last bin as overflow if it has content
@@ -162,9 +165,9 @@ def main():
             labels[-1] = f"{vtx_max_deg}+"
             ax_vtx.set_xticks(vtx_bin_degrees[::4])
             ax_vtx.set_xticklabels(labels[::4])
-        if vtx_rel.max() > 0:
+        if vtx_peak > 0:
             ax_vtx.text(0.97, 0.95,
-                        f"peak={vtx_rel.max():.3f}\nmean={mean_vtx:.1f}\nvar={dv:.1f}",
+                        f"peak={vtx_peak:.3f}\nmean={mean_vtx:.1f}\nvar={dv:.1f}",
                         transform=ax_vtx.transAxes, ha="right", va="top",
                         fontsize=9, color="#444444")
 
@@ -184,11 +187,14 @@ def main():
 
         edge_total = edge_binned.sum()
         edge_rel = edge_binned / edge_total if edge_total > 0 else edge_binned.astype(float)
+        edge_peak = edge_rel.max()
+        edge_norm = edge_rel / edge_peak if edge_peak > 0 else edge_rel
         mean_edge = mfd.mean_degree(1)
-        ax_edge.bar(edge_bin_degrees, edge_rel, color=bar_color, width=1.0)
+        ax_edge.bar(edge_bin_degrees, edge_norm, color=bar_color, width=1.0)
         ax_edge.axvline(mean_edge, color="red", linewidth=1.2, linestyle="-")
         ax_edge.set_xlabel("Edge degree (hinge degree)")
-        ax_edge.yaxis.set_major_locator(plt.MaxNLocator(10))
+        ax_edge.set_ylim(0, 1.05)
+        ax_edge.set_yticks(np.linspace(0, 1, 11))
         ax_edge.tick_params(axis="y", labelleft=False)
         ax_edge.set_xlim(edge_bin_degrees[0] - 0.5, edge_bin_degrees[-1] + 0.5)
         if edge_binned[-1] > 0 and len(edge_hist) >= n_edge_bins:
@@ -197,9 +203,9 @@ def main():
             ax_edge.set_xticks(edge_bin_degrees)
             ax_edge.set_xticklabels(labels_e)
         edge_dv = mfd.degree_variance(1)
-        if edge_rel.max() > 0:
+        if edge_peak > 0:
             ax_edge.text(0.97, 0.95,
-                         f"peak={edge_rel.max():.3f}\nmean={mean_edge:.2f}\nvar={edge_dv:.1f}",
+                         f"peak={edge_peak:.3f}\nmean={mean_edge:.2f}\nvar={edge_dv:.1f}",
                          transform=ax_edge.transAxes, ha="right", va="top",
                          fontsize=9, color="#444444")
 
