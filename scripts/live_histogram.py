@@ -231,25 +231,24 @@ def main():
         for i in range(4):
             if bt[i] > 0:
                 r = 100.0 * ba[i] / bt[i]
-                move_lines.append(f"  {i+1}\u2192{4-i}  {ba[i]:>8,}/{bt[i]:>8,}  {r:5.1f}%")
+                move_lines.append(f"  {i+1}->{4-i}: {ba[i]:,}/{bt[i]:,} ({r:.0f}%)")
         ht, ha = stats.hinge_tries, stats.hinge_accepts
         if ht > 0:
-            r = 100.0 * ha / ht
-            move_lines.append(f"  hinge {ha:>8,}/{ht:>8,}  {r:5.1f}%")
+            move_lines.append(f"  hinge:  {ha:,}/{ht:,} ({100*ha/ht:.0f}%)")
 
-        fv_str = "(" + ", ".join(f"{int(x):,}" for x in fv) + ")"
+        fv_str = "(" + ", ".join(str(int(x)) for x in fv) + ")"
 
         info = (
-            f"Progress  {sw:>6.0f} / {total_sweeps}  ({pct:.0f}%)\n"
-            f"Elapsed   {elapsed:>8.1f}s    ETA {eta}\n"
+            f"Progress: {sw:.0f}/{total_sweeps} sweeps ({pct:.0f}%)\n"
+            f"Elapsed: {elapsed:.1f}s   ETA: {eta}\n"
             f"\n"
-            f"Facets    {nf:>8,}    target {target_facets:,}\n"
-            f"f-vector  {fv_str}\n"
-            f"Objective {obj:>10.1f}\n"
-            f"Accepted  {accepted:>8,} / {tried:>8,}  {accept_pct:5.1f}%\n"
+            f"Facets: {nf:,}   (target {target_facets:,})\n"
+            f"f-vector: {fv_str}\n"
+            f"Objective: {obj:.1f}\n"
+            f"Acceptance: {accept_pct:.1f}%  "
+            f"({accepted:,}/{tried:,})\n"
             f"\n"
-            f"Moves     accepted /    tried   rate\n"
-            + "\n".join(move_lines)
+            f"Move acceptance:\n" + "\n".join(move_lines)
         )
         ax_info.text(0.05, 0.95, info, transform=ax_info.transAxes,
                      fontsize=10, verticalalignment="top",
