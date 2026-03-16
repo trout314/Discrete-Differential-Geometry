@@ -238,6 +238,7 @@ def main():
 
         fv_str = "(" + ", ".join(str(int(x)) for x in fv) + ")"
 
+        p = sampler._params
         info = (
             f"Progress: {sw:.0f}/{total_sweeps} sweeps ({pct:.0f}%)\n"
             f"Elapsed: {elapsed:.1f}s   ETA: {eta}\n"
@@ -247,6 +248,14 @@ def main():
             f"Objective: {obj:.1f}\n"
             f"Acceptance: {accept_pct:.1f}%  "
             f"({accepted:,}/{tried:,})\n"
+            f"\n"
+            f"Coefficients:\n"
+            f"  \u03b2_volume:      {p.num_facets_coef}\n"
+            f"  \u03b2_hinges:      {p.num_hinges_coef}\n"
+            f"  \u03b2_hinge_var:   {p.hinge_degree_variance_coef}\n"
+            f"  \u03b2_codim3_var:  {p.codim3_degree_variance_coef}\n"
+            f"  hinge_target:  {p.hinge_degree_target}\n"
+            f"  hinge_move_p:  {p.hinge_move_prob}\n"
             f"\n"
             f"Move acceptance:\n" + "\n".join(move_lines)
         )
