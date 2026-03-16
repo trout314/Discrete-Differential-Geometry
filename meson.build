@@ -68,13 +68,6 @@ executable('bench_sampler_exact',
   link_args : d_link_args,
 )
 
-executable('test_valid_moves',
-  lib_sources + files('test_valid_moves.d'),
-  include_directories : d_import_dirs,
-  d_module_versions : ['TrackValidMoves'],
-  link_args : d_link_args,
-)
-
 # ---------------------------------------------------------------------------
 # Unit tests
 # ---------------------------------------------------------------------------
@@ -92,3 +85,16 @@ test_exe = executable('unittest',
 )
 
 test('unittests', test_exe, workdir : meson.project_source_root())
+
+# Incremental valid move tracking tests — verifies that the O(1) valid move
+# count stays in sync with the full recount after every move.
+test_exe_track = executable('test_valid_moves',
+  lib_sources + files(
+    'test_valid_moves.d',
+  ),
+  include_directories : d_import_dirs,
+  d_module_versions : ['TrackValidMoves'],
+  link_args : d_link_args,
+)
+
+test('valid_move_tracking', test_exe_track, workdir : meson.project_source_root())
