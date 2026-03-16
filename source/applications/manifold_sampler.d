@@ -69,6 +69,9 @@ int main(string[] args)
     // bistellarAccepts[j] counts the (j + 1) -> (dim + 1 - j) moves accepted
     ulong[dim + 1] bistellarAccepts;
 
+    ulong hingeTries, hingeAccepts;
+    enum hingeMoveProb = 0.3;
+
     auto sampleThreshold = params.numFacetsTarget * params.sweepsPerSample;
     auto csvLineThreshold = params.numFacetsTarget * params.sweepsPerCSVline;
     
@@ -104,27 +107,9 @@ int main(string[] args)
             // Phase 1: MCMC until we reach stepTarget
             while (mfd.fVector[dim] < stepTarget)
             {
-                if (unusedVertices.empty)
-                    unusedVertices ~= mfd.fVector[0].to!int;
-                assert(unusedVertices.all!(v => !mfd.contains(v.only)));
-
-                auto bm = mfd.chooseRandomMove(unusedVertices.back, stepParams);
-                ++bistellarTries[bm.coCenter.length - 1];
-
-                real deltaObj = mfd.speculativeBistellarDelta(bm, stepObjective, stepParams);
-                immutable nFacetsBefore = cast(real) mfd.fVector[dim];
-                immutable deltaFacets = dim + 2 - 2 * cast(int) bm.center.length;
-                immutable nFacetsAfter = nFacetsBefore + deltaFacets;
-                real logAlpha = -deltaObj + log(nFacetsBefore) - log(nFacetsAfter);
-
-                if ((logAlpha >= 0) || (uniform01 <= exp(logAlpha)))
-                {
-                    mfd.doMove(bm);
-                    if (bm.coCenter.length == 1) unusedVertices.popBack;
-                    if (bm.center.length == 1) unusedVertices ~= bm.center;
-                    stepObjective += deltaObj;
-                    ++bistellarAccepts[bm.coCenter.length - 1];
-                }
+                mfd.mcmcStep(stepObjective, unusedVertices, stepParams,
+                    hingeMoveProb, hingeTries, hingeAccepts,
+                    bistellarTries, bistellarAccepts);
             }
 
             // Phase 2: equilibration sweeps at this step size
@@ -132,28 +117,10 @@ int main(string[] args)
             immutable eqTarget = cast(ulong) params.eqSweepsPerStep * stepTarget;
             while (eqAccepted < eqTarget)
             {
-                if (unusedVertices.empty)
-                    unusedVertices ~= mfd.fVector[0].to!int;
-                assert(unusedVertices.all!(v => !mfd.contains(v.only)));
-
-                auto bm = mfd.chooseRandomMove(unusedVertices.back, stepParams);
-                ++bistellarTries[bm.coCenter.length - 1];
-
-                real deltaObj = mfd.speculativeBistellarDelta(bm, stepObjective, stepParams);
-                immutable nFacetsBefore = cast(real) mfd.fVector[dim];
-                immutable deltaFacets = dim + 2 - 2 * cast(int) bm.center.length;
-                immutable nFacetsAfter = nFacetsBefore + deltaFacets;
-                real logAlpha = -deltaObj + log(nFacetsBefore) - log(nFacetsAfter);
-
-                if ((logAlpha >= 0) || (uniform01 <= exp(logAlpha)))
-                {
-                    mfd.doMove(bm);
-                    if (bm.coCenter.length == 1) unusedVertices.popBack;
-                    if (bm.center.length == 1) unusedVertices ~= bm.center;
-                    stepObjective += deltaObj;
-                    ++bistellarAccepts[bm.coCenter.length - 1];
+                if (mfd.mcmcStep(stepObjective, unusedVertices, stepParams,
+                        hingeMoveProb, hingeTries, hingeAccepts,
+                        bistellarTries, bistellarAccepts))
                     ++eqAccepted;
-                }
             }
 
             if (params.doStdoutReport)
@@ -174,8 +141,8 @@ int main(string[] args)
 
     while (!doneSampling)
     {
-        ulong numMovesTried = bistellarTries[].sum;
-        ulong numMovesAccepted = bistellarAccepts[].sum;
+        ulong numMovesTried = bistellarTries[].sum + hingeTries;
+        ulong numMovesAccepted = bistellarAccepts[].sum + hingeAccepts;
         doneSampling = numMovesAccepted >= params.maxSweeps * params.numFacetsTarget;
 
         if (unusedVertices.empty)
@@ -188,16 +155,15 @@ int main(string[] args)
         assert(unusedVertices.all!(v => !mfd.contains(v.only)));
 
         //-------------------------- ATTEMPT MOVE ----------------------------
-        alias BM = BistellarMove!(dim, int);
-
-        auto bm = mfd.chooseRandomMove(unusedVertices.back, params);
-        ++bistellarTries[bm.coCenter.length - 1];
 
         bool accepted = false;
         version (TrackValidMoves)
         {
             // Exact Hastings: execute, compute, undo if rejected.
             // Uses incrementally tracked V_before/V_after for correction.
+            auto bm = mfd.chooseRandomMove(unusedVertices.back, params);
+            ++bistellarTries[bm.coCenter.length - 1];
+
             immutable vBefore = cast(real) mfd.validMoveCount;
 
             mfd.doMove(bm);
@@ -224,34 +190,17 @@ int main(string[] args)
             else
             {
                 currentObjective = newObjective;
+                ++bistellarAccepts[bm.coCenter.length - 1];
                 accepted = true;
             }
         }
         else
         {
-            // Speculative delta — avoid executing rejected moves.
-            // Approximate Hastings correction using nFacets ratio.
-            real deltaObj = mfd.speculativeBistellarDelta(bm, currentObjective, params);
-
-            immutable nFacetsBefore = cast(real) mfd.fVector[dim];
-            immutable deltaFacets = dim + 2 - 2 * cast(int) bm.center.length;
-            immutable nFacetsAfter = nFacetsBefore + deltaFacets;
-            real logAlpha = -deltaObj + log(nFacetsBefore) - log(nFacetsAfter);
-
-            if ((logAlpha >= 0) || (uniform01 <= exp(logAlpha)))
-            {
-                // Accepted — now execute
-                mfd.doMove(bm);
-                if (bm.coCenter.length == 1) unusedVertices.popBack;
-                if (bm.center.length == 1) unusedVertices ~= bm.center;
-                currentObjective += deltaObj;
-                accepted = true;
-            }
-        }
-
-        if (accepted)
-        {
-            ++bistellarAccepts[bm.coCenter.length - 1];
+            // Speculative path via shared mcmcStep (no Hastings correction;
+            // importance weight 1/V corrects at measurement time).
+            accepted = mfd.mcmcStep(currentObjective, unusedVertices, params,
+                hingeMoveProb, hingeTries, hingeAccepts,
+                bistellarTries, bistellarAccepts);
         }
 
         //--------------------------- MAKE REPORT ----------------------------
