@@ -57,16 +57,11 @@ def main():
 
     # Objective trajectory
     obj_history = []
-    dv_history = []
     sweep_history = []
-
-    # Create twin axis for degree variance (once, not per frame)
-    ax_dv = ax_obj.twinx()
 
     # Style
     bar_color = "#4C72B0"
     line_color = "#C44E52"
-    dv_color = "#55A868"
 
     sampler.reset_stats()
     sweeps_per_chunk = max(1.0, total_sweeps / 200)  # ~200 display updates
@@ -113,7 +108,6 @@ def main():
         stats = sampler.get_stats()
 
         obj_history.append(obj)
-        dv_history.append(dv)
         sweep_history.append(sw)
 
         elapsed = time.monotonic() - t_start
@@ -137,7 +131,7 @@ def main():
         if len(nonzero) > 0:
             ax_vtx.set_xlim(even_degrees[nonzero[0]] - 1, even_degrees[nonzero[-1]] + 3)
         if len(even_rel) > 0 and even_rel.max() > 0:
-            ax_vtx.text(0.97, 0.95, f"peak={even_rel.max():.3f}",
+            ax_vtx.text(0.97, 0.95, f"peak={even_rel.max():.3f}\nvar={dv:.1f}",
                         transform=ax_vtx.transAxes, ha="right", va="top",
                         fontsize=9, color="#444444")
 
@@ -155,25 +149,18 @@ def main():
         nonzero_e = np.nonzero(edge_hist)[0]
         if len(nonzero_e) > 0:
             ax_edge.set_xlim(nonzero_e[0], nonzero_e[-1] + 2)
+        edge_dv = mfd.degree_variance(1)
         if len(edge_freq) > 0 and edge_freq.max() > 0:
-            ax_edge.text(0.97, 0.95, f"peak={edge_freq.max():.3f}",
+            ax_edge.text(0.97, 0.95, f"peak={edge_freq.max():.3f}\nvar={edge_dv:.1f}",
                          transform=ax_edge.transAxes, ha="right", va="top",
                          fontsize=9, color="#444444")
 
-        # --- Objective + degree variance trajectory ---
+        # --- Objective trajectory ---
         ax_obj.clear()
-        ax_dv.clear()
-        ax_obj.plot(sweep_history, obj_history, color=line_color, linewidth=1,
-                    label="objective")
+        ax_obj.plot(sweep_history, obj_history, color=line_color, linewidth=1)
         ax_obj.set_xlabel("Sweeps")
-        ax_obj.set_ylabel("Objective", color=line_color)
-        ax_obj.tick_params(axis="y", labelcolor=line_color)
-        ax_obj.set_title("Objective & vertex degree variance")
-
-        ax_dv.plot(sweep_history, dv_history, color=dv_color, linewidth=1,
-                   label="vtx deg var")
-        ax_dv.set_ylabel("Vtx deg variance", color=dv_color)
-        ax_dv.tick_params(axis="y", labelcolor=dv_color)
+        ax_obj.set_ylabel("Objective")
+        ax_obj.set_title("Objective")
 
         # --- Info panel ---
         ax_info.clear()
