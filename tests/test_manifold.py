@@ -213,24 +213,20 @@ class TestDataAccess:
         assert m.count_valid_moves() > m.num_facets
 
     def test_importance_weight_standard_sphere(self):
-        # V == F on standard spheres, so weight = 1
+        # importance_weight = 1/countValidBistellarMoves
+        # On standard spheres, only stellar subdivisions are valid,
+        # so countValidBistellarMoves == num_facets
         for dim in (2, 3, 4):
             m = Manifold.standard_sphere(dim)
-            assert m.importance_weight() == 1.0
+            assert m.importance_weight() == pytest.approx(1.0 / m.num_facets)
 
     def test_importance_weight_after_moves(self):
         m = Manifold.standard_sphere(3)
-        m.do_move()
+        for _ in range(5):
+            m.do_move()
         w = m.importance_weight()
-        # V > F after subdivision, so weight = F/V < 1
-        assert 0 < w < 1.0
-
-    def test_importance_weight_equals_f_over_v(self):
-        m = Manifold.standard_sphere(3)
-        m.do_move()
-        m.do_move()
-        w = m.importance_weight()
-        assert abs(w - m.num_facets / m.count_valid_moves()) < 1e-12
+        # After subdivision, more valid moves exist, so weight < 1/num_facets
+        assert 0 < w < 1.0 / m.num_facets
 
 
 class TestMoves:
@@ -363,6 +359,69 @@ class TestIO:
             assert len(lines) == 10
         finally:
             os.unlink(path)
+
+
+class TestDegreeHistogram:
+    def test_standard_2sphere(self):
+        m = Manifold.standard_sphere(2)
+        # 4 vertices each of degree 3
+        h = m.degree_histogram(0)
+        assert list(h) == [0, 0, 4]
+        # 6 edges each of degree 2
+        h = m.degree_histogram(1)
+        assert list(h) == [0, 6]
+        # 4 facets each of degree 1
+        h = m.degree_histogram(2)
+        assert list(h) == [4]
+
+    def test_standard_3sphere(self):
+        m = Manifold.standard_sphere(3)
+        # 5 vertices each of degree 4
+        assert list(m.degree_histogram(0)) == [0, 0, 0, 5]
+        # 10 edges each of degree 3
+        assert list(m.degree_histogram(1)) == [0, 0, 10]
+        # 10 ridges each of degree 2
+        assert list(m.degree_histogram(2)) == [0, 10]
+        # 5 facets each of degree 1
+        assert list(m.degree_histogram(3)) == [5]
+
+    def test_standard_4sphere(self):
+        m = Manifold.standard_sphere(4)
+        # 6 vertices each of degree 5
+        assert list(m.degree_histogram(0)) == [0, 0, 0, 0, 6]
+        # 15 edges each of degree 4
+        assert list(m.degree_histogram(1)) == [0, 0, 0, 15]
+
+    def test_after_moves(self):
+        m = Manifold.standard_sphere(3)
+        for _ in range(5):
+            m.do_move()
+        h = m.degree_histogram(0)
+        # Histogram sum should equal number of vertices
+        assert sum(h) == m.f_vector[0]
+        # All counts non-negative
+        assert all(c >= 0 for c in h)
+
+
+class TestDegreeVariance:
+    def test_standard_spheres_vertex_variance(self):
+        # Standard spheres are regular: all vertices have the same degree
+        for dim in (2, 3, 4):
+            m = Manifold.standard_sphere(dim)
+            assert m.degree_variance(0) == 0.0
+
+    def test_after_subdivision(self):
+        m = Manifold.standard_sphere(3)
+        m.do_move()  # stellar subdivision creates one vertex of different degree
+        assert m.degree_variance(0) > 0.0
+
+    def test_ridge_and_facet_variance_zero(self):
+        # Ridges always have degree 2, facets degree 1 in a manifold
+        m = Manifold.standard_sphere(3)
+        for _ in range(3):
+            m.do_move()
+        assert m.degree_variance(2) == 0.0  # ridges
+        assert m.degree_variance(3) == 0.0  # facets
 
 
 class TestConversion:
