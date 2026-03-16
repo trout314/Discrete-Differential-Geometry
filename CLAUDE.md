@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A D language symbolic math package for discrete differential geometry, focused on efficient sampling of combinatorial n-manifold triangulations via Metropolis-Hastings with bistellar (Pachner) moves.
+A D language symbolic math package for discrete differential geometry, focused on efficient sampling of combinatorial n-manifold triangulations via Metropolis-Hastings with bistellar (Pachner) moves. The D core is exposed to Python via a C API and ctypes bindings.
 
 ## Build Commands
 
@@ -20,12 +20,12 @@ meson compile -C builddir
 # Run tests
 meson test -C builddir
 
-# Build a specific target
-meson compile -C builddir manifold_sampler
+# Build just the shared library (for Python)
+meson compile -C builddir ddg_dlang
 
 # Release build (optimized, asserts removed — use for production runs)
 DC=ldc2 meson setup builddir-release --buildtype=release -Db_ndebug=true
-meson compile -C builddir-release manifold_sampler
+meson compile -C builddir-release ddg_dlang
 
 # Reconfigure after editing meson.build
 meson setup builddir --reconfigure
@@ -33,7 +33,7 @@ meson setup builddir --reconfigure
 
 ## Architecture
 
-### Core Types (source/)
+### D Core (source/)
 
 - **`simplicial_complex.d`** — `SimplicialComplex` is the foundational type: a set of facets (maximal simplices) with vertex type as a template parameter. Supports insertion, removal, comparison, file I/O (`.sc` format), and iteration over simplices by dimension.
 
@@ -41,9 +41,13 @@ meson setup builddir --reconfigure
 
 - **`manifold_moves.d`** — `BistellarMove` type representing Pachner moves (center/co-center decomposition). Contains logic for determining valid moves and applying them to manifolds.
 
+- **`sampler.d`** — MCMC step logic: `mcmcStep` function with speculative delta computation, hinge move support (dim=3), and per-move-type acceptance tracking.
+
 - **`algorithms.d`** — Topological algorithms operating on manifolds: orientability testing, connected components, Euler characteristic, join of complexes.
 
 - **`manifold_examples.d`** — Factory function `standardSphere` for generating standard sphere triangulations.
+
+- **`ddg_capi.d`** — C API layer exposing D types/functions via `extern(C)` for Python ctypes bindings.
 
 ### Supporting Modules
 
@@ -53,14 +57,19 @@ meson setup builddir --reconfigure
 - **`rational_extension_vector.d`** — Vectors over rational extensions (for exact simplex point coordinates using square roots).
 - **`factoring.d`** — Prime factorization utilities.
 
-### Applications (source/applications/)
+### Python Library (python/discrete_differential_geometry/)
 
-Each application has its own `main()` guarded by `version (unittest) {} else`. Meson builds each as a separate executable target.
+Stable, reusable bindings to the D core. This is the public API for research scripts.
 
-- **`manifold_sampler.d`** — The main application. Runs Metropolis-Hastings sampling of manifold triangulations. Reads parameters from a `.params` file (key-value format). Outputs `.mfd` manifold files and optional CSV data, edge graphs, and dual graphs.
-- **`edge_graph.d`** — Extracts edge graph from a simplicial complex file.
-- **`dual_graph.d`** — Extracts dual graph from a manifold file.
-- **`surface_cross_S1.d`** — Computes the product of a surface with S^1.
+- **`_dlang.py`** — ctypes loader and declarations for the shared library.
+- **`_manifold.py`** — `Manifold` class (owned handle, mutable).
+- **`_manifold_view.py`** — `ManifoldView` class (borrowed handle, read-only).
+- **`_sampler.py`** — `ManifoldSampler`, `SamplerParams`, `SamplerStats`.
+- **`_simplicial_complex.py`** — `SimplicialComplex` class.
+
+### Research Scripts (scripts/)
+
+One-off or evolving Python scripts for experiments and analysis. These import the library but are not part of the installed package. Free to experiment, duplicate, or delete.
 
 ### Data Files
 
@@ -71,5 +80,5 @@ Each application has its own `main()` guarded by `version (unittest) {} else`. M
 
 - Tests are co-located with source code using D's built-in `unittest` blocks. Test assertions use helpers in `utility.d`: `shouldBeSameSetAs`, `shouldEqual`, `shouldBeEmpty`, `throwsWithMsg`.
 - Template-heavy D code: most types are parameterized on dimension and/or vertex type.
-- Application `main()` functions are wrapped in `version (unittest) {} else` so they don't conflict with the test runner.
-- The manifold sampler reads parameters from a plain-text `.params` file (see `source/applications/manifold_sampler.params` for an example).
+- The C API in `ddg_capi.d` uses opaque handles and dimension-dispatch (`switch (h.dim)`) to bridge D templates to C.
+- Python library code goes in `python/discrete_differential_geometry/`; research scripts go in `scripts/`.
