@@ -37,6 +37,7 @@ data/simplicial_complex_unittest_save.dat
 *.dat
 ./*.mfd
 *.edge_graph
+data/seed_gen/
 
 #jupyter notebook checkpoints
 *checkpoints
