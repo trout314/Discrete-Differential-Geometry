@@ -35,7 +35,7 @@ data/simplicial_complex_unittest_save.dat
 
 #data files
 *.dat
-./*.mfd
+*.mfd
 *.edge_graph
 data/seed_gen/
 
