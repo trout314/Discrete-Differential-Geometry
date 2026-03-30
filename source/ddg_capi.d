@@ -1285,6 +1285,7 @@ private long runSamplerDim3(SamplerState* s, long numMoves,
             s.currentObjective = mw.mfd.objective(params);
 
         long accepted = 0;
+        long acceptedSinceWriteback = 0;
         // Narrow slices for mcmcStep ref params
         auto hT = s.hingeTries;
         auto hA = s.hingeAccepts;
@@ -1302,18 +1303,18 @@ private long runSamplerDim3(SamplerState* s, long numMoves,
                 s.hingeAccepts = hA;
                 s.bistellarTries[0 .. 4] = bT;
                 s.bistellarAccepts[0 .. 4] = bA;
+                s.totalAccepted += acceptedSinceWriteback;
+                acceptedSinceWriteback = 0;
 
                 if (cb(moveNum, numMoves, ud) != 0)
-                {
-                    s.totalAccepted += accepted;
                     return accepted;
-                }
             }
 
             if (mw.mfd.mcmcStep(s.currentObjective, s.unusedVertices, params,
                     s.hingeMoveProb, hT, hA, bT, bA))
             {
                 accepted++;
+                acceptedSinceWriteback++;
             }
         }
 
@@ -1322,7 +1323,7 @@ private long runSamplerDim3(SamplerState* s, long numMoves,
         s.hingeAccepts = hA;
         s.bistellarTries[0 .. 4] = bT;
         s.bistellarAccepts[0 .. 4] = bA;
-        s.totalAccepted += accepted;
+        s.totalAccepted += acceptedSinceWriteback;
 
         if (cb !is null)
             cb(numMoves, numMoves, ud);
