@@ -10,7 +10,11 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python"))
 
 from discrete_differential_geometry import Manifold, ManifoldSampler, SamplerParams
-from seed_utils import build_metadata_comments, build_seed_filename
+from seed_utils import build_metadata_comments, build_seed_filename, get_free_memory_gb
+
+
+# Exit code indicating the process stopped due to low memory.
+EXIT_LOW_MEMORY = 42
 
 
 def main():
@@ -41,6 +45,14 @@ def main():
         "--batch-mode", action="store_true",
         help="Print one-line status updates instead of interactive display."
     )
+    parser.add_argument(
+        "--skip-existing", action="store_true",
+        help="Skip if the output file already exists."
+    )
+    parser.add_argument(
+        "--min-free-memory-gb", type=float, default=4.0,
+        help="Abort if system free memory drops below this threshold in GB (default: 4)."
+    )
     args = parser.parse_args()
 
     # Build the output filename early so we can use it as a prefix in batch mode
@@ -54,6 +66,10 @@ def main():
     )
     filename = build_seed_filename(args.topology, params, seed_index=args.seed_index)
     tag = filename.removesuffix(".mfd")
+    output_path = os.path.join(args.output_dir, filename)
+
+    if args.skip_existing and os.path.exists(output_path):
+        return
 
     def log(msg):
         if args.batch_mode:
@@ -77,7 +93,17 @@ def main():
     # 3. Ramped growth
     log(f"Growing to {args.num_facets_target} facets...")
 
+    min_free_gb = args.min_free_memory_gb
+
+    def check_memory():
+        """Exit the process if free memory is below the threshold."""
+        free = get_free_memory_gb()
+        if free < min_free_gb:
+            log(f"ABORTING: free memory {free:.1f} GB < {min_free_gb:.0f} GB threshold")
+            sys.exit(EXIT_LOW_MEMORY)
+
     def growth_callback(cur, tgt):
+        check_memory()
         log(f"growing: {cur}/{tgt} facets")
 
     sampler.ramped_grow(
@@ -102,6 +128,7 @@ def main():
             if now - last_print[0] < 1.0:
                 return False
             last_print[0] = now
+            check_memory()
             elapsed = now - t_start
             stats = sampler.get_stats()
             tried = stats.total_tried - stats_before.total_tried
@@ -118,6 +145,7 @@ def main():
         sampler.run_with_display(sweeps=args.equilibration_sweeps)
 
     # 5. Build metadata and save
+    eq_stats = sampler.get_stats()
     comments = build_metadata_comments(
         topology=args.topology,
         dimension=args.dimension,
@@ -133,10 +161,10 @@ def main():
         equilibration_sweeps=args.equilibration_sweeps,
         manifold_view=sampler.manifold,
         objective=sampler.current_objective,
+        sampler_stats=eq_stats,
     )
 
     os.makedirs(args.output_dir, exist_ok=True)
-    output_path = os.path.join(args.output_dir, filename)
 
     sampler.manifold.dup().save(output_path, comments=comments)
     log(f"Saved: {output_path}")

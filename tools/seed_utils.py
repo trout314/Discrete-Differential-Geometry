@@ -5,6 +5,24 @@ import re
 import subprocess
 
 
+def get_free_memory_gb() -> float:
+    """Return available system memory in GB by reading /proc/meminfo.
+
+    Uses MemAvailable, which accounts for reclaimable caches/buffers.
+    Returns float('inf') on non-Linux systems where /proc/meminfo is absent.
+    """
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    # Value is in kB
+                    kb = int(line.split()[1])
+                    return kb / (1024 * 1024)
+    except (FileNotFoundError, OSError):
+        return float("inf")
+    return float("inf")
+
+
 def encode_float(x: float) -> str:
     """Encode a float for use in filenames.
 
@@ -138,6 +156,7 @@ def build_metadata_comments(
     equilibration_sweeps: int,
     manifold_view,
     objective: float,
+    sampler_stats=None,
 ) -> list[str]:
     """Build the list of comment strings for .save()."""
     git_commit, git_dirty = get_git_info()
@@ -162,9 +181,24 @@ def build_metadata_comments(
     dim = mfd.dimension
     comments.append(f"actual_num_facets = {mfd.num_facets}")
     comments.append(f"actual_f_vector = {fv}")
-    comments.append(f"actual_mean_hinge_degree = {mfd.mean_degree(dim - 2):.3f}")
-    comments.append(f"actual_hinge_degree_variance = {mfd.degree_variance(dim - 2):.2f}")
-    comments.append(f"actual_vertex_degree_variance = {mfd.degree_variance(0):.1f}")
-    comments.append(f"final_objective = {objective:.1f}")
+    comments.append(f"actual_mean_hinge_degree = {mfd.mean_degree(dim - 2):.6f}")
+    comments.append(f"actual_hinge_degree_variance = {mfd.degree_variance(dim - 2):.6f}")
+    comments.append(f"actual_mean_vertex_degree = {mfd.mean_degree(0):.6f}")
+    comments.append(f"actual_vertex_degree_variance = {mfd.degree_variance(0):.6f}")
+    comments.append(f"euler_characteristic = {mfd.euler_characteristic}")
+    comments.append(f"is_orientable = {'true' if mfd.is_orientable else 'false'}")
+    comments.append(f"valid_moves = {mfd.count_valid_moves()}")
+    comments.append(f"final_objective = {objective:.6f}")
+
+    if sampler_stats is not None:
+        stats = sampler_stats
+        accept_rate = stats.total_accepted / stats.total_tried if stats.total_tried > 0 else 0.0
+        comments.append(f"eq_total_tried = {stats.total_tried}")
+        comments.append(f"eq_total_accepted = {stats.total_accepted}")
+        comments.append(f"eq_acceptance_rate = {accept_rate:.6f}")
+        bt = list(stats.bistellar_tries)
+        ba = list(stats.bistellar_accepts)
+        comments.append(f"eq_bistellar_tries = {bt}")
+        comments.append(f"eq_bistellar_accepts = {ba}")
 
     return comments
