@@ -4,7 +4,12 @@ from ._simplicial_complex import SimplicialComplex, join
 from ._manifold import Manifold
 from ._manifold_view import ManifoldView
 from ._sampler import ManifoldSampler, SamplerParams, SamplerStats
-from .convergence import split_rhat, effective_sample_size
+from .convergence import (
+    split_rhat,
+    effective_sample_size,
+    integrated_autocorrelation_time,
+    weighted_ess,
+)
 from ._dlang import _lib as _lib
 
 
@@ -30,4 +35,6 @@ __all__ = [
     "gc_minimize",
     "split_rhat",
     "effective_sample_size",
+    "integrated_autocorrelation_time",
+    "weighted_ess",
 ]

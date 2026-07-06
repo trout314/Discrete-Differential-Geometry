@@ -19,11 +19,25 @@ def _find_library() -> ctypes.CDLL:
     ext = suffixes.get(sys.platform, ".so")
     name = f"ddg_dlang{ext}"
 
+    # Explicit override: DDG_LIBRARY may be a full path to the shared library
+    # or a directory containing it. Use this to select a release build:
+    #   DDG_LIBRARY=builddir-release python scripts/...
+    env_override = os.environ.get("DDG_LIBRARY")
+    if env_override:
+        p = Path(env_override)
+        candidate = p if p.is_file() else p / name
+        if candidate.exists():
+            return ctypes.CDLL(str(candidate))
+        raise OSError(f"DDG_LIBRARY={env_override!r} does not point to {name}")
+
+    root = Path(__file__).parent.parent.parent
     search_dirs = [
         # Same directory as this Python file (for installed packages)
         Path(__file__).parent,
-        # builddir/ relative to project root
-        Path(__file__).parent.parent.parent / "builddir",
+        # builddir/ relative to project root (debug)
+        root / "builddir",
+        # builddir-release/ relative to project root (optimized)
+        root / "builddir-release",
     ]
 
     for d in search_dirs:
@@ -33,7 +47,7 @@ def _find_library() -> ctypes.CDLL:
 
     raise OSError(
         f"Cannot find {name}. Searched: {[str(d) for d in search_dirs]}. "
-        f"Build with: meson compile -C builddir ddg_dlang"
+        f"Set DDG_LIBRARY, or build with: meson compile -C builddir ddg_dlang"
     )
 
 
