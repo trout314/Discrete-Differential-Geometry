@@ -31,6 +31,37 @@ NUM_CHAINS = 4
 RHAT_THRESHOLD = 1.01
 CONSECUTIVE_PASSES_REQUIRED = 2
 CHECK_INTERVAL = 50  # samples between convergence checks
+MIN_FREE_MEMORY_GB = 4.0  # abort if free memory drops below this
+
+# Rough memory model: 36 MB base + 2.15 MB per 1K facets (from equilibrate_batch.py)
+MEMORY_BASE_MB = 36
+MEMORY_PER_1K_FACETS_MB = 2.15
+
+
+def get_free_memory_gb():
+    """Return available system memory in GB from /proc/meminfo."""
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) / (1024 * 1024)
+    except (FileNotFoundError, OSError):
+        return float("inf")
+    return float("inf")
+
+
+def check_memory(context=""):
+    """Abort if free memory is below the safety threshold."""
+    free = get_free_memory_gb()
+    if free < MIN_FREE_MEMORY_GB:
+        print(f"  ABORTING: free memory {free:.1f} GB < {MIN_FREE_MEMORY_GB:.0f} GB threshold"
+              f"{' (' + context + ')' if context else ''}")
+        sys.exit(42)
+
+
+def estimate_memory_mb(num_facets):
+    """Estimate memory usage for a single manifold in MB."""
+    return MEMORY_BASE_MB + MEMORY_PER_1K_FACETS_MB * num_facets / 1000
 
 DIM_CONFIGS = {
     2: {
@@ -93,13 +124,19 @@ def collect_observables(sampler):
 
 def run_chain(dim, size, config, chain_idx):
     """Grow and sample one independent chain. Returns list of obs dicts."""
+    check_memory(f"before chain {chain_idx}")
     print(f"  Chain {chain_idx}: growing from standardSphere({dim})...")
     m = ddg.Manifold.standard_sphere(dim)
     params = make_sampler_params(dim, size, config)
     sampler = ddg.ManifoldSampler(m, params)
 
     step_size = max(100, size // 20)
-    sampler.ramped_grow(size, step_size=step_size, eq_sweeps_per_step=3)
+
+    def growth_callback(cur, tgt):
+        check_memory(f"chain {chain_idx} growth {cur}/{tgt}")
+
+    sampler.ramped_grow(size, step_size=step_size, eq_sweeps_per_step=3,
+                        callback=growth_callback)
     print(f"  Chain {chain_idx}: grown to {sampler.manifold.num_facets} facets")
 
     warmup = max(1, config['warmup_factor'] * size // 1000)
@@ -118,6 +155,18 @@ def generate_seed(dim, size, output_dir='standard_triangulations', data_dir='dat
     print(f"\n{'='*60}")
     print(f"Generating {dim}d seed with {size} facets")
     print(f"  {NUM_CHAINS} chains, thin={thin}, max_samples={max_samples}")
+
+    # Pre-flight memory estimate
+    per_chain_mb = estimate_memory_mb(size)
+    total_est_mb = per_chain_mb * NUM_CHAINS
+    free_gb = get_free_memory_gb()
+    print(f"  Estimated memory: {total_est_mb:.0f} MB "
+          f"({per_chain_mb:.0f} MB x {NUM_CHAINS} chains), "
+          f"free: {free_gb:.1f} GB")
+    if total_est_mb / 1024 > free_gb - MIN_FREE_MEMORY_GB:
+        print(f"  SKIPPING: estimated {total_est_mb/1024:.1f} GB needed but only "
+              f"{free_gb:.1f} GB free ({MIN_FREE_MEMORY_GB:.0f} GB reserved)")
+        return None, False
     print(f"{'='*60}")
 
     os.makedirs(data_dir, exist_ok=True)
@@ -137,6 +186,8 @@ def generate_seed(dim, size, output_dir='standard_triangulations', data_dir='dat
     t_start = time.monotonic()
 
     for sample_idx in range(max_samples):
+        check_memory(f"sampling {sample_idx}/{max_samples}")
+
         # Run thinning sweeps on all chains
         for k, sampler in enumerate(samplers):
             sampler.run(sweeps=thin)
@@ -270,8 +321,12 @@ def main():
     print("Summary")
     print(f"{'='*60}")
     for dim, size, path, converged in results:
-        status = "CONVERGED" if converged else "NOT CONVERGED"
-        print(f"  {dim}d N={size}: {status} -> {path}")
+        if path is None:
+            print(f"  {dim}d N={size}: SKIPPED (insufficient memory)")
+        elif converged:
+            print(f"  {dim}d N={size}: CONVERGED -> {path}")
+        else:
+            print(f"  {dim}d N={size}: NOT CONVERGED -> {path}")
 
 
 if __name__ == '__main__':

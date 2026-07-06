@@ -46,6 +46,9 @@ data/seed_gen/
 # Generated seed triangulations
 seeds/
 
+# Claude Code local memory store
+memory/
+
 # D build artifacts
 bin/
 dub.selections.json

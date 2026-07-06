@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+"""Two-stage VDV annealing to produce minimal degree variance samples.
+
+Stage 1 (coarse): Ramp VDV coefficient up quickly (1.5x geometric) to find
+the approximate ceiling where acceptance drops below a threshold.
+
+Stage 2 (fine): Back off to the last good VDV, then ramp slowly with many
+sweeps per step, squeezing out remaining variance near the ceiling.
+
+Usage:
+    # From a saved seed
+    python scripts/anneal_vdv.py \
+        --seed-file seeds/S3_N1e3_1e-1_ED5p0043_1e-1_VDV_5e-1_s000.mfd
+
+    # Grow from scratch
+    python scripts/anneal_vdv.py --size 1000
+
+    # Custom parameters
+    python scripts/anneal_vdv.py \
+        --seed-file seeds/S3_N1e4_1e-1_ED5p0043_1e-1_VDV_5e-1_s000.mfd \
+        --coarse-factor 1.3 --fine-factor 1.05 --fine-sweeps 200
+"""
+
+import argparse
+import csv
+import os
+import sys
+import time
+
+sys.path.insert(0, str(__import__('pathlib').Path(__file__).resolve().parent.parent / 'python'))
+import discrete_differential_geometry as ddg
+
+
+# --- Memory safety ---
+
+MIN_FREE_MEMORY_GB = 4.0
+
+
+def get_free_memory_gb():
+    """Return available system memory in GB from /proc/meminfo."""
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) / (1024 * 1024)
+    except (FileNotFoundError, OSError):
+        return float("inf")
+    return float("inf")
+
+
+def check_memory(context=""):
+    """Abort if free memory is below the safety threshold."""
+    free = get_free_memory_gb()
+    if free < MIN_FREE_MEMORY_GB:
+        print(f"ABORTING: free memory {free:.1f} GB < {MIN_FREE_MEMORY_GB:.0f} GB threshold"
+              f"{' (' + context + ')' if context else ''}")
+        sys.exit(42)
+
+
+def probe_acceptance(sampler, sweeps):
+    """Run sweeps and return acceptance rate."""
+    sampler.reset_stats()
+    sampler.run(sweeps=sweeps)
+    stats = sampler.get_stats()
+    if stats.total_tried == 0:
+        return 0.0
+    return stats.total_accepted / stats.total_tried
+
+
+def log_state(writer, vdv, sampler, dim, stage, accept_rate):
+    """Log one row to CSV and print to console."""
+    mfd = sampler.manifold
+    nf = mfd.num_facets
+    dv0 = mfd.degree_variance(0)
+    dv_hinge = mfd.degree_variance(max(0, dim - 2))
+    md0 = mfd.mean_degree(0)
+    md_hinge = mfd.mean_degree(max(0, dim - 2))
+    obj = sampler.current_objective
+
+    writer.writerow([
+        stage, f'{vdv:.4f}', f'{accept_rate:.6f}',
+        nf, f'{dv0:.4f}', f'{dv_hinge:.4f}',
+        f'{md0:.4f}', f'{md_hinge:.4f}', f'{obj:.4f}',
+    ])
+
+    print(f"  {stage:>5s}  {vdv:12.2f} {100*accept_rate:8.2f}% {dv0:12.2f} "
+          f"{dv_hinge:14.2f} {obj:10.1f} {nf:8d}")
+
+    return dv0, dv_hinge
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Two-stage VDV annealing for minimal degree variance')
+    parser.add_argument('--seed-file', type=str, default=None,
+                        help='Path to an existing .mfd seed file to load')
+    parser.add_argument('--size', type=int, default=1000,
+                        help='Target number of facets when growing from scratch')
+    parser.add_argument('--dim', type=int, default=3,
+                        help='Manifold dimension (default: 3)')
+    parser.add_argument('--hinge-target', type=float, default=5.0043,
+                        help='Hinge degree target (default: 5.0043)')
+    parser.add_argument('--num-facets-coef', type=float, default=0.1,
+                        help='Volume penalty coefficient (default: 0.1)')
+    parser.add_argument('--num-hinges-coef', type=float, default=0.1,
+                        help='Hinge count penalty coefficient (default: 0.1)')
+    parser.add_argument('--vdv-start', type=float, default=0.5,
+                        help='Starting VDV coefficient (default: 0.5)')
+
+    # Stage 1: coarse
+    parser.add_argument('--coarse-factor', type=float, default=1.5,
+                        help='Coarse stage multiplicative factor (default: 1.5)')
+    parser.add_argument('--coarse-sweeps', type=int, default=5,
+                        help='Sweeps per coarse step (default: 5)')
+    parser.add_argument('--coarse-probe', type=int, default=5,
+                        help='Probe sweeps for coarse acceptance (default: 5)')
+    parser.add_argument('--coarse-threshold', type=float, default=0.05,
+                        help='Acceptance threshold to end coarse stage (default: 0.05 = 5%%)')
+
+    # Stage 2: fine
+    parser.add_argument('--fine-factor', type=float, default=1.05,
+                        help='Fine stage multiplicative factor (default: 1.05)')
+    parser.add_argument('--fine-sweeps', type=int, default=100,
+                        help='Sweeps per fine step (default: 100)')
+    parser.add_argument('--fine-probe', type=int, default=20,
+                        help='Probe sweeps for fine acceptance (default: 20)')
+    parser.add_argument('--fine-threshold', type=float, default=0.005,
+                        help='Acceptance threshold to end fine stage (default: 0.005 = 0.5%%)')
+    parser.add_argument('--fine-max-steps', type=int, default=200,
+                        help='Max steps in fine stage (default: 200)')
+
+    # Output
+    parser.add_argument('--output-dir', default='data/anneal_vdv',
+                        help='Directory for output files')
+    parser.add_argument('--min-free-memory-gb', type=float, default=4.0,
+                        help='Abort if free memory drops below this (default: 4 GB)')
+    args = parser.parse_args()
+
+    global MIN_FREE_MEMORY_GB
+    MIN_FREE_MEMORY_GB = args.min_free_memory_gb
+
+    dim = args.dim
+    check_memory("pre-flight")
+
+    # --- Load or grow manifold ---
+    if args.seed_file:
+        print(f"Loading seed from {args.seed_file}...")
+        m = ddg.Manifold.load(args.seed_file, dim)
+        size = m.num_facets
+        print(f"Loaded {size} facets")
+    else:
+        size = args.size
+        print(f"Growing {dim}d manifold to {size} facets...")
+        m = ddg.Manifold.standard_sphere(dim)
+
+    params = ddg.SamplerParams(
+        num_facets_target=size,
+        hinge_degree_target=args.hinge_target,
+        num_facets_coef=args.num_facets_coef,
+        num_hinges_coef=args.num_hinges_coef,
+        hinge_degree_variance_coef=0.0,
+        codim3_degree_variance_coef=args.vdv_start,
+    )
+    sampler = ddg.ManifoldSampler(m, params)
+
+    if not args.seed_file:
+        step_size = max(100, size // 20)
+        def growth_callback(cur, tgt):
+            check_memory(f"growth {cur}/{tgt}")
+        sampler.ramped_grow(size, step_size=step_size, eq_sweeps_per_step=3,
+                            callback=growth_callback)
+        print(f"Grown to {sampler.manifold.num_facets} facets")
+
+    # --- Prepare output ---
+    os.makedirs(args.output_dir, exist_ok=True)
+    tag = f'{dim}d_N{size}'
+    csv_path = os.path.join(args.output_dir, f'{tag}_anneal.csv')
+    csv_file = open(csv_path, 'w', newline='')
+    writer = csv.writer(csv_file)
+    writer.writerow([
+        'stage', 'vdv_coef', 'acceptance_rate',
+        'num_facets', 'degree_variance_0', 'degree_variance_hinge',
+        'mean_degree_0', 'mean_degree_hinge', 'objective',
+    ])
+
+    print(f"\n{'Stage':>7} {'VDV coef':>12} {'Accept%':>9} {'DegVar(vtx)':>12} "
+          f"{'DegVar(hinge)':>14} {'Objective':>10} {'Facets':>8}")
+    print("-" * 82)
+
+    t_start = time.monotonic()
+
+    # =====================================================================
+    # Stage 1: Coarse ramp — find the ceiling
+    # =====================================================================
+    vdv = args.vdv_start
+    last_good_vdv = vdv
+    coarse_steps = 0
+
+    while True:
+        check_memory(f"coarse VDV={vdv:.1f}")
+        sampler.set_codim3_degree_variance_coef(vdv)
+        sampler.run(sweeps=args.coarse_sweeps)
+        accept = probe_acceptance(sampler, args.coarse_probe)
+        log_state(writer, vdv, sampler, dim, 'coarse', accept)
+        csv_file.flush()
+        coarse_steps += 1
+
+        if accept < args.coarse_threshold:
+            print(f"\n  Coarse stage done: ceiling near VDV={vdv:.1f} "
+                  f"(acceptance {100*accept:.1f}%)")
+            print(f"  Last good VDV: {last_good_vdv:.1f}")
+            break
+
+        last_good_vdv = vdv
+        vdv *= args.coarse_factor
+
+    # =====================================================================
+    # Stage 2: Fine ramp — squeeze variance near the ceiling
+    # =====================================================================
+    # Back off to last good VDV and re-equilibrate
+    vdv = last_good_vdv
+    sampler.set_codim3_degree_variance_coef(vdv)
+    print(f"\n  Fine stage: starting at VDV={vdv:.1f}, "
+          f"factor={args.fine_factor}, sweeps/step={args.fine_sweeps}")
+    sampler.run(sweeps=args.fine_sweeps)
+
+    best_dv0 = float('inf')
+    best_vdv = vdv
+    fine_steps = 0
+
+    while fine_steps < args.fine_max_steps:
+        check_memory(f"fine VDV={vdv:.1f}")
+        sampler.set_codim3_degree_variance_coef(vdv)
+        sampler.run(sweeps=args.fine_sweeps)
+        accept = probe_acceptance(sampler, args.fine_probe)
+        dv0, _ = log_state(writer, vdv, sampler, dim, 'fine', accept)
+        csv_file.flush()
+        fine_steps += 1
+
+        if dv0 < best_dv0:
+            best_dv0 = dv0
+            best_vdv = vdv
+
+        if accept < args.fine_threshold:
+            print(f"\n  Fine stage done: acceptance {100*accept:.2f}% "
+                  f"at VDV={vdv:.1f}")
+            break
+
+        vdv *= args.fine_factor
+
+    elapsed = time.monotonic() - t_start
+
+    csv_file.close()
+    print(f"\nResults saved to {csv_path}")
+    print(f"Total time: {elapsed:.0f}s "
+          f"({coarse_steps} coarse + {fine_steps} fine steps)")
+
+    # --- Save final manifold ---
+    # Re-equilibrate at best VDV and save
+    sampler.set_codim3_degree_variance_coef(best_vdv)
+    sampler.run(sweeps=args.fine_sweeps)
+    mfd_path = os.path.join(args.output_dir, f'{tag}_annealed.mfd')
+    sampler.manifold.dup().save(mfd_path)
+
+    mfd = sampler.manifold
+    print(f"\nSaved: {mfd_path}")
+    print(f"  Best VDV coef: {best_vdv:.2f}")
+    print(f"  Vertex degree variance: {mfd.degree_variance(0):.4f}")
+    print(f"  Hinge degree variance: {mfd.degree_variance(max(0, dim-2)):.4f}")
+    print(f"  Mean edge degree: {mfd.mean_degree(1):.4f}")
+    print(f"  Facets: {mfd.num_facets}")
+
+    ddg.gc_collect()
+    ddg.gc_minimize()
+
+
+if __name__ == '__main__':
+    main()
