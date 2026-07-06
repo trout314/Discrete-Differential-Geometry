@@ -349,9 +349,24 @@ def main():
         ladder, total_L, K, beta_top = build_ladder(
             betas, sigma, args.vdv_min, args.vdv_max,
             target_delta, args.num_replicas)
-        print(f"\n  Total thermodynamic length L = {total_L:.2f}, "
-              f"target delta/rung = {target_delta:.2f} "
-              f"(~{100*args.target_swap:.0f}% swaps) -> {K} rungs")
+        # Report the ladder's *achieved* resolution, not the aspirational
+        # target. With auto-sizing the two agree; with a forced --num-replicas
+        # the achieved delta/rung (and its predicted swap acceptance) can be far
+        # worse, so surface that explicitly instead of printing the target.
+        achieved_delta = total_L / max(1, K - 1)
+        predicted_swap = math.erfc(achieved_delta / 2.0)
+        auto_K = max(2, int(round(total_L / target_delta)) + 1)
+        print(f"\n  Total thermodynamic length L = {total_L:.2f} -> {K} rungs "
+              f"({achieved_delta:.2f} length/rung, ~{100*predicted_swap:.0f}% swaps)")
+        if args.num_replicas is not None:
+            print(f"  (fixed --num-replicas {args.num_replicas}; hitting the "
+                  f"{100*args.target_swap:.0f}% swap target would need ~{auto_K} rungs)")
+        if predicted_swap < 0.5 * args.target_swap:
+            print(f"  WARNING: ladder under-resolved — predicted swap "
+                  f"~{100*predicted_swap:.1f}% << target {100*args.target_swap:.0f}%. "
+                  f"Adjacent replicas will barely swap and the ladder will not "
+                  f"mix (few/no round trips). Use ~{auto_K} rungs (drop "
+                  f"--num-replicas, or raise it) or narrow [--vdv-min, --vdv-max].")
         if beta_top < args.vdv_max * (1 - 1e-6):
             print(f"  NOTE: penalty froze at VDV~{beta_top:.2f} "
                   f"(< requested max {args.vdv_max:g}); ladder capped there. "
