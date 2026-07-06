@@ -5,7 +5,10 @@ Stage 1 (coarse): Ramp VDV coefficient up quickly (1.5x geometric) to find
 the approximate ceiling where acceptance drops below a threshold.
 
 Stage 2 (fine): Back off to the last good VDV, then ramp slowly with many
-sweeps per step, squeezing out remaining variance near the ceiling.
+sweeps per step, squeezing out remaining variance. Stops on a VDV *plateau*
+(best degree variance improves less than --fine-vdv-tol over --fine-patience
+steps), not on an acceptance threshold, so it keeps annealing while VDV is
+still dropping even at sub-1% acceptance.
 
 Usage:
     # From a saved seed
@@ -24,8 +27,10 @@ Usage:
 import argparse
 import csv
 import os
+import statistics
 import sys
 import time
+from collections import deque
 
 sys.path.insert(0, str(__import__('pathlib').Path(__file__).resolve().parent.parent / 'python'))
 import discrete_differential_geometry as ddg
@@ -123,11 +128,25 @@ def main():
     parser.add_argument('--fine-sweeps', type=int, default=100,
                         help='Sweeps per fine step (default: 100)')
     parser.add_argument('--fine-probe', type=int, default=20,
-                        help='Probe sweeps for fine acceptance (default: 20)')
-    parser.add_argument('--fine-threshold', type=float, default=0.005,
-                        help='Acceptance threshold to end fine stage (default: 0.005 = 0.5%%)')
-    parser.add_argument('--fine-max-steps', type=int, default=200,
-                        help='Max steps in fine stage (default: 200)')
+                        help='Probe sweeps for fine acceptance / logging (default: 20)')
+    parser.add_argument('--fine-vdv-tol', type=float, default=0.01,
+                        help='Stop when the best VDV improves by less than this fraction '
+                             'over --fine-patience steps (default: 0.01 = 1%%)')
+    parser.add_argument('--fine-patience', type=int, default=20,
+                        help='Window (steps) over which --fine-vdv-tol improvement is '
+                             'required to keep annealing (default: 20)')
+    parser.add_argument('--fine-min-accept', type=float, default=0.0,
+                        help='Optional hard acceptance floor to stop the fine stage '
+                             '(default: 0 = disabled; stopping is governed by VDV plateau)')
+    parser.add_argument('--fine-max-steps', type=int, default=500,
+                        help='Hard cap on fine steps (default: 500)')
+
+    # Final equilibrium measurement
+    parser.add_argument('--measure-samples', type=int, default=30,
+                        help='VDV samples to average for the final equilibrium '
+                             'measurement at the best coefficient (default: 30)')
+    parser.add_argument('--measure-sweeps', type=int, default=20,
+                        help='Sweeps between equilibrium-measurement samples (default: 20)')
 
     # Output
     parser.add_argument('--output-dir', default='data/anneal_vdv',
@@ -227,6 +246,14 @@ def main():
     best_dv0 = float('inf')
     best_vdv = vdv
     fine_steps = 0
+    # Running-best VDV, one entry per step. We stop when the best VDV has
+    # improved by less than --fine-vdv-tol over the last --fine-patience steps
+    # (a VDV *plateau*), rather than when acceptance crosses a threshold. This
+    # keeps annealing while VDV is still dropping even at sub-1% acceptance,
+    # which is exactly where the old acceptance-thresholded stop quit early.
+    best_history = deque(maxlen=args.fine_patience + 1)
+    stop_reason = (f"reached max {args.fine_max_steps} steps "
+                   f"(VDV may still be improving — raise --fine-max-steps)")
 
     while fine_steps < args.fine_max_steps:
         check_memory(f"fine VDV={vdv:.1f}")
@@ -240,13 +267,26 @@ def main():
         if dv0 < best_dv0:
             best_dv0 = dv0
             best_vdv = vdv
+        best_history.append(best_dv0)
 
-        if accept < args.fine_threshold:
-            print(f"\n  Fine stage done: acceptance {100*accept:.2f}% "
-                  f"at VDV={vdv:.1f}")
+        # Plateau test: best VDV gained < tol (relative) over the patience window.
+        if len(best_history) > args.fine_patience:
+            past = best_history[0]
+            if past > 0 and (past - best_dv0) / past < args.fine_vdv_tol:
+                stop_reason = (f"VDV plateaued at {best_dv0:.4f} "
+                               f"(<{100*args.fine_vdv_tol:.1f}% gain over "
+                               f"{args.fine_patience} steps; acceptance {100*accept:.2f}%)")
+                break
+
+        # Optional hard acceptance floor (disabled by default).
+        if args.fine_min_accept > 0 and accept < args.fine_min_accept:
+            stop_reason = (f"acceptance {100*accept:.3f}% below floor "
+                           f"at VDV={vdv:.1f}")
             break
 
         vdv *= args.fine_factor
+
+    print(f"\n  Fine stage done: {stop_reason}")
 
     elapsed = time.monotonic() - t_start
 
@@ -255,20 +295,31 @@ def main():
     print(f"Total time: {elapsed:.0f}s "
           f"({coarse_steps} coarse + {fine_steps} fine steps)")
 
-    # --- Save final manifold ---
-    # Re-equilibrate at best VDV and save
+    # --- Final equilibrium measurement at the best coefficient ---
+    # The per-step 'best VDV' logged during the ramp is a single noisy sample
+    # (biased low by luck); measure the equilibrium VDV robustly by
+    # re-equilibrating at the best coefficient and averaging several samples.
     sampler.set_codim3_degree_variance_coef(best_vdv)
     sampler.run(sweeps=args.fine_sweeps)
-    mfd_path = os.path.join(args.output_dir, f'{tag}_annealed.mfd')
-    sampler.manifold.dup().save(mfd_path)
+    vdv_samples = []
+    for _ in range(args.measure_samples):
+        sampler.run(sweeps=args.measure_sweeps)
+        vdv_samples.append(sampler.manifold.degree_variance(0))
+    eq_vdv = statistics.fmean(vdv_samples)
+    eq_std = statistics.pstdev(vdv_samples) if len(vdv_samples) > 1 else 0.0
 
     mfd = sampler.manifold
+    mfd_path = os.path.join(args.output_dir, f'{tag}_annealed.mfd')
+    mfd.dup().save(mfd_path)
     print(f"\nSaved: {mfd_path}")
-    print(f"  Best VDV coef: {best_vdv:.2f}")
-    print(f"  Vertex degree variance: {mfd.degree_variance(0):.4f}")
-    print(f"  Hinge degree variance: {mfd.degree_variance(max(0, dim-2)):.4f}")
-    print(f"  Mean edge degree: {mfd.mean_degree(1):.4f}")
-    print(f"  Facets: {mfd.num_facets}")
+    print(f"  Best VDV coef:           {best_vdv:.2f}")
+    print(f"  Equilibrium VDV:         {eq_vdv:.4f} +/- {eq_std:.4f} "
+          f"(mean of {args.measure_samples} samples)")
+    print(f"  Best single-sample VDV:  {best_dv0:.4f}")
+    print(f"  Hinge degree variance:   {mfd.degree_variance(max(0, dim-2)):.4f}")
+    print(f"  Mean vertex degree:      {mfd.mean_degree(0):.4f}")
+    print(f"  Mean edge degree:        {mfd.mean_degree(1):.4f}")
+    print(f"  Facets:                  {mfd.num_facets}")
 
     ddg.gc_collect()
     ddg.gc_minimize()
