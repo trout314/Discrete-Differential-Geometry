@@ -64,6 +64,17 @@ def check_memory(context=""):
         sys.exit(42)
 
 
+def even_floor(dbar):
+    """Minimum vertex-degree variance achievable at mean degree ``dbar``.
+
+    Codim-3 (vertex) degrees are always even, so the minimum-variance degree
+    distribution splits across the two nearest even integers, giving
+    4 y (1-y) with y = frac(dbar/2).
+    """
+    y = (dbar / 2.0) % 1.0
+    return 4.0 * y * (1.0 - y)
+
+
 def save_checkpoint(outdir, tag, sampler, state):
     """Atomically write a resumable checkpoint: manifold + fine-stage state.
 
@@ -426,17 +437,41 @@ def main():
           f"({coarse_steps} coarse + {fine_steps} fine steps)")
 
     # --- Final equilibrium measurement at the best coefficient ---
-    # The per-step 'best VDV' logged during the ramp is a single noisy sample
-    # (biased low by luck); measure the equilibrium VDV robustly by
-    # re-equilibrating at the best coefficient and averaging several samples.
+    # Record VDV, mean vertex degree, mean edge degree and the even-granularity
+    # excess *per sample*, so the excess is the internally consistent
+    # VDV - floor(dbar) of the *same* configuration. (Averaging VDV over the
+    # measure phase but taking dbar/floor from the final config mismatches the
+    # two and biases the excess -- badly at small N, where dbar fluctuates
+    # during measurement; this produced spurious negative excesses earlier.)
+    # The full per-sample series is written to <tag>_equilibrium.csv for
+    # downstream mean-offset / density-of-states analysis.
     sampler.set_codim3_degree_variance_coef(best_vdv)
     sampler.run(sweeps=args.fine_sweeps)
-    vdv_samples = []
-    for _ in range(args.measure_samples):
-        sampler.run(sweeps=args.measure_sweeps)
-        vdv_samples.append(sampler.manifold.degree_variance(0))
-    eq_vdv = statistics.fmean(vdv_samples)
-    eq_std = statistics.pstdev(vdv_samples) if len(vdv_samples) > 1 else 0.0
+    vdv_s, dbar_s, edeg_s, excess_s = [], [], [], []
+    samples_path = os.path.join(args.output_dir, f'{tag}_equilibrium.csv')
+    with open(samples_path, 'w', newline='') as sf:
+        sw = csv.writer(sf)
+        sw.writerow(['sample', 'vdv', 'mean_vertex_degree', 'mean_edge_degree',
+                     'even_floor', 'excess', 'hinge_degree_variance'])
+        for i in range(args.measure_samples):
+            sampler.run(sweeps=args.measure_sweeps)
+            m = sampler.manifold
+            v = m.degree_variance(0)
+            d = m.mean_degree(0)
+            e = m.mean_degree(1)
+            fl = even_floor(d)
+            hv = m.degree_variance(max(0, dim - 2))
+            vdv_s.append(v); dbar_s.append(d); edeg_s.append(e); excess_s.append(v - fl)
+            sw.writerow([i, f'{v:.6f}', f'{d:.6f}', f'{e:.6f}',
+                         f'{fl:.6f}', f'{v - fl:.6f}', f'{hv:.6f}'])
+
+    def _ms(x):
+        return (statistics.fmean(x),
+                statistics.pstdev(x) if len(x) > 1 else 0.0)
+    eq_vdv, eq_std = _ms(vdv_s)
+    eq_dbar, eq_dbar_std = _ms(dbar_s)
+    eq_edeg, eq_edeg_std = _ms(edeg_s)
+    eq_exc, eq_exc_std = _ms(excess_s)
 
     mfd = sampler.manifold
     mfd_path = os.path.join(args.output_dir, f'{tag}_annealed.mfd')
@@ -445,11 +480,13 @@ def main():
     print(f"  Best VDV coef:           {best_vdv:.2f}")
     print(f"  Equilibrium VDV:         {eq_vdv:.4f} +/- {eq_std:.4f} "
           f"(mean of {args.measure_samples} samples)")
-    print(f"  Best single-sample VDV:  {best_dv0:.4f}")
+    print(f"  Mean vertex degree:      {eq_dbar:.4f} +/- {eq_dbar_std:.4f}")
+    print(f"  Mean edge degree:        {eq_edeg:.5f} +/- {eq_edeg_std:.5f}")
+    print(f"  Excess (per-sample):     {eq_exc:.4f} +/- {eq_exc_std:.4f}   "
+          f"[floor(<dbar>) = {even_floor(eq_dbar):.4f}]")
     print(f"  Hinge degree variance:   {mfd.degree_variance(max(0, dim-2)):.4f}")
-    print(f"  Mean vertex degree:      {mfd.mean_degree(0):.4f}")
-    print(f"  Mean edge degree:        {mfd.mean_degree(1):.4f}")
     print(f"  Facets:                  {mfd.num_facets}")
+    print(f"  Equilibrium samples:     {samples_path}")
 
     ddg.gc_collect()
     ddg.gc_minimize()
