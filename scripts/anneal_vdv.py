@@ -26,6 +26,8 @@ Usage:
 
 import argparse
 import csv
+import glob
+import json
 import os
 import statistics
 import sys
@@ -60,6 +62,43 @@ def check_memory(context=""):
         print(f"ABORTING: free memory {free:.1f} GB < {MIN_FREE_MEMORY_GB:.0f} GB threshold"
               f"{' (' + context + ')' if context else ''}")
         sys.exit(42)
+
+
+def save_checkpoint(outdir, tag, sampler, state):
+    """Atomically write a resumable checkpoint: manifold + fine-stage state.
+
+    Written to <name>.tmp then os.replace'd so an interrupted write never leaves
+    a half-file. The JSON is written last and references the manifold it pairs
+    with, so resume trusts the JSON.
+    """
+    mfd_path = os.path.join(outdir, f'{tag}_checkpoint.mfd')
+    json_path = os.path.join(outdir, f'{tag}_checkpoint.json')
+    sampler.manifold.dup().save(mfd_path + '.tmp')
+    os.replace(mfd_path + '.tmp', mfd_path)
+    state = dict(state, manifold=os.path.basename(mfd_path))
+    with open(json_path + '.tmp', 'w') as f:
+        json.dump(state, f, indent=2)
+    os.replace(json_path + '.tmp', json_path)
+
+
+def load_checkpoint(resume_arg, dim):
+    """Load a checkpoint written by save_checkpoint.
+
+    Returns (state, manifold, outdir). resume_arg may be the output directory or
+    the *_checkpoint.json path itself.
+    """
+    if os.path.isdir(resume_arg):
+        found = sorted(glob.glob(os.path.join(resume_arg, '*_checkpoint.json')))
+        if not found:
+            raise SystemExit(f"No *_checkpoint.json found in {resume_arg}")
+        json_path = found[0]
+    else:
+        json_path = resume_arg
+    with open(json_path) as f:
+        state = json.load(f)
+    outdir = os.path.dirname(json_path) or '.'
+    m = ddg.Manifold.load(os.path.join(outdir, state['manifold']), dim)
+    return state, m, outdir
 
 
 def probe_acceptance(sampler, sweeps):
@@ -118,9 +157,22 @@ def main():
     parser.add_argument('--coarse-sweeps', type=int, default=5,
                         help='Sweeps per coarse step (default: 5)')
     parser.add_argument('--coarse-probe', type=int, default=5,
-                        help='Probe sweeps for coarse acceptance (default: 5)')
+                        help='Probe sweeps for coarse acceptance / logging (default: 5)')
     parser.add_argument('--coarse-threshold', type=float, default=0.05,
-                        help='Acceptance threshold to end coarse stage (default: 0.05 = 5%%)')
+                        help='Acceptance floor that also ends the coarse stage '
+                             '(default: 0.05 = 5%%). With the floor-subtracted (excess) '
+                             'objective, acceptance stays high at the floor, so the '
+                             'VDV-plateau test below is what normally stops it.')
+    parser.add_argument('--coarse-vdv-tol', type=float, default=0.02,
+                        help='End the coarse stage when the best VDV improves by less '
+                             'than this fraction over --coarse-patience steps (default: '
+                             '0.02). This is the primary coarse stop: the excess '
+                             'objective flattens acceptance near the floor, so ramping '
+                             'on acceptance alone runs the coefficient away.')
+    parser.add_argument('--coarse-patience', type=int, default=4,
+                        help='Window (coarse steps) for the VDV-plateau test (default: 4)')
+    parser.add_argument('--coarse-max-steps', type=int, default=80,
+                        help='Hard cap on coarse steps (default: 80)')
 
     # Stage 2: fine
     parser.add_argument('--fine-factor', type=float, default=1.05,
@@ -148,6 +200,19 @@ def main():
     parser.add_argument('--measure-sweeps', type=int, default=20,
                         help='Sweeps between equilibrium-measurement samples (default: 20)')
 
+    # Checkpoint / resume
+    parser.add_argument('--checkpoint-interval', type=int, default=25,
+                        help='Save a resumable checkpoint every N fine steps '
+                             '(default: 25; 0 disables). Robustness for long runs.')
+    parser.add_argument('--resume', type=str, default=None,
+                        help='Resume the fine stage from a checkpoint: pass the '
+                             'output dir (or the *_checkpoint.json). Skips the coarse '
+                             'stage and continues from the saved coefficient. Schedule '
+                             'flags (--fine-sweeps, --fine-factor, --fine-patience, '
+                             '--fine-max-steps) may be changed to continue with heavier '
+                             'equilibration; the physical params (pin coefs, hinge '
+                             'target) are taken from the checkpoint.')
+
     # Output
     parser.add_argument('--output-dir', default='data/anneal_vdv',
                         help='Directory for output files')
@@ -161,28 +226,47 @@ def main():
     dim = args.dim
     check_memory("pre-flight")
 
-    # --- Load or grow manifold ---
-    if args.seed_file:
+    # --- Load manifold: resume a checkpoint, load a seed, or grow ---
+    resume_state = None
+    if args.resume:
+        resume_state, m, args.output_dir = load_checkpoint(args.resume, dim)
+        size = resume_state['size']
+        params_dict = dict(resume_state['params'])
+        params_dict['num_facets_target'] = size
+        print(f"Resuming from checkpoint in {args.output_dir}: {size} facets, "
+              f"fine step {resume_state['fine_steps']}, "
+              f"VDV coef {resume_state['vdv']:.1f}, best VDV {resume_state['best_dv0']:.4f}")
+    elif args.seed_file:
         print(f"Loading seed from {args.seed_file}...")
         m = ddg.Manifold.load(args.seed_file, dim)
         size = m.num_facets
         print(f"Loaded {size} facets")
+        params_dict = None
     else:
         size = args.size
         print(f"Growing {dim}d manifold to {size} facets...")
         m = ddg.Manifold.standard_sphere(dim)
+        params_dict = None
+
+    if params_dict is None:
+        params_dict = {
+            'num_facets_target': size,
+            'hinge_degree_target': args.hinge_target,
+            'num_facets_coef': args.num_facets_coef,
+            'num_hinges_coef': args.num_hinges_coef,
+        }
 
     params = ddg.SamplerParams(
-        num_facets_target=size,
-        hinge_degree_target=args.hinge_target,
-        num_facets_coef=args.num_facets_coef,
-        num_hinges_coef=args.num_hinges_coef,
+        num_facets_target=params_dict['num_facets_target'],
+        hinge_degree_target=params_dict['hinge_degree_target'],
+        num_facets_coef=params_dict['num_facets_coef'],
+        num_hinges_coef=params_dict['num_hinges_coef'],
         hinge_degree_variance_coef=0.0,
-        codim3_degree_variance_coef=args.vdv_start,
+        codim3_degree_variance_coef=(resume_state['vdv'] if resume_state else args.vdv_start),
     )
     sampler = ddg.ManifoldSampler(m, params)
 
-    if not args.seed_file:
+    if resume_state is None and not args.seed_file:
         step_size = max(100, size // 20)
         def growth_callback(cur, tgt):
             check_memory(f"growth {cur}/{tgt}")
@@ -194,13 +278,14 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
     tag = f'{dim}d_N{size}'
     csv_path = os.path.join(args.output_dir, f'{tag}_anneal.csv')
-    csv_file = open(csv_path, 'w', newline='')
+    csv_file = open(csv_path, 'a' if resume_state else 'w', newline='')
     writer = csv.writer(csv_file)
-    writer.writerow([
-        'stage', 'vdv_coef', 'acceptance_rate',
-        'num_facets', 'degree_variance_0', 'degree_variance_hinge',
-        'mean_degree_0', 'mean_degree_hinge', 'objective',
-    ])
+    if resume_state is None:
+        writer.writerow([
+            'stage', 'vdv_coef', 'acceptance_rate',
+            'num_facets', 'degree_variance_0', 'degree_variance_hinge',
+            'mean_degree_0', 'mean_degree_hinge', 'objective',
+        ])
 
     print(f"\n{'Stage':>7} {'VDV coef':>12} {'Accept%':>9} {'DegVar(vtx)':>12} "
           f"{'DegVar(hinge)':>14} {'Objective':>10} {'Facets':>8}")
@@ -208,50 +293,86 @@ def main():
 
     t_start = time.monotonic()
 
-    # =====================================================================
-    # Stage 1: Coarse ramp — find the ceiling
-    # =====================================================================
-    vdv = args.vdv_start
-    last_good_vdv = vdv
-    coarse_steps = 0
-
-    while True:
-        check_memory(f"coarse VDV={vdv:.1f}")
-        sampler.set_codim3_degree_variance_coef(vdv)
-        sampler.run(sweeps=args.coarse_sweeps)
-        accept = probe_acceptance(sampler, args.coarse_probe)
-        log_state(writer, vdv, sampler, dim, 'coarse', accept)
-        csv_file.flush()
-        coarse_steps += 1
-
-        if accept < args.coarse_threshold:
-            print(f"\n  Coarse stage done: ceiling near VDV={vdv:.1f} "
-                  f"(acceptance {100*accept:.1f}%)")
-            print(f"  Last good VDV: {last_good_vdv:.1f}")
-            break
-
+    if resume_state is not None:
+        # Resumed: skip the coarse stage and restore the fine-stage state.
+        coarse_steps = resume_state.get('coarse_steps', 0)
+        vdv = resume_state['vdv']
+        best_dv0 = resume_state['best_dv0']
+        best_vdv = resume_state['best_vdv']
+        fine_steps = resume_state['fine_steps']
+        best_history = deque(resume_state['best_history'], maxlen=args.fine_patience + 1)
+        print(f"\n  Fine stage (resumed): VDV={vdv:.1f}, "
+              f"factor={args.fine_factor}, sweeps/step={args.fine_sweeps}, "
+              f"from fine step {fine_steps}")
+    else:
+        # =================================================================
+        # Stage 1: Coarse ramp — fast-forward to where VDV reaches its floor
+        # =================================================================
+        # Stop on a VDV plateau, not an acceptance threshold. With the
+        # floor-subtracted (excess) objective, once the triangulation sits on
+        # its degree-variance floor the excess is ~0 and floor-preserving moves
+        # stay accepted, so acceptance never falls and an acceptance-thresholded
+        # ramp runs the coefficient away to absurd values. Ramping until VDV
+        # stops dropping lands us near the floor at a sane coefficient.
+        vdv = args.vdv_start
         last_good_vdv = vdv
-        vdv *= args.coarse_factor
+        coarse_steps = 0
+        coarse_best = float('inf')
+        coarse_hist = deque(maxlen=args.coarse_patience + 1)
+        coarse_reason = f"reached max {args.coarse_max_steps} coarse steps"
 
-    # =====================================================================
-    # Stage 2: Fine ramp — squeeze variance near the ceiling
-    # =====================================================================
-    # Back off to last good VDV and re-equilibrate
-    vdv = last_good_vdv
-    sampler.set_codim3_degree_variance_coef(vdv)
-    print(f"\n  Fine stage: starting at VDV={vdv:.1f}, "
-          f"factor={args.fine_factor}, sweeps/step={args.fine_sweeps}")
-    sampler.run(sweeps=args.fine_sweeps)
+        while coarse_steps < args.coarse_max_steps:
+            check_memory(f"coarse VDV={vdv:.1f}")
+            sampler.set_codim3_degree_variance_coef(vdv)
+            sampler.run(sweeps=args.coarse_sweeps)
+            accept = probe_acceptance(sampler, args.coarse_probe)
+            dv0, _ = log_state(writer, vdv, sampler, dim, 'coarse', accept)
+            csv_file.flush()
+            coarse_steps += 1
 
-    best_dv0 = float('inf')
-    best_vdv = vdv
-    fine_steps = 0
-    # Running-best VDV, one entry per step. We stop when the best VDV has
-    # improved by less than --fine-vdv-tol over the last --fine-patience steps
-    # (a VDV *plateau*), rather than when acceptance crosses a threshold. This
-    # keeps annealing while VDV is still dropping even at sub-1% acceptance,
-    # which is exactly where the old acceptance-thresholded stop quit early.
-    best_history = deque(maxlen=args.fine_patience + 1)
+            if dv0 < coarse_best:
+                coarse_best = dv0
+                last_good_vdv = vdv
+            coarse_hist.append(coarse_best)
+
+            # Primary stop: VDV plateaued over the patience window.
+            if len(coarse_hist) > args.coarse_patience:
+                past = coarse_hist[0]
+                if past > 0 and (past - coarse_best) / past < args.coarse_vdv_tol:
+                    coarse_reason = (f"VDV plateaued at {coarse_best:.4f} "
+                                     f"(<{100*args.coarse_vdv_tol:.1f}% gain over "
+                                     f"{args.coarse_patience} steps)")
+                    break
+
+            # Secondary stop: acceptance genuinely collapsed (rarely fires here).
+            if accept < args.coarse_threshold:
+                coarse_reason = f"acceptance {100*accept:.1f}% below floor"
+                break
+
+            vdv *= args.coarse_factor
+
+        print(f"\n  Coarse stage done: {coarse_reason}")
+        print(f"  Backing off to last improving VDV: {last_good_vdv:.1f}")
+
+        # =================================================================
+        # Stage 2: Fine ramp — squeeze variance near the ceiling
+        # =================================================================
+        # Back off to last good VDV and re-equilibrate
+        vdv = last_good_vdv
+        sampler.set_codim3_degree_variance_coef(vdv)
+        print(f"\n  Fine stage: starting at VDV={vdv:.1f}, "
+              f"factor={args.fine_factor}, sweeps/step={args.fine_sweeps}")
+        sampler.run(sweeps=args.fine_sweeps)
+
+        best_dv0 = float('inf')
+        best_vdv = vdv
+        fine_steps = 0
+        best_history = deque(maxlen=args.fine_patience + 1)
+
+    # We stop when the best VDV has improved by less than --fine-vdv-tol over the
+    # last --fine-patience steps (a VDV *plateau*), rather than when acceptance
+    # crosses a threshold. This keeps annealing while VDV is still dropping even
+    # at sub-1% acceptance, where the old acceptance-thresholded stop quit early.
     stop_reason = (f"reached max {args.fine_max_steps} steps "
                    f"(VDV may still be improving — raise --fine-max-steps)")
 
@@ -285,6 +406,15 @@ def main():
             break
 
         vdv *= args.fine_factor
+
+        # Resumable checkpoint (before advancing to the next coefficient).
+        if args.checkpoint_interval > 0 and fine_steps % args.checkpoint_interval == 0:
+            save_checkpoint(args.output_dir, tag, sampler, {
+                'stage': 'fine', 'vdv': vdv, 'fine_steps': fine_steps,
+                'best_vdv': best_vdv, 'best_dv0': best_dv0,
+                'best_history': list(best_history), 'coarse_steps': coarse_steps,
+                'dim': dim, 'size': size, 'params': params_dict,
+            })
 
     print(f"\n  Fine stage done: {stop_reason}")
 
