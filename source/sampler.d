@@ -47,8 +47,15 @@ Penalty penaltiesFromValues(int dim_, P)(
     static if (dim_ > 2)
     {
         immutable coDim3DegTarget = coDim3PerFacet * nFacets / cast(real) nCoDim3;
-        x = modf(coDim3DegTarget, _);
-        minPenalty = (x - x ^^ 2) * nCoDim3;
+        // Codim-3 face degrees are always EVEN: a codim-3 face's link is a
+        // 2-sphere, and a triangulated 2-sphere always has an even number of
+        // triangles — which equals the face's facet-degree. So the minimum
+        // achievable variance splits across the nearest *even* integers, giving
+        // floor 4 y(1-y) with y = frac(degTarget/2), not the integer-lattice
+        // x(1-x). (The hinge term above keeps x(1-x): edge links are cycles of
+        // any length, so edge degrees take any integer.)
+        x = modf(coDim3DegTarget / 2.0, _);
+        minPenalty = 4.0 * (x - x ^^ 2) * nCoDim3;
 
         penalty.localSolidAngleCurvPenalty = (
             coDim3DegTarget ^^ 2 * nCoDim3 - 2 * coDim3DegTarget * coDim3PerFacet * nFacets + coDim3TotSqDeg) - minPenalty;
