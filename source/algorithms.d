@@ -11,23 +11,23 @@ Returns true if the given manifold is orientable and false otherwise.
 */
 bool isOrientable(Vertex, int dim)(const auto ref Manifold!(dim, Vertex) manifold)
 {
-    /* We must choose a compatible orientation for each facet. Since the facets
-    already come equipped with an ordering for the vertices, we need only
-    indicate whether this orientation is the one we want (GivenOrder) or not
-    (OppositeOrder). We let NotSet indicate that the facet has not yet been
-    processed. */
-    enum Orientation
+    /* Choose a compatible orientation for each facet by breadth-first search
+    over the dual graph (facets adjacent across a shared ridge). The facet's
+    given vertex order fixes a reference orientation; we label each facet
+    GivenOrder or OppositeOrder so that two adjacent facets induce opposite
+    orientations on their shared ridge. A conflict means non-orientable.
+
+    This is O(numFacets * dim) in time and space: a ridge -> facet incidence map
+    built in one pass gives O(1) neighbour lookup. (The previous version called
+    manifold.star() -- itself O(numFacets), since star filters a freshly
+    duplicated copy of the whole facet list -- once per ridge inside the loop,
+    making the routine O(n^2) and generating enough GC garbage to OOM on large
+    manifolds.) */
+    enum Orientation : ubyte
     {
-        NotSet,
+        NotSet,        // must stay first so `new Orientation[]` defaults to it
         GivenOrder,
         OppositeOrder
-    }
-
-    static struct FacetRecord
-    {
-        const(Vertex)[] facet;
-        Orientation label;
-        bool done;
     }
 
     // An empty manifold is orientable
@@ -36,59 +36,90 @@ bool isOrientable(Vertex, int dim)(const auto ref Manifold!(dim, Vertex) manifol
         return true;
     }
 
-    auto records = manifold.facets.map!(f => FacetRecord(f)).array;
+    // Single snapshot of the facets. Every facet has its vertices in increasing
+    // order (assertValidSimplex), so a ridge obtained by omitting one position
+    // is sorted and hashes identically from the two facets that share it.
+    auto facets = manifold.facets;
+    immutable n = facets.length;
 
-    // We (arbitrarily) use the given vertex order to orient the first simplex
-    assert(records.walkLength > 0);
-    records.front.label = Orientation.GivenOrder;
+    // Dual adjacency: neighbour[f][i] is the facet across the ridge of facet f
+    // that omits vertex position i (size_t.max if none), and neighbourPos[f][i]
+    // is the omitted position of that same ridge within the neighbour.
+    auto neighbour = new size_t[dim + 1][](n);
+    auto neighbourPos = new ubyte[dim + 1][](n);
+    foreach (f; 0 .. n)
+        neighbour[f][] = size_t.max;
 
-    while (records.any!(r => !r.done))
+    static struct Half { size_t facet; ubyte pos; }
+    Half[immutable(Vertex)[]] pending;   // ridge -> its first-seen (facet, pos)
+    foreach (f; 0 .. n)
     {
-        /* If we're not done there must be some oriented facet that hasn't had
-        its neighbors orientations set (or checked OK if already set) */
-        auto toDo = records.find!(r => !r.done && r.label != Orientation.NotSet);
-        assert(toDo.walkLength > 0);
-
-        foreach (i, ridge; toDo.front.facet.subsetsOfSize(dim).map!array.enumerate)
+        auto facet = facets[f];
+        foreach (ubyte i; 0 .. cast(ubyte)(dim + 1))
         {
-            auto oppFacet = manifold.star(ridge).filter!(
-                f => f != toDo.front.facet);
-            assert(!oppFacet.empty);
+            Vertex[dim] rbuf;   // the ridge = facet with position i omitted
+            size_t k = 0;
+            foreach (idx; 0 .. dim + 1)
+                if (idx != i)
+                    rbuf[k++] = facet[idx];
+            immutable(Vertex)[] ridge = rbuf.idup;
 
-            immutable j = oppFacet.front.subsetsOfSize(dim).map!array.enumerate
-                .find!(p => p.value == ridge).front.index;
-
-            Orientation oppFacetLabel;
-            if (i % 2 != j % 2)
+            if (auto p = ridge in pending)
             {
-                oppFacetLabel = toDo.front.label;
+                // Second (and, for a manifold, final) facet on this ridge: link.
+                neighbour[f][i] = p.facet;
+                neighbourPos[f][i] = p.pos;
+                neighbour[p.facet][p.pos] = f;
+                neighbourPos[p.facet][p.pos] = i;
+                pending.remove(ridge);
             }
             else
             {
-                if (toDo.front.label == Orientation.GivenOrder)
-                {
-                    oppFacetLabel = Orientation.OppositeOrder;
-                }
-                else
-                {
-                    oppFacetLabel = Orientation.GivenOrder;
-                }
+                pending[ridge] = Half(f, i);
             }
+        }
+    }
 
-            auto oppRecord = records.find!(r => r.facet == oppFacet.front);
-            if (oppRecord.front.label != Orientation.NotSet)
+    // BFS each connected component: orient a root GivenOrder and propagate. A
+    // disconnected manifold is orientable iff every component is.
+    auto label = new Orientation[n];    // defaults to NotSet
+    auto queue = new size_t[n];
+    foreach (root; 0 .. n)
+    {
+        if (label[root] != Orientation.NotSet)
+            continue;
+        label[root] = Orientation.GivenOrder;
+        size_t head = 0, tail = 0;
+        queue[tail++] = root;
+        while (head < tail)
+        {
+            immutable f = queue[head++];
+            foreach (i; 0 .. dim + 1)
             {
-                if (oppRecord.front.label != oppFacetLabel)
+                immutable g = neighbour[f][i];
+                if (g == size_t.max)
+                    continue;   // boundary ridge: no opposite facet
+                immutable j = neighbourPos[f][i];
+                /* Boundary rule: the shared ridge appears with sign (-1)^i in
+                the boundary of f and (-1)^j in that of the neighbour. Compatible
+                orientation needs opposite signs, so omitted positions of
+                different parity keep the same label; equal parity flips it. */
+                immutable want = (i % 2 != j % 2)
+                    ? label[f]
+                    : (label[f] == Orientation.GivenOrder
+                        ? Orientation.OppositeOrder
+                        : Orientation.GivenOrder);
+                if (label[g] == Orientation.NotSet)
+                {
+                    label[g] = want;
+                    queue[tail++] = g;
+                }
+                else if (label[g] != want)
                 {
                     return false;
                 }
             }
-            else
-            {
-                oppRecord.front.label = oppFacetLabel;
-            }           
         }
-        toDo.front.done = true;
     }
     return true;
 }
