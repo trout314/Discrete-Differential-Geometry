@@ -71,13 +71,27 @@ def main():
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--graph", choices=["edge", "dual"], default="dual")
+    ap.add_argument("--preset", choices=["eq", "hi"], default="eq",
+                    help="eq = VDV~13 equilibrium families; hi = uncontrolled "
+                         "beta=0 high-VDV families (VDV 570/1540/3079).")
+    ap.add_argument("--ed", default="ED5p0043",
+                    help="Edge-degree family tag for the eq preset (ED5p0043 / "
+                         "ED5p1043 / ED5p2043).")
     args = ap.parse_args()
     graph = args.graph
-    families = [
-        ("N=1e3", "seeds/S3_N1e3_1e-1_ED5p0043_1e-1_VDV_8_s*.mfd", None),
-        ("N=1e4", "seeds/S3_N1e4_1e-1_ED5p0043_1e-1_VDV_8e1_s*.mfd", 1000),
-        ("N=1e5", "seeds/S3_N1e5_1e-1_ED5p0043_1e-1_VDV_8e2_s*.mfd", 400),
-    ]
+    if args.preset == "eq":
+        ed = args.ed
+        families = [
+            ("N=1e3", f"seeds/S3_N1e3_1e-1_{ed}_1e-1_VDV_8_s*.mfd", None),
+            ("N=1e4", f"seeds/S3_N1e4_1e-1_{ed}_1e-1_VDV_8e1_s*.mfd", 1000),
+            ("N=1e5", f"seeds/S3_N1e5_1e-1_{ed}_1e-1_VDV_8e2_s*.mfd", 400),
+        ]
+    else:
+        families = [
+            ("N=1e3", "seeds/S3_N1e3_1e-1_ED5p0043_1e-1_s0[01]*.mfd", None),
+            ("N=1e4", "seeds/S3_N1e4_1e-1_ED5p0043_1e-1_s0[01]*.mfd", 1000),
+            ("N=1e5", "seeds/S3_N1e5_1e-1_ED5p0043_1e-1_s*.mfd", 400),
+        ]
     rng = np.random.default_rng(0)
     print(f"{graph}-distance roundness")
     print(f"{'family':>7} {'seeds':>5} {'diam':>5} {'mean':>6} "
@@ -85,6 +99,8 @@ def main():
     results = []
     for name, pat, src in families:
         hist, nseed = family_hist(pat, src, rng, graph=graph)
+        if nseed == 0:
+            print(f"{name:>7} : no seeds ({pat})"); continue
         a = analyze(hist); a["name"] = name; results.append(a)
         print(f"{name:>7} {nseed:>5} {a['diam']:>5} {a['mean']:>6.1f} "
               f"{a['dh1']:>11.2f} {a['dh2']:>11.2f} {a['ks']:>12.3f}", flush=True)
@@ -104,7 +120,8 @@ def main():
     ax.set_ylabel("CDF  P(d <= u)")
     ax.set_title(f"{graph}-distance CDF of equilibrium seeds (VDV~13) vs round S^3")
     ax.legend(fontsize=8); ax.grid(alpha=0.3)
-    out = f"/tmp/claude-1000/roundness_{graph}.png"
+    tag = args.ed if args.preset == "eq" else "hi"
+    out = f"/tmp/claude-1000/roundness_{tag}_{graph}.png"
     fig.tight_layout(); fig.savefig(out, dpi=130)
     print(f"wrote {out}")
 
