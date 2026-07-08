@@ -23,6 +23,22 @@ def get_free_memory_gb() -> float:
     return float("inf")
 
 
+def get_total_memory_gb() -> float:
+    """Return total physical system memory in GB (MemTotal from /proc/meminfo).
+
+    Returns float('inf') on non-Linux systems where /proc/meminfo is absent.
+    """
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    kb = int(line.split()[1])  # value is in kB
+                    return kb / (1024 * 1024)
+    except (FileNotFoundError, OSError):
+        return float("inf")
+    return float("inf")
+
+
 def encode_float(x: float) -> str:
     """Encode a float for use in filenames.
 
