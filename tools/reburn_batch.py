@@ -32,15 +32,15 @@ from reburn_family import calibrate, family_stem, params_from_metadata
 WORKER = os.path.join(os.path.dirname(__file__), "reburn_seed.py")
 EXIT_LOW_MEMORY = 42
 
-# Per-worker resident memory scales ~linearly with facet count.  Calibrated from
-# the peak RSS of production workers in the July 2026 OOM incident: a chain of
-# ~316k facets was resident at ~30 GB, i.e. ~95 MB per 1000 facets.  The old
-# model (2.15 MB per 1000 facets, borrowed from equilibrate_batch.py) undercounted
-# by ~45x, so the scheduler believed dozens of 30 GB workers fit in 24 GB and
-# oversubscribed RAM until the machine thrashed to a hard freeze.  100 MB/1k is a
-# deliberately round, slightly conservative fit.
-_MB_PER_1K_FACETS = 100.0
-_BASE_MB = 200.0
+# Per-worker resident memory scales ~linearly with facet count.  Measured peak
+# RSS of the full worker path (load + burn + metadata + save): ~0.06 GB at
+# N=17783, ~0.16 GB at N=56234, ~0.35 GB at N=177828 -> ~3 MB per 1000 facets on
+# a ~100 MB base.  (The July 2026 OOM freeze was NOT steady-state storage: it was
+# a transient O(n^2) allocation spike inside is_orientable during the metadata
+# write, since removed -- see build_metadata_comments.  These constants model the
+# real footprint; 3 MB/1k is rounded up from the ~2.6 MB/1k fit for headroom.)
+_MB_PER_1K_FACETS = 3.0
+_BASE_MB = 100.0
 
 
 def estimate_memory_mb(num_facets_target: int) -> float:
@@ -318,22 +318,26 @@ def main():
         n_burn = cache[stem]["n_burn"]
         est = estimate_memory_mb(params.num_facets_target)
         # A family whose single-worker estimate exceeds the per-worker cap (or,
-        # absent a cap, physical RAM) cannot be re-burned here: every worker will
-        # be OOM-killed (or thrash).  Flag it loudly rather than freeze silently.
+        # absent a cap, physical RAM) cannot be re-burned here: every worker would
+        # be OOM-killed (or thrash) as soon as it loads the manifold.  Skip it and
+        # flag it loudly rather than waste time loading 30 GB just to get killed.
         cap_gb = worker_mem_max_gb or total_ram_gb
         if est / 1024 > cap_gb:
-            oversized.append((stem, params.num_facets_target, est / 1024))
+            oversized.append((stem, params.num_facets_target, est / 1024, len(members)))
+            continue
         for sf in members:
             jobs.append((sf, params, n_burn, est))
 
     if oversized:
-        print(f"WARNING: {len(oversized)} family(ies) exceed the per-worker memory "
-              f"budget ({(worker_mem_max_gb or total_ram_gb):.0f} GB) and will fail:",
+        skipped = sum(m for _, _, _, m in oversized)
+        print(f"SKIPPING {len(oversized)} family(ies) / {skipped} seeds that exceed "
+              f"the per-worker memory budget ({(worker_mem_max_gb or total_ram_gb):.0f} GB):",
               file=sys.stderr, flush=True)
-        for stem, n, gb in sorted(oversized, key=lambda x: -x[2]):
-            print(f"  {stem}: N={n} ~{gb:.0f} GB/worker", file=sys.stderr, flush=True)
-        print("  Re-run these on a larger host, or add swap and use "
-              "--no-worker-cgroup to let them spill.", file=sys.stderr, flush=True)
+        for stem, n, gb, m in sorted(oversized, key=lambda x: -x[2]):
+            print(f"  {stem}: N={n} ~{gb:.0f} GB/worker ({m} seeds)", file=sys.stderr, flush=True)
+        print("  Re-run these on a larger host, or add swap and pass a bigger "
+              "--worker-mem-max-gb (or --no-worker-cgroup) to let them spill.",
+              file=sys.stderr, flush=True)
 
     print(f"Producing {len(jobs)} seeds -> {args.output_dir} "
           f"(scheduler budget {args.max_memory_gb:.0f} GB, {total_ram_gb:.0f} GB RAM)",

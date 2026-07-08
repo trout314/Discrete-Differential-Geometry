@@ -195,14 +195,21 @@ def build_metadata_comments(
     mfd = manifold_view
     fv = list(mfd.f_vector)
     dim = mfd.dimension
-    comments.append(f"actual_num_facets = {mfd.num_facets}")
+    # Record only observables a downstream reader of the .mfd file cannot cheaply
+    # recompute for themselves:
+    #   * the f-vector -- the fundamental simplex counts;
+    #   * the degree *variances* -- these need the full degree distribution (the
+    #     means are fixed by the f-vector, but the spread is not); the sampler
+    #     tracks them for free, whereas a file reader would have to iterate;
+    #   * valid_moves -- needs move enumeration.
+    # Deliberately omitted: num_facets and the mean degrees (exact functions of
+    # the f-vector), and euler_characteristic / is_orientable (topological
+    # invariants -- unchanged by Pachner moves, so a change would be a bug, not
+    # data worth storing; is_orientable is also O(n^2) and OOMs on large
+    # manifolds, which is what froze the reburn).
     comments.append(f"actual_f_vector = {fv}")
-    comments.append(f"actual_mean_hinge_degree = {mfd.mean_degree(dim - 2):.6f}")
     comments.append(f"actual_hinge_degree_variance = {mfd.degree_variance(dim - 2):.6f}")
-    comments.append(f"actual_mean_vertex_degree = {mfd.mean_degree(0):.6f}")
     comments.append(f"actual_vertex_degree_variance = {mfd.degree_variance(0):.6f}")
-    comments.append(f"euler_characteristic = {mfd.euler_characteristic}")
-    comments.append(f"is_orientable = {'true' if mfd.is_orientable else 'false'}")
     comments.append(f"valid_moves = {mfd.count_valid_moves()}")
     comments.append(f"final_objective = {objective:.6f}")
 
