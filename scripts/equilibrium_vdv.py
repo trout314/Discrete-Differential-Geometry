@@ -363,8 +363,9 @@ def produce(args):
     seed (above) and half from --below-init (below) so R-hat tests convergence
     from both directions."""
     import shutil
-    if not (args.seed_file and args.beta):
-        sys.exit("--produce needs --seed-file and --beta")
+    if not args.seed_file or args.beta is None:
+        sys.exit("--produce needs --seed-file and --beta (--beta 0 is allowed, "
+                 "for a base family with no VDV penalty)")
     params = SamplerParams(
         num_facets_target=args.n_target, num_facets_coef=args.num_facets_coef,
         hinge_degree_target=args.hinge_target, num_hinges_coef=args.num_hinges_coef,
