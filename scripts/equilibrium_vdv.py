@@ -47,10 +47,30 @@ from discrete_differential_geometry import (
     Manifold, ManifoldSampler, SamplerParams,
     integrated_autocorrelation_time, split_rhat,
 )
-from seed_utils import build_metadata_comments, build_seed_filename
+from seed_utils import (build_metadata_comments, build_seed_filename,
+                        get_total_memory_gb)
 
 FIELDS = ["side", "replica", "coef", "sample", "sweeps",
           "num_facets", "vdv", "edge_deg", "hdv", "accept"]
+
+# Per-chain resident memory ~ manifold footprint: ~2 MB per 1000 facets + base
+# (rounded up from the ~2 KB/facet measured on reburn). At N=1e7 this is ~20 GB,
+# so one chain per ~24 GB of RAM; the driver caps concurrency accordingly.
+_MB_PER_1K_FACETS = 2.5
+_BASE_MB = 250.0
+
+
+def est_chain_gb(n_target):
+    return (_BASE_MB + _MB_PER_1K_FACETS * (n_target / 1000)) / 1024
+
+
+def effective_workers(args):
+    """Cap concurrent chains so total estimated RAM fits the budget."""
+    budget = args.max_memory_gb if args.max_memory_gb > 0 else max(
+        1.0, get_total_memory_gb() - 4.0)
+    per = est_chain_gb(args.n_target)
+    cap = max(1, int(budget / per))
+    return max(1, min(args.max_workers, cap)), per, budget
 
 
 # ----------------------------------------------------------------------------
@@ -290,8 +310,11 @@ def produce(args):
                "--topology", args.topology, "--out", out, "--save-config", cfg]
         return i, subprocess.run(cmd).returncode, cfg, out
 
+    nw, per, budget = effective_workers(args)
+    print(f"  concurrency: {nw} chains (~{per:.2f} GB/chain, {budget:.0f} GB budget)",
+          flush=True)
     res = {}
-    with ThreadPoolExecutor(max_workers=args.max_workers) as pool:
+    with ThreadPoolExecutor(max_workers=nw) as pool:
         for fut in as_completed([pool.submit(pspawn, i) for i in range(K)]):
             i, rc, cfg, out = fut.result()
             res[i] = (rc, cfg, out)
@@ -370,6 +393,10 @@ def main():
     p.add_argument("--warmup-sweeps-driver", type=int, default=400,
                    help="Sweeps of over-squeeze warmup for 'below' chains.")
     p.add_argument("--max-workers", type=int, default=max(1, (os.cpu_count() or 4) - 2))
+    p.add_argument("--max-memory-gb", type=float, default=0.0,
+                   help="RAM budget for concurrent chains (0 = auto: total - 4 GB). "
+                        "Concurrency is capped so ~2 MB/1k-facet chains fit; e.g. "
+                        "one chain at N=1e7 on 30 GB, ~6 on 128 GB.")
     p.add_argument("--output-dir", default="data/equil_vdv")
     # production mode
     p.add_argument("--produce", action="store_true",
@@ -406,7 +433,8 @@ def main():
           f"{args.n_samples} samples x {args.thin} sweeps each", flush=True)
 
     done = 0
-    with ThreadPoolExecutor(max_workers=args.max_workers) as pool:
+    nw, per, budget = effective_workers(args)
+    with ThreadPoolExecutor(max_workers=nw) as pool:
         futs = {pool.submit(spawn, args, c, s, r, o): (c, s, r) for c, s, r, o in jobs}
         for fut in as_completed(futs):
             rc = fut.result(); done += 1
