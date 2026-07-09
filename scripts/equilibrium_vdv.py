@@ -243,16 +243,20 @@ def load_series(path, burnin):
 
 def analyze(coef, out_dir, burnin, thin):
     chains = {"above": [], "below": []}
+    echains = []
     edge_all, acc_all = [], []
     for path in sorted(glob.glob(os.path.join(out_dir, f"coef{coef:g}_*.csv"))):
         side = "above" if "_above_" in path else "below"
         v, e, h, a = load_series(path, burnin)
         if len(v) >= 4:
-            chains[side].append(v); edge_all.append(e.mean()); acc_all.append(a.mean())
+            chains[side].append(v); echains.append(e)
+            edge_all.append(e.mean()); acc_all.append(a.mean())
     allv = chains["above"] + chains["below"]
     if not allv:
         return None
     rhat = split_rhat(allv) if len(allv) >= 2 else float("nan")
+    emeans = np.array([e.mean() for e in echains]) if echains else np.array([0.0])
+    edge_spread = float(emeans.max() - emeans.min())
     taus = [integrated_autocorrelation_time(v) for v in allv]
     tau = float(np.nanmedian(taus))
     n_post = sum(len(v) for v in allv)
@@ -260,9 +264,9 @@ def analyze(coef, out_dir, burnin, thin):
     mean_above = np.mean([v.mean() for v in chains["above"]]) if chains["above"] else np.nan
     mean_below = np.mean([v.mean() for v in chains["below"]]) if chains["below"] else np.nan
     vdv_all = np.concatenate(allv)
-    return dict(coef=coef, rhat=rhat, tau_samples=tau, tau_sweeps=tau * thin,
-                ess=ess, vdv=vdv_all.mean(), vdv_std=vdv_all.std(),
-                above=mean_above, below=mean_below,
+    return dict(coef=coef, rhat=rhat, edge_spread=edge_spread, tau_samples=tau,
+                tau_sweeps=tau * thin, ess=ess, vdv=vdv_all.mean(),
+                vdv_std=vdv_all.std(), above=mean_above, below=mean_below,
                 gap=abs(mean_above - mean_below), edge=np.mean(edge_all),
                 accept=np.mean(acc_all), n_chains=len(allv))
 
@@ -321,21 +325,32 @@ def produce(args):
             if rc != 0:
                 print(f"  chain {i} FAILED rc={rc}", file=sys.stderr)
 
-    series, edges = [], []
+    vser, eser, edges = [], [], []
     for i in range(K):
         rc, cfg, out = res.get(i, (1, None, None))
         if rc == 0 and out and os.path.exists(out):
             v, e, _, _ = load_series(out, burnin=0)  # in-chain burn-in already done
             if len(v) >= 4:
-                series.append(v); edges.append(e.mean())
-    rhat = split_rhat(series) if len(series) >= 2 else float("nan")
-    allv = np.concatenate(series) if series else np.array([0.0])
-    print(f"\nEnsemble: {len(series)} chains  <VDV>={allv.mean():.3f}+/-{allv.std():.3f}  "
-          f"edgeDeg={np.mean(edges):.4f}  split-R-hat={rhat:.3f}", flush=True)
+                vser.append(v); eser.append(e); edges.append(e.mean())
+    # Require convergence in VDV AND agreement in edge degree. Checking VDV alone
+    # is fooled when chains settle at different edge degrees: VDV depends on edge
+    # degree, so the two starts show different VDV and R-hat(VDV) flags a spurious
+    # "non-equilibrium" that is really edge-degree non-convergence (the 5.45 case).
+    # Edge degree is (near-)constant per chain once pinned, so R-hat is the wrong
+    # tool for it (it explodes as within-chain variance -> 0); compare the chains'
+    # mean edge degrees in ABSOLUTE terms instead.
+    rhat_v = split_rhat(vser) if len(vser) >= 2 else float("nan")
+    emeans = np.array([e.mean() for e in eser]) if eser else np.array([0.0])
+    edge_spread = float(emeans.max() - emeans.min())
+    allv = np.concatenate(vser) if vser else np.array([0.0])
+    print(f"\nEnsemble: {len(vser)} chains  <VDV>={allv.mean():.3f}+/-{allv.std():.3f}  "
+          f"edgeDeg={np.mean(edges):.4f} (spread {edge_spread:.4f})  "
+          f"R-hat(VDV)={rhat_v:.3f}", flush=True)
 
-    if not (rhat < args.rhat_max):
-        print(f"R-hat {rhat:.3f} >= {args.rhat_max}: NOT confidently equilibrated; "
-              f"configs left in {stage}, not copied.", file=sys.stderr)
+    if not (rhat_v < args.rhat_max and edge_spread < args.edge_tol):
+        print(f"R-hat(VDV)={rhat_v:.3f} (<{args.rhat_max}?), edge spread={edge_spread:.4f} "
+              f"(<{args.edge_tol}?): not confidently equilibrated at a common edge "
+              f"degree; configs left in {stage}, not copied.", file=sys.stderr)
         return
     os.makedirs(args.seeds_dir, exist_ok=True)
     copied = 0
@@ -406,6 +421,9 @@ def main():
     p.add_argument("--production-burnin", type=int, default=1500,
                    help="Burn-in sweeps per production chain.")
     p.add_argument("--rhat-max", type=float, default=1.05)
+    p.add_argument("--edge-tol", type=float, default=0.03,
+                   help="Max allowed spread of per-chain mean edge degree for "
+                        "--produce (guards the edge-degree-drift confound).")
     p.add_argument("--seeds-dir", default="seeds")
     args = p.parse_args()
 
@@ -443,18 +461,18 @@ def main():
             if done % max(1, len(jobs) // 10) == 0 or done == len(jobs):
                 print(f"  {done}/{len(jobs)} chains done", flush=True)
 
-    print(f"\n{'coef':>8} {'accept':>7} {'R-hat':>7} {'tau_swp':>8} {'ESS':>6} "
-          f"{'<VDV>':>8} {'above':>8} {'below':>8} {'gap':>7} {'edgeDeg':>7}")
+    print(f"\n{'coef':>8} {'accept':>7} {'Rhat_V':>7} {'edgeSpr':>8} {'tau_swp':>8} "
+          f"{'ESS':>6} {'<VDV>':>8} {'above':>8} {'below':>8} {'edgeDeg':>7}")
     rows = []
     for coef in args.coefs:
         r = analyze(coef, args.output_dir, args.burnin, args.thin)
         if not r:
             continue
         rows.append(r)
-        eq = "OK" if (r["rhat"] < 1.05 and r["gap"] < 0.1 * r["vdv"] + 0.5) else "  "
+        eq = "OK" if (r["rhat"] < 1.05 and r["edge_spread"] < 0.03) else "  "
         print(f"{r['coef']:>8g} {r['accept']:>7.3f} {r['rhat']:>7.3f} "
-              f"{r['tau_sweeps']:>8.1f} {r['ess']:>6.0f} {r['vdv']:>8.3f} "
-              f"{r['above']:>8.3f} {r['below']:>8.3f} {r['gap']:>7.3f} "
+              f"{r['edge_spread']:>8.4f} {r['tau_sweeps']:>8.1f} {r['ess']:>6.0f} "
+              f"{r['vdv']:>8.3f} {r['above']:>8.3f} {r['below']:>8.3f} "
               f"{r['edge']:>7.4f} {eq}")
 
     summ = os.path.join(args.output_dir, "summary.csv")
