@@ -5,14 +5,50 @@ estimators for assessing convergence of multiple MCMC chains.
 """
 
 import numpy as np
+from scipy.special import ndtri
+from scipy.stats import rankdata
+
+
+def _split(chains):
+    """Split each chain in half, doubling the chain count (catches within-chain
+    non-stationarity). Returns None if any chain is too short."""
+    out = []
+    for c in chains:
+        c = np.asarray(c, dtype=float)
+        half = len(c) // 2
+        if half < 2:
+            return None
+        out.append(c[:half])
+        out.append(c[half:2 * half])
+    return out
+
+
+def _gelman_rubin(chains):
+    """Gelman-Rubin R-hat on the given (already-split) chains."""
+    m = len(chains)
+    if m < 2:
+        return float('nan')
+    n = min(len(s) for s in chains)
+    chains = [s[:n] for s in chains]
+    chain_means = np.array([s.mean() for s in chains])
+    B = n / (m - 1) * np.sum((chain_means - chain_means.mean()) ** 2)
+    W = np.mean([s.var(ddof=1) for s in chains])
+    if W == 0:
+        return 1.0 if B == 0 else float('inf')
+    var_hat = (n - 1) / n * W + B / n
+    return float(np.sqrt(var_hat / W))
 
 
 def split_rhat(chains):
     """
     Compute split-R-hat (Gelman et al. 2013) from a list of 1-D arrays.
 
-    Each chain is split in half, doubling the number of chains.
-    This detects non-stationarity within individual chains.
+    Each chain is split in half, doubling the number of chains, which detects
+    non-stationarity within individual chains.
+
+    NOTE: classic R-hat divides by the within-chain variance, so it diverges for
+    near-constant series (e.g. a tightly-pinned observable). Use
+    ``rank_normalized_rhat`` for those; it is the recommended default.
 
     Parameters
     ----------
@@ -24,35 +60,50 @@ def split_rhat(chains):
     float
         The split R-hat statistic. Values < 1.01 indicate convergence.
     """
-    # Split each chain in half
-    split = []
-    for c in chains:
-        c = np.asarray(c, dtype=float)
-        n = len(c)
-        half = n // 2
-        if half < 2:
-            return float('nan')
-        split.append(c[:half])
-        split.append(c[half:2 * half])
+    split = _split(chains)
+    return float('nan') if split is None else _gelman_rubin(split)
 
-    m = len(split)                       # number of split chains
-    n = len(split[0])                    # length of each split chain
-    chain_means = np.array([s.mean() for s in split])
-    grand_mean = chain_means.mean()
 
-    # Between-chain variance
-    B = n / (m - 1) * np.sum((chain_means - grand_mean) ** 2)
+def _rank_normalize(chains):
+    """Pool, average-rank (ties shared), and Blom-transform to normal scores;
+    split back into per-chain arrays."""
+    arrs = [np.asarray(c, dtype=float) for c in chains]
+    lengths = [len(a) for a in arrs]
+    pooled = np.concatenate(arrs)
+    z = ndtri((rankdata(pooled) - 3.0 / 8.0) / (len(pooled) - 0.25))
+    out, i = [], 0
+    for L in lengths:
+        out.append(z[i:i + L]); i += L
+    return out
 
-    # Within-chain variance
-    W = np.mean([s.var(ddof=1) for s in split])
 
-    if W == 0:
-        return 1.0 if B == 0 else float('inf')
+def rank_normalized_rhat(chains):
+    """
+    Rank-normalized split-R-hat (Vehtari et al. 2021).
 
-    # Pooled variance estimate
-    var_hat = (n - 1) / n * W + B / n
+    Ranks are pooled across chains and mapped to normal scores before computing
+    split-R-hat, which makes it invariant to monotone transforms, robust to heavy
+    tails, and -- crucially -- well-behaved for near-constant / tightly-pinned
+    observables where classic R-hat divides by a vanishing within-chain variance
+    and blows up. Interleaved (converged) chains give ~1; chains sitting at
+    different values give a finite, meaningful value.
 
-    return float(np.sqrt(var_hat / W))
+    Returns max(rank R-hat, folded rank R-hat), where the folded term is R-hat on
+    |x - median(pooled)| and catches chains that agree in location but differ in
+    scale/variance. Convergence: < 1.01.
+
+    Parameters
+    ----------
+    chains : list of array-like
+        Each element is a 1-D array of samples from one chain.
+    """
+    split = _split(chains)
+    if split is None or len(split) < 2:
+        return float('nan')
+    bulk = _gelman_rubin(_rank_normalize(split))
+    med = np.median(np.concatenate([np.asarray(c, dtype=float) for c in chains]))
+    folded = _gelman_rubin(_rank_normalize([np.abs(s - med) for s in split]))
+    return float(max(bulk, folded))
 
 
 def effective_sample_size(chains):
