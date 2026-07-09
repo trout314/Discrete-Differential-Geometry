@@ -112,9 +112,14 @@ def build_seed_filename(topology: str, params, seed_index: int | None = None) ->
     if params.num_hinges_coef != 0:
         parts.append(f"ED{encode_float(params.hinge_degree_target)}_{encode_float(params.num_hinges_coef)}")
 
-    # VDV (vertex degree variance = codim3 degree variance) term
+    # VDV (vertex degree variance = codim3 degree variance) term.
+    # Encoded as the SCALED coefficient beta/N ("VDVs_"): one Pachner move shifts
+    # global VDV by ~O(1/N), so beta/N -- not raw beta -- is the coupling on which
+    # the equilibrium VDV collapses across volumes. Raw beta is recoverable as
+    # (beta/N) * num_facets_target from the metadata.
     if params.codim3_degree_variance_coef != 0:
-        parts.append(f"VDV_{encode_float(params.codim3_degree_variance_coef)}")
+        beta_over_n = params.codim3_degree_variance_coef / params.num_facets_target
+        parts.append(f"VDVs_{encode_float(beta_over_n)}")
 
     # HDV (hinge degree variance) term — last when present
     if params.hinge_degree_variance_coef != 0:

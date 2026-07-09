@@ -82,9 +82,10 @@ def main():
     if args.preset == "eq":
         ed = args.ed
         families = [
-            ("N=1e3", f"seeds/S3_N1e3_1e-1_{ed}_1e-1_VDV_8_s*.mfd", None),
-            ("N=1e4", f"seeds/S3_N1e4_1e-1_{ed}_1e-1_VDV_8e1_s*.mfd", 1000),
-            ("N=1e5", f"seeds/S3_N1e5_1e-1_{ed}_1e-1_VDV_8e2_s*.mfd", 400),
+            # beta/N=0.008 (VDVs_8e-3) at the k=2 edge pin; new library naming
+            ("N=1e3", f"seeds/S3_N1e3_1e-1_{ed}_2_VDVs_8e-3_s*.mfd", None),
+            ("N=1e4", f"seeds/S3_N1e4_1e-1_{ed}_2_VDVs_8e-3_s*.mfd", 1000),
+            ("N=1e5", f"seeds/S3_N1e5_1e-1_{ed}_2_VDVs_8e-3_s*.mfd", 400),
         ]
     else:
         families = [

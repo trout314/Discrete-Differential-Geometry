@@ -26,7 +26,7 @@ from roundness_analysis import family_hist, round_s3_cdf
 DBAR_FLAT = 2 * math.pi / math.acos(1 / 3)   # ~5.10430
 
 EDS = [("ED5p0043", 5.0043), ("ED5p1043", 5.1043), ("ED5p2043", 5.2043)]
-NS = [("1e3", "VDV_8", None), ("1e4", "VDV_8e1", 1000), ("1e5", "VDV_8e2", 400)]
+NS = [("1e3", "VDVs_8e-3", None), ("1e4", "VDVs_8e-3", 1000), ("1e5", "VDVs_8e-3", 400)]
 COLOR = {"1e3": "#4477aa", "1e4": "#ee6677", "1e5": "#228833"}
 
 
@@ -54,7 +54,7 @@ def main():
     for ed, dbar in EDS:
         kc = DBAR_FLAT / dbar - 1.0
         for nt, vtag, src in NS:
-            pat = f"seeds/S3_N{nt}_1e-1_{ed}_1e-1_{vtag}_s*.mfd"
+            pat = f"seeds/S3_N{nt}_1e-1_{ed}_2_{vtag}_s*.mfd"
             if not glob.glob(pat):
                 continue
             hist, nseed = family_hist(pat, src, rng, graph="dual")
