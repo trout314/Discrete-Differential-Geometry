@@ -46,6 +46,7 @@ import discrete_differential_geometry as ddg
 from discrete_differential_geometry import (
     Manifold, ManifoldSampler, SamplerParams,
     integrated_autocorrelation_time, split_rhat, rank_normalized_rhat,
+    quantized_split_rhat,
 )
 
 # Coupled observables to check for joint convergence: the free/penalized ones
@@ -100,6 +101,38 @@ def _read_rows(path, n):
     return rows[:n]
 
 
+def _hist_path(out):
+    return (out + ".hist.npz") if out else None
+
+
+def _pad_stack(rows):
+    """Stack ragged 1-D count arrays into a zero-padded int64 2-D array."""
+    w = max((len(a) for a in rows), default=0)
+    out = np.zeros((len(rows), w), dtype=np.int64)
+    for i, a in enumerate(rows):
+        out[i, :len(a)] = a
+    return out
+
+
+def _write_hists(path, vh, eh):
+    """Atomically persist per-sample vertex/edge degree histograms (index i =
+    degree i+1, matching the D accessor's 1-indexed convention)."""
+    if not path:
+        return
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        np.savez(f, vhist=_pad_stack(vh), ehist=_pad_stack(eh))
+    os.replace(tmp, path)
+
+
+def _read_hists(path, n):
+    """Reload the first n samples of each histogram as ragged lists (for resume)."""
+    if not path or not os.path.exists(path):
+        return [], []
+    with np.load(path) as z:
+        return [r for r in z["vhist"][:n]], [r for r in z["ehist"][:n]]
+
+
 def run_chain(args):
     """One fixed-beta chain, resumable. Phases: warmup -> burnin -> measure.
     Resume is exact-enough for equilibrium: on restart we reload the checkpointed
@@ -122,16 +155,20 @@ def run_chain(args):
         except (OSError, ValueError):
             st = None
 
+    rec_hist = bool(args.record_histograms) and bool(args.out)
+    hp = _hist_path(args.out) if rec_hist else None
     if st:
         mfd = Manifold.load(ck_mfd, args.dim)
         phase, ph = st["phase"], st["ph_sweeps"]
         samples, meas_total = st["samples"], st["meas_total"]
         rows = _read_rows(args.out, samples)
+        vhists, ehists = _read_hists(hp, samples) if rec_hist else ([], [])
     else:
         mfd = Manifold.load(args.init, args.dim)
         phase = "warmup" if args.warmup_sweeps > 0 else "burnin"
         ph = samples = meas_total = 0
         rows = []
+        vhists, ehists = [], []
 
     params = SamplerParams(
         num_facets_target=args.n_target, num_facets_coef=args.num_facets_coef,
@@ -147,6 +184,8 @@ def run_chain(args):
         tmp = ck_mfd + ".tmp"; v.save(tmp); os.replace(tmp, ck_mfd)   # manifold first
         if args.out:
             _write_rows(args.out, rows)
+        if rec_hist:
+            _write_hists(hp, vhists, ehists)
         tmp = ck_json + ".tmp"                                         # JSON last = commit
         with open(tmp, "w") as f:
             json.dump({"phase": phase, "ph_sweeps": ph, "samples": samples,
@@ -182,12 +221,17 @@ def run_chain(args):
             rows.append([args.side, args.replica, args.coef, samples, meas_total,
                          v.num_facets, v.degree_variance(0), v.mean_degree(1),
                          v.degree_variance(1), acc])
+            if rec_hist:
+                vhists.append(v.degree_histogram(0))
+                ehists.append(v.degree_histogram(1))
             samples += 1
             if samples % ck_samples == 0:
                 checkpoint()
 
     if args.out:
         _write_rows(args.out, rows)
+    if rec_hist:
+        _write_hists(hp, vhists, ehists)
     if args.save_config:
         comments = build_metadata_comments(
             topology=args.topology, dimension=args.dim,
@@ -263,6 +307,25 @@ def load_observables(path, burnin=0):
     return {k: np.array(v) for k, v in cols.items()}
 
 
+def load_degree_fracs(out_path, dim, burnin=0):
+    """One chain's degree distribution over time: return (fracs, n_simp) where
+    fracs is an (n_samples x bins) array of per-degree fractions p_d (bin d ->
+    degree d+1, the D accessor's 1-indexed convention) and n_simp is the mean
+    number of dimension-`dim` simplices (the denominator whose reciprocal is the
+    p_d discretization quantum). Returns (None, None) if the sidecar is absent."""
+    hp = _hist_path(out_path)
+    if not hp or not os.path.exists(hp):
+        return None, None
+    with np.load(hp) as z:
+        counts = z["vhist" if dim == 0 else "ehist"].astype(float)
+    if counts.size == 0:
+        return None, None
+    counts = counts[burnin:]
+    totals = counts.sum(axis=1)
+    denom = np.where(totals == 0, 1.0, totals)
+    return counts / denom[:, None], float(totals.mean())
+
+
 def analyze(coef, out_dir, burnin, thin):
     chains = {"above": [], "below": []}
     echains = []
@@ -335,6 +398,8 @@ def produce(args):
                "--thin", str(args.thin), "--n-samples", str(args.n_samples),
                "--side", "below" if below else "above", "--replica", str(i),
                "--topology", args.topology, "--out", out, "--save-config", cfg]
+        if args.record_histograms:
+            cmd.append("--record-histograms")
         return i, subprocess.run(cmd).returncode, cfg, out
 
     nw, per, budget = effective_workers(args)
@@ -348,18 +413,17 @@ def produce(args):
             if rc != 0:
                 print(f"  chain {i} FAILED rc={rc}", file=sys.stderr)
 
-    # (A) Joint convergence over all coupled observables, (B) autocorrelation-aware
-    # so run length is judged against the SLOWEST coordinate, gated per the
-    # observable's NATURE: the genuinely-fluctuating controlled coordinate (VDV)
-    # by (D) rank-normalized R-hat (statistical convergence); the tightly-pinned/
-    # derived ones (edge degree, facets, HDV) by absolute spread against a physical
-    # tolerance -- rank-R-hat is unusable there (at large N it flags physically-
-    # negligible but statistically-real differences, e.g. edge rank-R-hat 4.7 at
-    # spread 0.0005). Both are reported for every observable.
-    gate = {"vdv": ("rhat", args.rhat_max),
-            "edge_deg": ("spread", args.edge_tol),
-            "hdv": ("spread", args.hdv_tol),
-            "num_facets": ("spread", max(3.0, args.facet_tol_frac * args.n_target))}
+    # Joint convergence over all coupled observables, judged by ONE statistic of
+    # any observable's nature: quantization-floored split-R-hat. The within-chain
+    # variance is floored at Delta^2/12, Delta being the minimum change in the
+    # observable with the other underlying integer counts held fixed. For a
+    # genuinely-fluctuating coordinate (VDV, HDV) the true variance dominates and
+    # this is ordinary split-R-hat; for a near-deterministic one (edge degree =
+    # 6 f3/f1, facet count) the floor sets the scale, so chains that agree to
+    # within a few quanta pass instead of the statistic blowing up on a vanishing
+    # denominator. It is also autocorrelation-aware (B): run length is judged
+    # against the slowest coordinate's ESS.
+    RH = args.rhat_max
     obs_series = {o: [] for o in OBSERVABLES}
     for i in range(K):
         rc, cfg, out = res.get(i, (1, None, None))
@@ -370,31 +434,79 @@ def produce(args):
                     obs_series[o].append(cols[o])
     n_ok = len(obs_series["vdv"])
     n_samp = min((len(s) for s in obs_series["vdv"]), default=0)
+
+    def observable_quantum(o, pooled):
+        if o == "edge_deg":                       # 6 f3/f1; step f1 at fixed f3
+            f3 = np.concatenate(obs_series["num_facets"]).mean()
+            return (pooled.mean() ** 2) / (6.0 * f3) if f3 else 0.0
+        if o == "num_facets":                     # a 2-3 move changes f3 by 1
+            return 1.0
+        return 0.0                                # variances: effectively continuous
+
     print(f"\nEnsemble: {n_ok} chains x {n_samp} samples", flush=True)
-    print(f"  {'observable':>10} {'mean':>12} {'rank-Rhat':>10} {'spread':>10} "
-          f"{'tau(smp)':>9} {'ESS':>7} {'gate':>16}")
+    print(f"  {'observable':>12} {'mean':>12} {'quantum':>10} {'qRhat':>8} "
+          f"{'tau(smp)':>9} {'ESS':>7} {'gate':>14}")
     diag, bad = {}, []
     for o in OBSERVABLES:
         ser = obs_series[o]
-        rh = rank_normalized_rhat(ser) if n_ok >= 2 else float("nan")
+        pooled = np.concatenate(ser) if ser else np.array([0.0])
+        q = observable_quantum(o, pooled)
+        rh = quantized_split_rhat(ser, q) if n_ok >= 2 else float("nan")
         taus = [integrated_autocorrelation_time(s) for s in ser]
         tau = float(np.nanmedian(taus)) if taus else float("nan")
-        pooled = np.concatenate(ser) if ser else np.array([0.0])
         ess = (n_ok * n_samp / tau) if tau and not np.isnan(tau) else float("nan")
-        spread = float(np.ptp([s.mean() for s in ser])) if ser else float("nan")
-        diag[o] = dict(rhat=rh, tau=tau, ess=ess, mean=pooled.mean(), spread=spread)
-        stat, thr = gate[o]
-        val = rh if stat == "rhat" else spread
-        ok = val < thr
+        ok = not np.isnan(rh) and rh < RH
         if not ok:
             bad.append(o)
-        print(f"  {o:>10} {pooled.mean():>12.4f} {rh:>10.3f} {spread:>10.4f} "
-              f"{tau:>9.1f} {ess:>7.0f} {stat}<{thr:g}:{'OK' if ok else 'FAIL':>4}")
+        diag[o] = dict(rhat=rh, tau=tau, ess=ess, mean=pooled.mean())
+        print(f"  {o:>12} {pooled.mean():>12.4f} {q:>10.5f} {rh:>8.3f} "
+              f"{tau:>9.1f} {ess:>7.0f} {'qRhat<'+format(RH,'g'):>9}:"
+              f"{'OK' if ok else 'FAIL':>4}")
+
+    # Richer check: the full vertex- and edge-degree DISTRIBUTIONS, not just their
+    # first two moments. Each degree bin's occupancy p_d = count_d / n_simplices is
+    # another observable (quantum 1/n_simplices, count_d integer). "Distributions
+    # statistically indistinguishable" == every material bin converges. Bins with
+    # too little pooled mass are noise and would false-fail, so only bins whose mean
+    # count >= --bin-mass-floor are gated; the sparse tail is reported, not gated.
+    hist_bad = []
+    if args.record_histograms:
+        for dim, label in ((0, "vtx-dist"), (1, "edge-dist")):
+            per_chain, nsimps = [], []
+            for i in range(K):
+                rc, cfg, out = res.get(i, (1, None, None))
+                if rc == 0 and out:
+                    fr, ns = load_degree_fracs(out, dim)
+                    if fr is not None and len(fr) >= 4:
+                        per_chain.append(fr); nsimps.append(ns)
+            if len(per_chain) < 2:
+                continue
+            width = max(fr.shape[1] for fr in per_chain)
+            per_chain = [np.pad(fr, ((0, 0), (0, width - fr.shape[1])))
+                         for fr in per_chain]
+            nsimp = float(np.mean(nsimps))
+            q = 1.0 / nsimp if nsimp else 0.0
+            mean_count = np.concatenate(per_chain, axis=0).mean(axis=0) * nsimp
+            material = [d for d in range(width)
+                        if mean_count[d] >= args.bin_mass_floor]
+            worst, nfail = 0.0, 0
+            for d in material:
+                rh = quantized_split_rhat([fr[:, d] for fr in per_chain], q)
+                if not np.isnan(rh):
+                    worst = max(worst, rh)
+                    nfail += rh >= RH
+            if material:
+                print(f"  {label:>12} {len(material):>3d} bins (deg "
+                      f"{material[0] + 1}-{material[-1] + 1}) worst qRhat="
+                      f"{worst:.3f}  {nfail} fail")
+            if nfail:
+                hist_bad.append(f"{label}({nfail})")
 
     min_ess = min((diag[o]["ess"] for o in OBSERVABLES
                    if not np.isnan(diag[o]["ess"])), default=float("nan"))
-    if bad or (not np.isnan(min_ess) and min_ess < args.min_ess):
-        why = (f"not converged in {bad}" if bad
+    all_bad = bad + hist_bad
+    if all_bad or (not np.isnan(min_ess) and min_ess < args.min_ess):
+        why = (f"not converged in {all_bad}" if all_bad
                else f"ESS {min_ess:.0f} < {args.min_ess} (run longer)")
         print(f"{why}; configs left in {stage}, not copied.", file=sys.stderr)
         return
@@ -479,9 +591,16 @@ def main():
                    help="Minimum effective sample size (slowest observable) "
                         "required to accept a --produce ensemble.")
     p.add_argument("--hdv-tol", type=float, default=0.1,
-                   help="Max per-chain-mean spread of hinge-degree variance (pinned).")
+                   help="Deprecated (unused): superseded by quantized split-R-hat.")
     p.add_argument("--facet-tol-frac", type=float, default=0.005,
-                   help="Max facet-count spread as a fraction of N (pinned).")
+                   help="Deprecated (unused): superseded by quantized split-R-hat.")
+    p.add_argument("--record-histograms", action="store_true",
+                   help="Record per-sample vertex/edge degree histograms to a "
+                        ".hist.npz sidecar; --produce then gates the full degree "
+                        "distributions (every material bin) for convergence.")
+    p.add_argument("--bin-mass-floor", type=float, default=5.0,
+                   help="Minimum pooled mean count for a degree bin to be gated "
+                        "(sparser bins are reported but not gated).")
     p.add_argument("--seeds-dir", default="seeds")
     args = p.parse_args()
 

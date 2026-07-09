@@ -7,6 +7,7 @@ from ._sampler import ManifoldSampler, SamplerParams, SamplerStats
 from .convergence import (
     split_rhat,
     rank_normalized_rhat,
+    quantized_split_rhat,
     effective_sample_size,
     integrated_autocorrelation_time,
     weighted_ess,
@@ -36,6 +37,7 @@ __all__ = [
     "gc_minimize",
     "split_rhat",
     "rank_normalized_rhat",
+    "quantized_split_rhat",
     "effective_sample_size",
     "integrated_autocorrelation_time",
     "weighted_ess",

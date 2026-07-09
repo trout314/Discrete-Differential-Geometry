@@ -23,8 +23,15 @@ def _split(chains):
     return out
 
 
-def _gelman_rubin(chains):
-    """Gelman-Rubin R-hat on the given (already-split) chains."""
+def _gelman_rubin(chains, var_floor=0.0):
+    """Gelman-Rubin R-hat on the given (already-split) chains.
+
+    ``var_floor`` floors the within-chain variance W at a physical minimum (the
+    variance Delta**2/12 of one discretization quantum). This keeps R-hat finite
+    and meaningful for near-deterministic / tightly-pinned observables, whose true
+    within-chain variance collapses toward zero and would otherwise make classic
+    R-hat blow up on physically-negligible between-chain offsets. With var_floor=0
+    this is the textbook estimator."""
     m = len(chains)
     if m < 2:
         return float('nan')
@@ -32,7 +39,7 @@ def _gelman_rubin(chains):
     chains = [s[:n] for s in chains]
     chain_means = np.array([s.mean() for s in chains])
     B = n / (m - 1) * np.sum((chain_means - chain_means.mean()) ** 2)
-    W = np.mean([s.var(ddof=1) for s in chains])
+    W = max(np.mean([s.var(ddof=1) for s in chains]), var_floor)
     if W == 0:
         return 1.0 if B == 0 else float('inf')
     var_hat = (n - 1) / n * W + B / n
@@ -103,6 +110,48 @@ def rank_normalized_rhat(chains):
     bulk = _gelman_rubin(_rank_normalize(split))
     med = np.median(np.concatenate([np.asarray(c, dtype=float) for c in chains]))
     folded = _gelman_rubin(_rank_normalize([np.abs(s - med) for s in split]))
+    return float(max(bulk, folded))
+
+
+def quantized_split_rhat(chains, quantum=0.0):
+    """
+    Variance-floored split-R-hat: one convergence statistic for observables of
+    any nature, fluctuating or near-deterministic.
+
+    Standard split-R-hat divides the total-variance estimate by the within-chain
+    variance W, so it diverges for a tightly-pinned / near-deterministic observable
+    (W -> 0) even when the chains differ by a physically-negligible amount. Here W
+    is floored at ``quantum**2 / 12`` -- the variance of a single discretization
+    step, ``quantum`` being the minimum change in the observable when the other
+    underlying integer counts are held fixed. For a genuinely fluctuating
+    observable the true W dominates and the floor is inert, recovering ordinary
+    split-R-hat; for a near-deterministic one the floor sets the scale, so the
+    statistic reports "chains agree to within a few quanta" as convergence instead
+    of blowing up. This makes a per-observable rank-normalization unnecessary: the
+    floor cures the near-constant pathology directly and in physical units.
+
+    The between-chain term uses every chain's mean (not a peak-to-peak range), so
+    it does not inflate with the number of chains.
+
+    Returns max(bulk, folded), where folded is the same statistic on
+    ``|x - median(pooled)|`` (catches chains that agree in location but differ in
+    spread). Convergence: < 1.01.
+
+    Parameters
+    ----------
+    chains : list of array-like
+        Each element is a 1-D array of samples from one chain.
+    quantum : float, optional
+        Minimum separation between attainable values with the other underlying
+        counts held fixed. 0 (default) recovers ordinary split-R-hat.
+    """
+    split = _split(chains)
+    if split is None or len(split) < 2:
+        return float('nan')
+    var_floor = (quantum * quantum) / 12.0
+    bulk = _gelman_rubin(split, var_floor)
+    med = np.median(np.concatenate([np.asarray(c, dtype=float) for c in chains]))
+    folded = _gelman_rubin([np.abs(s - med) for s in split], var_floor)
     return float(max(bulk, folded))
 
 
