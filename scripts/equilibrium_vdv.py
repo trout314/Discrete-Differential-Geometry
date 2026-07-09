@@ -45,8 +45,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 import discrete_differential_geometry as ddg
 from discrete_differential_geometry import (
     Manifold, ManifoldSampler, SamplerParams,
-    integrated_autocorrelation_time, split_rhat,
+    integrated_autocorrelation_time, split_rhat, rank_normalized_rhat,
 )
+
+# Coupled observables to check for joint convergence: the free/penalized ones
+# (VDV, HDV) and the pinned ones (edge degree, facet count). Equilibrium requires
+# ALL to converge -- a drift in a pinned coordinate masquerades as (non-)
+# convergence in a penalized one, since they are coupled.
+OBSERVABLES = ["vdv", "edge_deg", "hdv", "num_facets"]
 from seed_utils import (build_metadata_comments, build_seed_filename,
                         get_total_memory_gb)
 
@@ -151,10 +157,14 @@ def run_chain(args):
 
     if phase == "warmup":
         s.set_codim3_degree_variance_coef(args.warmup_coef)
+        if args.warmup_hinge_coef > 0:      # hold edge degree while squeezing VDV
+            s.set_num_hinges_coef(args.warmup_hinge_coef)
         while ph < args.warmup_sweeps:
             step = min(ce, args.warmup_sweeps - ph)
             s.run(sweeps=step); ph += step; checkpoint()
         s.set_codim3_degree_variance_coef(args.coef)
+        if args.warmup_hinge_coef > 0:
+            s.set_num_hinges_coef(args.num_hinges_coef)
         phase, ph = "burnin", 0; checkpoint()
 
     if phase == "burnin":
@@ -225,6 +235,7 @@ def spawn(args, coef, side, rep, out):
            "--coef", str(coef),
            "--warmup-coef", str(coef * args.warmup_factor),
            "--warmup-sweeps", str(warm_sweeps),
+           "--warmup-hinge-coef", str(args.warmup_hinge_coef),
            "--thin", str(args.thin), "--n-samples", str(args.n_samples),
            "--side", side, "--replica", str(rep), "--out", out]
     return subprocess.run(cmd).returncode
@@ -241,6 +252,17 @@ def load_series(path, burnin):
     return np.array(v), np.array(e), np.array(h), np.array(a)
 
 
+def load_observables(path, burnin=0):
+    """Return {observable -> post-burnin array} for OBSERVABLES + accept."""
+    cols = {k: [] for k in OBSERVABLES + ["accept"]}
+    with open(path) as f:
+        for row in csv.DictReader(f):
+            if int(row["sample"]) >= burnin:
+                for k in cols:
+                    cols[k].append(float(row[k]))
+    return {k: np.array(v) for k, v in cols.items()}
+
+
 def analyze(coef, out_dir, burnin, thin):
     chains = {"above": [], "below": []}
     echains = []
@@ -254,7 +276,8 @@ def analyze(coef, out_dir, burnin, thin):
     allv = chains["above"] + chains["below"]
     if not allv:
         return None
-    rhat = split_rhat(allv) if len(allv) >= 2 else float("nan")
+    rhat = rank_normalized_rhat(allv) if len(allv) >= 2 else float("nan")
+    rhat_e = rank_normalized_rhat(echains) if len(echains) >= 2 else float("nan")
     emeans = np.array([e.mean() for e in echains]) if echains else np.array([0.0])
     edge_spread = float(emeans.max() - emeans.min())
     taus = [integrated_autocorrelation_time(v) for v in allv]
@@ -264,8 +287,8 @@ def analyze(coef, out_dir, burnin, thin):
     mean_above = np.mean([v.mean() for v in chains["above"]]) if chains["above"] else np.nan
     mean_below = np.mean([v.mean() for v in chains["below"]]) if chains["below"] else np.nan
     vdv_all = np.concatenate(allv)
-    return dict(coef=coef, rhat=rhat, edge_spread=edge_spread, tau_samples=tau,
-                tau_sweeps=tau * thin, ess=ess, vdv=vdv_all.mean(),
+    return dict(coef=coef, rhat=rhat, rhat_e=rhat_e, edge_spread=edge_spread,
+                tau_samples=tau, tau_sweeps=tau * thin, ess=ess, vdv=vdv_all.mean(),
                 vdv_std=vdv_all.std(), above=mean_above, below=mean_below,
                 gap=abs(mean_above - mean_below), edge=np.mean(edge_all),
                 accept=np.mean(acc_all), n_chains=len(allv))
@@ -325,32 +348,55 @@ def produce(args):
             if rc != 0:
                 print(f"  chain {i} FAILED rc={rc}", file=sys.stderr)
 
-    vser, eser, edges = [], [], []
+    # (A) Joint convergence over all coupled observables, (B) autocorrelation-aware
+    # so run length is judged against the SLOWEST coordinate, gated per the
+    # observable's NATURE: the genuinely-fluctuating controlled coordinate (VDV)
+    # by (D) rank-normalized R-hat (statistical convergence); the tightly-pinned/
+    # derived ones (edge degree, facets, HDV) by absolute spread against a physical
+    # tolerance -- rank-R-hat is unusable there (at large N it flags physically-
+    # negligible but statistically-real differences, e.g. edge rank-R-hat 4.7 at
+    # spread 0.0005). Both are reported for every observable.
+    gate = {"vdv": ("rhat", args.rhat_max),
+            "edge_deg": ("spread", args.edge_tol),
+            "hdv": ("spread", args.hdv_tol),
+            "num_facets": ("spread", max(3.0, args.facet_tol_frac * args.n_target))}
+    obs_series = {o: [] for o in OBSERVABLES}
     for i in range(K):
         rc, cfg, out = res.get(i, (1, None, None))
         if rc == 0 and out and os.path.exists(out):
-            v, e, _, _ = load_series(out, burnin=0)  # in-chain burn-in already done
-            if len(v) >= 4:
-                vser.append(v); eser.append(e); edges.append(e.mean())
-    # Require convergence in VDV AND agreement in edge degree. Checking VDV alone
-    # is fooled when chains settle at different edge degrees: VDV depends on edge
-    # degree, so the two starts show different VDV and R-hat(VDV) flags a spurious
-    # "non-equilibrium" that is really edge-degree non-convergence (the 5.45 case).
-    # Edge degree is (near-)constant per chain once pinned, so R-hat is the wrong
-    # tool for it (it explodes as within-chain variance -> 0); compare the chains'
-    # mean edge degrees in ABSOLUTE terms instead.
-    rhat_v = split_rhat(vser) if len(vser) >= 2 else float("nan")
-    emeans = np.array([e.mean() for e in eser]) if eser else np.array([0.0])
-    edge_spread = float(emeans.max() - emeans.min())
-    allv = np.concatenate(vser) if vser else np.array([0.0])
-    print(f"\nEnsemble: {len(vser)} chains  <VDV>={allv.mean():.3f}+/-{allv.std():.3f}  "
-          f"edgeDeg={np.mean(edges):.4f} (spread {edge_spread:.4f})  "
-          f"R-hat(VDV)={rhat_v:.3f}", flush=True)
+            cols = load_observables(out)
+            if len(cols["vdv"]) >= 4:
+                for o in OBSERVABLES:
+                    obs_series[o].append(cols[o])
+    n_ok = len(obs_series["vdv"])
+    n_samp = min((len(s) for s in obs_series["vdv"]), default=0)
+    print(f"\nEnsemble: {n_ok} chains x {n_samp} samples", flush=True)
+    print(f"  {'observable':>10} {'mean':>12} {'rank-Rhat':>10} {'spread':>10} "
+          f"{'tau(smp)':>9} {'ESS':>7} {'gate':>16}")
+    diag, bad = {}, []
+    for o in OBSERVABLES:
+        ser = obs_series[o]
+        rh = rank_normalized_rhat(ser) if n_ok >= 2 else float("nan")
+        taus = [integrated_autocorrelation_time(s) for s in ser]
+        tau = float(np.nanmedian(taus)) if taus else float("nan")
+        pooled = np.concatenate(ser) if ser else np.array([0.0])
+        ess = (n_ok * n_samp / tau) if tau and not np.isnan(tau) else float("nan")
+        spread = float(np.ptp([s.mean() for s in ser])) if ser else float("nan")
+        diag[o] = dict(rhat=rh, tau=tau, ess=ess, mean=pooled.mean(), spread=spread)
+        stat, thr = gate[o]
+        val = rh if stat == "rhat" else spread
+        ok = val < thr
+        if not ok:
+            bad.append(o)
+        print(f"  {o:>10} {pooled.mean():>12.4f} {rh:>10.3f} {spread:>10.4f} "
+              f"{tau:>9.1f} {ess:>7.0f} {stat}<{thr:g}:{'OK' if ok else 'FAIL':>4}")
 
-    if not (rhat_v < args.rhat_max and edge_spread < args.edge_tol):
-        print(f"R-hat(VDV)={rhat_v:.3f} (<{args.rhat_max}?), edge spread={edge_spread:.4f} "
-              f"(<{args.edge_tol}?): not confidently equilibrated at a common edge "
-              f"degree; configs left in {stage}, not copied.", file=sys.stderr)
+    min_ess = min((diag[o]["ess"] for o in OBSERVABLES
+                   if not np.isnan(diag[o]["ess"])), default=float("nan"))
+    if bad or (not np.isnan(min_ess) and min_ess < args.min_ess):
+        why = (f"not converged in {bad}" if bad
+               else f"ESS {min_ess:.0f} < {args.min_ess} (run longer)")
+        print(f"{why}; configs left in {stage}, not copied.", file=sys.stderr)
         return
     os.makedirs(args.seeds_dir, exist_ok=True)
     copied = 0
@@ -360,8 +406,9 @@ def produce(args):
             shutil.copy2(cfg, os.path.join(args.seeds_dir,
                          build_seed_filename(args.topology, params, seed_index=copied)))
             copied += 1
-    print(f"R-hat OK -> copied {copied} equilibrium seeds to {args.seeds_dir}/ "
-          f"({stem}_s000..s{copied - 1:03d})", flush=True)
+    print(f"CONVERGED (all observables, ESS>={args.min_ess:.0f}) -> copied {copied} "
+          f"equilibrium seeds to {args.seeds_dir}/ ({stem}_s000..s{copied - 1:03d})",
+          flush=True)
 
 
 def main():
@@ -382,6 +429,11 @@ def main():
     p.add_argument("--n-samples", type=int, default=500)
     p.add_argument("--warmup-coef", type=float, default=0.0)
     p.add_argument("--warmup-sweeps", type=int, default=0)
+    p.add_argument("--warmup-hinge-coef", type=float, default=0.0,
+                   help="Stiffen the edge-degree pin to this value DURING the "
+                        "over-squeeze warmup (0 = keep --num-hinges-coef), so the "
+                        "'below' start stays near the study edge degree instead of "
+                        "drifting. Restored to --num-hinges-coef afterward.")
     p.add_argument("--side", default="above")
     p.add_argument("--replica", type=int, default=0)
     p.add_argument("--out", default=None)
@@ -422,8 +474,14 @@ def main():
                    help="Burn-in sweeps per production chain.")
     p.add_argument("--rhat-max", type=float, default=1.05)
     p.add_argument("--edge-tol", type=float, default=0.03,
-                   help="Max allowed spread of per-chain mean edge degree for "
-                        "--produce (guards the edge-degree-drift confound).")
+                   help="Reported spread tolerance for the frontier OK flag.")
+    p.add_argument("--min-ess", type=float, default=100.0,
+                   help="Minimum effective sample size (slowest observable) "
+                        "required to accept a --produce ensemble.")
+    p.add_argument("--hdv-tol", type=float, default=0.1,
+                   help="Max per-chain-mean spread of hinge-degree variance (pinned).")
+    p.add_argument("--facet-tol-frac", type=float, default=0.005,
+                   help="Max facet-count spread as a fraction of N (pinned).")
     p.add_argument("--seeds-dir", default="seeds")
     args = p.parse_args()
 
@@ -461,16 +519,16 @@ def main():
             if done % max(1, len(jobs) // 10) == 0 or done == len(jobs):
                 print(f"  {done}/{len(jobs)} chains done", flush=True)
 
-    print(f"\n{'coef':>8} {'accept':>7} {'Rhat_V':>7} {'edgeSpr':>8} {'tau_swp':>8} "
-          f"{'ESS':>6} {'<VDV>':>8} {'above':>8} {'below':>8} {'edgeDeg':>7}")
+    print(f"\n{'coef':>8} {'accept':>7} {'rRhatV':>7} {'rRhatE':>7} {'edgeSpr':>8} "
+          f"{'tau_swp':>8} {'ESS':>6} {'<VDV>':>8} {'above':>8} {'below':>8} {'edgeDeg':>7}")
     rows = []
     for coef in args.coefs:
         r = analyze(coef, args.output_dir, args.burnin, args.thin)
         if not r:
             continue
         rows.append(r)
-        eq = "OK" if (r["rhat"] < 1.05 and r["edge_spread"] < 0.03) else "  "
-        print(f"{r['coef']:>8g} {r['accept']:>7.3f} {r['rhat']:>7.3f} "
+        eq = "OK" if (r["rhat"] < args.rhat_max and r["rhat_e"] < args.rhat_max) else "  "
+        print(f"{r['coef']:>8g} {r['accept']:>7.3f} {r['rhat']:>7.3f} {r['rhat_e']:>7.3f} "
               f"{r['edge_spread']:>8.4f} {r['tau_sweeps']:>8.1f} {r['ess']:>6.0f} "
               f"{r['vdv']:>8.3f} {r['above']:>8.3f} {r['below']:>8.3f} "
               f"{r['edge']:>7.4f} {eq}")
