@@ -32,6 +32,7 @@ Example
 import argparse
 import csv
 import glob
+import json
 import os
 import subprocess
 import sys
@@ -56,47 +57,107 @@ FIELDS = ["side", "replica", "coef", "sample", "sweeps",
 # Worker: one fixed-beta chain
 # ----------------------------------------------------------------------------
 
+def _write_rows(path, rows):
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", newline="") as f:
+        w = csv.writer(f); w.writerow(FIELDS); w.writerows(rows)
+    os.replace(tmp, path)
+
+
+def _read_rows(path, n):
+    if not path or not os.path.exists(path):
+        return []
+    with open(path) as f:
+        r = csv.reader(f); next(r, None)
+        rows = list(r)
+    return rows[:n]
+
+
 def run_chain(args):
-    mfd = Manifold.load(args.init, args.dim)
+    """One fixed-beta chain, resumable. Phases: warmup -> burnin -> measure.
+    Resume is exact-enough for equilibrium: on restart we reload the checkpointed
+    manifold and continue (a fresh RNG is fine -- the chain is Markov, and post-
+    checkpoint sweeps only add relaxation). The JSON is written last, so it is the
+    commit point; if the manifold on disk is slightly ahead of it, resume just
+    re-runs a few harmless sweeps."""
+    ck_mfd = ck_json = None
+    do_ckpt = bool(args.save_config) and args.checkpoint_every > 0
+    if do_ckpt:
+        ck_mfd, ck_json = args.save_config + ".ckpt.mfd", args.save_config + ".ckpt.json"
+
+    if args.save_config and os.path.exists(args.save_config):
+        return  # already finished
+
+    st = None
+    if do_ckpt and os.path.exists(ck_json) and os.path.exists(ck_mfd):
+        try:
+            st = json.load(open(ck_json))
+        except (OSError, ValueError):
+            st = None
+
+    if st:
+        mfd = Manifold.load(ck_mfd, args.dim)
+        phase, ph = st["phase"], st["ph_sweeps"]
+        samples, meas_total = st["samples"], st["meas_total"]
+        rows = _read_rows(args.out, samples)
+    else:
+        mfd = Manifold.load(args.init, args.dim)
+        phase = "warmup" if args.warmup_sweeps > 0 else "burnin"
+        ph = samples = meas_total = 0
+        rows = []
+
     params = SamplerParams(
-        num_facets_target=args.n_target,
-        num_facets_coef=args.num_facets_coef,
-        hinge_degree_target=args.hinge_target,
-        num_hinges_coef=args.num_hinges_coef,
+        num_facets_target=args.n_target, num_facets_coef=args.num_facets_coef,
+        hinge_degree_target=args.hinge_target, num_hinges_coef=args.num_hinges_coef,
         hinge_degree_variance_coef=args.hdv_coef,
-        codim3_degree_variance_coef=(args.warmup_coef if args.warmup_sweeps > 0
-                                     else args.coef),
-    )
+        codim3_degree_variance_coef=args.coef)
     s = ManifoldSampler(mfd, params)
-
-    # "below" start: over-squeeze VDV at a higher coefficient, then relax at beta.
-    if args.warmup_sweeps > 0:
-        s.run(sweeps=args.warmup_sweeps)
-        s.set_codim3_degree_variance_coef(args.coef)
-
-    # Burn-in at beta before recording (production: relax from the init to
-    # equilibrium and decorrelate from the start).
-    if args.burnin_sweeps > 0:
-        s.run(sweeps=args.burnin_sweeps)
-
     v = s.manifold
-    s.reset_stats()
-    rows, total = [], 0
-    for i in range(args.n_samples):
-        s.reset_stats()
-        s.run(sweeps=args.thin)
-        total += args.thin
-        st = s.get_stats()
-        acc = st.total_accepted / st.total_tried if st.total_tried else 0.0
-        rows.append([args.side, args.replica, args.coef, i, total,
-                     v.num_facets, v.degree_variance(0), v.mean_degree(1),
-                     v.degree_variance(1), acc])
+
+    def checkpoint():
+        if not do_ckpt:
+            return
+        tmp = ck_mfd + ".tmp"; v.save(tmp); os.replace(tmp, ck_mfd)   # manifold first
+        if args.out:
+            _write_rows(args.out, rows)
+        tmp = ck_json + ".tmp"                                         # JSON last = commit
+        with open(tmp, "w") as f:
+            json.dump({"phase": phase, "ph_sweeps": ph, "samples": samples,
+                       "meas_total": meas_total}, f)
+        os.replace(tmp, ck_json)
+
+    ce = args.checkpoint_every if do_ckpt else 10 ** 12  # chunk size (sweeps)
+
+    if phase == "warmup":
+        s.set_codim3_degree_variance_coef(args.warmup_coef)
+        while ph < args.warmup_sweeps:
+            step = min(ce, args.warmup_sweeps - ph)
+            s.run(sweeps=step); ph += step; checkpoint()
+        s.set_codim3_degree_variance_coef(args.coef)
+        phase, ph = "burnin", 0; checkpoint()
+
+    if phase == "burnin":
+        while ph < args.burnin_sweeps:
+            step = min(ce, args.burnin_sweeps - ph)
+            s.run(sweeps=step); ph += step; checkpoint()
+        phase, ph = "measure", 0; checkpoint()
+
+    if phase == "measure":
+        ck_samples = max(1, ce // max(args.thin, 1))
+        while samples < args.n_samples:
+            s.reset_stats(); s.run(sweeps=args.thin); meas_total += args.thin
+            stt = s.get_stats()
+            acc = stt.total_accepted / stt.total_tried if stt.total_tried else 0.0
+            rows.append([args.side, args.replica, args.coef, samples, meas_total,
+                         v.num_facets, v.degree_variance(0), v.mean_degree(1),
+                         v.degree_variance(1), acc])
+            samples += 1
+            if samples % ck_samples == 0:
+                checkpoint()
 
     if args.out:
-        os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
-        with open(args.out, "w", newline="") as f:
-            w = csv.writer(f); w.writerow(FIELDS); w.writerows(rows)
-
+        _write_rows(args.out, rows)
     if args.save_config:
         comments = build_metadata_comments(
             topology=args.topology, dimension=args.dim,
@@ -112,6 +173,12 @@ def run_chain(args):
             sampler_stats=s.get_stats())
         os.makedirs(os.path.dirname(args.save_config) or ".", exist_ok=True)
         v.save(args.save_config, comments=comments)
+    if do_ckpt:                                     # clean up on success
+        for p in (ck_mfd, ck_json):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
 
 
 # ----------------------------------------------------------------------------
@@ -285,6 +352,10 @@ def main():
     p.add_argument("--save-config", default=None,
                    help="Save the final manifold here (worker).")
     p.add_argument("--topology", default="S3")
+    p.add_argument("--checkpoint-every", type=int, default=200,
+                   help="Checkpoint (resumable) every this many sweeps when "
+                        "--save-config is set. 0 disables. For multi-day large-N "
+                        "chains keep this modest so an interruption loses little.")
     # driver controls
     p.add_argument("--seed-file", help="Plain high-VDV init (driver).")
     p.add_argument("--below-init", default=None,
