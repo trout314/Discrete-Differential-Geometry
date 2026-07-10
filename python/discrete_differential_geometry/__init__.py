@@ -25,6 +25,19 @@ def gc_minimize():
     _lib.ddg_gc_minimize()
 
 
+def gc_stats():
+    """Return (used_bytes, free_bytes) of the D GC heap.
+
+    `used` is live (reachable) memory; `free` is reclaimable pool space that
+    gc_minimize() can return to the OS. Live memory that climbs while the
+    manifold's f-vector stays flat indicates a leak (see project history).
+    """
+    import ctypes
+    used, free = ctypes.c_long(0), ctypes.c_long(0)
+    _lib.ddg_gc_stats(ctypes.byref(used), ctypes.byref(free))
+    return used.value, free.value
+
+
 __all__ = [
     "SimplicialComplex",
     "Manifold",
@@ -35,6 +48,7 @@ __all__ = [
     "join",
     "gc_collect",
     "gc_minimize",
+    "gc_stats",
     "split_rhat",
     "rank_normalized_rhat",
     "quantized_split_rhat",
