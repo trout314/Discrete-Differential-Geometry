@@ -2,8 +2,33 @@
 
 import json
 import math
+import os
 import re
 import subprocess
+
+
+def set_header_field(path: str, key: str, value: str) -> None:
+    """Set ``# key = value`` in an .mfd header, replacing an existing line for
+    that key or inserting one before the facet data. Atomic; preserves all other
+    header lines and the facet body."""
+    with open(path) as f:
+        lines = f.readlines()
+    end = 0
+    while end < len(lines) and lines[end].lstrip().startswith("#"):
+        end += 1
+    header, body, out, replaced = lines[:end], lines[end:], [], False
+    for ln in header:
+        content = ln.lstrip()[1:].strip()
+        if "=" in content and content.split("=", 1)[0].strip() == key:
+            out.append(f"# {key} = {value}\n"); replaced = True
+        else:
+            out.append(ln)
+    if not replaced:
+        out.append(f"# {key} = {value}\n")
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        f.writelines(out + body)
+    os.replace(tmp, path)
 
 
 def get_free_memory_gb() -> float:

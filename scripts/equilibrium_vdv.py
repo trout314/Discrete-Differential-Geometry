@@ -55,8 +55,8 @@ from discrete_differential_geometry import (
 # convergence in a penalized one, since they are coupled.
 OBSERVABLES = ["vdv", "edge_deg", "hdv", "num_facets"]
 from seed_utils import (build_metadata_comments, build_seed_filename,
-                        get_total_memory_gb, load_seed_metadata, make_leg,
-                        obj_of, read_history)
+                        get_git_info, get_total_memory_gb, load_seed_metadata,
+                        make_leg, obj_of, read_history, set_header_field)
 
 _UNMIGRATED = ("source predates history tracking; prior lineage not inlined "
                "(run the back-fill migration to complete it)")
@@ -555,10 +555,13 @@ def recertify(args):
     reachability test. Reports pass/fail per family; does NOT modify the library.
     """
     fams = {}
-    for p in sorted(glob.glob(os.path.join(args.seeds_dir, args.recert_glob))):
-        fams.setdefault(os.path.basename(p).rsplit("_s", 1)[0], []).append(p)
+    for pat in args.recert_glob:
+        for p in glob.glob(os.path.join(args.seeds_dir, pat)):
+            fams.setdefault(os.path.basename(p).rsplit("_s", 1)[0], []).append(p)
+    for stem in fams:
+        fams[stem].sort()
     if not fams:
-        sys.exit(f"no families matched {args.recert_glob!r} in {args.seeds_dir}/")
+        sys.exit(f"no families matched {args.recert_glob} in {args.seeds_dir}/")
     print(f"re-certifying {len(fams)} families: {args.production_burnin} burnin + "
           f"{args.n_samples}x{args.thin} measured, up to {args.replicas} chains each "
           f"from own replicas", flush=True)
@@ -594,7 +597,15 @@ def recertify(args):
                 i, rc, cfg, out = fut.result(); res[i] = (rc, cfg, out)
         passed, bad, min_ess = gate_ensemble(res, K, args)
         results.append((stem, passed, bad))
-        print(f"  => {'RE-CERTIFIED' if passed else 'FAILED ' + str(bad)}", flush=True)
+        if passed and args.stamp:
+            from datetime import date
+            commit, dirty = get_git_info()
+            stamp = (f"{commit[:7]}{'-dirty' if dirty else ''} {date.today().isoformat()} "
+                     f"K={K}/{len(reps)} distgate qRhat<{args.rhat_max:g}")
+            for rp in reps:
+                set_header_field(rp, "recertified", stamp)
+        print(f"  => {'RE-CERTIFIED' if passed else 'FAILED ' + str(bad)}"
+              f"{' [stamped]' if passed and args.stamp else ''}", flush=True)
 
     npass = sum(1 for _, ok, _ in results if ok)
     print(f"\n=== recertification summary: {npass}/{len(results)} families re-certified ===")
@@ -666,9 +677,14 @@ def main():
                    help="Re-certify existing --seeds-dir families under the current "
                         "gate: run chains from each family's own replicas and re-apply "
                         "gate_ensemble. Reports pass/fail; does not modify the library.")
-    p.add_argument("--recert-glob", default="*.mfd",
-                   help="Glob (within --seeds-dir) selecting seeds to re-certify, e.g. "
-                        "'S3_N1e2_*' for a small-N test run. Default: all.")
+    p.add_argument("--recert-glob", nargs="+", default=["*.mfd"],
+                   help="One or more globs (within --seeds-dir) selecting seeds to "
+                        "re-certify, e.g. 'S3_N178_*' 'S3_N316_*' for an N-tier. "
+                        "Default: all.")
+    p.add_argument("--stamp", action="store_true",
+                   help="With --recertify, stamp a 'recertified = <commit> <date> ...' "
+                        "line into the header of each seed in a family that passes, so "
+                        "coverage is queryable. Rewrites headers in --seeds-dir.")
     p.add_argument("--production-burnin", type=int, default=1500,
                    help="Burn-in sweeps per production chain.")
     p.add_argument("--rhat-max", type=float, default=1.05)
