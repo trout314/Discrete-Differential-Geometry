@@ -246,6 +246,23 @@ def verify_history(path: str, manifold_view=None) -> tuple[bool, list]:
     return (not issues), issues
 
 
+def history_fields(history: list, note: str = None) -> list:
+    """Comment lines encoding a flattened history: root/totals/note + JSON.
+
+    Shared by build_metadata_comments (live writes) and the back-fill migration
+    so both emit an identical schema."""
+    rooted = bool(history) and history[0].get("from") == "sphere"
+    tot_s = sum(l["sweeps"] for l in history if isinstance(l.get("sweeps"), (int, float)))
+    tot_t = sum(l["tried"] for l in history if isinstance(l.get("tried"), (int, float)))
+    out = [f"history_root = {'sphere' if rooted else 'incomplete'}",
+           f"history_total_sweeps = {tot_s}",
+           f"history_total_tried = {tot_t}"]
+    if note:
+        out.append(f"history_note = {note}")
+    out.append("history = " + json.dumps(history, separators=(",", ":")))
+    return out
+
+
 def build_metadata_comments(
     *,
     topology: str,
@@ -336,15 +353,5 @@ def build_metadata_comments(
 
     # Flattened provenance: prior lineage + this run's legs (see module header).
     history = (list(prior_history) if prior_history is not None else []) + list(legs)
-    rooted = bool(history) and history[0].get("from") == "sphere"
-    total_sweeps = sum(l["sweeps"] for l in history
-                       if isinstance(l.get("sweeps"), (int, float)))
-    total_tried = sum(l["tried"] for l in history
-                      if isinstance(l.get("tried"), (int, float)))
-    comments.append(f"history_root = {'sphere' if rooted else 'incomplete'}")
-    comments.append(f"history_total_sweeps = {total_sweeps}")
-    comments.append(f"history_total_tried = {total_tried}")
-    if history_note:
-        comments.append(f"history_note = {history_note}")
-    comments.append("history = " + json.dumps(history, separators=(",", ":")))
+    comments.extend(history_fields(history, history_note))
     return comments
