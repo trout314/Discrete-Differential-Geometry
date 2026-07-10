@@ -138,6 +138,92 @@ def _read_hists(path, n):
         return [r for r in z["vhist"][:n]], [r for r in z["ehist"][:n]]
 
 
+# ----------------------------------------------------------------------------
+# Generic over-dispersion: bracket ANY observable, not just VDV
+# ----------------------------------------------------------------------------
+# Gelman-Rubin needs over-dispersed starts along the SLOW coordinate. Which
+# coordinate is slow depends on the corner of objective space (VDV in the fluid
+# regime, edge_deg at the glass frontier -- see the slow-mode map). So instead of
+# hard-coding a VDV squeeze, we prepare a start pushed off-target in whatever
+# observable we choose, by temporarily perturbing the ONE existing objective knob
+# that controls it, running a warmup, then restoring the study objective:
+#   * target-pinned (edge_deg, num_facets): shift the TARGET +/- delta;
+#   * variance-penalized (vdv, hdv): crank the COEF (push down) or zero it (drift up);
+#   * hot / cold: drop / crank ALL variance pins together, for broad diffuse starts.
+_EDGE_SHIFT = 0.1          # default hinge-degree target offset for edge_deg bracket
+_FACET_SHIFT_FRAC = 0.02   # default fractional facet-target offset
+
+
+def _parse_bias(spec):
+    """Parse a --warmup-bias spec into (kind, direction, mag). Grammar:
+    'OBS:DIR[:MAG]' (OBS in OBSERVABLES, DIR in {above,below}); or 'hot'/'cold';
+    or '' -> None (legacy VDV squeeze via --warmup-coef)."""
+    spec = (spec or "").strip().lower()
+    if not spec:
+        return None
+    if spec in ("hot", "cold"):
+        return (spec, None, None)
+    parts = spec.split(":")
+    if len(parts) < 2 or parts[0] not in OBSERVABLES or parts[1] not in ("above", "below"):
+        raise SystemExit(f"--warmup-bias '{spec}': want OBS:DIR[:MAG] with OBS in "
+                         f"{OBSERVABLES}, DIR in above|below (or 'hot'/'cold')")
+    return (parts[0], parts[1], float(parts[2]) if len(parts) > 2 else None)
+
+
+def _bias_settings(parsed, args):
+    """Map a parsed bias to {knob: value} perturbations off the study objective
+    (knobs: vdv_c, hdv_c, ht, nf; nh_c added separately). Knobs NOT returned are
+    left at their study value. Pure -- shared by the sampler apply and the
+    provenance leg so the recorded warmup objective always matches what ran."""
+    kind, direction, mag = parsed
+    up = (direction == "above")
+    f = args.warmup_factor
+    if kind == "hot":                          # maximal disorder
+        return {"vdv_c": 0.0, "hdv_c": 0.0}
+    if kind == "cold":                         # maximal order
+        return {"vdv_c": max(args.coef, 1.0) * f, "hdv_c": max(args.hdv_coef, 1.0) * f}
+    if kind == "vdv":                          # down-push by cranking coef; up-drift by zeroing
+        return {"vdv_c": 0.0 if up else (mag or args.warmup_coef or args.coef * f)}
+    if kind == "hdv":
+        return {"hdv_c": 0.0 if up else (mag or max(args.hdv_coef, 1.0) * f)}
+    if kind == "edge_deg":                     # shift the pinned target +/- delta
+        d = mag if mag is not None else _EDGE_SHIFT
+        return {"ht": args.hinge_target + (d if up else -d)}
+    if kind == "num_facets":
+        d = mag if mag is not None else max(1.0, _FACET_SHIFT_FRAC * args.n_target)
+        return {"nf": int(round(args.n_target + (d if up else -d)))}
+    return {}
+
+
+def _apply_bias_settings(s, settings):
+    """Apply {knob: value} perturbations to the live sampler."""
+    if "vdv_c" in settings: s.set_codim3_degree_variance_coef(settings["vdv_c"])
+    if "hdv_c" in settings: s.set_hinge_degree_variance_coef(settings["hdv_c"])
+    if "ht" in settings:    s.set_hinge_degree_target(settings["ht"])
+    if "nf" in settings:    s.set_num_facets_target(settings["nf"])
+    if "nh_c" in settings:  s.set_num_hinges_coef(settings["nh_c"])
+
+
+def _restore_study(s, args):
+    """Restore every perturbable knob to its study value (idempotent)."""
+    s.set_codim3_degree_variance_coef(args.coef)
+    s.set_hinge_degree_variance_coef(args.hdv_coef)
+    s.set_hinge_degree_target(args.hinge_target)
+    s.set_num_facets_target(args.n_target)
+    s.set_num_hinges_coef(args.num_hinges_coef)
+
+
+def _warmup_settings(args):
+    """The knob perturbations for this chain's warmup: a generic --warmup-bias if
+    given, else the legacy VDV squeeze (--warmup-coef). Adds the edge-pin stiffen
+    (--warmup-hinge-coef) unless we are bracketing edge_deg itself."""
+    parsed = _parse_bias(args.warmup_bias)
+    settings = {"vdv_c": args.warmup_coef} if parsed is None else _bias_settings(parsed, args)
+    if (parsed is None or parsed[0] != "edge_deg") and args.warmup_hinge_coef > 0:
+        settings["nh_c"] = args.warmup_hinge_coef
+    return settings
+
+
 def run_chain(args):
     """One fixed-beta chain, resumable. Phases: warmup -> burnin -> measure.
     Resume is exact-enough for equilibrium: on restart we reload the checkpointed
@@ -200,15 +286,11 @@ def run_chain(args):
     ce = args.checkpoint_every if do_ckpt else 10 ** 12  # chunk size (sweeps)
 
     if phase == "warmup":
-        s.set_codim3_degree_variance_coef(args.warmup_coef)
-        if args.warmup_hinge_coef > 0:      # hold edge degree while squeezing VDV
-            s.set_num_hinges_coef(args.warmup_hinge_coef)
+        _apply_bias_settings(s, _warmup_settings(args))   # push off-target (any observable)
         while ph < args.warmup_sweeps:
             step = min(ce, args.warmup_sweeps - ph)
             s.run(sweeps=step); ph += step; checkpoint()
-        s.set_codim3_degree_variance_coef(args.coef)
-        if args.warmup_hinge_coef > 0:
-            s.set_num_hinges_coef(args.num_hinges_coef)
+        _restore_study(s, args)                           # relax back from the biased start
         phase, ph = "burnin", 0; checkpoint()
 
     if phase == "burnin":
@@ -245,8 +327,8 @@ def run_chain(args):
         prior = read_history(args.init)
         base_obj = obj_of(params)                        # vdv_c = args.coef
         legs = []
-        if args.warmup_sweeps > 0:
-            legs.append(make_leg("warmup", {**base_obj, "vdv_c": args.warmup_coef},
+        if args.warmup_sweeps > 0:                       # warmup ran a perturbed objective
+            legs.append(make_leg("warmup", {**base_obj, **_warmup_settings(args)},
                                  args.warmup_sweeps))
         legs.append(make_leg("equilibrate", base_obj,
                              args.burnin_sweeps + args.n_samples * args.thin))
@@ -546,11 +628,25 @@ def gate_ensemble(res, K, args):
                       ess_binding=(ess_bind["name"] if ess_bind else None))
 
 
+def _chain_bias(i, args):
+    """The warmup bias for produce chain i under --bracket: alternate the two
+    sides of the bracketed coordinate by parity (even=above/hot, odd=below/cold).
+    Returns a --warmup-bias spec string, or '' when not bracketing."""
+    if not args.bracket:
+        return ""
+    if args.bracket == "hot-cold":
+        return "hot" if i % 2 == 0 else "cold"
+    return f"{args.bracket}:{'above' if i % 2 == 0 else 'below'}"
+
+
 def produce(args):
-    """Run K equilibrium chains at args.beta; if split-R-hat passes, copy the
-    configs into seeds/ with library names. Half the chains start from the plain
-    seed (above) and half from --below-init (below) so R-hat tests convergence
-    from both directions."""
+    """Run K equilibrium chains at args.beta; if the gate passes, copy the configs
+    into seeds/ with library names. Chains are OVER-DISPERSED from both sides so
+    R-hat tests two-directional convergence: either supply a --below-init (odd
+    chains start there, even from --seed-file), or --bracket an observable and the
+    over-dispersion is prepared on the fly by a warmup (even chains above target,
+    odd below) -- generalizing the two-sided test to ANY slow coordinate (e.g.
+    --bracket edge_deg at the glass frontier, not just VDV)."""
     import shutil
     if not args.seed_file or args.beta is None:
         sys.exit("--produce needs --seed-file and --beta (--beta 0 is allowed, "
@@ -567,15 +663,20 @@ def produce(args):
         return
 
     K = args.replicas
+    warm = args.production_warmup or max(300, args.production_burnin // 4)
     stage = os.path.join(args.output_dir, "staging")
     os.makedirs(stage, exist_ok=True)
+    disp = (f"bracket {args.bracket} (+/- warmup {warm} sweeps)" if args.bracket
+            else ("below-init" if args.below_init else "one-sided (NO over-dispersion!)"))
     print(f"Producing {K} equilibrium chains: N={args.n_target}, beta={args.beta:g} "
           f"(beta/N={args.beta/args.n_target:.4g}), burnin={args.production_burnin} + "
-          f"{args.n_samples}x{args.thin} measured", flush=True)
+          f"{args.n_samples}x{args.thin} measured; dispersion: {disp}", flush=True)
 
     def pspawn(i):
-        below = (i % 2 == 1) and bool(args.below_init)
+        bias = _chain_bias(i, args)
+        below = (not bias) and (i % 2 == 1) and bool(args.below_init)
         init = args.below_init if below else args.seed_file
+        side = "below" if (below or (bias and i % 2 == 1)) else "above"
         cfg = os.path.join(stage, f"chain_{i}.mfd")
         out = os.path.join(stage, f"chain_{i}.csv")
         cmd = [sys.executable, os.path.abspath(__file__), "--chain",
@@ -586,8 +687,12 @@ def produce(args):
                "--hdv-coef", str(args.hdv_coef), "--coef", str(args.beta),
                "--burnin-sweeps", str(args.production_burnin),
                "--thin", str(args.thin), "--n-samples", str(args.n_samples),
-               "--side", "below" if below else "above", "--replica", str(i),
+               "--side", side, "--replica", str(i),
                "--topology", args.topology, "--out", out, "--save-config", cfg]
+        if bias:
+            cmd += ["--warmup-bias", bias, "--warmup-sweeps", str(warm),
+                    "--warmup-coef", str(args.beta * args.warmup_factor),
+                    "--warmup-hinge-coef", str(args.num_hinges_coef)]
         if args.record_histograms:
             cmd.append("--record-histograms")
         return i, subprocess.run(cmd).returncode, cfg, out
@@ -712,6 +817,13 @@ def main():
     p.add_argument("--n-samples", type=int, default=500)
     p.add_argument("--warmup-coef", type=float, default=0.0)
     p.add_argument("--warmup-sweeps", type=int, default=0)
+    p.add_argument("--warmup-bias", default="",
+                   help="Generic over-dispersion for the warmup (worker). Prepare "
+                        "an off-target start in ANY observable, then relax at the "
+                        "study objective. 'OBS:DIR[:MAG]' (OBS in vdv|hdv|edge_deg|"
+                        "num_facets, DIR in above|below), or 'hot'/'cold' for a "
+                        "whole-system disordered/ordered start. Empty = legacy VDV "
+                        "squeeze via --warmup-coef.")
     p.add_argument("--warmup-hinge-coef", type=float, default=0.0,
                    help="Stiffen the edge-degree pin to this value DURING the "
                         "over-squeeze warmup (0 = keep --num-hinges-coef), so the "
@@ -753,6 +865,16 @@ def main():
                    help="Produce a validated equilibrium ensemble and, if R-hat<"
                         "--rhat-max, copy the configs into --seeds-dir.")
     p.add_argument("--beta", type=float, help="Study coefficient for --produce.")
+    p.add_argument("--bracket", default=None,
+                   choices=["vdv", "hdv", "edge_deg", "num_facets", "hot-cold"],
+                   help="With --produce, over-disperse the ensemble by bracketing "
+                        "this coordinate on the fly (even chains above target, odd "
+                        "below) via a warmup, instead of needing a --below-init. Use "
+                        "the slow coordinate for the regime (e.g. edge_deg at the "
+                        "glass frontier); 'hot-cold' disperses the whole system.")
+    p.add_argument("--production-warmup", dest="production_warmup", type=int, default=0,
+                   help="Warmup sweeps for --bracket over-dispersion (0 = auto: "
+                        "max(300, burnin/4)).")
     p.add_argument("--recertify", action="store_true",
                    help="Re-certify existing --seeds-dir families under the current "
                         "gate: run chains from each family's own replicas and re-apply "
