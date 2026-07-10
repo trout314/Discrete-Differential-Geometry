@@ -612,10 +612,13 @@ def main():
                    help="Deprecated (unused): superseded by quantized split-R-hat.")
     p.add_argument("--facet-tol-frac", type=float, default=0.005,
                    help="Deprecated (unused): superseded by quantized split-R-hat.")
-    p.add_argument("--record-histograms", action="store_true",
+    p.add_argument("--record-histograms", action=argparse.BooleanOptionalAction,
+                   default=True,
                    help="Record per-sample vertex/edge degree histograms to a "
                         ".hist.npz sidecar; --produce then gates the full degree "
-                        "distributions (every material bin) for convergence.")
+                        "distributions (every material bin) for convergence. On by "
+                        "default; pass --no-record-histograms to certify on the four "
+                        "scalar observables (VDV/HDV/edge-degree/facet-count) only.")
     p.add_argument("--bin-mass-floor", type=float, default=5.0,
                    help="Minimum pooled mean count for a degree bin to be gated "
                         "(sparser bins are reported but not gated).")
