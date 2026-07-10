@@ -36,6 +36,7 @@ import json
 import os
 import subprocess
 import sys
+from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
@@ -375,19 +376,24 @@ def analyze(coef, out_dir, burnin, thin):
                 accept=np.mean(acc_all), n_chains=len(allv))
 
 
-def gate_ensemble(res, K, args):
-    """Joint convergence gate over K chain outputs (res: i -> (rc, cfg, out)).
+# A gate feature: a named per-chain time series with a quantization step Delta.
+# The gate treats every feature UNIFORMLY (max-qRhat / min-ESS), so the slow mode
+# is caught and named wherever it lives -- a scalar physics observable OR a single
+# degree-distribution bin. `gated` features count toward pass/fail; ungated ones
+# (sparse histogram bins below --bin-mass-floor) are measured and reported only.
+Feature = namedtuple("Feature", ["name", "series", "quantum", "gated"])
 
-    Judges every coupled observable by quantization-floored split-R-hat -- the
-    within-chain variance is floored at Delta^2/12 (Delta = minimum change with
-    the other integer counts held fixed), so a genuinely-fluctuating coordinate
-    (VDV, HDV) reduces to ordinary split-R-hat while a near-deterministic one
-    (edge degree, facet count) passes when chains agree to within a few quanta.
-    Autocorrelation-aware: run length is judged against the slowest coordinate's
-    ESS. With --record-histograms, also gates the full vertex/edge degree
-    DISTRIBUTIONS (every material bin). Prints the diagnostic table; returns
-    (passed, bad, min_ess). Shared by --produce and --recertify."""
-    RH = args.rhat_max
+# The gate's verdict. `bad` lists the failing gated features; `rhat_binding` /
+# `ess_binding` name the tightest feature on each axis -- the empirically slowest
+# mode -- so a run in a corner of parameter space where edge-degree (or one
+# distribution bin) is the bottleneck self-reports instead of being assumed.
+GateResult = namedtuple(
+    "GateResult", ["passed", "bad", "min_ess", "rhat_binding", "ess_binding"])
+
+
+def _scalar_features(res, K):
+    """The coupled scalar observables, one Feature each, from the chain CSVs.
+    Returns (features, n_ok, n_samp)."""
     obs_series = {o: [] for o in OBSERVABLES}
     for i in range(K):
         rc, cfg, out = res.get(i, (1, None, None))
@@ -398,73 +404,146 @@ def gate_ensemble(res, K, args):
                     obs_series[o].append(cols[o])
     n_ok = len(obs_series["vdv"])
     n_samp = min((len(s) for s in obs_series["vdv"]), default=0)
+    f3 = (np.concatenate(obs_series["num_facets"]).mean()
+          if obs_series["num_facets"] else 0.0)
 
-    def observable_quantum(o, pooled):
+    def quantum(o, pooled):
         if o == "edge_deg":                       # 6 f3/f1; step f1 at fixed f3
-            f3 = np.concatenate(obs_series["num_facets"]).mean()
             return (pooled.mean() ** 2) / (6.0 * f3) if f3 else 0.0
         if o == "num_facets":                     # a 2-3 move changes f3 by 1
             return 1.0
         return 0.0                                # variances: effectively continuous
 
-    print(f"\nEnsemble: {n_ok} chains x {n_samp} samples", flush=True)
-    print(f"  {'observable':>12} {'mean':>12} {'quantum':>10} {'qRhat':>8} "
-          f"{'tau(smp)':>9} {'ESS':>7} {'gate':>14}")
-    diag, bad = {}, []
+    feats = []
     for o in OBSERVABLES:
         ser = obs_series[o]
         pooled = np.concatenate(ser) if ser else np.array([0.0])
-        q = observable_quantum(o, pooled)
-        rh = quantized_split_rhat(ser, q) if n_ok >= 2 else float("nan")
-        taus = [integrated_autocorrelation_time(s) for s in ser]
-        tau = float(np.nanmedian(taus)) if taus else float("nan")
-        ess = (n_ok * n_samp / tau) if tau and not np.isnan(tau) else float("nan")
-        ok = not np.isnan(rh) and rh < RH
-        if not ok:
-            bad.append(o)
-        diag[o] = dict(rhat=rh, tau=tau, ess=ess, mean=pooled.mean())
-        print(f"  {o:>12} {pooled.mean():>12.4f} {q:>10.5f} {rh:>8.3f} "
-              f"{tau:>9.1f} {ess:>7.0f} {'qRhat<'+format(RH,'g'):>9}:"
-              f"{'OK' if ok else 'FAIL':>4}")
+        feats.append(Feature(o, ser, quantum(o, pooled), True))
+    return feats, n_ok, n_samp
 
-    hist_bad = []
+
+def _histogram_features(res, K, args):
+    """Every degree-distribution bin as its own Feature (bin d -> degree d+1,
+    quantum 1/n_simplices). Bins with pooled mean count below --bin-mass-floor
+    are included but ungated (measured, not gated)."""
+    feats = []
+    for dim, label in ((0, "vtx-dist"), (1, "edge-dist")):
+        per_chain, nsimps = [], []
+        for i in range(K):
+            rc, cfg, out = res.get(i, (1, None, None))
+            if rc == 0 and out:
+                fr, ns = load_degree_fracs(out, dim)
+                if fr is not None and len(fr) >= 4:
+                    per_chain.append(fr); nsimps.append(ns)
+        if len(per_chain) < 2:
+            continue
+        width = max(fr.shape[1] for fr in per_chain)
+        per_chain = [np.pad(fr, ((0, 0), (0, width - fr.shape[1])))
+                     for fr in per_chain]
+        nsimp = float(np.mean(nsimps))
+        q = 1.0 / nsimp if nsimp else 0.0
+        mean_count = np.concatenate(per_chain, axis=0).mean(axis=0) * nsimp
+        for d in range(width):
+            gated = bool(mean_count[d] >= args.bin_mass_floor)
+            feats.append(Feature(f"{label}:deg{d + 1}",
+                                 [fr[:, d] for fr in per_chain], q, gated))
+    return feats
+
+
+def build_features(res, K, args):
+    """Assemble the full gate feature registry from K chain outputs.
+
+    Extension point: append further Feature-producing sources here (e.g. a
+    discovered slowest linear combination of the feature library) and the gate
+    picks them up automatically -- it privileges no coordinate. Returns
+    (features, n_ok, n_samp)."""
+    feats, n_ok, n_samp = _scalar_features(res, K)
     if args.record_histograms:
-        for dim, label in ((0, "vtx-dist"), (1, "edge-dist")):
-            per_chain, nsimps = [], []
-            for i in range(K):
-                rc, cfg, out = res.get(i, (1, None, None))
-                if rc == 0 and out:
-                    fr, ns = load_degree_fracs(out, dim)
-                    if fr is not None and len(fr) >= 4:
-                        per_chain.append(fr); nsimps.append(ns)
-            if len(per_chain) < 2:
-                continue
-            width = max(fr.shape[1] for fr in per_chain)
-            per_chain = [np.pad(fr, ((0, 0), (0, width - fr.shape[1])))
-                         for fr in per_chain]
-            nsimp = float(np.mean(nsimps))
-            q = 1.0 / nsimp if nsimp else 0.0
-            mean_count = np.concatenate(per_chain, axis=0).mean(axis=0) * nsimp
-            material = [d for d in range(width)
-                        if mean_count[d] >= args.bin_mass_floor]
-            worst, nfail = 0.0, 0
-            for d in material:
-                rh = quantized_split_rhat([fr[:, d] for fr in per_chain], q)
-                if not np.isnan(rh):
-                    worst = max(worst, rh)
-                    nfail += rh >= RH
-            if material:
-                print(f"  {label:>12} {len(material):>3d} bins (deg "
-                      f"{material[0] + 1}-{material[-1] + 1}) worst qRhat="
-                      f"{worst:.3f}  {nfail} fail")
-            if nfail:
-                hist_bad.append(f"{label}({nfail})")
+        feats += _histogram_features(res, K, args)
+    return feats, n_ok, n_samp
 
-    min_ess = min((diag[o]["ess"] for o in OBSERVABLES
-                   if not np.isnan(diag[o]["ess"])), default=float("nan"))
-    all_bad = bad + hist_bad
-    passed = not all_bad and not (not np.isnan(min_ess) and min_ess < args.min_ess)
-    return passed, all_bad, min_ess
+
+def _feature_diag(ft, n_ok, n_samp, rhat_max):
+    """Quantization-floored split-R-hat, integrated autocorrelation time and ESS
+    for one feature. within-chain variance is floored at Delta^2/12, so a
+    genuinely-fluctuating feature (VDV, HDV) reduces to ordinary split-R-hat
+    while a near-deterministic one (edge degree, facet count, a sharp bin) passes
+    when chains agree to within a few quanta. A gated feature we cannot evaluate
+    (NaN qRhat) counts as FAILED -- 'cannot verify' must not pass a gate."""
+    pooled = np.concatenate(ft.series) if ft.series else np.array([0.0])
+    rh = quantized_split_rhat(ft.series, ft.quantum) if n_ok >= 2 else float("nan")
+    taus = [integrated_autocorrelation_time(s) for s in ft.series]
+    tau = float(np.nanmedian(taus)) if taus else float("nan")
+    ess = (n_ok * n_samp / tau) if tau and not np.isnan(tau) else float("nan")
+    failed = ft.gated and not (not np.isnan(rh) and rh < rhat_max)
+    return dict(name=ft.name, gated=ft.gated, mean=float(pooled.mean()),
+                quantum=ft.quantum, rhat=rh, tau=tau, ess=ess, failed=failed)
+
+
+def gate_ensemble(res, K, args):
+    """Joint convergence gate over K chain outputs (res: i -> (rc, cfg, out)).
+
+    Registry-driven and observable-agnostic. Every coupled scalar observable AND
+    (with --record-histograms) every degree-distribution bin becomes a uniform
+    `Feature`; each is judged by quantization-floored split-R-hat and its ESS.
+    The ensemble PASSES iff every GATED feature has qRhat < --rhat-max AND the
+    minimum ESS over gated features is >= --min-ess. The gate privileges no
+    single observable: it names the BINDING feature (worst qRhat, smallest ESS)
+    wherever it lives, so a regime in which edge-degree -- or one distribution
+    bin -- is the slow mode is handled correctly and self-reported (rather than
+    relying on VDV being slowest). Prints the diagnostic table; returns a
+    GateResult. Shared by --produce and --recertify."""
+    RH = args.rhat_max
+    features, n_ok, n_samp = build_features(res, K, args)
+    diag = [_feature_diag(ft, n_ok, n_samp, RH) for ft in features]
+    by_name = {d["name"]: d for d in diag}
+    n_gated = sum(d["gated"] for d in diag)
+
+    print(f"\nEnsemble: {n_ok} chains x {n_samp} samples; "
+          f"{len(features)} features ({n_gated} gated)", flush=True)
+    print(f"  {'observable':>12} {'mean':>12} {'quantum':>10} {'qRhat':>8} "
+          f"{'tau(smp)':>9} {'ESS':>7} {'gate':>10}")
+
+    # Scalar observables: one row each (the named physics coordinates).
+    for o in OBSERVABLES:
+        d = by_name.get(o)
+        if d is None:
+            continue
+        print(f"  {o:>12} {d['mean']:>12.4f} {d['quantum']:>10.5f} {d['rhat']:>8.3f} "
+              f"{d['tau']:>9.1f} {d['ess']:>7.0f} {'qRhat<'+format(RH,'g'):>7}:"
+              f"{'FAIL' if d['failed'] else 'OK':>4}")
+
+    # Histogram bins: compact per-family summary (count, worst bin, # failing).
+    for label in ("vtx-dist", "edge-dist"):
+        gat = [d for d in diag if d["name"].startswith(label + ":") and d["gated"]]
+        if not gat:
+            continue
+        worst = max(gat, key=lambda d: np.nan_to_num(d["rhat"], nan=1e9))
+        degs = [int(d["name"].split("deg")[1]) for d in gat]
+        nfail = sum(d["failed"] for d in gat)
+        print(f"  {label:>12} {len(gat):>3d} bins (deg {min(degs)}-{max(degs)}) "
+              f"worst qRhat={worst['rhat']:.3f}@deg{int(worst['name'].split('deg')[1])}"
+              f"  {nfail} fail")
+
+    # Binding constraint across ALL gated features -- the empirical slow mode.
+    gated = [d for d in diag if d["gated"]]
+    bad = [d["name"] for d in gated if d["failed"]]
+    rh_bind = max(gated, key=lambda d: np.nan_to_num(d["rhat"], nan=1e9),
+                  default=None)
+    ess_pool = [d for d in gated if not np.isnan(d["ess"])]
+    ess_bind = min(ess_pool, key=lambda d: d["ess"], default=None)
+    min_ess = ess_bind["ess"] if ess_bind else float("nan")
+    if rh_bind is not None:
+        line = f"  binding qRhat: {rh_bind['name']} = {rh_bind['rhat']:.3f}"
+        if ess_bind is not None:
+            line += f"   |   binding ESS: {ess_bind['name']} = {min_ess:.0f}"
+        print(line, flush=True)
+
+    ess_fail = (not np.isnan(min_ess)) and min_ess < args.min_ess
+    passed = (not bad) and (not ess_fail)
+    return GateResult(passed=passed, bad=bad, min_ess=min_ess,
+                      rhat_binding=(rh_bind["name"] if rh_bind else None),
+                      ess_binding=(ess_bind["name"] if ess_bind else None))
 
 
 def produce(args):
@@ -524,10 +603,10 @@ def produce(args):
             if rc != 0:
                 print(f"  chain {i} FAILED rc={rc}", file=sys.stderr)
 
-    passed, all_bad, min_ess = gate_ensemble(res, K, args)
-    if not passed:
-        why = (f"not converged in {all_bad}" if all_bad
-               else f"ESS {min_ess:.0f} < {args.min_ess} (run longer)")
+    gate = gate_ensemble(res, K, args)
+    if not gate.passed:
+        why = (f"not converged in {gate.bad}" if gate.bad
+               else f"ESS {gate.min_ess:.0f} < {args.min_ess} (run longer)")
         print(f"{why}; configs left in {stage}, not copied.", file=sys.stderr)
         return
     os.makedirs(args.seeds_dir, exist_ok=True)
@@ -538,9 +617,9 @@ def produce(args):
             shutil.copy2(cfg, os.path.join(args.seeds_dir,
                          build_seed_filename(args.topology, params, seed_index=copied)))
             copied += 1
-    print(f"CONVERGED (all observables, ESS>={args.min_ess:.0f}) -> copied {copied} "
-          f"equilibrium seeds to {args.seeds_dir}/ ({stem}_s000..s{copied - 1:03d})",
-          flush=True)
+    print(f"CONVERGED (all features; binding qRhat {gate.rhat_binding}, ESS "
+          f"{gate.ess_binding}>={args.min_ess:.0f}) -> copied {copied} equilibrium "
+          f"seeds to {args.seeds_dir}/ ({stem}_s000..s{copied - 1:03d})", flush=True)
 
 
 def recertify(args):
@@ -595,23 +674,24 @@ def recertify(args):
         with ThreadPoolExecutor(max_workers=nw) as pool:
             for fut in as_completed([pool.submit(cspawn, i) for i in range(K)]):
                 i, rc, cfg, out = fut.result(); res[i] = (rc, cfg, out)
-        passed, bad, min_ess = gate_ensemble(res, K, args)
-        results.append((stem, passed, bad))
-        if passed and args.stamp:
+        gate = gate_ensemble(res, K, args)
+        results.append((stem, gate.passed, gate.bad, gate.rhat_binding))
+        if gate.passed and args.stamp:
             from datetime import date
             commit, dirty = get_git_info()
             stamp = (f"{commit[:7]}{'-dirty' if dirty else ''} {date.today().isoformat()} "
                      f"K={K}/{len(reps)} distgate qRhat<{args.rhat_max:g}")
             for rp in reps:
                 set_header_field(rp, "recertified", stamp)
-        print(f"  => {'RE-CERTIFIED' if passed else 'FAILED ' + str(bad)}"
-              f"{' [stamped]' if passed and args.stamp else ''}", flush=True)
+        print(f"  => {'RE-CERTIFIED' if gate.passed else 'FAILED ' + str(gate.bad)}"
+              f"  (binding {gate.rhat_binding})"
+              f"{' [stamped]' if gate.passed and args.stamp else ''}", flush=True)
 
-    npass = sum(1 for _, ok, _ in results if ok)
+    npass = sum(1 for _, ok, _, _ in results if ok)
     print(f"\n=== recertification summary: {npass}/{len(results)} families re-certified ===")
-    for stem, ok, bad in results:
+    for stem, ok, bad, binding in results:
         if not ok:
-            print(f"  FAIL {stem}  ({bad})")
+            print(f"  FAIL {stem}  ({bad}; binding {binding})")
 
 
 def main():
