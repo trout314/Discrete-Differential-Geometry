@@ -1,54 +1,133 @@
-"""ctypes loader and thin wrappers for the D shared library."""
+"""ctypes loader and thin wrappers for the D shared library.
+
+The library is rebuilt from the current source tree on import (a no-op when
+already up to date), so scripts always run the latest code. Controls:
+
+  DDG_BUILD=debug        Prefer builddir/ over builddir-release/ (default: release).
+  DDG_LIBRARY=<path>     Explicit override. A directory is treated as a build
+                         dir (kept fresh + loaded); a file is loaded as-is with
+                         NO rebuild (use this to pin a specific binary).
+  DDG_NO_AUTOBUILD=1     Skip the rebuild step (load whatever exists). Use when
+                         the D toolchain isn't installed, or to pin the binary.
+"""
 
 import ctypes
 import os
+import subprocess
 import sys
 from pathlib import Path
+from shutil import which
 
 # ---------------------------------------------------------------------------
-# Library discovery
+# Library discovery + build freshness
 # ---------------------------------------------------------------------------
+
+_EXT = {"linux": ".so", "darwin": ".dylib", "win32": ".dll"}.get(sys.platform, ".so")
+_LIB_STEM = "ddg_dlang"          # meson shared_library() target name
+_LIB_NAME = f"{_LIB_STEM}{_EXT}"  # output filename / ninja target
+
+
+def _autobuild_disabled() -> bool:
+    return os.environ.get("DDG_NO_AUTOBUILD", "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def _build_command(build_dir: Path):
+    """Preferred build command for `build_dir`, or None if no tool is found."""
+    if which("ninja"):
+        # Ninja target is the output filename; near-instant when already fresh.
+        return ["ninja", "-C", str(build_dir), _LIB_NAME]
+    if which("meson"):
+        return ["meson", "compile", "-C", str(build_dir), _LIB_STEM]
+    return None
+
+
+def _ensure_fresh(build_dir: Path) -> None:
+    """Rebuild the shared library from current source if stale.
+
+    A directory lock serializes the build so the equilibrium driver's fan-out
+    of worker subprocesses can't race on it (the parent builds once; workers
+    then see a no-op). A failed *build* raises rather than silently loading a
+    stale library; a missing build *tool* only warns.
+    """
+    if _autobuild_disabled():
+        return
+    if not (build_dir / "build.ninja").exists():
+        return  # not a source-tree build dir (e.g. installed package)
+
+    lock_fd = None
+    try:
+        import fcntl
+        lock_fd = os.open(str(build_dir / ".ddg_autobuild.lock"),
+                          os.O_CREAT | os.O_RDWR, 0o644)
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+    except Exception:
+        lock_fd = None  # locking unavailable (non-posix) — proceed unlocked
+
+    try:
+        cmd = _build_command(build_dir)
+        if cmd is None:
+            print(f"[ddg] WARNING: neither ninja nor meson found; loading "
+                  f"existing {_LIB_NAME} from {build_dir} without a freshness "
+                  f"check. Set DDG_NO_AUTOBUILD=1 to silence.", file=sys.stderr)
+            return
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"[ddg] Rebuild of {_LIB_NAME} failed; refusing to load a "
+                f"possibly-stale library.\n  cmd: {' '.join(cmd)}\n"
+                f"{proc.stdout}\n{proc.stderr}")
+        if "no work to do" not in proc.stdout:
+            print(f"[ddg] rebuilt {_LIB_NAME} in {build_dir.name} "
+                  f"(source changed)", file=sys.stderr)
+    finally:
+        if lock_fd is not None:
+            os.close(lock_fd)
+
+
+def _select_build_dir(root: Path):
+    """Pick the source-tree build dir to use (release preferred), or None."""
+    prefer_debug = os.environ.get("DDG_BUILD", "release").strip().lower() == "debug"
+    release, debug = root / "builddir-release", root / "builddir"
+    order = [debug, release] if prefer_debug else [release, debug]
+    for d in order:
+        if (d / "build.ninja").exists() or (d / _LIB_NAME).exists():
+            return d
+    return None
+
 
 def _find_library() -> ctypes.CDLL:
-    """Locate and load ddg_dlang.so (or .dylib / .dll)."""
-    suffixes = {
-        "linux": ".so",
-        "darwin": ".dylib",
-        "win32": ".dll",
-    }
-    ext = suffixes.get(sys.platform, ".so")
-    name = f"ddg_dlang{ext}"
-
-    # Explicit override: DDG_LIBRARY may be a full path to the shared library
-    # or a directory containing it. Use this to select a release build:
-    #   DDG_LIBRARY=builddir-release python scripts/...
+    """Rebuild (if needed) and load ddg_dlang.so (or .dylib / .dll)."""
+    # 1. Explicit override.
     env_override = os.environ.get("DDG_LIBRARY")
     if env_override:
         p = Path(env_override)
-        candidate = p if p.is_file() else p / name
-        if candidate.exists():
-            return ctypes.CDLL(str(candidate))
-        raise OSError(f"DDG_LIBRARY={env_override!r} does not point to {name}")
+        if p.is_file():
+            return ctypes.CDLL(str(p))            # pinned file: load as-is
+        if p.is_dir():
+            _ensure_fresh(p)
+            candidate = p / _LIB_NAME
+            if candidate.exists():
+                return ctypes.CDLL(str(candidate))
+        raise OSError(f"DDG_LIBRARY={env_override!r} does not point to {_LIB_NAME}")
 
+    # 2. Source checkout: auto-build the preferred build dir, then load.
     root = Path(__file__).parent.parent.parent
-    search_dirs = [
-        # Same directory as this Python file (for installed packages)
-        Path(__file__).parent,
-        # builddir/ relative to project root (debug)
-        root / "builddir",
-        # builddir-release/ relative to project root (optimized)
-        root / "builddir-release",
-    ]
-
-    for d in search_dirs:
-        candidate = d / name
+    build_dir = _select_build_dir(root)
+    if build_dir is not None:
+        _ensure_fresh(build_dir)
+        candidate = build_dir / _LIB_NAME
         if candidate.exists():
             return ctypes.CDLL(str(candidate))
+
+    # 3. Installed package: .so shipped next to this module.
+    pkg_local = Path(__file__).parent / _LIB_NAME
+    if pkg_local.exists():
+        return ctypes.CDLL(str(pkg_local))
 
     raise OSError(
-        f"Cannot find {name}. Searched: {[str(d) for d in search_dirs]}. "
-        f"Set DDG_LIBRARY, or build with: meson compile -C builddir ddg_dlang"
-    )
+        f"Cannot find {_LIB_NAME}. Build with "
+        f"`meson compile -C builddir-release {_LIB_STEM}`, or set DDG_LIBRARY.")
 
 
 _lib = _find_library()

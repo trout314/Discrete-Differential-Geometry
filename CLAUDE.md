@@ -31,6 +31,30 @@ meson compile -C builddir-release ddg_dlang
 meson setup builddir --reconfigure
 ```
 
+### Python scripts auto-build the shared library
+
+Scripts never load a stale `.so`. On `import discrete_differential_geometry`, the
+loader (`python/discrete_differential_geometry/_dlang.py`) rebuilds the shared
+library from the current source tree before loading it — a near-instant no-op via
+`ninja` when nothing changed, an automatic rebuild when source changed, and a
+hard error if the rebuild fails to compile (rather than silently running old
+code). A directory lock serializes the build so the multi-worker drivers can't
+race on it. **LDC and ninja (or meson) must be on `PATH`** wherever scripts run;
+if no build tool is found the loader warns and loads the existing `.so`.
+
+By default it loads the optimized **release** build (`builddir-release/`), so a
+bare `python scripts/…` runs production-ready code with no extra flags. Env vars:
+
+- `DDG_BUILD=debug` — load the debug build (`builddir/`, asserts on) instead of release.
+- `DDG_LIBRARY=<path>` — override. A **file** is loaded as-is with **no** rebuild
+  (pin an exact binary for reproducibility); a **directory** is treated as a build
+  dir (kept fresh + loaded).
+- `DDG_NO_AUTOBUILD=1` — skip the rebuild step (load whatever exists), e.g. on a
+  box without the D toolchain, or to pin the current binary.
+
+Both `builddir/` and `builddir-release/` must still be created once with
+`meson setup` (see above); the loader compiles, it does not configure.
+
 ## Architecture
 
 ### D Core (source/)
