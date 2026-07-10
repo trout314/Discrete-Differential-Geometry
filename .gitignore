@@ -58,3 +58,6 @@ memory/
 # D build artifacts
 bin/
 dub.selections.json
+
+# Stale generated param tables (regenerate via legacy/generate_seed_params.py)
+tools/*.json

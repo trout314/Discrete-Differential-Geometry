@@ -8,6 +8,8 @@ import time
 
 # Allow importing the library from the project root
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python"))
+# Archived to legacy/; seed_utils still lives in tools/
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 
 from discrete_differential_geometry import Manifold, ManifoldSampler, SamplerParams
 from seed_utils import build_metadata_comments, build_seed_filename, get_free_memory_gb

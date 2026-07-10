@@ -20,7 +20,9 @@ import math
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(__file__))
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(_ROOT, "python"))               # discrete_differential_geometry
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # sibling: roundness_analysis
 from roundness_analysis import family_hist, round_s3_cdf
 
 DBAR_FLAT = 2 * math.pi / math.acos(1 / 3)   # ~5.10430

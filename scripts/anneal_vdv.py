@@ -34,25 +34,16 @@ import sys
 import time
 from collections import deque
 
-sys.path.insert(0, str(__import__('pathlib').Path(__file__).resolve().parent.parent / 'python'))
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(_ROOT, "python"))   # discrete_differential_geometry
+sys.path.insert(0, os.path.join(_ROOT, "tools"))    # seed_utils
 import discrete_differential_geometry as ddg
+from seed_utils import get_free_memory_gb
 
 
 # --- Memory safety ---
 
 MIN_FREE_MEMORY_GB = 4.0
-
-
-def get_free_memory_gb():
-    """Return available system memory in GB from /proc/meminfo."""
-    try:
-        with open("/proc/meminfo") as f:
-            for line in f:
-                if line.startswith("MemAvailable:"):
-                    return int(line.split()[1]) / (1024 * 1024)
-    except (FileNotFoundError, OSError):
-        return float("inf")
-    return float("inf")
 
 
 def check_memory(context=""):

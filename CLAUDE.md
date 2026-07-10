@@ -93,16 +93,30 @@ Stable, reusable bindings to the D core. This is the public API for research scr
 
 ### Research Scripts (scripts/)
 
-One-off or evolving Python scripts for experiments and analysis. These import the library but are not part of the installed package. Free to experiment, duplicate, or delete.
+Active Python CLIs for experiments and analysis. They import the library but are not part of the installed package.
+
+- **Seed generation:** `equilibrium_vdv.py` — the current production driver (fixed-β equilibrium sampling; `--produce` emits seed families with multi-chain R̂ gating). `grow_seed.py` — grows a small seed to large N to feed 1e6/1e7 chains. `anneal_vdv.py` — two-stage VDV annealing, kept for comparison against equilibrium.
+- **Analysis chain:** `distance_distribution.py` → `roundness_analysis.py` → `scale_curvature.py` (graph-distance distributions → roundness vs round S³ → scale-aware curvature). Each imports the previous.
+
+Import bootstrap convention: compute `_ROOT` from `__file__`, then `sys.path.insert` `python/` (always), `tools/` (if using `seed_utils`), and the script's own dir (if importing a sibling script).
+
+### Support Tools (tools/)
+
+- **`seed_utils.py`** — shared helpers imported across `scripts/` and `tools/`: memory probes (`get_free_memory_gb`), seed filename encode/decode, `build_metadata_comments`, `load_seed_metadata`, git info.
+- **`reburn_batch.py` → `reburn_family.py` + `reburn_seed.py`** — the reburn pipeline: regenerate the whole seed library's metadata cheaply (orchestrator calibrates per-family burn-in, then spawns memory-capped `reburn_seed.py` workers).
+
+### Legacy (legacy/)
+
+Archived, superseded scripts kept for reference/reproducibility; nothing active imports them. See `legacy/README.md`.
 
 ### Data Files
 
 - **`standard_triangulations/`** — Seed manifold files (`.mfd` format) used as starting points for sampling.
-- **`data/`** — Test data files for unit tests (`.dat` format).
+- **`data/`** — Test data files for unit tests (`.dat` format). Untracked experiment output also lands here; `data/` and `seeds_*/` are gitignored (committed unit-test fixtures stay tracked).
 
 ## Key Patterns
 
 - Tests are co-located with source code using D's built-in `unittest` blocks. Test assertions use helpers in `utility.d`: `shouldBeSameSetAs`, `shouldEqual`, `shouldBeEmpty`, `throwsWithMsg`.
 - Template-heavy D code: most types are parameterized on dimension and/or vertex type.
 - The C API in `ddg_capi.d` uses opaque handles and dimension-dispatch (`switch (h.dim)`) to bridge D templates to C.
-- Python library code goes in `python/discrete_differential_geometry/`; research scripts go in `scripts/`.
+- Python library code goes in `python/discrete_differential_geometry/`; active research CLIs go in `scripts/`; shared script helpers and orchestration go in `tools/`; superseded scripts are archived in `legacy/`.

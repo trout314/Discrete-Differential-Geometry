@@ -23,12 +23,15 @@ Example JSON input (pass via --params-file):
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+# Archived to legacy/; seed_utils still lives in tools/
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 from seed_utils import get_free_memory_gb
 
 SCRIPT = str(Path(__file__).parent / "equilibrate_seed.py")
