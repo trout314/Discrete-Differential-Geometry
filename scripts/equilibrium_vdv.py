@@ -545,21 +545,43 @@ def build_features(res, K, args):
     return feats, n_ok, n_samp
 
 
+# A feature mixing faster than this is uncorrelated enough that the half-vs-whole
+# tau ratio is just estimator noise -- don't judge its trend.
+_TAU_TRUST_FLOOR = 3.0
+
+
 def _feature_diag(ft, n_ok, n_samp, rhat_max):
     """Quantization-floored split-R-hat, integrated autocorrelation time and ESS
     for one feature. within-chain variance is floored at Delta^2/12, so a
     genuinely-fluctuating feature (VDV, HDV) reduces to ordinary split-R-hat
     while a near-deterministic one (edge degree, facet count, a sharp bin) passes
     when chains agree to within a few quanta. A gated feature we cannot evaluate
-    (NaN qRhat) counts as FAILED -- 'cannot verify' must not pass a gate."""
+    (NaN qRhat) counts as FAILED -- 'cannot verify' must not pass a gate.
+
+    Also computes two R-hat-blind-spot diagnostics (#4): `tau_growth` = tau(whole)
+    /tau(first half) -- >1 means the autocorrelation time is STILL GROWING with
+    more data, so tau/ESS are optimistic and R-hat can pass on a lockstep-drifting
+    or metastable chain; and `min_cross` = the fewest times any single chain
+    crosses the pooled mean (a chain that never oscillates across the consensus is
+    drifting, not mixing)."""
     pooled = np.concatenate(ft.series) if ft.series else np.array([0.0])
+    mu = float(pooled.mean())
     rh = quantized_split_rhat(ft.series, ft.quantum) if n_ok >= 2 else float("nan")
     taus = [integrated_autocorrelation_time(s) for s in ft.series]
     tau = float(np.nanmedian(taus)) if taus else float("nan")
     ess = (n_ok * n_samp / tau) if tau and not np.isnan(tau) else float("nan")
+    halfs = [integrated_autocorrelation_time(s[:len(s) // 2])
+             for s in ft.series if len(s) >= 16]
+    tau_half = float(np.nanmedian(halfs)) if halfs else float("nan")
+    tau_growth = (tau / tau_half) if (not np.isnan(tau) and tau_half
+                                      and not np.isnan(tau_half)) else float("nan")
+    crossings = [int(np.count_nonzero(np.diff((s >= mu).astype(np.int8))))
+                 for s in ft.series]
+    min_cross = min(crossings) if crossings else 0
     failed = ft.gated and not (not np.isnan(rh) and rh < rhat_max)
-    return dict(name=ft.name, gated=ft.gated, mean=float(pooled.mean()),
-                quantum=ft.quantum, rhat=rh, tau=tau, ess=ess, failed=failed)
+    return dict(name=ft.name, gated=ft.gated, mean=mu, quantum=ft.quantum,
+                rhat=rh, tau=tau, ess=ess, tau_half=tau_half, tau_growth=tau_growth,
+                min_cross=min_cross, failed=failed)
 
 
 def gate_ensemble(res, K, args):
@@ -607,9 +629,35 @@ def gate_ensemble(res, K, args):
               f"worst qRhat={worst['rhat']:.3f}@deg{int(worst['name'].split('deg')[1])}"
               f"  {nfail} fail")
 
+    # --- #4: growing-tau + oscillation audit over the gated scalar observables.
+    # R-hat can PASS while tau is still growing (lockstep drift / metastability),
+    # so a feature whose tau(whole)/tau(half) exceeds --tau-growth-max is treated
+    # as non-converged -- an R-hat blind spot. min-crossings is reported as
+    # supporting evidence: a chain that never crosses the pooled mean is drifting,
+    # not mixing (report-only, since a near-deterministic pin legitimately crosses
+    # rarely).
+    TG = args.tau_growth_max
+    trend_bad, audit = [], []
+    for o in OBSERVABLES:
+        d = by_name.get(o)
+        if d is None or not d["gated"]:
+            continue
+        growing = (not np.isnan(d["tau_growth"]) and d["tau"] >= _TAU_TRUST_FLOOR
+                   and d["tau_growth"] > TG)
+        if growing:
+            trend_bad.append(f"{o}[tau-up{d['tau_growth']:.1f}x]")
+        audit.append((o, d, growing))
+    if audit:
+        print(f"  {'trend audit':>12} {'tau half->whole':>18} {'growth':>7} "
+              f"{'minCross':>9}  (tau-growth<{TG:g})")
+        for o, d, growing in audit:
+            print(f"  {o:>12} {d['tau_half']:>8.1f} ->{d['tau']:>6.1f} "
+                  f"{d['tau_growth']:>7.2f} {d['min_cross']:>9d}"
+                  f"  {'STILL GROWING' if growing else ''}")
+
     # Binding constraint across ALL gated features -- the empirical slow mode.
     gated = [d for d in diag if d["gated"]]
-    bad = [d["name"] for d in gated if d["failed"]]
+    rhat_bad = [d["name"] for d in gated if d["failed"]]
     rh_bind = max(gated, key=lambda d: np.nan_to_num(d["rhat"], nan=1e9),
                   default=None)
     ess_pool = [d for d in gated if not np.isnan(d["ess"])]
@@ -620,7 +668,11 @@ def gate_ensemble(res, K, args):
         if ess_bind is not None:
             line += f"   |   binding ESS: {ess_bind['name']} = {min_ess:.0f}"
         print(line, flush=True)
+    if trend_bad:
+        print(f"  tau STILL GROWING (R-hat blind spot): {', '.join(trend_bad)}",
+              flush=True)
 
+    bad = rhat_bad + trend_bad
     ess_fail = (not np.isnan(min_ess)) and min_ess < args.min_ess
     passed = (not bad) and (not ess_fail)
     return GateResult(passed=passed, bad=bad, min_ess=min_ess,
@@ -895,6 +947,12 @@ def main():
     p.add_argument("--min-ess", type=float, default=100.0,
                    help="Minimum effective sample size (slowest observable) "
                         "required to accept a --produce ensemble.")
+    p.add_argument("--tau-growth-max", type=float, default=2.0,
+                   help="Fail any gated scalar observable whose autocorrelation "
+                        "time is still growing -- tau(whole)/tau(first-half) above "
+                        "this -- since tau/ESS are then optimistic and R-hat can "
+                        "pass on a lockstep-drifting chain (an R-hat blind spot). "
+                        "Only judged for tau>=3 (faster mixers: the ratio is noise).")
     p.add_argument("--hdv-tol", type=float, default=0.1,
                    help="Deprecated (unused): superseded by quantized split-R-hat.")
     p.add_argument("--facet-tol-frac", type=float, default=0.005,
