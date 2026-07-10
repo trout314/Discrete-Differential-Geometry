@@ -55,7 +55,8 @@ from discrete_differential_geometry import (
 # convergence in a penalized one, since they are coupled.
 OBSERVABLES = ["vdv", "edge_deg", "hdv", "num_facets"]
 from seed_utils import (build_metadata_comments, build_seed_filename,
-                        get_total_memory_gb, make_leg, obj_of, read_history)
+                        get_total_memory_gb, load_seed_metadata, make_leg,
+                        obj_of, read_history)
 
 _UNMIGRATED = ("source predates history tracking; prior lineage not inlined "
                "(run the back-fill migration to complete it)")
@@ -374,6 +375,98 @@ def analyze(coef, out_dir, burnin, thin):
                 accept=np.mean(acc_all), n_chains=len(allv))
 
 
+def gate_ensemble(res, K, args):
+    """Joint convergence gate over K chain outputs (res: i -> (rc, cfg, out)).
+
+    Judges every coupled observable by quantization-floored split-R-hat -- the
+    within-chain variance is floored at Delta^2/12 (Delta = minimum change with
+    the other integer counts held fixed), so a genuinely-fluctuating coordinate
+    (VDV, HDV) reduces to ordinary split-R-hat while a near-deterministic one
+    (edge degree, facet count) passes when chains agree to within a few quanta.
+    Autocorrelation-aware: run length is judged against the slowest coordinate's
+    ESS. With --record-histograms, also gates the full vertex/edge degree
+    DISTRIBUTIONS (every material bin). Prints the diagnostic table; returns
+    (passed, bad, min_ess). Shared by --produce and --recertify."""
+    RH = args.rhat_max
+    obs_series = {o: [] for o in OBSERVABLES}
+    for i in range(K):
+        rc, cfg, out = res.get(i, (1, None, None))
+        if rc == 0 and out and os.path.exists(out):
+            cols = load_observables(out)
+            if len(cols["vdv"]) >= 4:
+                for o in OBSERVABLES:
+                    obs_series[o].append(cols[o])
+    n_ok = len(obs_series["vdv"])
+    n_samp = min((len(s) for s in obs_series["vdv"]), default=0)
+
+    def observable_quantum(o, pooled):
+        if o == "edge_deg":                       # 6 f3/f1; step f1 at fixed f3
+            f3 = np.concatenate(obs_series["num_facets"]).mean()
+            return (pooled.mean() ** 2) / (6.0 * f3) if f3 else 0.0
+        if o == "num_facets":                     # a 2-3 move changes f3 by 1
+            return 1.0
+        return 0.0                                # variances: effectively continuous
+
+    print(f"\nEnsemble: {n_ok} chains x {n_samp} samples", flush=True)
+    print(f"  {'observable':>12} {'mean':>12} {'quantum':>10} {'qRhat':>8} "
+          f"{'tau(smp)':>9} {'ESS':>7} {'gate':>14}")
+    diag, bad = {}, []
+    for o in OBSERVABLES:
+        ser = obs_series[o]
+        pooled = np.concatenate(ser) if ser else np.array([0.0])
+        q = observable_quantum(o, pooled)
+        rh = quantized_split_rhat(ser, q) if n_ok >= 2 else float("nan")
+        taus = [integrated_autocorrelation_time(s) for s in ser]
+        tau = float(np.nanmedian(taus)) if taus else float("nan")
+        ess = (n_ok * n_samp / tau) if tau and not np.isnan(tau) else float("nan")
+        ok = not np.isnan(rh) and rh < RH
+        if not ok:
+            bad.append(o)
+        diag[o] = dict(rhat=rh, tau=tau, ess=ess, mean=pooled.mean())
+        print(f"  {o:>12} {pooled.mean():>12.4f} {q:>10.5f} {rh:>8.3f} "
+              f"{tau:>9.1f} {ess:>7.0f} {'qRhat<'+format(RH,'g'):>9}:"
+              f"{'OK' if ok else 'FAIL':>4}")
+
+    hist_bad = []
+    if args.record_histograms:
+        for dim, label in ((0, "vtx-dist"), (1, "edge-dist")):
+            per_chain, nsimps = [], []
+            for i in range(K):
+                rc, cfg, out = res.get(i, (1, None, None))
+                if rc == 0 and out:
+                    fr, ns = load_degree_fracs(out, dim)
+                    if fr is not None and len(fr) >= 4:
+                        per_chain.append(fr); nsimps.append(ns)
+            if len(per_chain) < 2:
+                continue
+            width = max(fr.shape[1] for fr in per_chain)
+            per_chain = [np.pad(fr, ((0, 0), (0, width - fr.shape[1])))
+                         for fr in per_chain]
+            nsimp = float(np.mean(nsimps))
+            q = 1.0 / nsimp if nsimp else 0.0
+            mean_count = np.concatenate(per_chain, axis=0).mean(axis=0) * nsimp
+            material = [d for d in range(width)
+                        if mean_count[d] >= args.bin_mass_floor]
+            worst, nfail = 0.0, 0
+            for d in material:
+                rh = quantized_split_rhat([fr[:, d] for fr in per_chain], q)
+                if not np.isnan(rh):
+                    worst = max(worst, rh)
+                    nfail += rh >= RH
+            if material:
+                print(f"  {label:>12} {len(material):>3d} bins (deg "
+                      f"{material[0] + 1}-{material[-1] + 1}) worst qRhat="
+                      f"{worst:.3f}  {nfail} fail")
+            if nfail:
+                hist_bad.append(f"{label}({nfail})")
+
+    min_ess = min((diag[o]["ess"] for o in OBSERVABLES
+                   if not np.isnan(diag[o]["ess"])), default=float("nan"))
+    all_bad = bad + hist_bad
+    passed = not all_bad and not (not np.isnan(min_ess) and min_ess < args.min_ess)
+    return passed, all_bad, min_ess
+
+
 def produce(args):
     """Run K equilibrium chains at args.beta; if split-R-hat passes, copy the
     configs into seeds/ with library names. Half the chains start from the plain
@@ -431,99 +524,8 @@ def produce(args):
             if rc != 0:
                 print(f"  chain {i} FAILED rc={rc}", file=sys.stderr)
 
-    # Joint convergence over all coupled observables, judged by ONE statistic of
-    # any observable's nature: quantization-floored split-R-hat. The within-chain
-    # variance is floored at Delta^2/12, Delta being the minimum change in the
-    # observable with the other underlying integer counts held fixed. For a
-    # genuinely-fluctuating coordinate (VDV, HDV) the true variance dominates and
-    # this is ordinary split-R-hat; for a near-deterministic one (edge degree =
-    # 6 f3/f1, facet count) the floor sets the scale, so chains that agree to
-    # within a few quanta pass instead of the statistic blowing up on a vanishing
-    # denominator. It is also autocorrelation-aware (B): run length is judged
-    # against the slowest coordinate's ESS.
-    RH = args.rhat_max
-    obs_series = {o: [] for o in OBSERVABLES}
-    for i in range(K):
-        rc, cfg, out = res.get(i, (1, None, None))
-        if rc == 0 and out and os.path.exists(out):
-            cols = load_observables(out)
-            if len(cols["vdv"]) >= 4:
-                for o in OBSERVABLES:
-                    obs_series[o].append(cols[o])
-    n_ok = len(obs_series["vdv"])
-    n_samp = min((len(s) for s in obs_series["vdv"]), default=0)
-
-    def observable_quantum(o, pooled):
-        if o == "edge_deg":                       # 6 f3/f1; step f1 at fixed f3
-            f3 = np.concatenate(obs_series["num_facets"]).mean()
-            return (pooled.mean() ** 2) / (6.0 * f3) if f3 else 0.0
-        if o == "num_facets":                     # a 2-3 move changes f3 by 1
-            return 1.0
-        return 0.0                                # variances: effectively continuous
-
-    print(f"\nEnsemble: {n_ok} chains x {n_samp} samples", flush=True)
-    print(f"  {'observable':>12} {'mean':>12} {'quantum':>10} {'qRhat':>8} "
-          f"{'tau(smp)':>9} {'ESS':>7} {'gate':>14}")
-    diag, bad = {}, []
-    for o in OBSERVABLES:
-        ser = obs_series[o]
-        pooled = np.concatenate(ser) if ser else np.array([0.0])
-        q = observable_quantum(o, pooled)
-        rh = quantized_split_rhat(ser, q) if n_ok >= 2 else float("nan")
-        taus = [integrated_autocorrelation_time(s) for s in ser]
-        tau = float(np.nanmedian(taus)) if taus else float("nan")
-        ess = (n_ok * n_samp / tau) if tau and not np.isnan(tau) else float("nan")
-        ok = not np.isnan(rh) and rh < RH
-        if not ok:
-            bad.append(o)
-        diag[o] = dict(rhat=rh, tau=tau, ess=ess, mean=pooled.mean())
-        print(f"  {o:>12} {pooled.mean():>12.4f} {q:>10.5f} {rh:>8.3f} "
-              f"{tau:>9.1f} {ess:>7.0f} {'qRhat<'+format(RH,'g'):>9}:"
-              f"{'OK' if ok else 'FAIL':>4}")
-
-    # Richer check: the full vertex- and edge-degree DISTRIBUTIONS, not just their
-    # first two moments. Each degree bin's occupancy p_d = count_d / n_simplices is
-    # another observable (quantum 1/n_simplices, count_d integer). "Distributions
-    # statistically indistinguishable" == every material bin converges. Bins with
-    # too little pooled mass are noise and would false-fail, so only bins whose mean
-    # count >= --bin-mass-floor are gated; the sparse tail is reported, not gated.
-    hist_bad = []
-    if args.record_histograms:
-        for dim, label in ((0, "vtx-dist"), (1, "edge-dist")):
-            per_chain, nsimps = [], []
-            for i in range(K):
-                rc, cfg, out = res.get(i, (1, None, None))
-                if rc == 0 and out:
-                    fr, ns = load_degree_fracs(out, dim)
-                    if fr is not None and len(fr) >= 4:
-                        per_chain.append(fr); nsimps.append(ns)
-            if len(per_chain) < 2:
-                continue
-            width = max(fr.shape[1] for fr in per_chain)
-            per_chain = [np.pad(fr, ((0, 0), (0, width - fr.shape[1])))
-                         for fr in per_chain]
-            nsimp = float(np.mean(nsimps))
-            q = 1.0 / nsimp if nsimp else 0.0
-            mean_count = np.concatenate(per_chain, axis=0).mean(axis=0) * nsimp
-            material = [d for d in range(width)
-                        if mean_count[d] >= args.bin_mass_floor]
-            worst, nfail = 0.0, 0
-            for d in material:
-                rh = quantized_split_rhat([fr[:, d] for fr in per_chain], q)
-                if not np.isnan(rh):
-                    worst = max(worst, rh)
-                    nfail += rh >= RH
-            if material:
-                print(f"  {label:>12} {len(material):>3d} bins (deg "
-                      f"{material[0] + 1}-{material[-1] + 1}) worst qRhat="
-                      f"{worst:.3f}  {nfail} fail")
-            if nfail:
-                hist_bad.append(f"{label}({nfail})")
-
-    min_ess = min((diag[o]["ess"] for o in OBSERVABLES
-                   if not np.isnan(diag[o]["ess"])), default=float("nan"))
-    all_bad = bad + hist_bad
-    if all_bad or (not np.isnan(min_ess) and min_ess < args.min_ess):
+    passed, all_bad, min_ess = gate_ensemble(res, K, args)
+    if not passed:
         why = (f"not converged in {all_bad}" if all_bad
                else f"ESS {min_ess:.0f} < {args.min_ess} (run longer)")
         print(f"{why}; configs left in {stage}, not copied.", file=sys.stderr)
@@ -539,6 +541,66 @@ def produce(args):
     print(f"CONVERGED (all observables, ESS>={args.min_ess:.0f}) -> copied {copied} "
           f"equilibrium seeds to {args.seeds_dir}/ ({stem}_s000..s{copied - 1:03d})",
           flush=True)
+
+
+def recertify(args):
+    """Re-certify existing families in --seeds-dir under the current gate.
+
+    For each family (a set of _s{NNN} replicas), run K chains starting FROM the
+    family's own replicas, hold at the family's beta, record histograms, and
+    apply gate_ensemble -- so the SAME certification the library was promoted
+    under (now including the full-distribution check) is re-applied. This is a
+    mutual-consistency test (do the existing replicas agree on every observable,
+    including the degree distributions?), complementary to produce's two-sided
+    reachability test. Reports pass/fail per family; does NOT modify the library.
+    """
+    fams = {}
+    for p in sorted(glob.glob(os.path.join(args.seeds_dir, args.recert_glob))):
+        fams.setdefault(os.path.basename(p).rsplit("_s", 1)[0], []).append(p)
+    if not fams:
+        sys.exit(f"no families matched {args.recert_glob!r} in {args.seeds_dir}/")
+    print(f"re-certifying {len(fams)} families: {args.production_burnin} burnin + "
+          f"{args.n_samples}x{args.thin} measured, up to {args.replicas} chains each "
+          f"from own replicas", flush=True)
+    budget = args.max_memory_gb if args.max_memory_gb > 0 else max(1.0, get_total_memory_gb() - 4.0)
+    results = []
+    for stem, reps in sorted(fams.items()):
+        md = load_seed_metadata(reps[0])
+        n = int(float(md["num_facets_target"]))
+        beta = float(md["codim3_degree_variance_coef"])
+        K = min(args.replicas, len(reps))
+        stage = os.path.join(args.output_dir, "recert", stem)
+        os.makedirs(stage, exist_ok=True)
+
+        def cspawn(i):
+            out = os.path.join(stage, f"chain_{i}.csv")
+            cmd = [sys.executable, os.path.abspath(__file__), "--chain",
+                   "--init", reps[i], "--dim", str(args.dim), "--n-target", str(n),
+                   "--num-facets-coef", md["num_facets_coef"],
+                   "--hinge-target", md["hinge_degree_target"],
+                   "--num-hinges-coef", md["num_hinges_coef"],
+                   "--hdv-coef", md["hinge_degree_variance_coef"], "--coef", str(beta),
+                   "--warmup-sweeps", "0", "--burnin-sweeps", str(args.production_burnin),
+                   "--thin", str(args.thin), "--n-samples", str(args.n_samples), "--out", out]
+            if args.record_histograms:
+                cmd.append("--record-histograms")
+            return i, subprocess.run(cmd).returncode, None, out
+
+        nw = max(1, min(K, args.max_workers, int(budget / est_chain_gb(n))))
+        print(f"\n### {stem}  (N={n}, beta={beta:g}, {K} chains, {nw} concurrent)", flush=True)
+        res = {}
+        with ThreadPoolExecutor(max_workers=nw) as pool:
+            for fut in as_completed([pool.submit(cspawn, i) for i in range(K)]):
+                i, rc, cfg, out = fut.result(); res[i] = (rc, cfg, out)
+        passed, bad, min_ess = gate_ensemble(res, K, args)
+        results.append((stem, passed, bad))
+        print(f"  => {'RE-CERTIFIED' if passed else 'FAILED ' + str(bad)}", flush=True)
+
+    npass = sum(1 for _, ok, _ in results if ok)
+    print(f"\n=== recertification summary: {npass}/{len(results)} families re-certified ===")
+    for stem, ok, bad in results:
+        if not ok:
+            print(f"  FAIL {stem}  ({bad})")
 
 
 def main():
@@ -600,6 +662,13 @@ def main():
                    help="Produce a validated equilibrium ensemble and, if R-hat<"
                         "--rhat-max, copy the configs into --seeds-dir.")
     p.add_argument("--beta", type=float, help="Study coefficient for --produce.")
+    p.add_argument("--recertify", action="store_true",
+                   help="Re-certify existing --seeds-dir families under the current "
+                        "gate: run chains from each family's own replicas and re-apply "
+                        "gate_ensemble. Reports pass/fail; does not modify the library.")
+    p.add_argument("--recert-glob", default="*.mfd",
+                   help="Glob (within --seeds-dir) selecting seeds to re-certify, e.g. "
+                        "'S3_N1e2_*' for a small-N test run. Default: all.")
     p.add_argument("--production-burnin", type=int, default=1500,
                    help="Burn-in sweeps per production chain.")
     p.add_argument("--rhat-max", type=float, default=1.05)
@@ -630,6 +699,9 @@ def main():
         return
     if args.produce:
         produce(args)
+        return
+    if args.recertify:
+        recertify(args)
         return
 
     # ---- driver ----
