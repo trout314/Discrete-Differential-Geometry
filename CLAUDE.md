@@ -96,6 +96,7 @@ Stable, reusable bindings to the D core. This is the public API for research scr
 Active Python CLIs for experiments and analysis. They import the library but are not part of the installed package.
 
 - **Seed generation:** `equilibrium_vdv.py` — the current production driver (fixed-β equilibrium sampling; `--produce` emits seed families with multi-chain R̂ gating). `grow_seed.py` — grows a small seed to large N to feed 1e6/1e7 chains. `anneal_vdv.py` — two-stage VDV annealing, kept for comparison against equilibrium.
+- **Grid sweeps:** `explore_grid.py` / `produce_grid.py` — sweep the β/N × edge-target × N grid over `equilibrium_vdv.py --produce` (explore = short `--dry-run` map of the certifiable frontier, writes nothing; produce = production-length certify + copy into `seeds/`). Both are thin CLIs over the shared engine `tools/grid_sweep.py`; `--only-n/--only-edge/--only-bon` restrict to a subset or a single cell.
 - **Analysis chain:** `distance_distribution.py` → `roundness_analysis.py` → `scale_curvature.py` (graph-distance distributions → roundness vs round S³ → scale-aware curvature). Each imports the previous.
 
 Import bootstrap convention: compute `_ROOT` from `__file__`, then `sys.path.insert` `python/` (always), `tools/` (if using `seed_utils`), and the script's own dir (if importing a sibling script).
@@ -103,6 +104,7 @@ Import bootstrap convention: compute `_ROOT` from `__file__`, then `sys.path.ins
 ### Support Tools (tools/)
 
 - **`seed_utils.py`** — shared helpers imported across `scripts/` and `tools/`: memory probes (`get_free_memory_gb`), seed filename encode/decode, `build_metadata_comments`, `load_seed_metadata`, git info.
+- **`grid_sweep.py`** — shared engine for the grid-sweep drivers (`scripts/explore_grid.py`, `scripts/produce_grid.py`): standard-grid constants, nearest-family founding, per-cell `--produce` invocation + verdict parsing, and the `sweep()` loop with cell filters / prune predicate.
 - **`reburn_batch.py` → `reburn_family.py` + `reburn_seed.py`** — the reburn pipeline: regenerate the whole seed library's metadata cheaply (orchestrator calibrates per-family burn-in, then spawns memory-capped `reburn_seed.py` workers).
 
 ### Legacy (legacy/)
