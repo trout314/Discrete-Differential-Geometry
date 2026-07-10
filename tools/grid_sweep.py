@@ -28,8 +28,10 @@ DEFAULT_BRACKET = ["vdv", "edge_deg", "num_facets"]
 
 def founding_seed(root, ntok, edgetok, beta_target, seeds_dir="seeds"):
     """s000 of the existing family at (N, edge) whose beta is nearest beta_target
-    (globs seeds_dir live, so newly produced families are candidates too)."""
-    pat = os.path.join(root, seeds_dir, f"S3_N{ntok}_1e-1_ED{edgetok}_2*_s000.mfd")
+    (globs seeds_dir live, so newly produced families are candidates too).
+    k-agnostic: matches any edge-pin coef, since the founding config is only a
+    starting triangulation -- the study objective re-pins at whatever k is set."""
+    pat = os.path.join(root, seeds_dir, f"S3_N{ntok}_1e-1_ED{edgetok}_*_s000.mfd")
     best, best_d = None, None
     for p in glob.glob(pat):
         try:
@@ -60,12 +62,12 @@ def _parse_verdict(out, dry_run):
 
 
 def run_cell(root, seed, n, edgeval, beta, *, bracket, replicas, burnin, nsamp,
-             thin, dry_run, seeds_dir, out_dir):
+             thin, dry_run, seeds_dir, out_dir, num_hinges_coef=2.0):
     """One grid cell = one `equilibrium_vdv.py --produce` invocation."""
     cmd = [sys.executable, os.path.join(root, "scripts", "equilibrium_vdv.py"),
            "--produce", "--seed-file", seed, "--n-target", str(n), "--beta", str(beta),
            "--bracket", *bracket, "--hinge-target", str(edgeval),
-           "--num-hinges-coef", "2.0", "--num-facets-coef", "0.1",
+           "--num-hinges-coef", str(num_hinges_coef), "--num-facets-coef", "0.1",
            "--replicas", str(replicas), "--production-burnin", str(burnin),
            "--n-samples", str(nsamp), "--thin", str(thin),
            "--seeds-dir", os.path.join(root, seeds_dir), "--output-dir", out_dir]
@@ -80,10 +82,10 @@ def run_cell(root, seed, n, edgeval, beta, *, bracket, replicas, burnin, nsamp,
 def sweep(root, *, dry_run, bracket=DEFAULT_BRACKET, replicas, burnin, nsamp, thin,
           n_tiers=N_TIERS, edges=EDGES, beta_over_N=BETA_OVER_N, prune=None,
           seeds_dir="seeds", out_root="data/grid_sweep", only_n=None, only_edge=None,
-          only_bon=None):
+          only_bon=None, num_hinges_coef=2.0):
     """Run the grid. `prune(edgetok, bon) -> bool` skips cells; only_* (lists)
-    restrict to a subset. Writes an incremental summary CSV under out_root and
-    returns the collected rows."""
+    restrict to a subset; num_hinges_coef sets the edge-pin stiffness k for every
+    cell. Writes an incremental summary CSV under out_root and returns the rows."""
     out_root = out_root if os.path.isabs(out_root) else os.path.join(root, out_root)
     os.makedirs(out_root, exist_ok=True)
     rows = []
@@ -110,9 +112,10 @@ def sweep(root, *, dry_run, bracket=DEFAULT_BRACKET, replicas, burnin, nsamp, th
                 verdict, detail = run_cell(
                     root, seed, n, edgeval, beta, bracket=bracket, replicas=replicas,
                     burnin=burnin, nsamp=nsamp, thin=thin, dry_run=dry_run,
-                    seeds_dir=seeds_dir, out_dir=os.path.join(out_root, cell))
+                    seeds_dir=seeds_dir, out_dir=os.path.join(out_root, cell),
+                    num_hinges_coef=num_hinges_coef)
                 rows.append(dict(N=n, edge=edgeval, beta_over_N=bon, beta=beta,
-                                 verdict=verdict, detail=detail,
+                                 k=num_hinges_coef, verdict=verdict, detail=detail,
                                  found=os.path.basename(seed)))
                 with open(os.path.join(out_root, "summary.csv"), "w", newline="") as f:
                     w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))

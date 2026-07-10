@@ -32,6 +32,10 @@ def main():
     p.add_argument("--bracket", nargs="+", default=G.DEFAULT_BRACKET,
                    help="Factorial bracket coordinates (default: vdv edge_deg num_facets).")
     p.add_argument("--replicas", type=int, default=16)
+    p.add_argument("--num-hinges-coef", type=float, default=2.0,
+                   help="Edge-pin stiffness k (default 2.0, the library value). "
+                        "edge_deg mixing ~ 1/k, so raising k should extend the "
+                        "edge-limited frontier; very large k hurts facet mixing.")
     p.add_argument("--burnin", type=int, default=300)
     p.add_argument("--n-samples", type=int, default=150)
     p.add_argument("--thin", type=int, default=5)
@@ -48,6 +52,7 @@ def main():
 
     G.sweep(_ROOT, dry_run=True, bracket=args.bracket, replicas=args.replicas,
             burnin=args.burnin, nsamp=args.n_samples, thin=args.thin,
+            num_hinges_coef=args.num_hinges_coef,
             seeds_dir=args.seeds_dir, out_root=args.out_dir,
             only_n=args.only_n, only_edge=args.only_edge, only_bon=args.only_bon)
 
