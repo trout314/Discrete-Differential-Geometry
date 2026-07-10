@@ -214,12 +214,25 @@ def _restore_study(s, args):
 
 
 def _warmup_settings(args):
-    """The knob perturbations for this chain's warmup: a generic --warmup-bias if
-    given, else the legacy VDV squeeze (--warmup-coef). Adds the edge-pin stiffen
-    (--warmup-hinge-coef) unless we are bracketing edge_deg itself."""
-    parsed = _parse_bias(args.warmup_bias)
-    settings = {"vdv_c": args.warmup_coef} if parsed is None else _bias_settings(parsed, args)
-    if (parsed is None or parsed[0] != "edge_deg") and args.warmup_hinge_coef > 0:
+    """The merged knob perturbations for this chain's warmup. --warmup-bias may be
+    a COMMA-COMPOSED set of single-observable specs -- one corner of a factorial,
+    e.g. 'vdv:above,edge_deg:below,num_facets:above' -- whose settings compose
+    because each targets a different knob (VDV coef, hinge target, facet target).
+    Empty = legacy VDV squeeze (--warmup-coef). Adds the edge-pin stiffen
+    (--warmup-hinge-coef) unless this corner brackets edge_deg (whose target we
+    are deliberately moving)."""
+    spec = (args.warmup_bias or "").strip()
+    settings, kinds = {}, []
+    if not spec:
+        settings["vdv_c"] = args.warmup_coef                 # legacy squeeze
+    else:
+        for tok in spec.split(","):
+            parsed = _parse_bias(tok)
+            if parsed is None:
+                continue
+            kinds.append(parsed[0])
+            settings.update(_bias_settings(parsed, args))
+    if "edge_deg" not in kinds and args.warmup_hinge_coef > 0:
         settings["nh_c"] = args.warmup_hinge_coef
     return settings
 
@@ -680,15 +693,30 @@ def gate_ensemble(res, K, args):
                       ess_binding=(ess_bind["name"] if ess_bind else None))
 
 
+_BRACKET_ABBR = {"vdv": "v", "edge_deg": "e", "hdv": "h", "num_facets": "n"}
+
+
 def _chain_bias(i, args):
-    """The warmup bias for produce chain i under --bracket: alternate the two
-    sides of the bracketed coordinate by parity (even=above/hot, odd=below/cold).
-    Returns a --warmup-bias spec string, or '' when not bracketing."""
-    if not args.bracket:
-        return ""
-    if args.bracket == "hot-cold":
-        return "hot" if i % 2 == 0 else "cold"
-    return f"{args.bracket}:{'above' if i % 2 == 0 else 'below'}"
+    """The (warmup-bias, side-label) for produce chain i. --bracket may name
+    several coordinates: chains are assigned corners of the FACTORIAL of
+    above/below over them -- corner = i mod 2^m, bit j = coordinate j's side --
+    so the ensemble is over-dispersed along EVERY bracketed coordinate on both
+    sides at once (e.g. vdv edge_deg num_facets = 8 corners). 'hot-cold' alone is
+    the whole-system disorder/order special. Returns ('', <above|below>) when not
+    bracketing (the --below-init parity path)."""
+    coords = args.bracket
+    if not coords:
+        return "", ("below" if (i % 2 == 1 and args.below_init) else "above")
+    if coords == ["hot-cold"]:
+        return ("hot", "hot") if i % 2 == 0 else ("cold", "cold")
+    m = len(coords)
+    corner = i % (2 ** m)
+    specs, tag = [], []
+    for j, c in enumerate(coords):
+        up = ((corner >> j) & 1) == 0
+        specs.append(f"{c}:{'above' if up else 'below'}")
+        tag.append(_BRACKET_ABBR.get(c, c[0]) + ("+" if up else "-"))
+    return ",".join(specs), "".join(tag)
 
 
 def produce(args):
@@ -703,6 +731,9 @@ def produce(args):
     if not args.seed_file or args.beta is None:
         sys.exit("--produce needs --seed-file and --beta (--beta 0 is allowed, "
                  "for a base family with no VDV penalty)")
+    if args.bracket and "hot-cold" in args.bracket and len(args.bracket) > 1:
+        sys.exit("--bracket hot-cold is whole-system; do not combine it with named "
+                 "coordinate axes")
     params = SamplerParams(
         num_facets_target=args.n_target, num_facets_coef=args.num_facets_coef,
         hinge_degree_target=args.hinge_target, num_hinges_coef=args.num_hinges_coef,
@@ -718,17 +749,21 @@ def produce(args):
     warm = args.production_warmup or max(300, args.production_burnin // 4)
     stage = os.path.join(args.output_dir, "staging")
     os.makedirs(stage, exist_ok=True)
-    disp = (f"bracket {args.bracket} (+/- warmup {warm} sweeps)" if args.bracket
-            else ("below-init" if args.below_init else "one-sided (NO over-dispersion!)"))
+    if args.bracket == ["hot-cold"]:
+        disp = f"hot/cold diffuse (+/- warmup {warm} sweeps)"
+    elif args.bracket:
+        disp = (f"{'x'.join(args.bracket)} factorial ({2 ** len(args.bracket)} corners, "
+                f"+/- warmup {warm} sweeps)")
+    else:
+        disp = "below-init" if args.below_init else "one-sided (NO over-dispersion!)"
     print(f"Producing {K} equilibrium chains: N={args.n_target}, beta={args.beta:g} "
           f"(beta/N={args.beta/args.n_target:.4g}), burnin={args.production_burnin} + "
           f"{args.n_samples}x{args.thin} measured; dispersion: {disp}", flush=True)
 
     def pspawn(i):
-        bias = _chain_bias(i, args)
+        bias, side = _chain_bias(i, args)
         below = (not bias) and (i % 2 == 1) and bool(args.below_init)
         init = args.below_init if below else args.seed_file
-        side = "below" if (below or (bias and i % 2 == 1)) else "above"
         cfg = os.path.join(stage, f"chain_{i}.mfd")
         out = os.path.join(stage, f"chain_{i}.csv")
         cmd = [sys.executable, os.path.abspath(__file__), "--chain",
@@ -743,8 +778,7 @@ def produce(args):
                "--topology", args.topology, "--out", out, "--save-config", cfg]
         if bias:
             cmd += ["--warmup-bias", bias, "--warmup-sweeps", str(warm),
-                    "--warmup-coef", str(args.beta * args.warmup_factor),
-                    "--warmup-hinge-coef", str(args.num_hinges_coef)]
+                    "--warmup-coef", str(args.beta * args.warmup_factor)]
         if args.record_histograms:
             cmd.append("--record-histograms")
         return i, subprocess.run(cmd).returncode, cfg, out
@@ -917,13 +951,15 @@ def main():
                    help="Produce a validated equilibrium ensemble and, if R-hat<"
                         "--rhat-max, copy the configs into --seeds-dir.")
     p.add_argument("--beta", type=float, help="Study coefficient for --produce.")
-    p.add_argument("--bracket", default=None,
+    p.add_argument("--bracket", nargs="+", default=None,
                    choices=["vdv", "hdv", "edge_deg", "num_facets", "hot-cold"],
                    help="With --produce, over-disperse the ensemble by bracketing "
-                        "this coordinate on the fly (even chains above target, odd "
-                        "below) via a warmup, instead of needing a --below-init. Use "
-                        "the slow coordinate for the regime (e.g. edge_deg at the "
-                        "glass frontier); 'hot-cold' disperses the whole system.")
+                        "these coordinates on the fly via a warmup, instead of needing "
+                        "a --below-init. Chains are assigned corners of the above/below "
+                        "FACTORIAL over the listed observables (e.g. --bracket vdv "
+                        "edge_deg num_facets = 8 corners), so the two-sided R-hat test "
+                        "covers every listed slow mode at once. 'hot-cold' alone is the "
+                        "whole-system disorder/order special.")
     p.add_argument("--production-warmup", dest="production_warmup", type=int, default=0,
                    help="Warmup sweeps for --bracket over-dispersion (0 = auto: "
                         "max(300, burnin/4)).")
