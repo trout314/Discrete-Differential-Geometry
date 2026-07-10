@@ -46,6 +46,12 @@ data/seed_gen/
 # Generated seed triangulations
 seeds/
 
+# Experiment output directories (large; not version-controlled).
+# Unit-test fixtures already committed under data/ stay tracked (gitignore does
+# not untrack); add a new fixture under data/ with `git add -f <path>`.
+/data/
+/seeds_*/
+
 # Claude Code local memory store
 memory/
 
