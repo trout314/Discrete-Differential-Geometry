@@ -795,6 +795,14 @@ def produce(args):
                 print(f"  chain {i} FAILED rc={rc}", file=sys.stderr)
 
     gate = gate_ensemble(res, K, args)
+    if args.dry_run:                                  # explore: gate + report, write nothing
+        tag = "PASS" if gate.passed else "FAIL"
+        extra = f"; bad={gate.bad}" if gate.bad else ""
+        print(f"[dry-run] {tag}  N={args.n_target} beta/N={args.beta/args.n_target:.4g} "
+              f"ED={args.hinge_target:g}: binding qRhat={gate.rhat_binding} "
+              f"ESS-bind={gate.ess_binding} (min {gate.min_ess:.0f}){extra}; "
+              f"nothing copied.", flush=True)
+        return
     if not gate.passed:
         why = (f"not converged in {gate.bad}" if gate.bad
                else f"ESS {gate.min_ess:.0f} < {args.min_ess} (run longer)")
@@ -963,6 +971,10 @@ def main():
     p.add_argument("--production-warmup", dest="production_warmup", type=int, default=0,
                    help="Warmup sweeps for --bracket over-dispersion (0 = auto: "
                         "max(300, burnin/4)).")
+    p.add_argument("--dry-run", action="store_true",
+                   help="With --produce, run the chains + gate and report the verdict "
+                        "(binding feature, ESS, pass/fail) but do NOT copy to "
+                        "--seeds-dir. The explore phase: map the grid, write nothing.")
     p.add_argument("--recertify", action="store_true",
                    help="Re-certify existing --seeds-dir families under the current "
                         "gate: run chains from each family's own replicas and re-apply "
