@@ -180,6 +180,10 @@ def main():
     ap.add_argument("--dirs", nargs="+",
                     default=["seeds", "seeds_reburned", "seeds_uncertified"])
     ap.add_argument("--apply", action="store_true", help="Rewrite headers (default: dry run).")
+    ap.add_argument("--write-only", default=None,
+                    help="With --apply, only rewrite files whose path contains this "
+                         "substring (e.g. a single dir), while still resolving chains "
+                         "against the full --dirs index. For a canary run.")
     ap.add_argument("--sample", type=int, default=0, help="Print N resolved histories and exit.")
     args = ap.parse_args()
 
@@ -202,7 +206,7 @@ def main():
             stat["reconstructed_ancestry"] += 1
         if args.sample and len(samples) < args.sample:
             samples.append((p, legs, note, rooted))
-        if args.apply and not args.sample:
+        if args.apply and not args.sample and (not args.write_only or args.write_only in p):
             stat["written" if apply_history(p, legs, note) else "already_had_history"] += 1
 
     if args.sample:
