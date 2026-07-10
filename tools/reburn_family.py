@@ -41,7 +41,11 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python"))
 
 from discrete_differential_geometry import Manifold, ManifoldSampler, SamplerParams
-from seed_utils import build_metadata_comments, load_seed_metadata
+from seed_utils import (build_metadata_comments, load_seed_metadata,
+                        make_leg, obj_of, read_history)
+
+_UNMIGRATED = ("source predates history tracking; prior lineage not inlined "
+               "(run the back-fill migration to complete it)")
 
 
 def family_stem(path: str) -> str:
@@ -177,6 +181,9 @@ def reburn_one(path, params, topology, dimension, n_burn, output_dir, log):
         sampler.run(sweeps=n_burn)
 
     stats = sampler.get_stats()
+    prior = read_history(path)
+    legs = [make_leg("reburn", obj_of(params), n_burn,
+                     tried=stats.total_tried, accepted=stats.total_accepted)]
     comments = build_metadata_comments(
         topology=topology,
         dimension=dimension,
@@ -193,6 +200,8 @@ def reburn_one(path, params, topology, dimension, n_burn, output_dir, log):
         manifold_view=sampler.manifold,
         objective=sampler.current_objective,
         sampler_stats=stats,
+        legs=legs, prior_history=prior,
+        history_note=None if prior else _UNMIGRATED,
     )
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, os.path.basename(path))

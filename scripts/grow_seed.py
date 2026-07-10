@@ -19,9 +19,12 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 from discrete_differential_geometry import Manifold, ManifoldSampler, SamplerParams
-from seed_utils import build_metadata_comments, get_free_memory_gb
+from seed_utils import (build_metadata_comments, get_free_memory_gb,
+                        make_leg, obj_of, read_history)
 
 EXIT_LOW_MEMORY = 42
+_UNMIGRATED = ("source predates history tracking; prior lineage not inlined "
+               "(run the back-fill migration to complete it)")
 
 
 def main():
@@ -75,6 +78,16 @@ def main():
         s.run(sweeps=args.final_eq_sweeps)
 
     v = s.manifold
+    # Provenance legs: a grow leg (sphere/prev -> target N) then a settle leg.
+    prior = read_history(args.src)
+    st = s.get_stats()
+    growth_steps = max(0, -(-(args.target_facets - start) // args.step_size))  # ceil
+    legs = [make_leg("grow", obj_of(params), growth_steps * args.eq_sweeps)]
+    if args.final_eq_sweeps > 0:
+        legs.append(make_leg("equilibrate", obj_of(params), args.final_eq_sweeps))
+    # Stats span the whole invocation (grow+settle, no reset between); attribute
+    # the totals to the final leg rather than fabricate a per-leg split.
+    legs[-1]["tried"], legs[-1]["accepted"] = st.total_tried, st.total_accepted
     comments = build_metadata_comments(
         topology=args.topology, dimension=args.dim,
         initial_triangulation=os.path.basename(args.src),
@@ -84,7 +97,9 @@ def main():
         codim3_degree_variance_coef=args.vdv_coef,
         growth_step_size=args.step_size, eq_sweeps_per_step=args.eq_sweeps,
         equilibration_sweeps=args.final_eq_sweeps,
-        manifold_view=v, objective=s.current_objective, sampler_stats=s.get_stats())
+        manifold_view=v, objective=s.current_objective, sampler_stats=st,
+        legs=legs, prior_history=prior,
+        history_note=None if prior else _UNMIGRATED)
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     v.save(args.out, comments=comments)
     print(f"done: {v.num_facets} facets, edgeDeg={v.mean_degree(1):.4f}, "

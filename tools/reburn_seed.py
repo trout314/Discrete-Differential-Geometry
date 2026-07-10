@@ -14,7 +14,11 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python"))
 
 from discrete_differential_geometry import Manifold, ManifoldSampler, SamplerParams
-from seed_utils import build_metadata_comments, get_free_memory_gb
+from seed_utils import (build_metadata_comments, get_free_memory_gb,
+                        make_leg, obj_of, read_history)
+
+_UNMIGRATED = ("source predates history tracking; prior lineage not inlined "
+               "(run the back-fill migration to complete it)")
 
 EXIT_LOW_MEMORY = 42
 
@@ -71,6 +75,9 @@ def main():
         sys.exit(EXIT_LOW_MEMORY)
 
     stats = sampler.get_stats()
+    prior = read_history(args.seed_file)
+    legs = [make_leg("reburn", obj_of(params), args.n_burn,
+                     tried=stats.total_tried, accepted=stats.total_accepted)]
     comments = build_metadata_comments(
         topology=args.topology,
         dimension=args.dimension,
@@ -87,6 +94,8 @@ def main():
         manifold_view=sampler.manifold,
         objective=sampler.current_objective,
         sampler_stats=stats,
+        legs=legs, prior_history=prior,
+        history_note=None if prior else _UNMIGRATED,
     )
     os.makedirs(args.output_dir, exist_ok=True)
     # Save directly from the read-only view.  A prior `.dup()` here copied the

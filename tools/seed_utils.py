@@ -1,5 +1,6 @@
 """Shared utilities for seed triangulation management."""
 
+import json
 import math
 import re
 import subprocess
@@ -161,6 +162,90 @@ def get_git_info() -> tuple[str, bool]:
         return "unknown", True
 
 
+# ---------------------------------------------------------------------------
+# Flattened provenance history
+#
+# Each seed's header carries a self-contained `history` field: a JSON list of
+# "legs", one per contiguous run under a single build + objective, oldest first.
+# A leg answers "how many sweeps at what objective", so a seed's full lineage is
+# reconstructable without any ancestor file on disk. All seed writers funnel
+# through build_metadata_comments(), which requires the source's prior history
+# (or root="sphere") plus this run's legs -- so lineage can never be dropped
+# silently. See read_history() to obtain the prior history from a source seed.
+# ---------------------------------------------------------------------------
+
+def obj_of(params) -> dict:
+    """Compact objective dict for a provenance leg, from a SamplerParams-like."""
+    return {
+        "nf": params.num_facets_target, "nf_c": params.num_facets_coef,
+        "ht": params.hinge_degree_target, "nh_c": params.num_hinges_coef,
+        "hdv_c": params.hinge_degree_variance_coef,
+        "vdv_c": params.codim3_degree_variance_coef,
+    }
+
+
+def make_leg(op: str, obj: dict, sweeps, *, from_: str = "prev",
+             commit: str = None, dirty: bool = None,
+             tried=None, accepted=None, reconstructed: bool = False) -> dict:
+    """Construct one provenance leg. `sweeps` is nominal; `tried`/`accepted` are
+    the sampler move counts for this leg (None when not cleanly attributable)."""
+    if commit is None:
+        commit, dirty = get_git_info()
+    leg = {
+        "op": op, "from": from_,
+        "commit": commit[:7] if commit != "unknown" else commit,
+        "dirty": bool(dirty),
+        "obj": obj, "sweeps": sweeps,
+        "tried": tried, "accepted": accepted,
+    }
+    if reconstructed:
+        leg["reconstructed"] = True
+    return leg
+
+
+def read_history(path: str) -> list:
+    """Return the flattened provenance history (list of legs) recorded in an
+    .mfd header, or [] if the file predates history tracking. Writers pass the
+    result as build_metadata_comments(prior_history=...)."""
+    h = load_seed_metadata(path).get("history")
+    if not h:
+        return []
+    try:
+        legs = json.loads(h)
+        return legs if isinstance(legs, list) else []
+    except (ValueError, TypeError):
+        return []
+
+
+def verify_history(path: str, manifold_view=None) -> tuple[bool, list]:
+    """Check a seed's flattened history is well-formed. Returns (ok, issues)."""
+    md = load_seed_metadata(path)
+    raw = md.get("history")
+    if not raw:
+        return False, ["no history field"]
+    try:
+        legs = json.loads(raw)
+    except (ValueError, TypeError):
+        return False, ["history is not valid JSON"]
+    issues = []
+    if not legs:
+        issues.append("empty history")
+    else:
+        if legs[0].get("from") != "sphere":
+            issues.append(f"not rooted at sphere (first leg from={legs[0].get('from')!r})")
+        for i, leg in enumerate(legs[1:], start=1):
+            if leg.get("from") != "prev":
+                issues.append(f"leg {i} from={leg.get('from')!r} (expected 'prev')")
+            for k in ("op", "obj", "sweeps"):
+                if k not in leg:
+                    issues.append(f"leg {i} missing '{k}'")
+    if manifold_view is not None:
+        rec, act = md.get("actual_f_vector"), str(list(manifold_view.f_vector))
+        if rec is not None and rec != act:
+            issues.append(f"final f_vector mismatch: header {rec} vs manifold {act}")
+    return (not issues), issues
+
+
 def build_metadata_comments(
     *,
     topology: str,
@@ -178,8 +263,28 @@ def build_metadata_comments(
     manifold_view,
     objective: float,
     sampler_stats=None,
+    legs: list = None,
+    prior_history: list = None,
+    root: str = None,
+    history_note: str = None,
 ) -> list[str]:
-    """Build the list of comment strings for .save()."""
+    """Build the list of comment strings for .save().
+
+    Lineage is mandatory: pass this run's `legs` (a non-empty list from
+    make_leg) AND exactly one of `prior_history` (the source seed's history,
+    from read_history) or `root="sphere"` (a from-scratch seed). The emitted
+    `history` field is prior_history + legs, so it can never be silently
+    dropped. `history_note` is free text for caveats (e.g. reconstructed
+    ancestry).
+    """
+    if legs is None or len(legs) == 0:
+        raise ValueError(
+            "build_metadata_comments requires legs=[...]: declare this run's "
+            "provenance legs (see make_leg). Lineage is not optional.")
+    if (prior_history is None) == (root is None):
+        raise ValueError(
+            "build_metadata_comments requires exactly one of prior_history="
+            "<list from read_history> or root='sphere'.")
     git_commit, git_dirty = get_git_info()
     comments = []
     comments.append(f"git_commit = {git_commit}")
@@ -229,4 +334,17 @@ def build_metadata_comments(
         comments.append(f"eq_bistellar_tries = {bt}")
         comments.append(f"eq_bistellar_accepts = {ba}")
 
+    # Flattened provenance: prior lineage + this run's legs (see module header).
+    history = (list(prior_history) if prior_history is not None else []) + list(legs)
+    rooted = bool(history) and history[0].get("from") == "sphere"
+    total_sweeps = sum(l["sweeps"] for l in history
+                       if isinstance(l.get("sweeps"), (int, float)))
+    total_tried = sum(l["tried"] for l in history
+                      if isinstance(l.get("tried"), (int, float)))
+    comments.append(f"history_root = {'sphere' if rooted else 'incomplete'}")
+    comments.append(f"history_total_sweeps = {total_sweeps}")
+    comments.append(f"history_total_tried = {total_tried}")
+    if history_note:
+        comments.append(f"history_note = {history_note}")
+    comments.append("history = " + json.dumps(history, separators=(",", ":")))
     return comments

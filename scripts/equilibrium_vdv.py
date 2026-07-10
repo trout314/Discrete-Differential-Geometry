@@ -55,7 +55,10 @@ from discrete_differential_geometry import (
 # convergence in a penalized one, since they are coupled.
 OBSERVABLES = ["vdv", "edge_deg", "hdv", "num_facets"]
 from seed_utils import (build_metadata_comments, build_seed_filename,
-                        get_total_memory_gb)
+                        get_total_memory_gb, make_leg, obj_of, read_history)
+
+_UNMIGRATED = ("source predates history tracking; prior lineage not inlined "
+               "(run the back-fill migration to complete it)")
 
 FIELDS = ["side", "replica", "coef", "sample", "sweeps",
           "num_facets", "vdv", "edge_deg", "hdv", "accept"]
@@ -233,6 +236,18 @@ def run_chain(args):
     if rec_hist:
         _write_hists(hp, vhists, ehists)
     if args.save_config:
+        # Provenance: warmup (if any, at warmup_coef) then burnin+measure (at
+        # coef) are distinct-objective legs. Per-sample reset_stats() means we
+        # have no clean per-leg move totals, so tried/accepted stay null and the
+        # reliable compute measure is `sweeps`.
+        prior = read_history(args.init)
+        base_obj = obj_of(params)                        # vdv_c = args.coef
+        legs = []
+        if args.warmup_sweeps > 0:
+            legs.append(make_leg("warmup", {**base_obj, "vdv_c": args.warmup_coef},
+                                 args.warmup_sweeps))
+        legs.append(make_leg("equilibrate", base_obj,
+                             args.burnin_sweeps + args.n_samples * args.thin))
         comments = build_metadata_comments(
             topology=args.topology, dimension=args.dim,
             initial_triangulation=os.path.basename(args.init),
@@ -244,7 +259,9 @@ def run_chain(args):
             equilibration_sweeps=args.warmup_sweeps + args.burnin_sweeps
                                  + args.n_samples * args.thin,
             manifold_view=v, objective=s.current_objective,
-            sampler_stats=s.get_stats())
+            sampler_stats=s.get_stats(),
+            legs=legs, prior_history=prior,
+            history_note=None if prior else _UNMIGRATED)
         os.makedirs(os.path.dirname(args.save_config) or ".", exist_ok=True)
         v.save(args.save_config, comments=comments)
     if do_ckpt:                                     # clean up on success
