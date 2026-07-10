@@ -541,7 +541,15 @@ bool mcmcStep(Vertex, P)(
         if (logAlpha >= 0 || uniform01 <= exp(logAlpha))
         {
             mfd.doMove(bm);
-            if (bm.coCenter.length == 1) unusedVertices.popBack;
+            if (bm.coCenter.length == 1)
+            {
+                // Shrink, then tell the runtime we own the freed slot so the
+                // next `~=` reuses the buffer instead of reallocating a fresh
+                // int[] every accepted move (that churn was false-pinned by the
+                // conservative GC, leaking ~0.14 MB/sweep). Mirrors ddg_capi.d.
+                unusedVertices.popBack;
+                unusedVertices.assumeSafeAppend;
+            }
             if (bm.center.length == 1) unusedVertices ~= bm.center;
             currentObjective += deltaObj;
             bistellarAccepts[bm.coCenter.length - 1]++;
