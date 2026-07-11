@@ -740,10 +740,10 @@ def produce(args):
         hinge_degree_variance_coef=args.hdv_coef,
         codim3_degree_variance_coef=args.beta)
     stem = build_seed_filename(args.topology, params, seed_index=0).rsplit("_s", 1)[0]
-    if glob.glob(os.path.join(args.seeds_dir, stem + "_s*.mfd")):
+    if not args.dry_run and glob.glob(os.path.join(args.seeds_dir, stem + "_s*.mfd")):
         print(f"seeds already exist for these params (stem {stem}); not duplicating.",
               file=sys.stderr)
-        return
+        return  # (--dry-run always re-gates existing families instead of skipping)
 
     K = args.replicas
     warm = args.production_warmup or max(300, args.production_burnin // 4)
