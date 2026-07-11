@@ -34,10 +34,14 @@ def main():
     p.add_argument("--bracket", nargs="+", default=G.DEFAULT_BRACKET,
                    help="Factorial bracket coordinates (default: vdv edge_deg num_facets).")
     p.add_argument("--replicas", type=int, default=32)
-    p.add_argument("--num-hinges-coef", type=float, default=2.0,
-                   help="Edge-pin stiffness k (default 2.0, the library value). "
-                        "Part of the objective/filename, so k!=2 makes a distinct "
+    p.add_argument("--num-hinges-coef", nargs="+", type=float, default=[2.0],
+                   help="Edge-pin stiffness k AXIS (one or more; default 2.0). "
+                        "Part of the objective/filename, so each k makes a distinct "
                         "family (no collision with the k=2 library).")
+    p.add_argument("--hdv-coef", nargs="+", type=float, default=[0.0],
+                   help="Hinge-degree-variance coef AXIS (one or more; default 0, "
+                        "unpenalized). Each hdv value makes a distinct family "
+                        "(adds an _HDV_ token to the filename).")
     p.add_argument("--burnin", type=int, default=5000)
     p.add_argument("--n-samples", type=int, default=1500)
     p.add_argument("--thin", type=int, default=5)
@@ -57,7 +61,7 @@ def main():
 
     G.sweep(_ROOT, dry_run=False, bracket=args.bracket, replicas=args.replicas,
             burnin=args.burnin, nsamp=args.n_samples, thin=args.thin,
-            num_hinges_coef=args.num_hinges_coef,
+            k_values=args.num_hinges_coef, hdv_values=args.hdv_coef,
             prune=None if args.no_prune else G.prune_raised_frontier,
             seeds_dir=args.seeds_dir, out_root=args.out_dir,
             only_n=args.only_n, only_edge=args.only_edge, only_bon=args.only_bon)

@@ -19,10 +19,16 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from seed_utils import load_seed_metadata
 
-# Standard grid (the certified N=1e4 grid, extended to small N).
+# Standard grid (the certified N=1e4 grid, extended to small N). Every axis below
+# is a full grid dimension; k (edge-pin stiffness) and hdv (hinge-degree-variance
+# coef) default to a single library value but accept a list, so the sweep covers
+# the whole N x edge x beta/N x k x hdv product. Distinct k/hdv make distinct
+# families (encoded in the .mfd filename), so no collision with the k=2/hdv=0 grid.
 N_TIERS = [("1e2", 100), ("178", 178), ("316", 316), ("562", 562), ("1e3", 1000)]
 EDGES = [("5p0043", 5.0043), ("5p1043", 5.1043), ("5p2043", 5.2043)]
 BETA_OVER_N = [0.001, 0.002, 0.004, 0.008, 0.01]
+K_VALUES = [2.0]        # edge-pin stiffness num_hinges_coef (default: library k=2)
+HDV_VALUES = [0.0]      # hinge-degree-variance coef (default: unpenalized)
 DEFAULT_BRACKET = ["vdv", "edge_deg", "num_facets"]
 
 
@@ -62,12 +68,13 @@ def _parse_verdict(out, dry_run):
 
 
 def run_cell(root, seed, n, edgeval, beta, *, bracket, replicas, burnin, nsamp,
-             thin, dry_run, seeds_dir, out_dir, num_hinges_coef=2.0):
+             thin, dry_run, seeds_dir, out_dir, num_hinges_coef=2.0, hdv_coef=0.0):
     """One grid cell = one `equilibrium_vdv.py --produce` invocation."""
     cmd = [sys.executable, os.path.join(root, "scripts", "equilibrium_vdv.py"),
            "--produce", "--seed-file", seed, "--n-target", str(n), "--beta", str(beta),
            "--bracket", *bracket, "--hinge-target", str(edgeval),
-           "--num-hinges-coef", str(num_hinges_coef), "--num-facets-coef", "0.1",
+           "--num-hinges-coef", str(num_hinges_coef), "--hdv-coef", str(hdv_coef),
+           "--num-facets-coef", "0.1",
            "--replicas", str(replicas), "--production-burnin", str(burnin),
            "--n-samples", str(nsamp), "--thin", str(thin),
            "--seeds-dir", os.path.join(root, seeds_dir), "--output-dir", out_dir]
@@ -80,12 +87,13 @@ def run_cell(root, seed, n, edgeval, beta, *, bracket, replicas, burnin, nsamp,
 
 
 def sweep(root, *, dry_run, bracket=DEFAULT_BRACKET, replicas, burnin, nsamp, thin,
-          n_tiers=N_TIERS, edges=EDGES, beta_over_N=BETA_OVER_N, prune=None,
-          seeds_dir="seeds", out_root="data/grid_sweep", only_n=None, only_edge=None,
-          only_bon=None, num_hinges_coef=2.0):
-    """Run the grid. `prune(edgetok, bon) -> bool` skips cells; only_* (lists)
-    restrict to a subset; num_hinges_coef sets the edge-pin stiffness k for every
-    cell. Writes an incremental summary CSV under out_root and returns the rows."""
+          n_tiers=N_TIERS, edges=EDGES, beta_over_N=BETA_OVER_N, k_values=K_VALUES,
+          hdv_values=HDV_VALUES, prune=None, seeds_dir="seeds",
+          out_root="data/grid_sweep", only_n=None, only_edge=None, only_bon=None):
+    """Run the N x edge x beta/N x k x hdv grid. `prune(edgetok, bon) -> bool`
+    skips cells; only_* (lists) restrict the base axes; k_values / hdv_values are
+    the edge-pin-stiffness and HDV-coef axes. Writes an incremental summary CSV
+    under out_root and returns the rows."""
     out_root = out_root if os.path.isabs(out_root) else os.path.join(root, out_root)
     os.makedirs(out_root, exist_ok=True)
     rows = []
@@ -101,30 +109,34 @@ def sweep(root, *, dry_run, bracket=DEFAULT_BRACKET, replicas, burnin, nsamp, th
                 if prune and prune(edgetok, bon):
                     continue
                 beta = bon * n
-                seed = founding_seed(root, ntok, edgetok, beta, seeds_dir)
-                if not seed:
-                    print(f"SKIP N={ntok} ED={edgetok} b/N={bon}: no founding family",
-                          flush=True)
-                    continue
-                cell = f"N{ntok}_ED{edgetok}_bN{bon:g}"
-                print(f"\n===== {cell}  beta={beta:g}  "
-                      f"found={os.path.basename(seed)} =====", flush=True)
-                verdict, detail = run_cell(
-                    root, seed, n, edgeval, beta, bracket=bracket, replicas=replicas,
-                    burnin=burnin, nsamp=nsamp, thin=thin, dry_run=dry_run,
-                    seeds_dir=seeds_dir, out_dir=os.path.join(out_root, cell),
-                    num_hinges_coef=num_hinges_coef)
-                rows.append(dict(N=n, edge=edgeval, beta_over_N=bon, beta=beta,
-                                 k=num_hinges_coef, verdict=verdict, detail=detail,
-                                 found=os.path.basename(seed)))
-                with open(os.path.join(out_root, "summary.csv"), "w", newline="") as f:
-                    w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
-                    w.writeheader(); w.writerows(rows)
+                for k in k_values:
+                    for hdv in hdv_values:
+                        seed = founding_seed(root, ntok, edgetok, beta, seeds_dir)
+                        if not seed:
+                            print(f"SKIP N={ntok} ED={edgetok} b/N={bon}: no founding",
+                                  flush=True)
+                            continue
+                        cell = f"N{ntok}_ED{edgetok}_bN{bon:g}_k{k:g}_hdv{hdv:g}"
+                        print(f"\n===== {cell}  beta={beta:g}  "
+                              f"found={os.path.basename(seed)} =====", flush=True)
+                        verdict, detail = run_cell(
+                            root, seed, n, edgeval, beta, bracket=bracket,
+                            replicas=replicas, burnin=burnin, nsamp=nsamp, thin=thin,
+                            dry_run=dry_run, seeds_dir=seeds_dir,
+                            out_dir=os.path.join(out_root, cell),
+                            num_hinges_coef=k, hdv_coef=hdv)
+                        rows.append(dict(N=n, edge=edgeval, beta_over_N=bon, beta=beta,
+                                         k=k, hdv=hdv, verdict=verdict, detail=detail,
+                                         found=os.path.basename(seed)))
+                        with open(os.path.join(out_root, "summary.csv"), "w",
+                                  newline="") as f:
+                            w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+                            w.writeheader(); w.writerows(rows)
 
     print("\n\n================ SWEEP SUMMARY ================")
     for r in rows:
         print(f"{r['N']:>6} ED{r['edge']:>7} b/N={r['beta_over_N']:<6g} "
-              f"{r['verdict']:>12}  {r['detail']}")
+              f"k={r['k']:<4g} hdv={r['hdv']:<4g} {r['verdict']:>12}  {r['detail']}")
     npass = sum(1 for r in rows if r["verdict"] == "PASS")
     nskip = sum(1 for r in rows if r["verdict"] == "SKIP-EXISTS")
     print(f"\n{npass} pass, {nskip} pre-existing, {len(rows)-npass-nskip} fail, "
