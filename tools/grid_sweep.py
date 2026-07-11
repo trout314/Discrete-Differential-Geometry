@@ -24,11 +24,14 @@ from seed_utils import load_seed_metadata
 # coef) default to a single library value but accept a list, so the sweep covers
 # the whole N x edge x beta/N x k x hdv product. Distinct k/hdv make distinct
 # families (encoded in the .mfd filename), so no collision with the k=2/hdv=0 grid.
-N_TIERS = [("1e2", 100), ("178", 178), ("316", 316), ("562", 562), ("1e3", 1000)]
+N_TIERS = [("1e2", 100), ("178", 178), ("316", 316), ("562", 562), ("1e3", 1000),
+           ("1778", 1778), ("3162", 3162), ("5623", 5623)]
 EDGES = [("5p0043", 5.0043), ("5p1043", 5.1043), ("5p2043", 5.2043)]
 BETA_OVER_N = [0.001, 0.002, 0.004, 0.008, 0.01]
 K_VALUES = [2.0]        # edge-pin stiffness num_hinges_coef (default: library k=2)
-HDV_VALUES = [0.0]      # hinge-degree-variance coef (default: unpenalized)
+# HDV coupling is coef/N (equipartition; like beta/N for VDV), so the axis is
+# specified as coef/N and raw hdv_coef = (coef/N) * N is set per cell.
+HDV_OVER_N = [0.0]      # hinge-degree-variance coef/N (default: unpenalized)
 DEFAULT_BRACKET = ["vdv", "edge_deg", "num_facets"]
 
 
@@ -103,14 +106,15 @@ def run_cell(root, seed, n, edgeval, beta, *, bracket, replicas, burnin, nsamp,
 
 def sweep(root, *, dry_run, bracket=DEFAULT_BRACKET, replicas, burnin, nsamp, thin,
           n_tiers=N_TIERS, edges=EDGES, beta_over_N=BETA_OVER_N, k_values=K_VALUES,
-          hdv_values=HDV_VALUES, prune=None, seeds_dir="seeds",
+          hdv_over_N=HDV_OVER_N, prune=None, seeds_dir="seeds",
           out_root="data/grid_sweep", only_n=None, only_edge=None, only_bon=None,
           adaptive=False, retry_burnin=5000, retry_nsamp=1500):
     """Run the N x edge x beta/N x k x hdv grid. `prune(edgetok, bon) -> bool`
-    skips cells; only_* (lists) restrict the base axes; k_values / hdv_values are
-    the edge-pin-stiffness and HDV-coef axes. With adaptive=True, a cell that
-    FAILS on VDV-only under-burn is retried once at retry_burnin/retry_nsamp.
-    Writes an incremental summary CSV under out_root and returns the rows."""
+    skips cells; only_* (lists) restrict the base axes; k_values is the edge-pin
+    axis and hdv_over_N is the HDV-coupling axis in coef/N (raw hdv_coef = coef/N
+    * N per cell). With adaptive=True, a cell that FAILS on a run-length-fixable
+    cause is retried once at retry_burnin/retry_nsamp. Writes an incremental
+    summary CSV under out_root and returns the rows."""
     out_root = out_root if os.path.isabs(out_root) else os.path.join(root, out_root)
     os.makedirs(out_root, exist_ok=True)
     rows = []
@@ -127,13 +131,14 @@ def sweep(root, *, dry_run, bracket=DEFAULT_BRACKET, replicas, burnin, nsamp, th
                     continue
                 beta = bon * n
                 for k in k_values:
-                    for hdv in hdv_values:
+                    for hdv_on in hdv_over_N:
+                        hdv = hdv_on * n                      # raw coef = (coef/N)*N
                         seed = founding_seed(root, ntok, edgetok, beta, seeds_dir)
                         if not seed:
                             print(f"SKIP N={ntok} ED={edgetok} b/N={bon}: no founding",
                                   flush=True)
                             continue
-                        cell = f"N{ntok}_ED{edgetok}_bN{bon:g}_k{k:g}_hdv{hdv:g}"
+                        cell = f"N{ntok}_ED{edgetok}_bN{bon:g}_k{k:g}_hdvN{hdv_on:g}"
                         print(f"\n===== {cell}  beta={beta:g}  "
                               f"found={os.path.basename(seed)} =====", flush=True)
                         verdict, detail = run_cell(
@@ -154,7 +159,8 @@ def sweep(root, *, dry_run, bracket=DEFAULT_BRACKET, replicas, burnin, nsamp, th
                                 num_hinges_coef=k, hdv_coef=hdv)
                             detail = "[retry] " + detail
                         rows.append(dict(N=n, edge=edgeval, beta_over_N=bon, beta=beta,
-                                         k=k, hdv=hdv, verdict=verdict, detail=detail,
+                                         k=k, hdv_over_n=hdv_on, hdv_raw=hdv,
+                                         verdict=verdict, detail=detail,
                                          found=os.path.basename(seed)))
                         with open(os.path.join(out_root, "summary.csv"), "w",
                                   newline="") as f:
@@ -164,7 +170,7 @@ def sweep(root, *, dry_run, bracket=DEFAULT_BRACKET, replicas, burnin, nsamp, th
     print("\n\n================ SWEEP SUMMARY ================")
     for r in rows:
         print(f"{r['N']:>6} ED{r['edge']:>7} b/N={r['beta_over_N']:<6g} "
-              f"k={r['k']:<4g} hdv={r['hdv']:<4g} {r['verdict']:>12}  {r['detail']}")
+              f"k={r['k']:<4g} hdvN={r['hdv_over_n']:<5g} {r['verdict']:>12}  {r['detail']}")
     npass = sum(1 for r in rows if r["verdict"] == "PASS")
     nskip = sum(1 for r in rows if r["verdict"] == "SKIP-EXISTS")
     print(f"\n{npass} pass, {nskip} pre-existing, {len(rows)-npass-nskip} fail, "

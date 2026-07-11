@@ -36,9 +36,10 @@ def main():
                    help="Edge-pin stiffness k AXIS (one or more; default 2.0). "
                         "edge_deg mixing ~ 1/k -- raising k helps edge_deg but "
                         "eventually breaks facet mixing (k>=4).")
-    p.add_argument("--hdv-coef", nargs="+", type=float, default=[0.0],
-                   help="Hinge-degree-variance coef AXIS (one or more; default 0, "
-                        "unpenalized). Distinct k/hdv make distinct families.")
+    p.add_argument("--hdv-over-n", nargs="+", type=float, default=[0.0],
+                   help="HDV coupling coef/N AXIS (one or more; default 0, "
+                        "unpenalized). Raw hdv_coef = (coef/N)*N per cell; the "
+                        "natural HDV coupling, matching the _HDVs_{coef/N} naming.")
     p.add_argument("--burnin", type=int, default=300)
     p.add_argument("--n-samples", type=int, default=150)
     p.add_argument("--thin", type=int, default=5)
@@ -59,7 +60,7 @@ def main():
     kw = dict(beta_over_N=args.beta_over_n) if args.beta_over_n is not None else {}
     G.sweep(_ROOT, dry_run=True, bracket=args.bracket, replicas=args.replicas,
             burnin=args.burnin, nsamp=args.n_samples, thin=args.thin,
-            k_values=args.num_hinges_coef, hdv_values=args.hdv_coef,
+            k_values=args.num_hinges_coef, hdv_over_N=args.hdv_over_n,
             seeds_dir=args.seeds_dir, out_root=args.out_dir,
             only_n=args.only_n, only_edge=args.only_edge, only_bon=args.only_bon, **kw)
 
