@@ -86,8 +86,10 @@ def retry_worthwhile(detail):
 
 
 def run_cell(root, seed, n, edgeval, beta, *, bracket, replicas, burnin, nsamp,
-             thin, dry_run, seeds_dir, out_dir, num_hinges_coef=2.0, hdv_coef=0.0):
-    """One grid cell = one `equilibrium_vdv.py --produce` invocation."""
+             thin, dry_run, seeds_dir, out_dir, num_hinges_coef=2.0, hdv_coef=0.0,
+             max_workers=None, max_memory_gb=None):
+    """One grid cell = one `equilibrium_vdv.py --produce` invocation. Optional
+    max_workers / max_memory_gb cap the concurrent-chain fan-out (cores / RAM)."""
     cmd = [sys.executable, os.path.join(root, "scripts", "equilibrium_vdv.py"),
            "--produce", "--seed-file", seed, "--n-target", str(n), "--beta", str(beta),
            "--bracket", *bracket, "--hinge-target", str(edgeval),
@@ -96,6 +98,10 @@ def run_cell(root, seed, n, edgeval, beta, *, bracket, replicas, burnin, nsamp,
            "--replicas", str(replicas), "--production-burnin", str(burnin),
            "--n-samples", str(nsamp), "--thin", str(thin),
            "--seeds-dir", os.path.join(root, seeds_dir), "--output-dir", out_dir]
+    if max_workers is not None:
+        cmd += ["--max-workers", str(max_workers)]
+    if max_memory_gb is not None:
+        cmd += ["--max-memory-gb", str(max_memory_gb)]
     if dry_run:
         cmd.append("--dry-run")
     r = subprocess.run(cmd, capture_output=True, text=True)
@@ -150,12 +156,16 @@ def sweep(root, *, dry_run, bracket=DEFAULT_BRACKET, replicas, burnin, nsamp, th
                         if adaptive and verdict == "FAIL" and retry_worthwhile(detail):
                             print(f"  [adaptive] {cell}: run-length-fixable -> retry "
                                   f"at {retry_burnin}/{retry_nsamp}", flush=True)
+                            # Fresh out_dir: a chain whose --save-config already
+                            # exists short-circuits (resume), so reusing the first
+                            # attempt's staging would re-gate the SAME short run
+                            # instead of running longer. _retry gets clean staging.
                             verdict, detail = run_cell(
                                 root, seed, n, edgeval, beta, bracket=bracket,
                                 replicas=replicas, burnin=retry_burnin,
                                 nsamp=retry_nsamp, thin=thin, dry_run=dry_run,
                                 seeds_dir=seeds_dir,
-                                out_dir=os.path.join(out_root, cell),
+                                out_dir=os.path.join(out_root, cell + "_retry"),
                                 num_hinges_coef=k, hdv_coef=hdv)
                             detail = "[retry] " + detail
                         rows.append(dict(N=n, edge=edgeval, beta_over_N=bon, beta=beta,
