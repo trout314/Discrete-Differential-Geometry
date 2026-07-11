@@ -45,6 +45,13 @@ def main():
     p.add_argument("--burnin", type=int, default=5000)
     p.add_argument("--n-samples", type=int, default=1500)
     p.add_argument("--thin", type=int, default=5)
+    p.add_argument("--adaptive", action="store_true",
+                   help="Retry a cell that FAILS on VDV-only under-burn once at "
+                        "--retry-burnin/--retry-n-samples (genuine frontier breaks "
+                        "are not retried). Lets --burnin be the shorter 'long' "
+                        "setting while still clearing slow low-beta/N VDV cells.")
+    p.add_argument("--retry-burnin", type=int, default=5000)
+    p.add_argument("--retry-n-samples", type=int, default=1500)
     p.add_argument("--no-prune", action="store_true",
                    help="Run the known-dead corner (beta/N>=0.008 at raised edges) too.")
     p.add_argument("--only-n", nargs="+", default=None,
@@ -62,6 +69,8 @@ def main():
     G.sweep(_ROOT, dry_run=False, bracket=args.bracket, replicas=args.replicas,
             burnin=args.burnin, nsamp=args.n_samples, thin=args.thin,
             k_values=args.num_hinges_coef, hdv_values=args.hdv_coef,
+            adaptive=args.adaptive, retry_burnin=args.retry_burnin,
+            retry_nsamp=args.retry_n_samples,
             prune=None if args.no_prune else G.prune_raised_frontier,
             seeds_dir=args.seeds_dir, out_root=args.out_dir,
             only_n=args.only_n, only_edge=args.only_edge, only_bon=args.only_bon)

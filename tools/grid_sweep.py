@@ -67,6 +67,21 @@ def _parse_verdict(out, dry_run):
     return "FAIL", (m.group(1)[:90] if m else "ERR")
 
 
+def retry_worthwhile(detail):
+    """True if a produce FAIL is RUN-LENGTH-fixable rather than a genuine frontier
+    break: an ESS 'run longer' (under-sampled), or VDV-only non-convergence (vdv
+    in the bad list but none of the frontier coordinates edge_deg / num_facets /
+    hdv). A frontier break (edge_deg/num_facets/hdv qRhat) is not retried."""
+    if "run longer" in detail:
+        return True
+    m = re.search(r"not converged in \[(.*?)\]", detail)
+    if not m:
+        return False
+    bad = m.group(1)
+    return "vdv" in bad and not any(x in bad for x in
+                                    ("edge_deg", "num_facets", "hdv"))
+
+
 def run_cell(root, seed, n, edgeval, beta, *, bracket, replicas, burnin, nsamp,
              thin, dry_run, seeds_dir, out_dir, num_hinges_coef=2.0, hdv_coef=0.0):
     """One grid cell = one `equilibrium_vdv.py --produce` invocation."""
@@ -89,11 +104,13 @@ def run_cell(root, seed, n, edgeval, beta, *, bracket, replicas, burnin, nsamp,
 def sweep(root, *, dry_run, bracket=DEFAULT_BRACKET, replicas, burnin, nsamp, thin,
           n_tiers=N_TIERS, edges=EDGES, beta_over_N=BETA_OVER_N, k_values=K_VALUES,
           hdv_values=HDV_VALUES, prune=None, seeds_dir="seeds",
-          out_root="data/grid_sweep", only_n=None, only_edge=None, only_bon=None):
+          out_root="data/grid_sweep", only_n=None, only_edge=None, only_bon=None,
+          adaptive=False, retry_burnin=5000, retry_nsamp=1500):
     """Run the N x edge x beta/N x k x hdv grid. `prune(edgetok, bon) -> bool`
     skips cells; only_* (lists) restrict the base axes; k_values / hdv_values are
-    the edge-pin-stiffness and HDV-coef axes. Writes an incremental summary CSV
-    under out_root and returns the rows."""
+    the edge-pin-stiffness and HDV-coef axes. With adaptive=True, a cell that
+    FAILS on VDV-only under-burn is retried once at retry_burnin/retry_nsamp.
+    Writes an incremental summary CSV under out_root and returns the rows."""
     out_root = out_root if os.path.isabs(out_root) else os.path.join(root, out_root)
     os.makedirs(out_root, exist_ok=True)
     rows = []
@@ -125,6 +142,17 @@ def sweep(root, *, dry_run, bracket=DEFAULT_BRACKET, replicas, burnin, nsamp, th
                             dry_run=dry_run, seeds_dir=seeds_dir,
                             out_dir=os.path.join(out_root, cell),
                             num_hinges_coef=k, hdv_coef=hdv)
+                        if adaptive and verdict == "FAIL" and retry_worthwhile(detail):
+                            print(f"  [adaptive] {cell}: run-length-fixable -> retry "
+                                  f"at {retry_burnin}/{retry_nsamp}", flush=True)
+                            verdict, detail = run_cell(
+                                root, seed, n, edgeval, beta, bracket=bracket,
+                                replicas=replicas, burnin=retry_burnin,
+                                nsamp=retry_nsamp, thin=thin, dry_run=dry_run,
+                                seeds_dir=seeds_dir,
+                                out_dir=os.path.join(out_root, cell),
+                                num_hinges_coef=k, hdv_coef=hdv)
+                            detail = "[retry] " + detail
                         rows.append(dict(N=n, edge=edgeval, beta_over_N=bon, beta=beta,
                                          k=k, hdv=hdv, verdict=verdict, detail=detail,
                                          found=os.path.basename(seed)))
