@@ -115,6 +115,14 @@ def decode_float(s: str) -> float:
     return float(s)
 
 
+def round_sig(x: float, sig: int = 3) -> float:
+    """Round x to `sig` significant figures. Keeps clean grid values clean
+    (0.1 -> 0.1) while taming messy ratios (0.101266 -> 0.101) to a short token."""
+    if x == 0:
+        return 0.0
+    return round(x, -int(math.floor(math.log10(abs(x)))) + (sig - 1))
+
+
 def build_seed_filename(topology: str, params, seed_index: int | None = None) -> str:
     """Construct a seed filename from topology and SamplerParams-like object.
 
@@ -147,9 +155,13 @@ def build_seed_filename(topology: str, params, seed_index: int | None = None) ->
         beta_over_n = params.codim3_degree_variance_coef / params.num_facets_target
         parts.append(f"VDVs_{encode_float(beta_over_n)}")
 
-    # HDV (hinge degree variance) term — last when present
+    # HDV (hinge/edge degree variance) term — SCALED coef/N ("HDVs_"), like VDVs_:
+    # coef/N is the natural HDV coupling too (equipartition; a move shifts global
+    # HDV by ~O(1/N_edges), N_edges ∝ N), so the same coupling gets the same label
+    # across N. Rounded to 3 sig figs; raw coef recoverable from the metadata.
     if params.hinge_degree_variance_coef != 0:
-        parts.append(f"HDV_{encode_float(params.hinge_degree_variance_coef)}")
+        hdv_over_n = params.hinge_degree_variance_coef / params.num_facets_target
+        parts.append(f"HDVs_{encode_float(round_sig(hdv_over_n, 3))}")
 
     name = "_".join(parts)
     if seed_index is not None:
