@@ -58,14 +58,18 @@ def main():
                    help="Restrict to these N tokens/values (e.g. 562).")
     p.add_argument("--only-edge", nargs="+", default=None,
                    help="Restrict to these edge tokens (e.g. 5p2043).")
+    p.add_argument("--beta-over-n", nargs="+", type=float, default=None,
+                   help="VDV coupling beta/N AXIS (one or more; default the standard "
+                        "grid). Pass 0 for base (no-VDV) families.")
     p.add_argument("--only-bon", nargs="+", type=float, default=None,
-                   help="Restrict to these beta/N values (e.g. 0.001).")
+                   help="Restrict the beta/N axis to these values (a filter).")
     p.add_argument("--seeds-dir", default="seeds",
                    help="Library to found from and copy into (repo-root-relative "
                         "or absolute).")
     p.add_argument("--out-dir", default="data/grid_produce")
     args = p.parse_args()
 
+    kw = dict(beta_over_N=args.beta_over_n) if args.beta_over_n is not None else {}
     G.sweep(_ROOT, dry_run=False, bracket=args.bracket, replicas=args.replicas,
             burnin=args.burnin, nsamp=args.n_samples, thin=args.thin,
             k_values=args.num_hinges_coef, hdv_values=args.hdv_coef,
@@ -73,7 +77,7 @@ def main():
             retry_nsamp=args.retry_n_samples,
             prune=None if args.no_prune else G.prune_raised_frontier,
             seeds_dir=args.seeds_dir, out_root=args.out_dir,
-            only_n=args.only_n, only_edge=args.only_edge, only_bon=args.only_bon)
+            only_n=args.only_n, only_edge=args.only_edge, only_bon=args.only_bon, **kw)
 
 
 if __name__ == "__main__":
