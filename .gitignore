@@ -39,6 +39,11 @@ data/simplicial_complex_unittest_save.dat
 *.edge_graph
 data/seed_gen/
 
+# ...but the standard_triangulations/ library (canonical named triangulations,
+# e.g. the 600-cell) IS version-controlled despite the *.mfd rule above.
+!standard_triangulations/
+!standard_triangulations/*.mfd
+
 #jupyter notebook checkpoints
 *checkpoints
 *checkpoint.ipynb
