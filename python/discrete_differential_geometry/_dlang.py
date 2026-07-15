@@ -537,6 +537,22 @@ _lib.ddg_sampler_reset_stats.argtypes = [ctypes.c_void_p]
 _lib.ddg_sampler_reset_stats.restype = ctypes.c_int
 _lib.ddg_sampler_reset_stats.errcheck = _check_int
 
+_lib.ddg_sampler_track_move_counts.argtypes = [ctypes.c_void_p, ctypes.c_int]
+_lib.ddg_sampler_track_move_counts.restype = ctypes.c_int
+_lib.ddg_sampler_track_move_counts.errcheck = _check_int
+
+_lib.ddg_sampler_reset_move_counts.argtypes = [ctypes.c_void_p]
+_lib.ddg_sampler_reset_move_counts.restype = ctypes.c_int
+_lib.ddg_sampler_reset_move_counts.errcheck = _check_int
+
+_lib.ddg_sampler_move_counts.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_int),
+    ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_double),
+    ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_double),
+]
+_lib.ddg_sampler_move_counts.restype = ctypes.c_long
+_lib.ddg_sampler_move_counts.errcheck = _check_int
+
 _lib.ddg_sampler_get_stats.argtypes = [
     ctypes.c_void_p,
     ctypes.POINTER(ctypes.c_long), ctypes.POINTER(ctypes.c_long),

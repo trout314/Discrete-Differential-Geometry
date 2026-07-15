@@ -437,6 +437,65 @@ unittest
 }
 
 /******************************************************************************
+Per-vertex move-attribution counters (the "measured combinatorial lapse").
+
+Attribution rule ("Option A"): every event distributes TOTAL WEIGHT 1 uniformly
+over the move's support vertices. For a bistellar move the support is the 5
+vertices of its bistellar ball (center ∪ coCenter) — the vertex set of the one
+4-simplex the move glues onto the triangulation, hence 1/5 per vertex. For a
+4-4 hinge move the support is its 6 vertices (removedEdge ∪ linkCycle); its
+pentachoron-stack 4-volume is 2, applied in ANALYSIS — the bistellar and hinge
+ledgers are kept separate so any weighting convention is a linear combination
+downstream. For a 1-4 move the coCenter label is the vertex the move CREATES
+(it is attributed like the others; intersect with surviving vertices in
+analysis).
+
+Ladder: proposed (concrete move formed, post proposal-thinning, pre validity)
+→ valid (passed hasValid*, i.e. counted as a "try") → accepted. Per vertex,
+valid/proposed is the kinematic-availability field and accepted/valid the
+energetic (Metropolis) field.
+*/
+struct MoveCounters(Vertex)
+{
+    double[Vertex] proposed;
+    double[Vertex] valid;
+    double[Vertex] acceptedBistellar;
+    double[Vertex] acceptedHinge;
+
+    void clear()()
+    {
+        proposed = null;
+        valid = null;
+        acceptedBistellar = null;
+        acceptedHinge = null;
+    }
+}
+
+/// Distribute total weight 1 uniformly over `support` in `ledger`.
+private void addSupport(Vertex)(ref double[Vertex] ledger,
+    scope const(Vertex)[] support)
+{
+    immutable w = 1.0 / support.length;
+    foreach (v; support)
+        ledger[v] = ledger.get(v, 0.0) + w;
+}
+
+///
+unittest
+{
+    double[int] ledger;
+    ledger.addSupport([0, 1, 2, 3, 4]);       // one bistellar-ball event
+    ledger.addSupport([0, 1, 2, 3, 4]);
+    ledger.addSupport([3, 4, 5, 6, 7, 8]);    // one hinge-support event
+    ledger[0].shouldEqual(0.4);
+    ledger[3].isClose(0.4 + 1.0 / 6).shouldEqual(true);
+    // each event contributes total weight 1
+    double total = 0;
+    foreach (v; ledger.byValue) total += v;
+    total.isClose(3.0).shouldEqual(true);
+}
+
+/******************************************************************************
 Run one MCMC step using a unified proposal that naturally includes both
 bistellar (Pachner) moves and 4-4 hinge moves.
 
@@ -457,7 +516,8 @@ bool mcmcStep(Vertex, P)(
     ref ulong hingeTries,
     ref ulong hingeAccepts,
     ref ulong[4] bistellarTries,
-    ref ulong[4] bistellarAccepts)
+    ref ulong[4] bistellarAccepts,
+    MoveCounters!Vertex* counters = null)
 {
     enum dim = 3;
     enum nVerts = dim + 1;
@@ -494,10 +554,22 @@ bool mcmcStep(Vertex, P)(
                 if (v != edge[0] && v != edge[1]) { startVertex = v; break; }
 
             auto hm = mfd.hingeMove(edge, startVertex, uniform(0, 2));
+
+            // Support = the 6 vertices whose stars the move touches.
+            Vertex[6] hingeSupport = void;
+            if (counters !is null)
+            {
+                hingeSupport[0 .. 2] = hm.removedEdge[];
+                hingeSupport[2 .. 6] = hm.linkCycle[];
+                addSupport(counters.proposed, hingeSupport[]);
+            }
+
             if (!mfd.hasValidHingeMove(hm))
                 continue;
 
             hingeTries++;
+            if (counters !is null)
+                addSupport(counters.valid, hingeSupport[]);
             real deltaObj = mfd.speculativeHingeDelta(hm, currentObjective, params);
             real logAlpha = -deltaObj;
 
@@ -506,6 +578,8 @@ bool mcmcStep(Vertex, P)(
                 mfd.doHingeMove(hm);
                 currentObjective += deltaObj;
                 hingeAccepts++;
+                if (counters !is null)
+                    addSupport(counters.acceptedHinge, hingeSupport[]);
                 return true;
             }
             return false;
@@ -531,16 +605,32 @@ bool mcmcStep(Vertex, P)(
         if (uniform01 > 2.0 / centerDeg)
             continue;
 
+        // Support = the 5 vertices of the bistellar ball (one glued 4-simplex).
+        Vertex[nVerts + 1] ballBuf = void;
+        Vertex[] ball;
+        if (counters !is null)
+        {
+            size_t nb = 0;
+            foreach (v; bm.center) ballBuf[nb++] = v;
+            foreach (v; bm.coCenter) ballBuf[nb++] = v;
+            ball = ballBuf[0 .. nb];
+            addSupport(counters.proposed, ball);
+        }
+
         if (!mfd.hasValidMove(bm))
             continue;
 
         bistellarTries[bm.coCenter.length - 1]++;
+        if (counters !is null)
+            addSupport(counters.valid, ball);
         real deltaObj = mfd.speculativeBistellarDelta(bm, currentObjective, params);
         real logAlpha = -deltaObj;
 
         if (logAlpha >= 0 || uniform01 <= exp(logAlpha))
         {
             mfd.doMove(bm);
+            if (counters !is null)
+                addSupport(counters.acceptedBistellar, ball);
             if (bm.coCenter.length == 1)
             {
                 // Shrink, then tell the runtime we own the freed slot so the
@@ -586,17 +676,35 @@ unittest
     int[] unusedVertices = [8];
     ulong hingeTries, hingeAccepts;
     ulong[4] bTries, bAccepts;
+    MoveCounters!int mc;
 
     int accepted = 0;
     foreach (_; 0 .. 500)
     {
         if (mfd.mcmcStep(currentObj, unusedVertices, params, 0.5,
-                hingeTries, hingeAccepts, bTries, bAccepts))
+                hingeTries, hingeAccepts, bTries, bAccepts, &mc))
             accepted++;
     }
 
     assert(accepted > 0, "should have accepted some moves");
     assert(hingeTries > 0, "should have attempted some hinge moves");
+
+    // Move-counter invariants: every event distributes total weight 1 over its
+    // support, so ledger totals must reproduce the scalar tallies exactly.
+    double total(double[int] aa)
+    {
+        double s = 0;
+        foreach (v; aa.byValue) s += v;
+        return s;
+    }
+    assert(isClose(total(mc.valid), cast(double)(hingeTries + bTries[].sum), 0.0, 1e-6),
+        "valid ledger total != tries");
+    assert(isClose(total(mc.acceptedBistellar), cast(double) bAccepts[].sum, 0.0, 1e-6),
+        "acceptedBistellar ledger total != bistellar accepts");
+    assert(isClose(total(mc.acceptedHinge), cast(double) hingeAccepts, 0.0, 1e-6),
+        "acceptedHinge ledger total != hinge accepts");
+    assert(total(mc.proposed) >= total(mc.valid) - 1e-9,
+        "proposed must dominate valid");
 
     // Verify manifold integrity after many mixed moves
     assert(mfd.findProblems.length == 0,

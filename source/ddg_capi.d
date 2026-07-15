@@ -1069,6 +1069,11 @@ private struct SamplerState
     ulong[5] bistellarTries;   // indexed by coCenter.length - 1; max dim=4 -> 5 slots
     ulong[5] bistellarAccepts;
     long totalAccepted, totalTried;
+
+    // Per-vertex move-attribution counters (measured combinatorial lapse).
+    // Opt-in (small per-proposal AA overhead); dim=3 only. See sampler.MoveCounters.
+    bool trackMoveCounts = false;
+    MoveCounters!int moveCounters;
 }
 
 extern(C) void* ddg_sampler_create(void* manifold_handle,
@@ -1311,7 +1316,8 @@ private long runSamplerDim3(SamplerState* s, long numMoves,
             }
 
             if (mw.mfd.mcmcStep(s.currentObjective, s.unusedVertices, params,
-                    s.hingeMoveProb, hT, hA, bT, bA))
+                    s.hingeMoveProb, hT, hA, bT, bA,
+                    s.trackMoveCounts ? &s.moveCounters : null))
             {
                 accepted++;
                 acceptedSinceWriteback++;
@@ -1529,6 +1535,74 @@ extern(C) int ddg_sampler_set_hinge_move_prob(void* sampler_handle, double prob)
     if (sampler_handle is null) { setError("null handle"); return -1; }
     (cast(SamplerState*) sampler_handle).hingeMoveProb = prob;
     return 0;
+}
+
+/// Enable/disable per-vertex move-attribution counters (dim=3 samplers only;
+/// small per-proposal overhead, off by default). Enabling does not clear
+/// previously accumulated counts; use ddg_sampler_reset_move_counts.
+extern(C) int ddg_sampler_track_move_counts(void* sampler_handle, int enable) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto state = cast(SamplerState*) sampler_handle;
+    if (enable != 0 && state.dim != 3)
+    {
+        setError("move-count tracking is only supported for dim=3 samplers");
+        return -1;
+    }
+    state.trackMoveCounts = enable != 0;
+    return 0;
+}
+
+extern(C) int ddg_sampler_reset_move_counts(void* sampler_handle) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    try
+    {
+        (cast(SamplerState*) sampler_handle).moveCounters.clear();
+        return 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Fetch the per-vertex move counters. Two-call pattern (like degree_histogram):
+/// call with labels==null to get the entry count, then with all five buffers
+/// (each of that length) to fill them. Entries are sorted by vertex label.
+/// Every event contributes total weight 1 to its ledger, so ledger sums equal
+/// event counts; a 1-4 move's created-vertex label appears like any other.
+extern(C) long ddg_sampler_move_counts(void* sampler_handle, int* labels,
+    double* proposed, double* valid,
+    double* accepted_bistellar, double* accepted_hinge) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null sampler handle"); return -1; }
+        auto s = cast(SamplerState*) sampler_handle;
+
+        bool[int] keySet;
+        foreach (k; s.moveCounters.proposed.byKey) keySet[k] = true;
+        foreach (k; s.moveCounters.valid.byKey) keySet[k] = true;
+        foreach (k; s.moveCounters.acceptedBistellar.byKey) keySet[k] = true;
+        foreach (k; s.moveCounters.acceptedHinge.byKey) keySet[k] = true;
+
+        if (labels is null)
+            return keySet.length;
+
+        auto keys = keySet.keys;
+        keys.sort();
+        foreach (i, k; keys)
+        {
+            labels[i] = k;
+            proposed[i] = s.moveCounters.proposed.get(k, 0.0);
+            valid[i] = s.moveCounters.valid.get(k, 0.0);
+            accepted_bistellar[i] = s.moveCounters.acceptedBistellar.get(k, 0.0);
+            accepted_hinge[i] = s.moveCounters.acceptedHinge.get(k, 0.0);
+        }
+        return keys.length;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
 }
 
 extern(C) int ddg_sampler_set_num_facets_coef(void* sampler_handle, double coef) nothrow

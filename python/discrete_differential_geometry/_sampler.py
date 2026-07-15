@@ -348,6 +348,57 @@ class ManifoldSampler:
         """Reset cumulative statistics counters."""
         _lib.ddg_sampler_reset_stats(self._handle)
 
+    # -- Per-vertex move-attribution counters (measured combinatorial lapse) --
+
+    def track_move_counts(self, enable: bool = True) -> None:
+        """Enable/disable per-vertex move-attribution counters (dim=3 only).
+
+        Off by default (small per-proposal overhead). Every proposed / valid /
+        accepted move distributes total weight 1 uniformly over its support
+        vertices: the 5 bistellar-ball vertices (= the one 4-simplex the move
+        glues on, so 1/5 each) or the 6 support vertices of a 4-4 hinge move.
+        Bistellar and hinge accepted ledgers are kept separate so any 4-volume
+        convention (e.g. a 4-4 move = 2 stacked 4-simplices) can be applied
+        downstream. Enabling does not clear existing counts; see
+        :meth:`reset_move_counts`.
+        """
+        _lib.ddg_sampler_track_move_counts(self._handle, 1 if enable else 0)
+
+    def reset_move_counts(self) -> None:
+        """Zero the per-vertex move-attribution counters."""
+        _lib.ddg_sampler_reset_move_counts(self._handle)
+
+    def move_counts(self) -> dict[str, np.ndarray]:
+        """Return the per-vertex move-attribution counters.
+
+        Returns a dict of equal-length arrays keyed by:
+        ``vertex`` (labels, sorted), ``proposed`` (concrete move formed, post
+        proposal-thinning, pre validity), ``valid`` (passed the validity check,
+        i.e. a counted "try"), ``accepted_bistellar`` and ``accepted_hinge``
+        (accepted moves by type). Ledger sums equal event counts. Note a 1-4
+        move's created-vertex label is attributed like any other; intersect
+        with surviving vertices in analysis.
+        """
+        n = _lib.ddg_sampler_move_counts(self._handle, None, None, None, None, None)
+        if n <= 0:
+            empty_i = np.empty(0, dtype=np.int32)
+            empty_d = np.empty(0, dtype=np.float64)
+            return dict(vertex=empty_i, proposed=empty_d, valid=empty_d,
+                        accepted_bistellar=empty_d, accepted_hinge=empty_d)
+        labels = (ctypes.c_int * n)()
+        prop = (ctypes.c_double * n)()
+        valid = (ctypes.c_double * n)()
+        acc_b = (ctypes.c_double * n)()
+        acc_h = (ctypes.c_double * n)()
+        _lib.ddg_sampler_move_counts(self._handle, labels, prop, valid, acc_b, acc_h)
+        return dict(
+            vertex=np.array(labels[:n], dtype=np.int32),
+            proposed=np.array(prop[:n], dtype=np.float64),
+            valid=np.array(valid[:n], dtype=np.float64),
+            accepted_bistellar=np.array(acc_b[:n], dtype=np.float64),
+            accepted_hinge=np.array(acc_h[:n], dtype=np.float64),
+        )
+
     @property
     def current_objective(self) -> float:
         """Return the current objective function value."""
