@@ -553,6 +553,51 @@ _lib.ddg_sampler_move_counts.argtypes = [
 _lib.ddg_sampler_move_counts.restype = ctypes.c_long
 _lib.ddg_sampler_move_counts.errcheck = _check_int
 
+_lib.ddg_sampler_track_geometry.argtypes = [ctypes.c_void_p, ctypes.c_int]
+_lib.ddg_sampler_track_geometry.restype = ctypes.c_int
+_lib.ddg_sampler_track_geometry.errcheck = _check_int
+
+_lib.ddg_sampler_reset_geometry.argtypes = [ctypes.c_void_p]
+_lib.ddg_sampler_reset_geometry.restype = ctypes.c_int
+_lib.ddg_sampler_reset_geometry.errcheck = _check_int
+
+_lib.ddg_sampler_vertex_role_counts.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_double),
+]
+_lib.ddg_sampler_vertex_role_counts.restype = ctypes.c_long
+_lib.ddg_sampler_vertex_role_counts.errcheck = _check_int
+
+_lib.ddg_sampler_edge_role_counts.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int),
+    ctypes.POINTER(ctypes.c_double),
+]
+_lib.ddg_sampler_edge_role_counts.restype = ctypes.c_long
+_lib.ddg_sampler_edge_role_counts.errcheck = _check_int
+
+_lib.ddg_sampler_tet_stats.argtypes = [
+    ctypes.c_void_p,
+    ctypes.POINTER(ctypes.c_long), ctypes.POINTER(ctypes.c_long),
+    ctypes.POINTER(ctypes.c_long),
+    ctypes.POINTER(ctypes.c_long), ctypes.POINTER(ctypes.c_long),
+    ctypes.POINTER(ctypes.c_long),
+]
+_lib.ddg_sampler_tet_stats.restype = ctypes.c_int
+_lib.ddg_sampler_tet_stats.errcheck = _check_int
+
+_lib.ddg_sampler_event_log_enable.argtypes = [ctypes.c_void_p, ctypes.c_long]
+_lib.ddg_sampler_event_log_enable.restype = ctypes.c_int
+_lib.ddg_sampler_event_log_enable.errcheck = _check_int
+
+_lib.ddg_sampler_event_log_drain.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_ubyte), ctypes.c_long,
+]
+_lib.ddg_sampler_event_log_drain.restype = ctypes.c_long
+_lib.ddg_sampler_event_log_drain.errcheck = _check_int
+
+_lib.ddg_sampler_event_log_overflowed.argtypes = [ctypes.c_void_p]
+_lib.ddg_sampler_event_log_overflowed.restype = ctypes.c_int
+_lib.ddg_sampler_event_log_overflowed.errcheck = _check_int
+
 _lib.ddg_sampler_get_stats.argtypes = [
     ctypes.c_void_p,
     ctypes.POINTER(ctypes.c_long), ctypes.POINTER(ctypes.c_long),

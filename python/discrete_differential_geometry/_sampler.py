@@ -399,6 +399,99 @@ class ManifoldSampler:
             accepted_hinge=np.array(acc_h[:n], dtype=np.float64),
         )
 
+    # -- Role-resolved geometry ledger + event log (see move_geometry module) --
+
+    def track_geometry(self, enable: bool = True) -> None:
+        """Enable/disable the role-resolved geometry ledger (dim=3 only).
+
+        Records, per vertex and per edge, participation counts in every
+        (move type, role) channel of accepted moves, plus tet birth/death
+        aggregates and a lifetime histogram. Role taxonomy, degree-change
+        tables, and derived fields live in
+        :mod:`discrete_differential_geometry.move_geometry`.
+        """
+        _lib.ddg_sampler_track_geometry(self._handle, 1 if enable else 0)
+
+    def reset_geometry(self) -> None:
+        """Zero the geometry ledger (roles, tet aggregates, and clock)."""
+        _lib.ddg_sampler_reset_geometry(self._handle)
+
+    def vertex_role_counts(self) -> dict:
+        """Per-vertex role counts: dict(vertex[n], counts[n, 11]).
+
+        Columns follow ``move_geometry.VROLE_NAMES``.
+        """
+        n = _lib.ddg_sampler_vertex_role_counts(self._handle, None, None)
+        if n <= 0:
+            return dict(vertex=np.empty(0, np.int32), counts=np.empty((0, 11)))
+        labels = (ctypes.c_int * n)()
+        counts = (ctypes.c_double * (n * 11))()
+        _lib.ddg_sampler_vertex_role_counts(self._handle, labels, counts)
+        return dict(vertex=np.array(labels[:n], np.int32),
+                    counts=np.array(counts[:n * 11]).reshape(n, 11))
+
+    def edge_role_counts(self) -> dict:
+        """Per-edge role counts: dict(edge[n, 2], counts[n, 15]).
+
+        Columns follow ``move_geometry.EROLE_NAMES``; edges are sorted pairs.
+        """
+        n = _lib.ddg_sampler_edge_role_counts(self._handle, None, None, None)
+        if n <= 0:
+            return dict(edge=np.empty((0, 2), np.int32), counts=np.empty((0, 15)))
+        la = (ctypes.c_int * n)()
+        lb = (ctypes.c_int * n)()
+        counts = (ctypes.c_double * (n * 15))()
+        _lib.ddg_sampler_edge_role_counts(self._handle, la, lb, counts)
+        edge = np.stack([np.array(la[:n], np.int32), np.array(lb[:n], np.int32)], 1)
+        return dict(edge=edge, counts=np.array(counts[:n * 15]).reshape(n, 15))
+
+    def tet_stats(self) -> dict:
+        """Tet aggregates: created/destroyed by move type, lifetime histogram.
+
+        Returns dict(created[5], destroyed[5], lifetime_hist[64] (log2 bins of
+        age in attempted moves), living, censored_deaths, clock). Move type
+        codes: 0:1→4, 1:2→3, 2:3→2, 3:4→1, 4:4-4.
+        """
+        cr = (ctypes.c_long * 5)()
+        de = (ctypes.c_long * 5)()
+        lh = (ctypes.c_long * 64)()
+        living = ctypes.c_long()
+        cens = ctypes.c_long()
+        clock = ctypes.c_long()
+        _lib.ddg_sampler_tet_stats(self._handle, cr, de, lh,
+                                   ctypes.byref(living), ctypes.byref(cens),
+                                   ctypes.byref(clock))
+        return dict(created=np.array(cr[:5], np.int64),
+                    destroyed=np.array(de[:5], np.int64),
+                    lifetime_hist=np.array(lh[:64], np.int64),
+                    living=living.value, censored_deaths=cens.value,
+                    clock=clock.value)
+
+    def enable_event_log(self, capacity_mb: float = 16.0) -> None:
+        """Enable the accepted-move event log (dim=3 only); 0 disables.
+
+        One fixed-size record per accepted move (see
+        ``move_geometry.EVENT_DTYPE``). Drain regularly with
+        :meth:`drain_event_log`; if the buffer fills between drains, records
+        are DROPPED and :meth:`event_log_overflowed` reports it.
+        """
+        _lib.ddg_sampler_event_log_enable(self._handle,
+                                          int(capacity_mb * 1024 * 1024))
+
+    def drain_event_log(self) -> np.ndarray:
+        """Copy out and clear buffered event records (structured array)."""
+        from .move_geometry import EVENT_DTYPE
+        used = _lib.ddg_sampler_event_log_drain(self._handle, None, 0)
+        if used <= 0:
+            return np.empty(0, dtype=EVENT_DTYPE)
+        buf = (ctypes.c_ubyte * used)()
+        got = _lib.ddg_sampler_event_log_drain(self._handle, buf, used)
+        return np.frombuffer(bytes(buf[:got]), dtype=EVENT_DTYPE)
+
+    def event_log_overflowed(self) -> bool:
+        """True if records were dropped since last check (clears the flag)."""
+        return bool(_lib.ddg_sampler_event_log_overflowed(self._handle))
+
     @property
     def current_objective(self) -> float:
         """Return the current objective function value."""

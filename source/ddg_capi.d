@@ -1074,6 +1074,10 @@ private struct SamplerState
     // Opt-in (small per-proposal AA overhead); dim=3 only. See sampler.MoveCounters.
     bool trackMoveCounts = false;
     MoveCounters!int moveCounters;
+
+    // Role-resolved geometry ledger + event log (opt-in; dim=3 only).
+    // See sampler.GeometryLedger for the role taxonomy and record layout.
+    GeometryLedger!int geoLedger;
 }
 
 extern(C) void* ddg_sampler_create(void* manifold_handle,
@@ -1317,7 +1321,9 @@ private long runSamplerDim3(SamplerState* s, long numMoves,
 
             if (mw.mfd.mcmcStep(s.currentObjective, s.unusedVertices, params,
                     s.hingeMoveProb, hT, hA, bT, bA,
-                    s.trackMoveCounts ? &s.moveCounters : null))
+                    s.trackMoveCounts ? &s.moveCounters : null,
+                    (s.geoLedger.trackRoles || s.geoLedger.logEvents)
+                        ? &s.geoLedger : null))
             {
                 accepted++;
                 acceptedSinceWriteback++;
@@ -1603,6 +1609,197 @@ extern(C) long ddg_sampler_move_counts(void* sampler_handle, int* labels,
         return keys.length;
     }
     catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Enable/disable the role-resolved geometry ledger (dim=3 only; heavier than
+/// move-count tracking). Does not clear accumulated data; see reset_geometry.
+extern(C) int ddg_sampler_track_geometry(void* sampler_handle, int enable) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto state = cast(SamplerState*) sampler_handle;
+    if (enable != 0 && state.dim != 3)
+    {
+        setError("geometry tracking is only supported for dim=3 samplers");
+        return -1;
+    }
+    state.geoLedger.trackRoles = enable != 0;
+    return 0;
+}
+
+extern(C) int ddg_sampler_reset_geometry(void* sampler_handle) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    try
+    {
+        (cast(SamplerState*) sampler_handle).geoLedger.clearRoles();
+        return 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Vertex role counts. Two-call pattern: labels==null returns the entry count;
+/// otherwise fills labels[n] (sorted) and counts[n*11] (row-major, columns in
+/// sampler.VRole order).
+extern(C) long ddg_sampler_vertex_role_counts(void* sampler_handle,
+    int* labels, double* counts) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null sampler handle"); return -1; }
+        auto g = &(cast(SamplerState*) sampler_handle).geoLedger;
+        bool[int] keySet;
+        foreach (ref aa; g.vertexRoles)
+            foreach (k; aa.byKey) keySet[k] = true;
+        if (labels is null) return keySet.length;
+        auto keys = keySet.keys;
+        keys.sort();
+        enum nc = VRole.max + 1;
+        foreach (i, k; keys)
+        {
+            labels[i] = k;
+            foreach (c; 0 .. nc)
+                counts[i * nc + c] = g.vertexRoles[c].get(k, 0.0);
+        }
+        return keys.length;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Edge role counts. Two-call pattern: labels_a==null returns the entry count;
+/// otherwise fills labels_a[n], labels_b[n] (sorted pairs, lexicographic) and
+/// counts[n*15] (row-major, columns in sampler.ERole order).
+extern(C) long ddg_sampler_edge_role_counts(void* sampler_handle,
+    int* labels_a, int* labels_b, double* counts) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null sampler handle"); return -1; }
+        auto g = &(cast(SamplerState*) sampler_handle).geoLedger;
+        bool[int[2]] keySet;
+        foreach (ref aa; g.edgeRoles)
+            foreach (k; aa.byKey) keySet[k] = true;
+        if (labels_a is null) return keySet.length;
+        auto keys = keySet.keys;
+        keys.sort();
+        enum nc = ERole.max + 1;
+        foreach (i, k; keys)
+        {
+            labels_a[i] = k[0];
+            labels_b[i] = k[1];
+            foreach (c; 0 .. nc)
+                counts[i * nc + c] = g.edgeRoles[c].get(k, 0.0);
+        }
+        return keys.length;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Tet aggregates: created[5] / destroyed[5] by move type code, the log2
+/// lifetime histogram [64] (age in attempted moves), the number of currently
+/// living tracked tets, censored deaths, and the ledger clock.
+extern(C) int ddg_sampler_tet_stats(void* sampler_handle,
+    long* created, long* destroyed, long* lifetime_hist,
+    long* living, long* censored, long* clock) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null sampler handle"); return -1; }
+        auto g = &(cast(SamplerState*) sampler_handle).geoLedger;
+        foreach (i; 0 .. 5)
+        {
+            created[i] = cast(long) g.tetsCreated[i];
+            destroyed[i] = cast(long) g.tetsDestroyed[i];
+        }
+        foreach (i; 0 .. 64)
+            lifetime_hist[i] = cast(long) g.tetLifetimeHist[i];
+        *living = cast(long) g.tetBirth.length;
+        *censored = cast(long) g.tetCensoredDeaths;
+        *clock = cast(long) g.clock;
+        return 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Enable the move event log with the given buffer capacity in bytes
+/// (rounded down to whole records); capacity 0 disables. Enabling resets the
+/// buffer and the overflow flag.
+extern(C) int ddg_sampler_event_log_enable(void* sampler_handle,
+    long capacity_bytes) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null handle"); return -1; }
+        auto state = cast(SamplerState*) sampler_handle;
+        if (capacity_bytes > 0 && state.dim != 3)
+        {
+            setError("event log is only supported for dim=3 samplers");
+            return -1;
+        }
+        auto g = &state.geoLedger;
+        if (capacity_bytes <= 0)
+        {
+            g.logEvents = false;
+            g.eventBuf = null;
+            g.eventUsed = 0;
+            g.eventOverflow = false;
+            return 0;
+        }
+        immutable cap = (cast(size_t) capacity_bytes / eventRecordBytes)
+                        * eventRecordBytes;
+        if (cap == 0) { setError("capacity smaller than one record"); return -1; }
+        g.eventBuf = new ubyte[cap];
+        g.eventUsed = 0;
+        g.eventOverflow = false;
+        g.logEvents = true;
+        return 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Drain the event log. buf==null returns the number of buffered bytes.
+/// Otherwise copies up to buf_len bytes (whole records), removes them from the
+/// buffer, and returns the byte count copied. Check _event_log_overflowed to
+/// detect records dropped between drains.
+extern(C) long ddg_sampler_event_log_drain(void* sampler_handle,
+    ubyte* buf, long buf_len) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null sampler handle"); return -1; }
+        auto g = &(cast(SamplerState*) sampler_handle).geoLedger;
+        if (buf is null) return g.eventUsed;
+        import core.stdc.string : memcpy, memmove;
+        immutable take = (min(cast(size_t) buf_len, g.eventUsed)
+                          / eventRecordBytes) * eventRecordBytes;
+        if (take > 0)
+        {
+            memcpy(buf, g.eventBuf.ptr, take);
+            if (take < g.eventUsed)
+                memmove(g.eventBuf.ptr, g.eventBuf.ptr + take, g.eventUsed - take);
+            g.eventUsed -= take;
+        }
+        return take;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Returns 1 if records were dropped since the log was enabled/drained-clear,
+/// else 0. Clears the flag.
+extern(C) int ddg_sampler_event_log_overflowed(void* sampler_handle) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto g = &(cast(SamplerState*) sampler_handle).geoLedger;
+    immutable r = g.eventOverflow ? 1 : 0;
+    g.eventOverflow = false;
+    return r;
 }
 
 extern(C) int ddg_sampler_set_num_facets_coef(void* sampler_handle, double coef) nothrow

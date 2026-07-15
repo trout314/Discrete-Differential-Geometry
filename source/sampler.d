@@ -496,6 +496,364 @@ unittest
 }
 
 /******************************************************************************
+Role-resolved geometry ledger (the "maximalist" move-participation record).
+
+Every accepted move partitions its support simplices into orbits ("roles")
+under the move's symmetry, and the degree change of a simplex is a FIXED
+integer determined by (move type, role) — so the role-resolved ledger is a
+lossless generating set for every linear geometry-change observable (volume
+flux / trace-K, degree velocity, per-edge deficit flux, the lapse, channel
+decompositions). Move type codes follow coCenter.length-1 for bistellar moves,
+with 4 for the 4-4 hinge move: 0:1→4, 1:2→3, 2:3→2, 3:4→1, 4:4-4.
+
+Vertex roles and their degree changes (degree = # incident facets):
+  2→3: pole(+2)×2 = coCenter, equator(0)×3 = center
+  3→2: pole(−2)×2 = center,   equator(0)×3 = coCenter
+  1→4: base(+2)×4 = center,   created ×1 = coCenter (born at degree 4)
+  4→1: base(−2)×4 = coCenter, destroyed ×1 = center (dies at degree 4)
+  4-4: pole(−2)×2 = removedEdge, diag(+2)×2 = addedEdge, passive(0)×2
+
+Edge roles (degree = # incident facets = deficit-angle carrier):
+  2→3: equator(−1)×3, spoke(+1)×6, created (pole–pole, born at 3)
+  3→2: triangle(+1)×3, spoke(−1)×6, destroyed (center edge, dies at 3)
+  1→4: base(+1)×6, created spokes ×4 (born at 3)
+  4→1: base(−1)×6, destroyed spokes ×4 (die at 3)
+  4-4: destroyed (removedEdge, dies at 4), created (diagonal, born at 4),
+       pole–diag(0)×4, pole–passive(−1)×4, equator(+1)×4
+
+Tets have no partial roles (wholesale birth/death only) and are tracked as
+AGGREGATES: created/destroyed counts by move type + a log2 lifetime histogram
+(age in attempted moves; tets alive when tracking started count as censored).
+
+The optional EVENT LOG appends one fixed-size record per accepted move
+(clock: u64, type: u32, labels: 6×i32 = 36 bytes packed): bistellar labels are
+center-then-coCenter (support size implied by type, unused slots = -1); 4-4
+labels are removedEdge then linkCycle ROTATED so the added diagonal is
+(labels[2], labels[4]). The log is the full 4D cobordism, one 4-simplex per
+record; roles/ledgers/incarnations are reconstructible offline by replay.
+*/
+enum VRole
+{
+    v23Pole, v23Equator,
+    v32Pole, v32Equator,
+    v14Base, v14Created,
+    v41Base, v41Destroyed,
+    v44Pole, v44Diag, v44Passive
+}
+
+enum ERole
+{
+    e23Equator, e23Spoke, e23Created,
+    e32Triangle, e32Spoke, e32Destroyed,
+    e14Base, e14Created,
+    e41Base, e41Destroyed,
+    e44Destroyed, e44Created, e44PoleDiag, e44PolePassive, e44Equator
+}
+
+/// Degree change per role (birth/death roles listed as 0; they are separate
+/// channels, not degree increments on a persisting simplex).
+immutable int[VRole.max + 1] vRoleDegreeDelta =
+    [+2, 0, -2, 0, +2, 0, -2, 0, -2, +2, 0];
+immutable int[ERole.max + 1] eRoleDegreeDelta =
+    [-1, +1, 0, +1, -1, 0, +1, 0, -1, 0, 0, 0, 0, -1, +1];
+
+/// True for roles that create/destroy the simplex itself.
+immutable bool[VRole.max + 1] vRoleIsBirthDeath =
+    [false, false, false, false, false, true, false, true, false, false, false];
+immutable bool[ERole.max + 1] eRoleIsBirthDeath =
+    [false, false, true, false, false, true, false, true, false, true,
+     true, true, false, false, false];
+
+enum eventRecordBytes = 36;   // u64 clock + u32 type + 6 x i32 labels, packed
+
+struct GeometryLedger(Vertex)
+{
+    bool trackRoles;    // role-resolved AAs + tet aggregates
+    bool logEvents;     // fixed-size event records
+
+    double[Vertex][VRole.max + 1] vertexRoles;
+    double[Vertex[2]][ERole.max + 1] edgeRoles;
+
+    // Tets: aggregates only (identities churn too fast to ledger usefully).
+    ulong[5] tetsCreated;        // by move type code
+    ulong[5] tetsDestroyed;
+    ulong[Vertex[4]] tetBirth;   // living tets -> birth clock
+    ulong[64] tetLifetimeHist;   // log2-binned age (in attempted moves)
+    ulong tetCensoredDeaths;     // destroyed tets born before tracking began
+
+    ulong clock;                 // attempted moves since tracking enabled
+
+    ubyte[] eventBuf;
+    size_t eventUsed;
+    bool eventOverflow;
+
+    void clearRoles()()
+    {
+        foreach (ref aa; vertexRoles) aa = null;
+        foreach (ref aa; edgeRoles) aa = null;
+        tetsCreated[] = 0; tetsDestroyed[] = 0;
+        tetBirth = null; tetLifetimeHist[] = 0;
+        tetCensoredDeaths = 0;
+        clock = 0;
+    }
+}
+
+private void bump(K)(ref double[K] aa, const K key)
+{
+    aa[key] = aa.get(key, 0.0) + 1.0;
+}
+
+private Vertex[2] mkEdge(Vertex)(const Vertex a, const Vertex b)
+{
+    Vertex[2] e = a < b ? [a, b] : [b, a];
+    return e;
+}
+
+private void tetCreate(Vertex)(ref GeometryLedger!Vertex g, Vertex[4] key)
+{
+    key[].sort();
+    g.tetBirth[key] = g.clock;
+}
+
+private void tetDestroy(Vertex)(ref GeometryLedger!Vertex g, Vertex[4] key)
+{
+    import core.bitop : bsr;
+    key[].sort();
+    if (auto p = key in g.tetBirth)
+    {
+        immutable age = g.clock - *p;
+        g.tetLifetimeHist[age == 0 ? 0 : bsr(age) + 1]++;
+        g.tetBirth.remove(key);
+    }
+    else
+        g.tetCensoredDeaths++;   // born before tracking started
+}
+
+/// Record an accepted bistellar move. center/coCenter as in BistellarMove.
+void recordBistellar(Vertex)(ref GeometryLedger!Vertex g,
+    scope const(Vertex)[] center, scope const(Vertex)[] coCenter)
+{
+    immutable typeCode = cast(int) coCenter.length - 1;
+    final switch (typeCode)
+    {
+    case 0: // 1->4: center = tet, coCenter = created vertex
+        foreach (v; center) bump(g.vertexRoles[VRole.v14Base], v);
+        bump(g.vertexRoles[VRole.v14Created], coCenter[0]);
+        foreach (i; 0 .. center.length)
+            foreach (j; i + 1 .. center.length)
+                bump(g.edgeRoles[ERole.e14Base], mkEdge(center[i], center[j]));
+        foreach (v; center)
+            bump(g.edgeRoles[ERole.e14Created], mkEdge(v, coCenter[0]));
+        g.tetsDestroyed[0]++;
+        {
+            Vertex[4] t = void;
+            foreach (i; 0 .. 4) t[i] = center[i];
+            tetDestroy(g, t);
+        }
+        g.tetsCreated[0] += 4;
+        foreach (skip; 0 .. 4)
+        {
+            Vertex[4] t = void; size_t n = 0;
+            foreach (i, v; center) if (i != skip) t[n++] = v;
+            t[3] = coCenter[0];
+            tetCreate(g, t);
+        }
+        break;
+    case 1: // 2->3: center = triangle (equator), coCenter = poles
+        foreach (v; center) bump(g.vertexRoles[VRole.v23Equator], v);
+        foreach (v; coCenter) bump(g.vertexRoles[VRole.v23Pole], v);
+        foreach (i; 0 .. center.length)
+            foreach (j; i + 1 .. center.length)
+                bump(g.edgeRoles[ERole.e23Equator], mkEdge(center[i], center[j]));
+        foreach (c; center)
+            foreach (p; coCenter)
+                bump(g.edgeRoles[ERole.e23Spoke], mkEdge(c, p));
+        bump(g.edgeRoles[ERole.e23Created], mkEdge(coCenter[0], coCenter[1]));
+        g.tetsDestroyed[1] += 2;
+        foreach (p; coCenter)
+        {
+            Vertex[4] t = [center[0], center[1], center[2], p];
+            tetDestroy(g, t);
+        }
+        g.tetsCreated[1] += 3;
+        foreach (skip; 0 .. 3)
+        {
+            Vertex[4] t = void; size_t n = 0;
+            foreach (i, v; center) if (i != skip) t[n++] = v;
+            t[2] = coCenter[0]; t[3] = coCenter[1];
+            tetCreate(g, t);
+        }
+        break;
+    case 2: // 3->2: center = edge (poles), coCenter = triangle (equator)
+        foreach (v; center) bump(g.vertexRoles[VRole.v32Pole], v);
+        foreach (v; coCenter) bump(g.vertexRoles[VRole.v32Equator], v);
+        bump(g.edgeRoles[ERole.e32Destroyed], mkEdge(center[0], center[1]));
+        foreach (c; center)
+            foreach (q; coCenter)
+                bump(g.edgeRoles[ERole.e32Spoke], mkEdge(c, q));
+        foreach (i; 0 .. coCenter.length)
+            foreach (j; i + 1 .. coCenter.length)
+                bump(g.edgeRoles[ERole.e32Triangle], mkEdge(coCenter[i], coCenter[j]));
+        g.tetsDestroyed[2] += 3;
+        foreach (skip; 0 .. 3)
+        {
+            Vertex[4] t = void; size_t n = 0;
+            foreach (i, v; coCenter) if (i != skip) t[n++] = v;
+            t[2] = center[0]; t[3] = center[1];
+            tetDestroy(g, t);
+        }
+        g.tetsCreated[2] += 2;
+        foreach (p; center)
+        {
+            Vertex[4] t = [coCenter[0], coCenter[1], coCenter[2], p];
+            tetCreate(g, t);
+        }
+        break;
+    case 3: // 4->1: center = destroyed vertex, coCenter = base tet
+        bump(g.vertexRoles[VRole.v41Destroyed], center[0]);
+        foreach (v; coCenter) bump(g.vertexRoles[VRole.v41Base], v);
+        foreach (v; coCenter)
+            bump(g.edgeRoles[ERole.e41Destroyed], mkEdge(center[0], v));
+        foreach (i; 0 .. coCenter.length)
+            foreach (j; i + 1 .. coCenter.length)
+                bump(g.edgeRoles[ERole.e41Base], mkEdge(coCenter[i], coCenter[j]));
+        g.tetsDestroyed[3] += 4;
+        foreach (skip; 0 .. 4)
+        {
+            Vertex[4] t = void; size_t n = 0;
+            foreach (i, v; coCenter) if (i != skip) t[n++] = v;
+            t[3] = center[0];
+            tetDestroy(g, t);
+        }
+        g.tetsCreated[3]++;
+        {
+            Vertex[4] t = void;
+            foreach (i; 0 .. 4) t[i] = coCenter[i];
+            tetCreate(g, t);
+        }
+        break;
+    }
+}
+
+/// Record an accepted 4-4 hinge move.
+void recordHinge(Vertex)(ref GeometryLedger!Vertex g,
+    const Vertex[2] removedEdge, const Vertex[2] addedEdge,
+    const Vertex[4] linkCycleIn)
+{
+    // Rotate the cycle so the added diagonal is (cycle[0], cycle[2]).
+    Vertex[4] lc = linkCycleIn;
+    immutable d0 = mkEdge(lc[0], lc[2]);
+    if (!(d0[0] == min(addedEdge[0], addedEdge[1])
+          && d0[1] == max(addedEdge[0], addedEdge[1])))
+        lc = [linkCycleIn[1], linkCycleIn[2], linkCycleIn[3], linkCycleIn[0]];
+
+    foreach (v; removedEdge) bump(g.vertexRoles[VRole.v44Pole], v);
+    bump(g.vertexRoles[VRole.v44Diag], lc[0]);
+    bump(g.vertexRoles[VRole.v44Diag], lc[2]);
+    bump(g.vertexRoles[VRole.v44Passive], lc[1]);
+    bump(g.vertexRoles[VRole.v44Passive], lc[3]);
+
+    bump(g.edgeRoles[ERole.e44Destroyed], mkEdge(removedEdge[0], removedEdge[1]));
+    bump(g.edgeRoles[ERole.e44Created], mkEdge(lc[0], lc[2]));
+    foreach (p; removedEdge)
+    {
+        bump(g.edgeRoles[ERole.e44PoleDiag], mkEdge(p, lc[0]));
+        bump(g.edgeRoles[ERole.e44PoleDiag], mkEdge(p, lc[2]));
+        bump(g.edgeRoles[ERole.e44PolePassive], mkEdge(p, lc[1]));
+        bump(g.edgeRoles[ERole.e44PolePassive], mkEdge(p, lc[3]));
+    }
+    foreach (i; 0 .. 4)
+        bump(g.edgeRoles[ERole.e44Equator], mkEdge(lc[i], lc[(i + 1) % 4]));
+
+    g.tetsDestroyed[4] += 4;
+    foreach (i; 0 .. 4)
+    {
+        Vertex[4] t = [removedEdge[0], removedEdge[1], linkCycleIn[i],
+                       linkCycleIn[(i + 1) % 4]];
+        tetDestroy(g, t);
+    }
+    g.tetsCreated[4] += 4;
+    foreach (p; removedEdge)
+    {
+        Vertex[4] t1 = [p, lc[0], lc[1], lc[2]];
+        Vertex[4] t2 = [p, lc[0], lc[2], lc[3]];
+        tetCreate(g, t1);
+        tetCreate(g, t2);
+    }
+}
+
+/// Append one fixed-size event record (see eventRecordBytes layout).
+void logEvent(Vertex)(ref GeometryLedger!Vertex g, int typeCode,
+    scope const(Vertex)[] labelsA, scope const(Vertex)[] labelsB)
+{
+    if (g.eventUsed + eventRecordBytes > g.eventBuf.length)
+    {
+        g.eventOverflow = true;
+        return;
+    }
+    import core.stdc.string : memcpy;
+    auto p = g.eventBuf.ptr + g.eventUsed;
+    immutable ulong clk = g.clock;
+    immutable uint tc = cast(uint) typeCode;
+    memcpy(p, &clk, 8);
+    memcpy(p + 8, &tc, 4);
+    int[6] lab = -1;
+    size_t n = 0;
+    foreach (v; labelsA) lab[n++] = cast(int) v;
+    foreach (v; labelsB) lab[n++] = cast(int) v;
+    memcpy(p + 12, lab.ptr, 24);
+    g.eventUsed += eventRecordBytes;
+}
+
+///
+unittest
+{
+    // Single controlled moves against a live manifold: measured degree changes
+    // must reproduce the (type, role) tables exactly.
+    auto mfd = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+    GeometryLedger!int g;
+
+    long deg(int[] s) { return mfd.degree(s); }
+
+    // --- 1->4 on facet [0,1,2,3], new vertex 5 ---
+    int[] c14 = [0,1,2,3];
+    auto degBefore = [deg([0]), deg([1]), deg([2]), deg([3])];
+    auto edgeBefore = deg([0,1]);
+    recordBistellar(g, c14, [5]);
+    mfd.doMove(BistellarMove!3([0,1,2,3], [5]));
+    foreach (i, v; [0,1,2,3])
+        assert(deg([v]) - degBefore[i] == vRoleDegreeDelta[VRole.v14Base]);
+    assert(deg([5]) == 4);                                   // born at 4
+    assert(deg([0,1]) - edgeBefore == eRoleDegreeDelta[ERole.e14Base]);
+    assert(deg([0,5]) == 3);                                 // spoke born at 3
+    assert(g.vertexRoles[VRole.v14Created][5] == 1.0);
+    assert(g.tetsCreated[0] == 4 && g.tetsDestroyed[0] == 1);
+
+    // --- 2->3 on triangle [0,1,2] (in tets [0,1,2,4],[0,1,2,5]? use valid) ---
+    // triangle [0,1,2] now has degree 2 (tets [0,1,2,4] and [0,1,2,5]).
+    assert(deg([0,1,2]) == 2);
+    auto dp4 = deg([4]); auto dp5 = deg([5]); auto de01 = deg([0,1]);
+    recordBistellar(g, [0,1,2], [4,5]);
+    mfd.doMove(BistellarMove!3([0,1,2], [4,5]));
+    assert(deg([4]) - dp4 == vRoleDegreeDelta[VRole.v23Pole]);
+    assert(deg([5]) - dp5 == vRoleDegreeDelta[VRole.v23Pole]);
+    assert(deg([0,1]) - de01 == eRoleDegreeDelta[ERole.e23Equator]);
+    assert(deg([4,5]) == 3);                                 // pole-pole born at 3
+    assert(g.edgeRoles[ERole.e23Created][mkEdge(4,5)] == 1.0);
+
+    // --- role totals: each move contributes its exact multiplicities ---
+    double tot(double[int] aa) { double s=0; foreach(v; aa.byValue) s+=v; return s; }
+    assert(tot(g.vertexRoles[VRole.v14Base]) == 4.0);
+    assert(tot(g.vertexRoles[VRole.v23Pole]) == 2.0);
+    assert(tot(g.vertexRoles[VRole.v23Equator]) == 3.0);
+    double etot(double[int[2]] aa) { double s=0; foreach(v; aa.byValue) s+=v; return s; }
+    assert(etot(g.edgeRoles[ERole.e23Spoke]) == 6.0);
+    assert(etot(g.edgeRoles[ERole.e14Created]) == 4.0);
+
+    assert(mfd.findProblems.length == 0);
+}
+
+/******************************************************************************
 Run one MCMC step using a unified proposal that naturally includes both
 bistellar (Pachner) moves and 4-4 hinge moves.
 
@@ -517,12 +875,16 @@ bool mcmcStep(Vertex, P)(
     ref ulong hingeAccepts,
     ref ulong[4] bistellarTries,
     ref ulong[4] bistellarAccepts,
-    MoveCounters!Vertex* counters = null)
+    MoveCounters!Vertex* counters = null,
+    GeometryLedger!Vertex* ledger = null)
 {
     enum dim = 3;
     enum nVerts = dim + 1;
     enum maxMask = (1 << nVerts) - 1;
     alias BM = BistellarMove!(dim, Vertex);
+
+    if (ledger !is null)
+        ledger.clock++;               // one tick per attempted move
 
     // Unified proposal loop
     while (true)
@@ -580,6 +942,23 @@ bool mcmcStep(Vertex, P)(
                 hingeAccepts++;
                 if (counters !is null)
                     addSupport(counters.acceptedHinge, hingeSupport[]);
+                if (ledger !is null)
+                {
+                    if (ledger.trackRoles)
+                        recordHinge(*ledger, hm.removedEdge, hm.addedEdge,
+                                    hm.linkCycle);
+                    if (ledger.logEvents)
+                    {
+                        // Rotate cycle so the diagonal is (labels[2], labels[4]).
+                        Vertex[4] lc = hm.linkCycle;
+                        immutable d0 = mkEdge(lc[0], lc[2]);
+                        if (!(d0[0] == min(hm.addedEdge[0], hm.addedEdge[1])
+                              && d0[1] == max(hm.addedEdge[0], hm.addedEdge[1])))
+                            lc = [hm.linkCycle[1], hm.linkCycle[2],
+                                  hm.linkCycle[3], hm.linkCycle[0]];
+                        logEvent(*ledger, 4, hm.removedEdge[], lc[]);
+                    }
+                }
                 return true;
             }
             return false;
@@ -631,6 +1010,14 @@ bool mcmcStep(Vertex, P)(
             mfd.doMove(bm);
             if (counters !is null)
                 addSupport(counters.acceptedBistellar, ball);
+            if (ledger !is null)
+            {
+                if (ledger.trackRoles)
+                    recordBistellar(*ledger, bm.center, bm.coCenter);
+                if (ledger.logEvents)
+                    logEvent(*ledger, cast(int) bm.coCenter.length - 1,
+                             bm.center, bm.coCenter);
+            }
             if (bm.coCenter.length == 1)
             {
                 // Shrink, then tell the runtime we own the freed slot so the
