@@ -1,0 +1,124 @@
+\documentclass[11pt]{article}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{parskip}
+\usepackage[T1]{fontenc}
+
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+\newcommand{\C}{\mathcal{C}}
+\newcommand{\Hh}{\mathcal{H}}
+\newcommand{\status}[1]{\emph{#1}}
+
+\title{Symbol glossary: the tier-(c) constraint-imposition proposal\\
+\large Discrete Differential Geometry program --- combinatorial lapse, patches, and the smeared Hamiltonian constraint}
+\author{}
+\date{2026--07--16}
+
+\begin{document}
+\maketitle
+
+\noindent
+This glossary collects the notation of the tier-(c) discussion: imposing a
+(coarse-grained) Hamiltonian constraint on the triangulation ensemble by
+promoting the Lagrange multiplier --- the \emph{combinatorial lapse} --- to a
+dynamical field. The generic placeholder $\C_x$ denotes ``the local constraint
+density at site $x$'' \emph{before} committing to a granularity; the central
+design point is that the choice of $x$ (edge, vertex, or patch) is where the
+physics lives. A useful three-way distinction throughout:
+\textbf{measured-from-$T$} quantities (equal-time functions of the
+triangulation), \textbf{measured-from-history} quantities (functions of the
+Monte Carlo trajectory, via the move ledger), and \textbf{sampled auxiliary}
+degrees of freedom (the lapse field itself, promoted in tier (c) from a gauge
+choice to part of the state).
+
+\section*{1. Configuration and geometric fields}
+
+\begin{tabularx}{\textwidth}{@{}l L l@{}}
+\toprule
+symbol & meaning & status \\
+\midrule
+$T$ & a triangulation of $S^3$ (one configuration of the ensemble) & sampled \\
+$v,\ e,\ x$ & a vertex; an edge; a generic ``site'' when the granularity is deliberately unspecified & index \\
+$d_e$ & edge (hinge) degree: number of tetrahedra containing edge $e$ & measured \\
+$D_v$ & vertex degree: number of tetrahedra containing $v$ (volume share $D_v/4$) & measured \\
+$\theta_{\mathrm{tet}}$ & dihedral angle of the regular tetrahedron, $\arccos(1/3)\approx 70.53^\circ$ & constant \\
+$\delta_e$ & Regge deficit angle at edge $e$: $\delta_e = 2\pi - \theta_{\mathrm{tet}}\, d_e$ (the curvature carrier) & derived \\
+$q_R(v)$ & \textbf{curvature charge} at a vertex: $q_R(v)=\tfrac12\sum_{e\ni v}\delta_e$ (each edge's deficit split between its endpoints; the field the hyperuniformity test windows over) & derived \\
+${}^{3}\!R,\ R_p$ & intrinsic scalar curvature (continuum name); discrete stand-in is deficit density, patch-averaged in $R_p$ & derived \\
+$K,\ K_p^2$ & extrinsic curvature; measured \emph{dynamically} from the move ledger (volume/activity flux), patch-averaged and squared in $K_p^2$ & measured (history) \\
+\bottomrule
+\end{tabularx}
+
+\section*{2. Constraint objects}
+
+\begin{tabularx}{\textwidth}{@{}l L l@{}}
+\toprule
+symbol & meaning & status \\
+\midrule
+$\C_x$ & generic local constraint density at site $x$ --- the placeholder whose granularity the design must choose & schematic \\
+$\C_e = \delta_e - \bar\delta$ & the \emph{pointwise} (per-edge) version: every deficit equal. Rejected: combinatorial rigidity --- the constraint surface is nearly empty (degree regularity $\approx$ the 600-cell) & rejected \\
+$\C_p = \dfrac{1}{V_p}\displaystyle\sum_{v\in p} q_R(v) - 2\Lambda$ & the \emph{patch} version (v0): coarse deficit density in patch $p$ minus target --- the proposed object & proposed \\
+$\Lambda$ & the target constant; effective cosmological-constant analogue (empirically dialed by the edge-degree target $\bar d_t$) & chosen \\
+$\lambda$ & calibration coefficient converting ledger-measured $K^2$ (per sweep$^2$) to geometric units in $\Hh = R - \lambda K^2 - 2\Lambda$; fitted $\approx 0.06$--$0.11$ & fitted \\
+$\Hh_\perp,\ \Hh[N]$ & continuum referents: ADM Hamiltonian constraint density, and its smearing $\int N\,\Hh_\perp$ against a test function --- the reason patches exist at all & continuum \\
+\bottomrule
+\end{tabularx}
+
+\section*{3. Lapse / multiplier machinery}
+
+\begin{tabularx}{\textwidth}{@{}l L l@{}}
+\toprule
+symbol & meaning & status \\
+\midrule
+$N,\ N_x,\ N_p$ & the lapse $=$ Lagrange-multiplier field conjugate to the constraint; one $N_p$ per patch in the proposal & sampled / updated \\
+$\mu$ & stiffness of the quadratic (augmented-Lagrangian) term $\tfrac{\mu}{2}\C_p^2$; $\mu\to\infty$ is the hard-constraint limit; equivalently the damping $\tfrac{1}{2\mu}N^2$ whose Gaussian integration produces that term & annealing knob \\
+$\eta$ & step size of the dual-ascent multiplier update $N_p \leftarrow N_p + \eta\,\C_p$ (the ``discrete lapse equation'') & algorithm knob \\
+$S_0(T)$ & the existing base action (facet pin $+$ edge pin $+$ $\beta\cdot$VDV $+$ $\gamma\cdot$HDV) & existing \\
+$S_{\mathrm{ext}}(T,N)$ & $S_0 + \sum_p N_p\,\C_p + \tfrac{\mu}{2}\sum_p \C_p^2$: the extended (v0) action on configuration-plus-lapse space & proposed \\
+$S_{\mathrm{slab}}$ & the v2 action on a \emph{pair} $(T_t, T_{t+w})$ of slices (window $w$, midpoint configuration $\bar T$) with $K_p^2$ from the interpolating cobordism --- the path-sampling upgrade & future \\
+\bottomrule
+\end{tabularx}
+
+\section*{4. Scales and patch bookkeeping}
+
+\begin{tabularx}{\textwidth}{@{}l L l@{}}
+\toprule
+symbol & meaning & status \\
+\midrule
+$p,\ P$ & patch index; total number of patches & chosen \\
+$\ell$ & the smearing/constraint scale (patch diameter); \emph{the emergence scale} --- constraint imposed only for wavelengths $>\ell$ & chosen \\
+$V_p$ & patch volume (sum of vertex tet-shares in $p$) & derived \\
+$L$ & system linear size (graph diameter, $\sim N^{1/3}$ in the extended phase); the constraint window is $1 \ll \ell \ll L$ & measured \\
+$\ell_{\min}(\mu)$ & the finest constraint scale that stays ergodic/certifiable at stiffness $\mu$ --- the measurable ``how far down does constraint-satisfying geometry exist'' boundary & to be measured \\
+\bottomrule
+\end{tabularx}
+
+\section*{5. Diagnostics}
+
+\begin{tabularx}{\textwidth}{@{}l L l@{}}
+\toprule
+symbol & meaning & status \\
+\midrule
+$S_R(k),\ S_{\C}(k)$ & structure factor (long-wavelength fluctuation spectrum) of the curvature charge / of the constraint density; hyperuniform $\Leftrightarrow$ $\to 0$ as $k\to 0$ & measured \\
+$k$ & wavenumber; on the graph, $\sqrt{\lambda_n}$ of Laplacian eigenmodes plays its role & derived \\
+$\phi_n,\ n^{*},\ \gamma$ & (v1 variant) graph-Laplacian eigenmodes, the mode cutoff, and the stiffness of the mode-space penalty $\gamma\sum_{n\le n^{*}}\lvert\phi_n\cdot q_R\rvert^2$ & alternative \\
+$S(0)>0$ & the compressibility sum rule for short-range equilibrium --- the theorem the patch (range-$\ell$) terms are designed to legitimately evade & theory \\
+$d_H,\ \Delta_{S^3}$ & roundness diagnostics (volume-growth dimension; KS distance to the round-$S^3$ distance CDF) --- the back-reaction observables & measured \\
+\bottomrule
+\end{tabularx}
+
+\vspace{1.5em}
+\noindent\textbf{Note on the interpolation.} The two granularity extremes of
+$\C_x$ are both already realized in the current action and both measured to
+fail: $P=1$ (one global patch) is the existing pins, which kill only the exact
+$k=0$ mode and are vacuous in the infrared sense; $P=V$ (one patch per site) is
+the existing variance penalties ($\beta\cdot$VDV, $\gamma\cdot$HDV), which hit
+combinatorial rigidity (glass) and, being short-range, are capped by the
+compressibility sum rule at window-variance ratio $1$. Patches at scale
+$1 \ll \ell \ll L$ are the entire remaining family --- the only knob between a
+constraint that does nothing and a constraint that cannot hold.
+
+\end{document}
