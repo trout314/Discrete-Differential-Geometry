@@ -45,9 +45,9 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import shortest_path
 
 DEFAULT_PHASES = [
-    ("extended_2e-3", "seeds/S3_N1e3_1e-1_ED5p0043_2_VDVs_2e-3_s00[0-3].mfd"),
-    ("hub_beta0_flatpin", "seeds/S3_N1e3_1e-1_ED5p1043_2_s00[0-3].mfd"),
-    ("glassadj_8e-3_k4", "seeds/S3_N1e3_1e-1_ED5p0043_4_VDVs_8e-3_s00[0-3].mfd"),
+    ("extended_2e-3", "seeds/S3_N1e3_1e-1_ED5p0043_2_VDVs_2e-3_s0*.mfd"),
+    ("hub_beta0_flatpin", "seeds/S3_N1e3_1e-1_ED5p1043_2_s0*.mfd"),
+    ("glassadj_8e-3_k4", "seeds/S3_N1e3_1e-1_ED5p0043_4_VDVs_8e-3_s0*.mfd"),
 ]
 HINGE_VOL = 2.0    # 4-4 hinge move = 2 stacked 4-simplices (pentachoron convention)
 
@@ -145,6 +145,8 @@ def main():
     ap.add_argument("--burn", type=int, default=20, help="Burn-in sweeps (default 20).")
     ap.add_argument("--window", type=int, default=200, help="Measurement sweeps (default 200).")
     ap.add_argument("--rng-seed", type=int, default=0)
+    ap.add_argument("--max-reps", type=int, default=None,
+                    help="Cap replicas per phase (default: all matching).")
     ap.add_argument("--out", default="out/local_lapse",
                     help="Output prefix for <out>.json (default out/local_lapse).")
     args = ap.parse_args()
@@ -161,6 +163,8 @@ def main():
         if not paths:
             print(f"[{name}] no seeds match {pat}", file=sys.stderr)
             continue
+        if args.max_reps is not None:
+            paths = paths[:args.max_reps]
         deg_all, fld_all = [], {k: [] for k in ("N", "K", "A", "R")}
         corr_reps = []
         for p in paths:
@@ -178,13 +182,16 @@ def main():
             replicas=len(paths), window=args.window,
             N_mean=float(N.mean()), N_cv=float(N.std() / N.mean()),
             cond={k: {str(b): v for b, v in c.items()} for k, c in cond.items()},
-            spatial_corr={str(r): dict(mean=float(np.mean(v)), lo=float(np.min(v)),
-                                       hi=float(np.max(v)), n=len(v))
+            spatial_corr={str(r): dict(
+                              mean=float(np.mean(v)),
+                              sem=float(np.std(v, ddof=1) / np.sqrt(len(v))) if len(v) > 1 else 0.0,
+                              lo=float(np.min(v)), hi=float(np.max(v)), n=len(v))
                           for r, v in corr.items()},
         )
         c1 = corr.get(1, [0.0])
+        sem1 = np.std(c1, ddof=1) / np.sqrt(len(c1)) if len(c1) > 1 else 0.0
         print(f"[{name}] reps={len(paths)}  ⟨N⟩={N.mean():.3f} CV={N.std()/N.mean():.2f}  "
-              f"corr(r=1)={np.mean(c1):+.3f}  "
+              f"corr(r=1)={np.mean(c1):+.3f}±{sem1:.3f}  "
               f"K̄={np.concatenate(fld_all['K']).mean():.3f} "
               f"Ā={np.concatenate(fld_all['A']).mean():.3f}", flush=True)
 
