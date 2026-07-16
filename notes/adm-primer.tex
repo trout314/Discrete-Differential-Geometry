@@ -1,0 +1,185 @@
+\documentclass[11pt]{article}
+\usepackage[margin=2.6cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{parskip}
+\usepackage[T1]{fontenc}
+\usepackage{booktabs}
+
+\newcommand{\Hh}{\mathcal{H}}
+\newcommand{\C}{\mathcal{C}}
+\newcommand{\Rthree}{{}^{(3)}\!R}
+\newcommand{\Lie}{\pounds}
+
+\title{The ADM formalism: constraints, multipliers, and what the lapse can and cannot do\\
+\large A corrected narrative, with the dictionary to the triangulation program}
+\author{}
+\date{2026--07--16}
+
+\begin{document}
+\maketitle
+
+\section{The story, graded}
+
+The narrative under examination: \emph{begin with a Lorentzian 4-manifold $(M,g)$ and a
+foliation by spacelike hypersurfaces $\Sigma_t$; the intrinsic curvature, extrinsic
+curvature, lapse, and shift are defined by the foliation; imposing the Einstein equations
+forces a local constraint; and} --- the flagged step --- \emph{one can force the constraint
+to vanish by choosing the lapse and shift appropriately, for any intrinsic and extrinsic
+curvatures, because they act like Lagrange multipliers.}
+
+Everything is correct up to the flagged step, with one refinement. The foliation (together
+with $g$ and a labeling $t$ of the leaves) determines the induced metric $h_{ij}$, the
+extrinsic curvature $K_{ij}$, and the lapse $N$ (normal proper-time spacing between
+leaves: $d\tau = N\,dt$). The \textbf{shift $N^i$ requires one further choice} --- a
+\emph{threading}, i.e.\ an identification of points on successive leaves, equivalently a
+time-flow vector $t^\mu$ with $t^\mu\partial_\mu t = 1$, decomposed as
+\[
+t^\mu \;=\; N\,n^\mu \;+\; N^\mu, \qquad N^\mu n_\mu = 0 .
+\]
+Foliation = the slicing; threading = how the spatial grid rides it.
+
+The flagged step is \textbf{exactly backwards}, in an instructive way.
+
+\section{The correction: the constraints do not contain the lapse}
+
+In vacuum (matter terms shown for completeness) the constraints read
+\begin{align}
+\Hh_\perp &\;=\; \Rthree + K^2 - K_{ij}K^{ij} \;=\; 16\pi G\,\rho ,\\
+\Hh^i &\;=\; D_j\!\left(K^{ij} - h^{ij}K\right) \;=\; 8\pi G\, j^i ,
+\end{align}
+with $K = h^{ij}K_{ij}$ and $D$ the Levi-Civita connection of $h$. \textbf{The lapse and
+shift appear nowhere.} The constraints are conditions purely on the leaf data
+$(h_{ij}, K_{ij})$ and the matter data. Given arbitrary $(h,K)$, the constraints are
+satisfied or they are not; no choice of $(N, N^i)$ can change that.
+
+A Lagrange multiplier does precisely the opposite of what the flagged step attributes to
+it: \emph{a multiplier enforces a constraint on the other variables; it cannot satisfy the
+constraint itself, because the constraint does not contain it.} In ordinary mechanics,
+\[
+L \;=\; p\,\dot q - H(p,q) - \lambda\, C(p,q):
+\]
+varying $\lambda$ yields $C(p,q) = 0$, a condition on $(p,q)$ in which $\lambda$ is
+absent.
+
+\textbf{Warm-up example (electromagnetism).} Gauss's law $\nabla\!\cdot\!\mathbf{E} = \rho$
+constrains the initial \emph{field} data; the scalar potential $A_0$ is the multiplier
+that enforces it. One would never say ``choose $A_0$ to make
+$\nabla\!\cdot\!\mathbf{E}-\rho$ vanish'' --- $A_0$ is not in the equation. The lapse is
+gravity's $A_0$.
+
+\section{The story, corrected}
+
+\subsection{Constraints are embedding integrability conditions (Gauss--Codazzi)}
+
+For \emph{any} hypersurface $\Sigma \hookrightarrow (M,g)$, the Gauss and Codazzi
+equations relate the intrinsic curvature of $\Sigma$, its second fundamental form $K$,
+and the ambient curvature. Tracing the Gauss equation twice and the Codazzi equation once
+gives identities
+\[
+G_{\mu\nu}n^\mu n^\nu \;=\; \tfrac12\!\left(\Rthree + K^2 - K_{ij}K^{ij}\right),
+\qquad
+G_{\mu\nu}n^\mu e^\nu_i \;=\; D_jK^j{}_i - D_iK .
+\]
+Imposing the Einstein equation $G_{\mu\nu} = 8\pi G\,T_{\mu\nu}$ turns the left-hand
+sides into matter densities, and the constraints are derived. They are nothing exotic:
+\textbf{the Gauss--Codazzi integrability conditions for embedding $(\Sigma,h,K)$ into an
+Einstein manifold}. Data violating them is not ``a slice with a bad lapse''; it is not a
+slice of \emph{any} Einstein spacetime whatsoever.
+
+\subsection{The ten Einstein equations split $4+6$}
+
+The four projections above ($nn$ and $ne_i$) contain no second time derivatives: they are
+relations among data on a single leaf --- constraints. The remaining six ($e_ie_j$) are
+the genuine evolution equations. Schematically (up to sign conventions):
+\begin{align}
+\dot h_{ij} &\;=\; 2N\,K_{ij} + D_iN_j + D_jN_i ,\\
+\dot K_{ij} &\;=\; -D_iD_jN
++ N\big(\Rthree_{ij} + K\,K_{ij} - 2K_{ik}K^k{}_j\big)
++ \Lie_{\vec N}\,K_{ij} + \text{(matter)} .
+\end{align}
+\emph{Here} is where the lapse and shift live: they steer the evolution --- how fast the
+geometry marches forward at each point, and how the coordinates slide. The first equation
+is really the definition of $K$ rearranged: extrinsic curvature is the velocity of the
+3-metric measured in proper time.
+
+\subsection{The multiplier statement, made exact}
+
+In Hamiltonian form the ADM action is
+\[
+S \;=\; \int dt\, d^3x \;\Big[\pi^{ij}\dot h_{ij}
+\;-\; N\,\Hh_\perp(h,\pi) \;-\; N^i\,\Hh_i(h,\pi)\Big],
+\]
+with $N, N^i$ appearing \textbf{linearly and undifferentiated}. The two halves of
+``Lagrange multiplier'':
+\begin{enumerate}
+\item $\delta S/\delta N = 0 \;\Rightarrow\; \Hh_\perp = 0$: varying the multiplier
+\emph{yields} the constraint on $(h,\pi)$.
+\item Nothing in the action determines $N, N^i$ themselves: they are freely specifiable
+functions.
+\end{enumerate}
+The corrected version of the flagged step is therefore:
+\begin{quote}
+\emph{For any constraint-satisfying initial data, the lapse and shift may be chosen
+arbitrarily, and every choice evolves the data into the same 4-geometry, merely sliced
+and coordinatized differently.}
+\end{quote}
+The freedom lives in the multipliers; the constraint lives in the data.
+
+\subsection{The consistency miracle: constraints propagate}
+
+The scheme would collapse if evolving with some lapse could \emph{break} the constraints
+downstream. It cannot: if $\Hh_\perp = \Hh_i = 0$ initially, they vanish for all time,
+for any $(N,N^i)$. On the Lagrangian side this is the contracted Bianchi identity
+$\nabla_\mu G^{\mu\nu} \equiv 0$; on the Hamiltonian side, the constraints are
+\textbf{first-class} --- their Poisson brackets close on constraints (Dirac's
+hypersurface-deformation algebra):
+\begin{align}
+\{\Hh[N], \Hh[M]\} &\;=\; \Hh_i\big[\,h^{ij}(N\partial_j M - M\partial_j N)\,\big],\\
+\{\Hh_i[\vec\xi\,], \Hh[N]\} &\;=\; \Hh[\,\xi^i\partial_i N\,],\qquad
+\{\Hh_i, \Hh_j\} \;\sim\; \text{(spatial diffeomorphism algebra)} .
+\end{align}
+Note the $h^{ij}$ in the first bracket: a \emph{field-dependent structure function}, not
+a structure constant --- this is not a Lie algebra. (This is the object the
+``deformation-algebra test'' of the lapse program aspires to see, and the structure
+Dittrich showed discretization generically breaks.)
+
+\subsection{The payoff: general relativity as an initial-value problem}
+
+Give $(\Sigma, h, K)$ satisfying the four constraints; choose \emph{any} lapse and shift;
+evolve. Choquet-Bruhat (existence) and Choquet-Bruhat--Geroch (uniqueness) give the
+unique maximal globally hyperbolic Einstein development. Degrees-of-freedom audit: $12$
+phase-space functions per point $(h_{ij}, \pi^{ij})$, minus $4$ constraints, minus $4$
+gauge orbits they generate, $= 4$: the two polarizations of gravitational waves.
+
+Solving the constraints for admissible initial data is its own elliptic theory (the
+York--Lichnerowicz conformal method) --- a likely source of the half-memory behind the
+flagged step: one \emph{does} solve elliptic equations to satisfy the constraints, but
+the unknowns are a conformal factor and a vector potential inside $(h,K)$, never the
+lapse. The lapse's elliptic equation (e.g.\ maximal slicing's $D^2N = N\,K_{ij}K^{ij}$)
+arises only \emph{after} the constraints, as an optional gauge condition.
+
+\section{Dictionary to the triangulation program}
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+ADM object & program object & the corrected role \\
+\midrule
+data $(h,K)$ & the triangulation ensemble & constraints condition \emph{it} \\
+constraint $\Hh_\perp$ & patch constraint $\C_p$ (tier c) & contains geometry only, never $N_p$ \\
+multiplier $N$ & lapse field $N_p$; kernel freedom at fixed $\pi$ & enforces; is itself undetermined \\
+constraint propagation & automatic: each local $h_x$ annihilates $\sqrt{\pi}$ & trivially abelian algebra \\
+Dirac algebra & (absent; the target) & field-dependent structure functions \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The reason general relativity must \emph{check} constraint propagation while the sampler
+gets consistency for free: the sampler's $H[N] = \sum_x N_x h_x$ has each local generator
+$h_x$ \emph{individually} annihilating the state --- a trivially closed, abelian
+constraint structure --- whereas gravity's constraints close only jointly, with
+field-dependent structure functions. That gap --- trivial algebra versus Dirac algebra
+--- is, in one sentence, the distance between ``a sampler with a lapse'' and
+``gravity.''
+
+\end{document}
