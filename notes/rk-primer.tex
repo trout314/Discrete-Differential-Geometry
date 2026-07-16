@@ -1,0 +1,169 @@
+\documentclass[11pt]{article}
+\usepackage[margin=2.6cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{parskip}
+\usepackage[T1]{fontenc}
+\usepackage{booktabs}
+
+\newcommand{\Wt}{\widetilde W}
+\newcommand{\ket}[1]{|#1\rangle}
+\newcommand{\bra}[1]{\langle #1|}
+
+\title{Why a Markov chain is secretly an imaginary-time quantum system\\
+\large The Rokhsar--Kivelson construction, and how the program's measurements slot into it}
+\author{}
+\date{2026--07--16}
+
+\begin{document}
+\maketitle
+
+\section{Setup}
+
+Let $\Omega$ be the configuration space (triangulations of $S^3$ modulo isomorphism ---
+countable, so everything below is honest linear algebra), let
+$\pi(T) \propto e^{-S(T)}$ be the target Gibbs measure, and let
+$W(T' \!\leftarrow\! T)$ be the Metropolis transition matrix over Pachner moves. The one
+property engineered into $W$ is \textbf{detailed balance}:
+\[
+\pi(T)\, W(T'\!\leftarrow\!T) \;=\; \pi(T')\, W(T\!\leftarrow\!T') .
+\]
+
+\section{The symmetrization trick}
+
+$W$ is not symmetric, but detailed balance says it is \emph{conjugate} to a symmetric
+matrix. Let $D = \operatorname{diag}(\pi)$ and define
+\[
+\Wt \;=\; D^{-1/2}\, W\, D^{1/2},
+\qquad\text{i.e.}\qquad
+\Wt(T',T) \;=\; \pi(T')^{-1/2}\; W(T'\!\leftarrow\!T)\; \pi(T)^{1/2} .
+\]
+Detailed balance is \emph{exactly} the statement $\Wt^{\dagger} = \Wt$. Define
+\[
+\boxed{\;H \;=\; \mathbf{1} - \Wt\;}
+\]
+a self-adjoint operator on $\ell^2(\Omega)$ with three properties, each verifiable in a
+line:
+\begin{enumerate}
+\item \textbf{Ground state.} The vector $\psi_0(T) = \sqrt{\pi(T)}$ satisfies
+$\Wt\,\psi_0 = \psi_0$ (unwind the conjugation: this is just stationarity
+$W\pi = \pi$). Hence $H\psi_0 = 0$.
+\item \textbf{Positivity.} All eigenvalues of $\Wt$ lie in $[-1,1]$ (it is a
+similarity transform of a stochastic matrix), so $H \succeq 0$: $\psi_0$ is the
+\emph{ground} state, at energy exactly zero.
+\item \textbf{Uniqueness.} If the chain is irreducible (ergodic), Perron--Frobenius
+makes $\psi_0$ the unique ground state --- and $\psi_0 > 0$ everywhere, a
+\emph{nodeless} wavefunction. Hamiltonians whose ground states can be written nodeless
+in a preferred basis are called \emph{stoquastic}: no sign problem.
+\end{enumerate}
+
+\section{The dictionary}
+
+Run the chain for $t$ steps: probabilities evolve by $W^t$. Conjugating, amplitudes
+evolve by
+\[
+\Wt^{\,t} \;=\; (\mathbf{1} - H)^t \;\approx\; e^{-Ht},
+\]
+which is \textbf{imaginary-time Schr\"odinger evolution}, $\partial_t \psi = -H\psi$ ---
+not an analogy but the same matrix exponentiated. The consequences follow mechanically.
+
+\paragraph{Equal-time expectations are ground-state expectations.}
+For a diagonal observable $\hat O$ (a function of the configuration),
+\[
+\bra{\psi_0}\hat O\ket{\psi_0} \;=\; \sum_T \pi(T)\, O(T),
+\qquad\text{since } \psi_0^2 = \pi .
+\]
+The Born rule \emph{is} the Gibbs measure. This is the precise sense of ``the ensemble
+is $|\Psi|^2$.''
+
+\paragraph{Autocorrelation times are inverse energy gaps.}
+Expanding a connected time-correlation function in eigenstates
+$H\psi_n = E_n\psi_n$:
+\[
+\big\langle \delta O(0)\,\delta O(t) \big\rangle_{\text{chain}}
+\;=\; \sum_{n\ge 1} \big|\bra{\psi_n}\hat O\ket{\psi_0}\big|^2\, e^{-E_n t}.
+\]
+The slowest decay is $e^{-E_1 t}$: the measured $\tau$'s of the convergence gate are
+literally $1/E_n$, and the GEVP analysis is textbook variational spectroscopy of $H$
+--- which is why lattice-QCD machinery (L\"uscher--Wolff) applied without modification.
+Every $\widehat R$ certificate ever produced was, unknowingly, an energy-gap
+measurement.
+
+\section{What is canonical and what is not}
+
+The ground state $\psi_0 = \sqrt\pi = e^{-S/2}$ depends \textbf{only on the action}
+$S$. But $H$ itself depends on the \emph{move set and proposal rates}: different
+ergodic kernels for the same $\pi$ give different excited spectra above the same ground
+state. This single fact is simultaneously:
+\begin{itemize}
+\item the \textbf{non-uniqueness problem} (which $H$ is ``physical''? --- none
+canonically);
+\item the \textbf{lapse freedom} (the implementable family is
+$H[N] = \sum_x N_x h_x$ with each local $h_x \succeq 0$ annihilating $\psi_0$; uniform
+sweeps are the unit-lapse gauge);
+\item a \textbf{protection clause}: any measurement touching only the measure ---
+roundness, structure factors, hyperuniformity --- is move-set-independent, hence robust
+physics of the \emph{state}; anything dynamical (gaps, dynamical exponents,
+heterogeneity) is physics of the state \emph{plus a choice of clock}.
+\end{itemize}
+
+\section{Where ``RK'' enters}
+
+Rokhsar and Kivelson (1988), studying quantum dimer models, ran the construction
+\emph{backwards}: they engineered a quantum Hamiltonian whose ground state is the
+equal-weight superposition of dimer configurations --- choosing a classical measure and
+building its parent Hamiltonian. The general lesson (Henley 2004; Castelnovo et al.\
+2005) is that every reversible chain sits at such an ``RK point'': a locus in
+Hamiltonian space where the ground state is exactly a classical Gibbs measure in
+disguise. RK phenomenology then supplies sharp expectations --- most famously, when the
+classical measure is \emph{critical}, the parent Hamiltonian is gapless with dynamical
+exponent $z = 2$ (diffusive: $E_1 \sim k^2$, so gap $\sim L^{-2}$).
+
+\section{How the program's measurements slot in}
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+phase & measured gap & RK reading \\
+\midrule
+extended ($\beta>0$) & $E_1 \propto N^{0}$ (gapped) &
+\begin{tabular}[t]{@{}l@{}}classical measure non-critical (plain fluid)\\
+$\Rightarrow$ parent Hamiltonian boringly gapped\end{tabular} \\[1.4em]
+scale-free hub ($\beta=0$, flat pin) & $E_1 \propto N^{-0.38}$ &
+\begin{tabular}[t]{@{}l@{}}diverging classical correlation structure\\
+(hub hierarchy) $\Rightarrow$ gap closes with the\\
+\emph{same} exponent: RK phenomenology in the wild\end{tabular} \\[2.2em]
+crumpled ($\beta=0$, $k=0$) & $E_1 \propto N^{-0.19}$ & expander/mean-field-like \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The gapped extended phase explains why the flagship $S(k\to 0)$ test came out thermal,
+and why gravity-like structure --- which needs \emph{extensive} zero modes, an actual
+constraint surface --- is absent: the kernel of our $H$ is the single ray
+$\mathbb{R}\,\psi_0$.
+
+Connecting to the ADM primer: each local generator $h_x$ annihilates $\psi_0$
+\emph{separately} (detailed balance holds move-by-move), so ``constraint propagation''
+is free --- and vacuous. The constraint structure is trivially abelian. Gravity's
+content lives in constraints that close only \emph{jointly}, with field-dependent
+structure functions (the Dirac hypersurface-deformation algebra). That gap --- trivial
+algebra versus Dirac algebra --- is the distance between ``a sampler with a lapse'' and
+``gravity.''
+
+\section{The Euclidean caveat}
+
+The construction is intrinsically \textbf{Euclidean}: $e^{-Ht}$ is a heat semigroup;
+nothing here produces a unitary $e^{-iHt}$ or a preferred analytic continuation, and
+the chain's $t$ is the unit-lapse gauge clock, not a physical time. Everything
+real-time or relational (matter clocks, Page--Wootters) is a further construction,
+deliberately deferred.
+
+\paragraph{References.}
+D.~Rokhsar, S.~Kivelson, Phys.\ Rev.\ Lett.\ \textbf{61}, 2376 (1988).
+C.~Henley, J.~Phys.: Condens.\ Matter \textbf{16}, S891 (2004) --- the clearest
+exposition of the chain--Hamiltonian dictionary.
+C.~Castelnovo, C.~Chamon, C.~Mudry, P.~Pujol, Ann.\ Phys.\ \textbf{318}, 316 (2005) ---
+the general stochastic-matrix-form construction.
+M.~L\"uscher, U.~Wolff, Nucl.\ Phys.\ B \textbf{339}, 222 (1990) --- the GEVP method.
+
+\end{document}
