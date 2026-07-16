@@ -533,6 +533,18 @@ _lib.ddg_sampler_set_hinge_degree_target.argtypes = [ctypes.c_void_p, ctypes.c_d
 _lib.ddg_sampler_set_hinge_degree_target.restype = ctypes.c_int
 _lib.ddg_sampler_set_hinge_degree_target.errcheck = _check_int
 
+_lib.ddg_sampler_set_hinge_degree_target_coef.argtypes = [ctypes.c_void_p, ctypes.c_double]
+_lib.ddg_sampler_set_hinge_degree_target_coef.restype = ctypes.c_int
+_lib.ddg_sampler_set_hinge_degree_target_coef.errcheck = _check_int
+
+_lib.ddg_sampler_set_codim3_degree_target_coef.argtypes = [ctypes.c_void_p, ctypes.c_double]
+_lib.ddg_sampler_set_codim3_degree_target_coef.restype = ctypes.c_int
+_lib.ddg_sampler_set_codim3_degree_target_coef.errcheck = _check_int
+
+_lib.ddg_sampler_set_codim3_degree_target.argtypes = [ctypes.c_void_p, ctypes.c_double]
+_lib.ddg_sampler_set_codim3_degree_target.restype = ctypes.c_int
+_lib.ddg_sampler_set_codim3_degree_target.errcheck = _check_int
+
 _lib.ddg_sampler_reset_stats.argtypes = [ctypes.c_void_p]
 _lib.ddg_sampler_reset_stats.restype = ctypes.c_int
 _lib.ddg_sampler_reset_stats.errcheck = _check_int

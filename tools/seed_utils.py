@@ -163,6 +163,16 @@ def build_seed_filename(topology: str, params, seed_index: int | None = None) ->
         hdv_over_n = params.hinge_degree_variance_coef / params.num_facets_target
         parts.append(f"HDVs_{encode_float(round_sig(hdv_over_n, 3))}")
 
+    # Fixed-target (strictly local) penalties — UNSCALED per-element couplings
+    # ("VDT_"/"HDT_"): these multiply extensive sums sum(deg - target)^2, so the
+    # coefficient itself is the per-vertex/per-edge coupling and already
+    # N-collapses (no /N rescaling, unlike VDVs_/HDVs_). Targets are derived
+    # from hinge_degree_target (see vertex_degree_target) and live in metadata.
+    if getattr(params, "codim3_degree_target_coef", 0):
+        parts.append(f"VDT_{encode_float(round_sig(params.codim3_degree_target_coef, 3))}")
+    if getattr(params, "hinge_degree_target_coef", 0):
+        parts.append(f"HDT_{encode_float(round_sig(params.hinge_degree_target_coef, 3))}")
+
     name = "_".join(parts)
     if seed_index is not None:
         name += f"_s{seed_index:03d}"
@@ -311,6 +321,9 @@ def build_metadata_comments(
     num_hinges_coef: float,
     hinge_degree_variance_coef: float,
     codim3_degree_variance_coef: float,
+    hinge_degree_target_coef: float = 0.0,
+    codim3_degree_target_coef: float = 0.0,
+    codim3_degree_target: float = 0.0,
     growth_step_size: int,
     eq_sweeps_per_step: int,
     equilibration_sweeps: int,
@@ -352,6 +365,9 @@ def build_metadata_comments(
     comments.append(f"num_hinges_coef = {num_hinges_coef}")
     comments.append(f"hinge_degree_variance_coef = {hinge_degree_variance_coef}")
     comments.append(f"codim3_degree_variance_coef = {codim3_degree_variance_coef}")
+    comments.append(f"hinge_degree_target_coef = {hinge_degree_target_coef}")
+    comments.append(f"codim3_degree_target_coef = {codim3_degree_target_coef}")
+    comments.append(f"codim3_degree_target = {codim3_degree_target}")
     comments.append(f"growth_step_size = {growth_step_size}")
     comments.append(f"eq_sweeps_per_step = {eq_sweeps_per_step}")
     comments.append(f"equilibration_sweeps = {equilibration_sweeps}")

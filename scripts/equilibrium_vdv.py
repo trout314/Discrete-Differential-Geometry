@@ -47,7 +47,7 @@ import discrete_differential_geometry as ddg
 from discrete_differential_geometry import (
     Manifold, ManifoldSampler, SamplerParams,
     integrated_autocorrelation_time, split_rhat, rank_normalized_rhat,
-    quantized_split_rhat,
+    quantized_split_rhat, vertex_degree_target,
 )
 
 # Coupled observables to check for joint convergence: the free/penalized ones
@@ -65,11 +65,17 @@ _UNMIGRATED = ("source predates history tracking; prior lineage not inlined "
 FIELDS = ["side", "replica", "coef", "sample", "sweeps",
           "num_facets", "vdv", "edge_deg", "hdv", "accept"]
 
-# Per-chain resident memory ~ manifold footprint: ~2 MB per 1000 facets + base
-# (rounded up from the ~2 KB/facet measured on reburn). At N=1e7 this is ~20 GB,
-# so one chain per ~24 GB of RAM; the driver caps concurrency accordingly.
-_MB_PER_1K_FACETS = 2.5
-_BASE_MB = 250.0
+# Per-chain resident memory, fit to OBSERVED chain RSS during the 2026-07
+# large-N campaigns (ps RSS of --chain workers): ~0.35 GB at N=1e4, ~1.1 GB at
+# N=1.8e4, ~1.7 GB at N=3.2e4, ~1.6 GB at N=5.6e4. The old 2.5 MB/1k-facet
+# value (bare manifold footprint from reburn) underestimated live chains ~5x —
+# two "capped" campaigns jointly saturated a 30 GB box and starved concurrent
+# grows. 400 MB base + 40 MB/1k facets envelopes all observations (mildly
+# conservative at the largest N). Revisit with measurements at N>=1e5 before
+# planning 1e6+ ensembles: linear extrapolation gives ~40 GB/chain at 1e6,
+# which may well be too pessimistic.
+_MB_PER_1K_FACETS = 40.0
+_BASE_MB = 400.0
 
 
 def est_chain_gb(n_target):
@@ -195,6 +201,26 @@ def _bias_settings(parsed, args):
     return {}
 
 
+def _vdt_target(args):
+    """Codim-3 (vertex) target for the fixed-target penalty: explicit override,
+    else the value the pinned f-vector already implies (4/(6/edge_target - 1));
+    anything else makes the vertex term fight the edge pin."""
+    return args.vdt_target if args.vdt_target else vertex_degree_target(args.hinge_target)
+
+
+def _sampler_params(args, vdv_coef):
+    """The study SamplerParams. vdv_coef is passed explicitly because the
+    driver calls this with each grid beta (worker mode uses args.coef)."""
+    return SamplerParams(
+        num_facets_target=args.n_target, num_facets_coef=args.num_facets_coef,
+        hinge_degree_target=args.hinge_target, num_hinges_coef=args.num_hinges_coef,
+        hinge_degree_variance_coef=args.hdv_coef,
+        codim3_degree_variance_coef=vdv_coef,
+        hinge_degree_target_coef=args.hdt_coef,
+        codim3_degree_target_coef=args.vdt_coef,
+        codim3_degree_target=_vdt_target(args) if args.vdt_coef else 0.0)
+
+
 def _apply_bias_settings(s, settings):
     """Apply {knob: value} perturbations to the live sampler."""
     if "vdv_c" in settings: s.set_codim3_degree_variance_coef(settings["vdv_c"])
@@ -211,6 +237,10 @@ def _restore_study(s, args):
     s.set_hinge_degree_target(args.hinge_target)
     s.set_num_facets_target(args.n_target)
     s.set_num_hinges_coef(args.num_hinges_coef)
+    s.set_hinge_degree_target_coef(args.hdt_coef)
+    s.set_codim3_degree_target_coef(args.vdt_coef)
+    if args.vdt_coef:
+        s.set_codim3_degree_target(_vdt_target(args))
 
 
 def _warmup_settings(args):
@@ -274,11 +304,7 @@ def run_chain(args):
         rows = []
         vhists, ehists = [], []
 
-    params = SamplerParams(
-        num_facets_target=args.n_target, num_facets_coef=args.num_facets_coef,
-        hinge_degree_target=args.hinge_target, num_hinges_coef=args.num_hinges_coef,
-        hinge_degree_variance_coef=args.hdv_coef,
-        codim3_degree_variance_coef=args.coef)
+    params = _sampler_params(args, args.coef)
     s = ManifoldSampler(mfd, params)
     v = s.manifold
 
@@ -352,6 +378,9 @@ def run_chain(args):
             hinge_degree_target=args.hinge_target, num_hinges_coef=args.num_hinges_coef,
             hinge_degree_variance_coef=args.hdv_coef,
             codim3_degree_variance_coef=args.coef,
+            hinge_degree_target_coef=args.hdt_coef,
+            codim3_degree_target_coef=args.vdt_coef,
+            codim3_degree_target=_vdt_target(args) if args.vdt_coef else 0.0,
             growth_step_size=0, eq_sweeps_per_step=0,
             equilibration_sweeps=args.warmup_sweeps + args.burnin_sweeps
                                  + args.n_samples * args.thin,
@@ -390,6 +419,9 @@ def spawn(args, coef, side, rep, out):
            "--hinge-target", str(args.hinge_target),
            "--num-hinges-coef", str(args.num_hinges_coef),
            "--hdv-coef", str(args.hdv_coef),
+           "--hdt-coef", str(args.hdt_coef),
+           "--vdt-coef", str(args.vdt_coef),
+           "--vdt-target", str(args.vdt_target),
            "--coef", str(coef),
            "--warmup-coef", str(coef * args.warmup_factor),
            "--warmup-sweeps", str(warm_sweeps),
@@ -734,11 +766,7 @@ def produce(args):
     if args.bracket and "hot-cold" in args.bracket and len(args.bracket) > 1:
         sys.exit("--bracket hot-cold is whole-system; do not combine it with named "
                  "coordinate axes")
-    params = SamplerParams(
-        num_facets_target=args.n_target, num_facets_coef=args.num_facets_coef,
-        hinge_degree_target=args.hinge_target, num_hinges_coef=args.num_hinges_coef,
-        hinge_degree_variance_coef=args.hdv_coef,
-        codim3_degree_variance_coef=args.beta)
+    params = _sampler_params(args, args.beta)
     stem = build_seed_filename(args.topology, params, seed_index=0).rsplit("_s", 1)[0]
     if not args.dry_run and glob.glob(os.path.join(args.seeds_dir, stem + "_s*.mfd")):
         print(f"seeds already exist for these params (stem {stem}); not duplicating.",
@@ -772,6 +800,8 @@ def produce(args):
                "--hinge-target", str(args.hinge_target),
                "--num-hinges-coef", str(args.num_hinges_coef),
                "--hdv-coef", str(args.hdv_coef), "--coef", str(args.beta),
+               "--hdt-coef", str(args.hdt_coef), "--vdt-coef", str(args.vdt_coef),
+               "--vdt-target", str(args.vdt_target),
                "--burnin-sweeps", str(args.production_burnin),
                "--thin", str(args.thin), "--n-samples", str(args.n_samples),
                "--side", side, "--replica", str(i),
@@ -861,6 +891,9 @@ def recertify(args):
                    "--hinge-target", md["hinge_degree_target"],
                    "--num-hinges-coef", md["num_hinges_coef"],
                    "--hdv-coef", md["hinge_degree_variance_coef"], "--coef", str(beta),
+                   "--hdt-coef", md.get("hinge_degree_target_coef", "0"),
+                   "--vdt-coef", md.get("codim3_degree_target_coef", "0"),
+                   "--vdt-target", md.get("codim3_degree_target", "0"),
                    "--warmup-sweeps", "0", "--burnin-sweeps", str(args.production_burnin),
                    "--thin", str(args.thin), "--n-samples", str(args.n_samples), "--out", out]
             if args.record_histograms:
@@ -905,6 +938,15 @@ def main():
     p.add_argument("--hinge-target", type=float, default=5.0043)
     p.add_argument("--num-hinges-coef", type=float, default=0.1)
     p.add_argument("--hdv-coef", type=float, default=0.0)
+    p.add_argument("--hdt-coef", type=float, default=0.0,
+                   help="Fixed-target hinge penalty coupling c_e on "
+                        "sum_e (deg_e - hinge_target)^2 (strictly local; 0=off).")
+    p.add_argument("--vdt-coef", type=float, default=0.0,
+                   help="Fixed-target vertex penalty coupling c_v on "
+                        "sum_v (deg_v - vdt_target)^2 (strictly local; 0=off).")
+    p.add_argument("--vdt-target", type=float, default=0.0,
+                   help="Vertex-degree target; 0 = derive from --hinge-target "
+                        "via 4/(6/t-1) (the f-vector-consistent value).")
     # chain controls
     p.add_argument("--coef", type=float, help="Study VDV coefficient beta (worker).")
     p.add_argument("--thin", type=int, default=5, help="Sweeps per recorded sample.")

@@ -1056,6 +1056,11 @@ private struct SamplerState
     double numHingesCoef;
     double hingeDegreeVarianceCoef;
     double coDim3DegreeVarianceCoef;
+    // Fixed-target (strictly local) degree penalties; 0 = off (default).
+    // Edge target reuses hingeDegreeTarget; the codim-3 target is its own knob.
+    double hingeDegreeTargetCoef = 0.0;
+    double coDim3DegreeTargetCoef = 0.0;
+    double coDim3DegreeTarget = 0.0;
     double hingeMoveProb = 0.0;
 
     // MCMC state
@@ -1143,10 +1148,15 @@ extern(C) void* ddg_sampler_create_ext(void* manifold_handle,
                 real numHingesCoef;
                 real hingeDegreeVarianceCoef;
                 real coDim3DegreeVarianceCoef;
+                real hingeDegreeTargetCoef;
+                real coDim3DegreeTargetCoef;
+                real coDim3DegreeTarget;
             }
             auto p = Params(s.numFacetsTarget, cast(real) s.hingeDegreeTarget,
                 cast(real) s.numFacetsCoef, cast(real) s.numHingesCoef,
-                cast(real) s.hingeDegreeVarianceCoef, cast(real) s.coDim3DegreeVarianceCoef);
+                cast(real) s.hingeDegreeVarianceCoef, cast(real) s.coDim3DegreeVarianceCoef,
+                cast(real) s.hingeDegreeTargetCoef, cast(real) s.coDim3DegreeTargetCoef,
+                cast(real) s.coDim3DegreeTarget);
             s.currentObjective = mw.mfd.objective(p);
         }
 
@@ -1192,6 +1202,9 @@ extern(C) long ddg_sampler_run(void* sampler_handle, long num_moves,
                 real numHingesCoef;
                 real hingeDegreeVarianceCoef;
                 real coDim3DegreeVarianceCoef;
+                real hingeDegreeTargetCoef;
+                real coDim3DegreeTargetCoef;
+                real coDim3DegreeTarget;
             }
 
             auto params = Params(
@@ -1200,7 +1213,10 @@ extern(C) long ddg_sampler_run(void* sampler_handle, long num_moves,
                 cast(real) s.numFacetsCoef,
                 cast(real) s.numHingesCoef,
                 cast(real) s.hingeDegreeVarianceCoef,
-                cast(real) s.coDim3DegreeVarianceCoef
+                cast(real) s.coDim3DegreeVarianceCoef,
+                cast(real) s.hingeDegreeTargetCoef,
+                cast(real) s.coDim3DegreeTargetCoef,
+                cast(real) s.coDim3DegreeTarget
             );
 
             if (s.currentObjective != s.currentObjective) // NaN check
@@ -1279,6 +1295,9 @@ private long runSamplerDim3(SamplerState* s, long numMoves,
             real numHingesCoef;
             real hingeDegreeVarianceCoef;
             real coDim3DegreeVarianceCoef;
+            real hingeDegreeTargetCoef;
+            real coDim3DegreeTargetCoef;
+            real coDim3DegreeTarget;
         }
 
         auto params = Params(
@@ -1287,7 +1306,10 @@ private long runSamplerDim3(SamplerState* s, long numMoves,
             cast(real) s.numFacetsCoef,
             cast(real) s.numHingesCoef,
             cast(real) s.hingeDegreeVarianceCoef,
-            cast(real) s.coDim3DegreeVarianceCoef
+            cast(real) s.coDim3DegreeVarianceCoef,
+            cast(real) s.hingeDegreeTargetCoef,
+            cast(real) s.coDim3DegreeTargetCoef,
+            cast(real) s.coDim3DegreeTarget
         );
 
         if (s.currentObjective != s.currentObjective) // NaN check
@@ -1370,6 +1392,9 @@ extern(C) long ddg_sampler_run_exact(void* sampler_handle, long num_moves,
                 real numHingesCoef;
                 real hingeDegreeVarianceCoef;
                 real coDim3DegreeVarianceCoef;
+                real hingeDegreeTargetCoef;
+                real coDim3DegreeTargetCoef;
+                real coDim3DegreeTarget;
             }
 
             auto params = Params(
@@ -1378,7 +1403,10 @@ extern(C) long ddg_sampler_run_exact(void* sampler_handle, long num_moves,
                 cast(real) s.numFacetsCoef,
                 cast(real) s.numHingesCoef,
                 cast(real) s.hingeDegreeVarianceCoef,
-                cast(real) s.coDim3DegreeVarianceCoef
+                cast(real) s.coDim3DegreeVarianceCoef,
+                cast(real) s.hingeDegreeTargetCoef,
+                cast(real) s.coDim3DegreeTargetCoef,
+                cast(real) s.coDim3DegreeTarget
             );
 
             auto currentObjective = mw.mfd.objective(params);
@@ -1848,6 +1876,40 @@ extern(C) int ddg_sampler_set_hinge_degree_target(void* sampler_handle, double t
     if (sampler_handle is null) { setError("null handle"); return -1; }
     auto state = cast(SamplerState*) sampler_handle;
     state.hingeDegreeTarget = target;
+    state.currentObjective = real.nan;
+    return 0;
+}
+
+/// Fixed-target (strictly local) degree penalties. Coefficients default to 0
+/// (off). The hinge term targets hingeDegreeTarget; the codim-3 term targets
+/// coDim3DegreeTarget (set it consistently with the pinned f-vector, e.g. in
+/// dim 3: t = 4/(6/hingeDegreeTarget - 1)).
+extern(C) int ddg_sampler_set_hinge_degree_target_coef(void* sampler_handle, double coef) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto state = cast(SamplerState*) sampler_handle;
+    state.hingeDegreeTargetCoef = coef;
+    state.currentObjective = real.nan;
+    return 0;
+}
+
+extern(C) int ddg_sampler_set_codim3_degree_target_coef(void* sampler_handle, double coef) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto state = cast(SamplerState*) sampler_handle;
+    state.coDim3DegreeTargetCoef = coef;
+    state.currentObjective = real.nan;
+    return 0;
+}
+
+extern(C) int ddg_sampler_set_codim3_degree_target(void* sampler_handle, double target) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto state = cast(SamplerState*) sampler_handle;
+    state.coDim3DegreeTarget = target;
     state.currentObjective = real.nan;
     return 0;
 }

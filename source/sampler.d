@@ -18,6 +18,8 @@ struct Penalty
     real globalCurvPenalty;
     real localCurvPenalty;
     real localSolidAngleCurvPenalty;
+    real hingeDegTargetPenalty;
+    real coDim3DegTargetPenalty;
 }
 
 /// Compute penalties from raw values (no manifold needed).
@@ -44,6 +46,18 @@ Penalty penaltiesFromValues(int dim_, P)(
     // Intensive: divide by count to get mean variance per hinge
     if (nHinges > 0) penalty.localCurvPenalty /= nHinges;
 
+    // Fixed-target hinge penalty: sum_e (deg_e - t)^2 with t a CONSTANT target
+    // (params.hingeDegreeTarget), minus the integer-lattice floor x(1-x) per
+    // hinge. Extensive and linear in (nFacets, nHinges, totSqDeg), so the
+    // action term is strictly local: a move's delta depends only on degrees
+    // inside its bistellar ball. Identity vs. the variance form:
+    //   sum(d - t)^2 = sum(d - dbar)^2 + nHinges*(dbar - t)^2.
+    immutable tHinge = cast(real) params.hingeDegreeTarget;
+    x = modf(tHinge, _);
+    penalty.hingeDegTargetPenalty =
+        tHinge ^^ 2 * nHinges - 2 * tHinge * hingesPerFacet * nFacets + hingeTotSqDeg
+        - (x - x ^^ 2) * nHinges;
+
     static if (dim_ > 2)
     {
         immutable coDim3DegTarget = coDim3PerFacet * nFacets / cast(real) nCoDim3;
@@ -61,10 +75,21 @@ Penalty penaltiesFromValues(int dim_, P)(
             coDim3DegTarget ^^ 2 * nCoDim3 - 2 * coDim3DegTarget * coDim3PerFacet * nFacets + coDim3TotSqDeg) - minPenalty;
         // Intensive: divide by count to get mean variance per codim-3 face
         if (nCoDim3 > 0) penalty.localSolidAngleCurvPenalty /= nCoDim3;
+
+        // Fixed-target codim-3 penalty: sum_v (deg_v - t)^2 with t a CONSTANT
+        // target (params.coDim3DegreeTarget), minus the even-lattice floor
+        // 4y(1-y) per face (codim-3 degrees are even; see comment above).
+        // Extensive and linear in the counters, hence strictly local.
+        immutable tCoDim3 = cast(real) params.coDim3DegreeTarget;
+        x = modf(tCoDim3 / 2.0, _);
+        penalty.coDim3DegTargetPenalty =
+            tCoDim3 ^^ 2 * nCoDim3 - 2 * tCoDim3 * coDim3PerFacet * nFacets + coDim3TotSqDeg
+            - 4.0 * (x - x ^^ 2) * nCoDim3;
     }
     else
     {
         penalty.localSolidAngleCurvPenalty = 0;
+        penalty.coDim3DegTargetPenalty = 0;
     }
 
     return penalty;
@@ -96,13 +121,63 @@ real objectiveFromPenalty(P)(Penalty pen, P params)
     return params.numFacetsCoef * pen.volumePenalty
         + params.numHingesCoef * pen.globalCurvPenalty
         + params.hingeDegreeVarianceCoef * pen.localCurvPenalty
-        + params.coDim3DegreeVarianceCoef * pen.localSolidAngleCurvPenalty;
+        + params.coDim3DegreeVarianceCoef * pen.localSolidAngleCurvPenalty
+        + params.hingeDegreeTargetCoef * pen.hingeDegTargetPenalty
+        + params.coDim3DegreeTargetCoef * pen.coDim3DegTargetPenalty;
 }
 
 real objective(int dim, Vertex, P)(const ref Manifold!(dim, Vertex) mfd, P params)
 {
     auto pen = mfd.penalties(params);
     return objectiveFromPenalty(pen, params);
+}
+
+/// Fixed-target vs variance-about-mean identity:
+///   sum(d - t)^2 = sum(d - dbar)^2 + n*(dbar - t)^2
+/// checked through both floor conventions on a live manifold.
+unittest
+{
+    struct TestParams
+    {
+        int numFacetsTarget = 20;
+        real hingeDegreeTarget = 4.7;
+        real numFacetsCoef = 0.1;
+        real numHingesCoef = 0.05;
+        real hingeDegreeVarianceCoef = 0.2;
+        real coDim3DegreeVarianceCoef = 0.1;
+        real hingeDegreeTargetCoef = 0.15;
+        real coDim3DegreeTargetCoef = 0.07;
+        real coDim3DegreeTarget = 9.5;
+    }
+
+    auto mfd = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+    alias BM = BistellarMove!3;
+    mfd.doMove(BM([0,1,2,3], [5]));
+    mfd.doMove(BM([0,1,2,4], [6]));
+
+    auto params = TestParams();
+    auto pen = mfd.penalties(params);
+
+    immutable nH = cast(real) mfd.fVector[1];
+    immutable nV = cast(real) mfd.fVector[0];
+
+    // Reconstruct raw (floor-free) sums of squared deviations from each form
+    real _;
+    immutable dbarH = 6.0L * mfd.fVector[3] / nH;
+    real xm = modf(dbarH, _);
+    real xt = modf(cast(real) params.hingeDegreeTarget, _);
+    immutable rawVarH = pen.localCurvPenalty * nH + (xm - xm ^^ 2) * nH;
+    immutable rawTgtH = pen.hingeDegTargetPenalty + (xt - xt ^^ 2) * nH;
+    assert(isClose(rawTgtH,
+        rawVarH + nH * (dbarH - params.hingeDegreeTarget) ^^ 2, 1e-9L));
+
+    immutable dbarV = 4.0L * mfd.fVector[3] / nV;
+    real ym = modf(dbarV / 2, _);
+    real yt = modf(cast(real) params.coDim3DegreeTarget / 2, _);
+    immutable rawVarV = pen.localSolidAngleCurvPenalty * nV + 4 * (ym - ym ^^ 2) * nV;
+    immutable rawTgtV = pen.coDim3DegTargetPenalty + 4 * (yt - yt ^^ 2) * nV;
+    assert(isClose(rawTgtV,
+        rawVarV + nV * (dbarV - params.coDim3DegreeTarget) ^^ 2, 1e-9L));
 }
 
 // ---------------------------------------------------------------------------
@@ -200,6 +275,9 @@ unittest
         real numHingesCoef = 0.05;
         real hingeDegreeVarianceCoef = 0.2;
         real coDim3DegreeVarianceCoef = 0.1;
+        real hingeDegreeTargetCoef = 0.15;
+        real coDim3DegreeTargetCoef = 0.07;
+        real coDim3DegreeTarget = 9.5;
     }
 
     import manifold_examples : standardSphere;
@@ -314,6 +392,9 @@ unittest
         real numHingesCoef = 0.05;
         real hingeDegreeVarianceCoef = 0.2;
         real coDim3DegreeVarianceCoef = 0.1;
+        real hingeDegreeTargetCoef = 0.15;
+        real coDim3DegreeTargetCoef = 0.07;
+        real coDim3DegreeTarget = 9.5;
     }
 
     alias BM = BistellarMove!3;
@@ -1048,6 +1129,9 @@ unittest
         real numHingesCoef = 0.05;
         real hingeDegreeVarianceCoef = 0.2;
         real coDim3DegreeVarianceCoef = 0.1;
+        real hingeDegreeTargetCoef = 0.15;
+        real coDim3DegreeTargetCoef = 0.07;
+        real coDim3DegreeTarget = 9.5;
     }
 
     alias BM = BistellarMove!3;

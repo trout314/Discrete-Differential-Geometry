@@ -35,6 +35,20 @@ class SamplerParams:
         Coefficient for the local curvature (hinge degree variance) penalty.
     codim3_degree_variance_coef : float
         Coefficient for the codimension-3 degree variance penalty.
+    hinge_degree_target_coef : float
+        Coefficient for the fixed-target hinge penalty
+        ``sum_e (deg_e - hinge_degree_target)^2`` (extensive, strictly local).
+        0 = off. Unlike the variance penalties, this is a per-hinge coupling
+        on an extensive sum, not a coefficient on a mean variance.
+    codim3_degree_target_coef : float
+        Coefficient for the fixed-target codimension-3 penalty
+        ``sum_v (deg_v - codim3_degree_target)^2`` (extensive, strictly
+        local). 0 = off.
+    codim3_degree_target : float
+        Constant target for the codim-3 fixed-target penalty. Choose it
+        consistently with the pinned f-vector (see
+        :func:`vertex_degree_target` for dimension 3), else it fights the
+        edge pin.
     """
 
     num_facets_target: int = 100
@@ -43,6 +57,20 @@ class SamplerParams:
     num_hinges_coef: float = 0.05
     hinge_degree_variance_coef: float = 0.2
     codim3_degree_variance_coef: float = 0.1
+    hinge_degree_target_coef: float = 0.0
+    codim3_degree_target_coef: float = 0.0
+    codim3_degree_target: float = 0.0
+
+
+def vertex_degree_target(edge_degree_target: float) -> float:
+    """Vertex-degree target consistent with an edge-degree target (dim 3).
+
+    For S^3 triangulations the Dehn-Sommerville relations (f2 = 2*f3,
+    f0 = f1 - f3) pin the mean vertex degree once the mean edge degree is
+    fixed: Dbar = 4/(6/dbar - 1). Using any other codim3_degree_target makes
+    the fixed-target vertex penalty fight the edge pin.
+    """
+    return 4.0 / (6.0 / edge_degree_target - 1.0)
 
 
 @dataclass
@@ -79,6 +107,17 @@ class ManifoldSampler:
             params.hinge_degree_variance_coef,
             params.codim3_degree_variance_coef,
         )
+        # Fixed-target penalties are post-create setters so the C create
+        # signature (and every existing caller) stays unchanged.
+        if params.hinge_degree_target_coef:
+            _lib.ddg_sampler_set_hinge_degree_target_coef(
+                self._handle, params.hinge_degree_target_coef)
+        if params.codim3_degree_target:
+            _lib.ddg_sampler_set_codim3_degree_target(
+                self._handle, params.codim3_degree_target)
+        if params.codim3_degree_target_coef:
+            _lib.ddg_sampler_set_codim3_degree_target_coef(
+                self._handle, params.codim3_degree_target_coef)
         # Hold a reference to keep the callback alive
         self._callback_ref = None
 
@@ -316,6 +355,21 @@ class ManifoldSampler:
         """Update the target hinge degree."""
         _lib.ddg_sampler_set_hinge_degree_target(self._handle, target)
         self._params.hinge_degree_target = target
+
+    def set_hinge_degree_target_coef(self, coef: float) -> None:
+        """Update the fixed-target hinge penalty coefficient (0 = off)."""
+        _lib.ddg_sampler_set_hinge_degree_target_coef(self._handle, coef)
+        self._params.hinge_degree_target_coef = coef
+
+    def set_codim3_degree_target_coef(self, coef: float) -> None:
+        """Update the fixed-target codim-3 penalty coefficient (0 = off)."""
+        _lib.ddg_sampler_set_codim3_degree_target_coef(self._handle, coef)
+        self._params.codim3_degree_target_coef = coef
+
+    def set_codim3_degree_target(self, target: float) -> None:
+        """Update the codim-3 fixed-target degree (see vertex_degree_target)."""
+        _lib.ddg_sampler_set_codim3_degree_target(self._handle, target)
+        self._params.codim3_degree_target = target
 
     # -- Statistics --
 
