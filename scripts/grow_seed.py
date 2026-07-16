@@ -18,7 +18,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
-from discrete_differential_geometry import Manifold, ManifoldSampler, SamplerParams
+from discrete_differential_geometry import (Manifold, ManifoldSampler,
+                                             SamplerParams, vertex_degree_target)
 from seed_utils import (build_metadata_comments, get_free_memory_gb,
                         make_leg, obj_of, read_history)
 
@@ -42,6 +43,11 @@ def main():
     p.add_argument("--vdv-coef", type=float, default=0.0,
                    help="VDV coefficient during growth (0 = fastest; production "
                         "drives VDV down afterward).")
+    p.add_argument("--vdq-coef", type=float, default=0.0,
+                   help="VDQ: fixed-target vertex penalty coupling c_v (raw, per "
+                        "vertex; target derived from --hinge-target).")
+    p.add_argument("--edq-coef", type=float, default=0.0,
+                   help="EDQ: fixed-target edge penalty coupling c_e (raw, per edge).")
     p.add_argument("--step-size", type=int, default=5000)
     p.add_argument("--eq-sweeps", type=int, default=5, help="Equilibration sweeps per step.")
     p.add_argument("--final-eq-sweeps", type=int, default=200)
@@ -56,7 +62,11 @@ def main():
         num_facets_target=args.target_facets, num_facets_coef=args.num_facets_coef,
         hinge_degree_target=args.hinge_target, num_hinges_coef=args.num_hinges_coef,
         hinge_degree_variance_coef=args.hdv_coef,
-        codim3_degree_variance_coef=args.vdv_coef)
+        codim3_degree_variance_coef=args.vdv_coef,
+        hinge_degree_target_coef=args.edq_coef,
+        codim3_degree_target_coef=args.vdq_coef,
+        codim3_degree_target=(vertex_degree_target(args.hinge_target)
+                              if args.vdq_coef else 0.0))
     s = ManifoldSampler(mfd, params)
     start = s.manifold.num_facets
     print(f"growing {os.path.basename(args.src)} ({start} facets) -> "
@@ -95,6 +105,9 @@ def main():
         hinge_degree_target=args.hinge_target, num_hinges_coef=args.num_hinges_coef,
         hinge_degree_variance_coef=args.hdv_coef,
         codim3_degree_variance_coef=args.vdv_coef,
+        hinge_degree_target_coef=args.edq_coef,
+        codim3_degree_target_coef=args.vdq_coef,
+        codim3_degree_target=params.codim3_degree_target,
         growth_step_size=args.step_size, eq_sweeps_per_step=args.eq_sweeps,
         equilibration_sweeps=args.final_eq_sweeps,
         manifold_view=v, objective=s.current_objective, sampler_stats=st,

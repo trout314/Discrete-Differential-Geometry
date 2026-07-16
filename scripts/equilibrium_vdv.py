@@ -201,11 +201,11 @@ def _bias_settings(parsed, args):
     return {}
 
 
-def _vdt_target(args):
+def _vdq_target(args):
     """Codim-3 (vertex) target for the fixed-target penalty: explicit override,
     else the value the pinned f-vector already implies (4/(6/edge_target - 1));
     anything else makes the vertex term fight the edge pin."""
-    return args.vdt_target if args.vdt_target else vertex_degree_target(args.hinge_target)
+    return args.vdq_target if args.vdq_target else vertex_degree_target(args.hinge_target)
 
 
 def _sampler_params(args, vdv_coef):
@@ -216,9 +216,9 @@ def _sampler_params(args, vdv_coef):
         hinge_degree_target=args.hinge_target, num_hinges_coef=args.num_hinges_coef,
         hinge_degree_variance_coef=args.hdv_coef,
         codim3_degree_variance_coef=vdv_coef,
-        hinge_degree_target_coef=args.hdt_coef,
-        codim3_degree_target_coef=args.vdt_coef,
-        codim3_degree_target=_vdt_target(args) if args.vdt_coef else 0.0)
+        hinge_degree_target_coef=args.edq_coef,
+        codim3_degree_target_coef=args.vdq_coef,
+        codim3_degree_target=_vdq_target(args) if args.vdq_coef else 0.0)
 
 
 def _apply_bias_settings(s, settings):
@@ -237,10 +237,10 @@ def _restore_study(s, args):
     s.set_hinge_degree_target(args.hinge_target)
     s.set_num_facets_target(args.n_target)
     s.set_num_hinges_coef(args.num_hinges_coef)
-    s.set_hinge_degree_target_coef(args.hdt_coef)
-    s.set_codim3_degree_target_coef(args.vdt_coef)
-    if args.vdt_coef:
-        s.set_codim3_degree_target(_vdt_target(args))
+    s.set_hinge_degree_target_coef(args.edq_coef)
+    s.set_codim3_degree_target_coef(args.vdq_coef)
+    if args.vdq_coef:
+        s.set_codim3_degree_target(_vdq_target(args))
 
 
 def _warmup_settings(args):
@@ -378,9 +378,9 @@ def run_chain(args):
             hinge_degree_target=args.hinge_target, num_hinges_coef=args.num_hinges_coef,
             hinge_degree_variance_coef=args.hdv_coef,
             codim3_degree_variance_coef=args.coef,
-            hinge_degree_target_coef=args.hdt_coef,
-            codim3_degree_target_coef=args.vdt_coef,
-            codim3_degree_target=_vdt_target(args) if args.vdt_coef else 0.0,
+            hinge_degree_target_coef=args.edq_coef,
+            codim3_degree_target_coef=args.vdq_coef,
+            codim3_degree_target=_vdq_target(args) if args.vdq_coef else 0.0,
             growth_step_size=0, eq_sweeps_per_step=0,
             equilibration_sweeps=args.warmup_sweeps + args.burnin_sweeps
                                  + args.n_samples * args.thin,
@@ -419,9 +419,9 @@ def spawn(args, coef, side, rep, out):
            "--hinge-target", str(args.hinge_target),
            "--num-hinges-coef", str(args.num_hinges_coef),
            "--hdv-coef", str(args.hdv_coef),
-           "--hdt-coef", str(args.hdt_coef),
-           "--vdt-coef", str(args.vdt_coef),
-           "--vdt-target", str(args.vdt_target),
+           "--edq-coef", str(args.edq_coef),
+           "--vdq-coef", str(args.vdq_coef),
+           "--vdq-target", str(args.vdq_target),
            "--coef", str(coef),
            "--warmup-coef", str(coef * args.warmup_factor),
            "--warmup-sweeps", str(warm_sweeps),
@@ -800,8 +800,8 @@ def produce(args):
                "--hinge-target", str(args.hinge_target),
                "--num-hinges-coef", str(args.num_hinges_coef),
                "--hdv-coef", str(args.hdv_coef), "--coef", str(args.beta),
-               "--hdt-coef", str(args.hdt_coef), "--vdt-coef", str(args.vdt_coef),
-               "--vdt-target", str(args.vdt_target),
+               "--edq-coef", str(args.edq_coef), "--vdq-coef", str(args.vdq_coef),
+               "--vdq-target", str(args.vdq_target),
                "--burnin-sweeps", str(args.production_burnin),
                "--thin", str(args.thin), "--n-samples", str(args.n_samples),
                "--side", side, "--replica", str(i),
@@ -891,9 +891,9 @@ def recertify(args):
                    "--hinge-target", md["hinge_degree_target"],
                    "--num-hinges-coef", md["num_hinges_coef"],
                    "--hdv-coef", md["hinge_degree_variance_coef"], "--coef", str(beta),
-                   "--hdt-coef", md.get("hinge_degree_target_coef", "0"),
-                   "--vdt-coef", md.get("codim3_degree_target_coef", "0"),
-                   "--vdt-target", md.get("codim3_degree_target", "0"),
+                   "--edq-coef", md.get("hinge_degree_target_coef", "0"),
+                   "--vdq-coef", md.get("codim3_degree_target_coef", "0"),
+                   "--vdq-target", md.get("codim3_degree_target", "0"),
                    "--warmup-sweeps", "0", "--burnin-sweeps", str(args.production_burnin),
                    "--thin", str(args.thin), "--n-samples", str(args.n_samples), "--out", out]
             if args.record_histograms:
@@ -938,13 +938,13 @@ def main():
     p.add_argument("--hinge-target", type=float, default=5.0043)
     p.add_argument("--num-hinges-coef", type=float, default=0.1)
     p.add_argument("--hdv-coef", type=float, default=0.0)
-    p.add_argument("--hdt-coef", type=float, default=0.0,
-                   help="Fixed-target hinge penalty coupling c_e on "
-                        "sum_e (deg_e - hinge_target)^2 (strictly local; 0=off).")
-    p.add_argument("--vdt-coef", type=float, default=0.0,
-                   help="Fixed-target vertex penalty coupling c_v on "
-                        "sum_v (deg_v - vdt_target)^2 (strictly local; 0=off).")
-    p.add_argument("--vdt-target", type=float, default=0.0,
+    p.add_argument("--edq-coef", type=float, default=0.0,
+                   help="EDQ: fixed-target edge penalty coupling c_e (RAW, per edge) "
+                        "on sum_e (deg_e - hinge_target)^2 (strictly local; 0=off).")
+    p.add_argument("--vdq-coef", type=float, default=0.0,
+                   help="VDQ: fixed-target vertex penalty coupling c_v (RAW, per vertex) "
+                        "on sum_v (deg_v - target)^2 (strictly local; 0=off).")
+    p.add_argument("--vdq-target", type=float, default=0.0,
                    help="Vertex-degree target; 0 = derive from --hinge-target "
                         "via 4/(6/t-1) (the f-vector-consistent value).")
     # chain controls

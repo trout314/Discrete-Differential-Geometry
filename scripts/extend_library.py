@@ -48,7 +48,8 @@ from seed_utils import encode_float, load_seed_metadata
 
 # Geometric N ladder (10^(k/4)); tokens must match encode_float / existing files.
 LADDER = [("1e2", 100), ("178", 178), ("316", 316), ("562", 562), ("1e3", 1000),
-          ("1778", 1778), ("3162", 3162), ("5623", 5623), ("1e4", 10000)]
+          ("1778", 1778), ("3162", 3162), ("5623", 5623), ("1e4", 10000),
+          ("17783", 17783), ("31623", 31623), ("56234", 56234), ("1e5", 100000)]
 
 
 def families(seeds_dir):
@@ -79,9 +80,11 @@ def objective(md):
                 hdv_over_n=g("hinge_degree_variance_coef") / n_ref)
 
 
-def grow(root, src, target_n, obj, beta, hdv, out, min_free_gb):
+def grow(root, src, target_n, obj, beta, hdv, out, min_free_gb,
+         vdq_coef=0.0, edq_coef=0.0):
     """Grow src up to target_n facets under the family objective. Returns out on
-    success (or if it already exists), else None."""
+    success (or if it already exists), else None. vdq_coef/edq_coef are the RAW
+    per-element fixed-target (VDQ/EDQ) couplings, 0 = off."""
     if os.path.exists(out):
         return out
     cmd = [sys.executable, os.path.join(root, "scripts", "grow_seed.py"),
@@ -89,6 +92,10 @@ def grow(root, src, target_n, obj, beta, hdv, out, min_free_gb):
            "--hinge-target", str(obj["edge"]), "--num-facets-coef", str(obj["nfc"]),
            "--num-hinges-coef", str(obj["k"]), "--hdv-coef", str(hdv),
            "--vdv-coef", str(beta), "--min-free-gb", str(min_free_gb)]
+    if vdq_coef:
+        cmd += ["--vdq-coef", str(vdq_coef)]
+    if edq_coef:
+        cmd += ["--edq-coef", str(edq_coef)]
     r = subprocess.run(cmd)
     return out if (r.returncode == 0 and os.path.exists(out)) else None
 

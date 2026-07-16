@@ -142,8 +142,13 @@ def build_seed_filename(topology: str, params, seed_index: int | None = None) ->
     # N term (always present)
     parts.append(f"N{encode_float(params.num_facets_target)}_{encode_float(params.num_facets_coef)}")
 
-    # ED (edge/hinge degree) term
-    if params.num_hinges_coef != 0:
+    # ED (edge/hinge degree) term. REQUIRED whenever a fixed-target quadratic
+    # (VDQ/EDQ) is present -- the target d-bar_t defines both the quadratic
+    # targets and the per-tet scaling of their tokens -- with a ZERO pin
+    # coefficient allowed (e.g. ED5p1043_0 = target defined, pin off).
+    vdq_coef = getattr(params, "codim3_degree_target_coef", 0) or 0
+    edq_coef = getattr(params, "hinge_degree_target_coef", 0) or 0
+    if params.num_hinges_coef != 0 or vdq_coef or edq_coef:
         parts.append(f"ED{encode_float(params.hinge_degree_target)}_{encode_float(params.num_hinges_coef)}")
 
     # VDV (vertex degree variance = codim3 degree variance) term.
@@ -163,15 +168,20 @@ def build_seed_filename(topology: str, params, seed_index: int | None = None) ->
         hdv_over_n = params.hinge_degree_variance_coef / params.num_facets_target
         parts.append(f"HDVs_{encode_float(round_sig(hdv_over_n, 3))}")
 
-    # Fixed-target (strictly local) penalties — UNSCALED per-element couplings
-    # ("VDT_"/"HDT_"): these multiply extensive sums sum(deg - target)^2, so the
-    # coefficient itself is the per-vertex/per-edge coupling and already
-    # N-collapses (no /N rescaling, unlike VDVs_/HDVs_). Targets are derived
-    # from hinge_degree_target (see vertex_degree_target) and live in metadata.
-    if getattr(params, "codim3_degree_target_coef", 0):
-        parts.append(f"VDT_{encode_float(round_sig(params.codim3_degree_target_coef, 3))}")
-    if getattr(params, "hinge_degree_target_coef", 0):
-        parts.append(f"HDT_{encode_float(round_sig(params.hinge_degree_target_coef, 3))}")
+    # VDQ/EDQ (fixed-target "degree quadratic", strictly local) — tokens carry
+    # the PER-TETRAHEDRON scaled coupling lambda = c * (elements per tet at the
+    # TARGET edge degree): lambda_v = c_v*(6/dbar_t - 1), lambda_e = c_e*6/dbar_t.
+    # Under the exact old->new coupling map these equal the old scaled labels
+    # (VDVs_g <-> VDQ_g, HDVs_h <-> EDQ_h), so matched physics carries the same
+    # number across modes, edges, and N. Raw per-element couplings c_v/c_e are
+    # exact in metadata (codim3/hinge_degree_target_coef); conversion uses the
+    # target dbar_t from the ED token (always present when these terms are on).
+    if vdq_coef:
+        lam_v = vdq_coef * (6.0 / params.hinge_degree_target - 1.0)
+        parts.append(f"VDQ_{encode_float(round_sig(lam_v, 3))}")
+    if edq_coef:
+        lam_e = edq_coef * 6.0 / params.hinge_degree_target
+        parts.append(f"EDQ_{encode_float(round_sig(lam_e, 3))}")
 
     name = "_".join(parts)
     if seed_index is not None:
@@ -223,12 +233,20 @@ def get_git_info() -> tuple[str, bool]:
 
 def obj_of(params) -> dict:
     """Compact objective dict for a provenance leg, from a SamplerParams-like."""
-    return {
+    obj = {
         "nf": params.num_facets_target, "nf_c": params.num_facets_coef,
         "ht": params.hinge_degree_target, "nh_c": params.num_hinges_coef,
         "hdv_c": params.hinge_degree_variance_coef,
         "vdv_c": params.codim3_degree_variance_coef,
     }
+    # Fixed-target quadratics (VDQ/EDQ): only recorded when active, so legs of
+    # old-mode runs are byte-identical to before.
+    if getattr(params, "codim3_degree_target_coef", 0):
+        obj["vdq_c"] = params.codim3_degree_target_coef
+        obj["vdq_t"] = getattr(params, "codim3_degree_target", 0)
+    if getattr(params, "hinge_degree_target_coef", 0):
+        obj["edq_c"] = params.hinge_degree_target_coef
+    return obj
 
 
 def make_leg(op: str, obj: dict, sweeps, *, from_: str = "prev",
