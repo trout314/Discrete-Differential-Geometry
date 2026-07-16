@@ -81,16 +81,20 @@ ENSEMBLES = [
 EDGE_PAIRS = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)]
 
 
-def load_edges(path):
-    """Load a seed; return (eu, edeg, V): unique edges (relabo 0..V-1), degrees."""
-    m = Manifold.load(path, 3)
-    F = np.asarray(m.facets(), np.int64)
+def edges_from_facets(F):
+    """(eu, edeg, V) from a facet array: unique edges (relabeled 0..V-1), degrees."""
+    F = np.asarray(F, np.int64)
     lab, inv = np.unique(F, return_inverse=True)
     T = inv.reshape(F.shape)
     V = len(lab)
     epairs = np.sort(np.vstack([T[:, [i, j]] for i, j in EDGE_PAIRS]), axis=1)
     eu, edeg = np.unique(epairs, axis=0, return_counts=True)
     return eu, edeg, V
+
+
+def load_edges(path):
+    """Load a seed; return (eu, edeg, V) as in edges_from_facets."""
+    return edges_from_facets(Manifold.load(path, 3).facets())
 
 
 def vertex_class_census(eu, edeg, V):
