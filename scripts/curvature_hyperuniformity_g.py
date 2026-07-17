@@ -100,6 +100,33 @@ def window_variances(q, orders, mgrid):
     return sums.var(axis=0)
 
 
+def lowpass_ratio(eu, V, dq, n_iter=3000, n_shuf=16, rng=None):
+    """Spectral estimator without an eigensolver: power of dq surviving n_iter
+    steps of y -> (I - L/lmax) y (a low-pass filter with effective cutoff
+    lambda ~ lmax/n_iter), observed / shuffled. Use INSTEAD of spectral_ratio
+    on highly symmetric states (perfect crystals): their massively degenerate
+    Laplacian spectra make ARPACK shift-invert thrash for hours, while this is
+    a few thousand sparse matvecs. Exact crystal answer is 0 (Bloch: a
+    unit-cell-periodic field has no power in sub-Brillouin-zone modes)."""
+    rng = RNG if rng is None else rng
+    ii = np.r_[eu[:, 0], eu[:, 1]]
+    jj = np.r_[eu[:, 1], eu[:, 0]]
+    A = coo_matrix((np.ones(len(ii)), (ii, jj)), shape=(V, V)).tocsr()
+    d = A.sum(1).A1
+    lmax = 2 * d.max()
+
+    def low_power(x):
+        y = x - x.mean()
+        for _ in range(n_iter):
+            y = y - (d * y - A @ y) / lmax
+            y = y - y.mean()
+        return float(y @ y)
+
+    obs = low_power(dq)
+    shuf = np.mean([low_power(rng.permutation(dq)) for _ in range(n_shuf)])
+    return obs / shuf
+
+
 def spectral_ratio(eu, V, dq, k=NSPEC):
     ii = np.r_[eu[:, 0], eu[:, 1]]
     jj = np.r_[eu[:, 1], eu[:, 0]]
