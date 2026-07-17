@@ -41,7 +41,8 @@ from fk_skeleton import edges_from_facets, vertex_class_census, skeleton_stats
 
 CSV_COLS = ["step", "cum_sweeps", "vdv_coef", "hdv_coef", "acceptance",
             "edv", "vdv_obs", "mean_edeg", "p_le4", "p5", "p6", "p_ge7",
-            "pure56", "fFK", "frac_val1", "largest_frac", "cyclomatic",
+            "pure56", "fFK", "fZ12", "fZ14", "fZ15", "fZ16",
+            "frac_val1", "largest_frac", "cyclomatic",
             "n_sk_edges", "num_facets"]
 
 
@@ -55,6 +56,7 @@ def census_row(mfd_view):
         p6=float(np.mean(edeg == 6)), p_ge7=float(np.mean(edeg >= 7)),
         pure56=1.0 - fz["impure"],
         fFK=fz["Z12"] + fz["Z14"] + fz["Z15"] + fz["Z16"],
+        fZ12=fz["Z12"], fZ14=fz["Z14"], fZ15=fz["Z15"], fZ16=fz["Z16"],
         frac_val1=sk["frac_val1"], largest_frac=sk["largest_frac"],
         cyclomatic=sk["cyclomatic"], n_sk_edges=sk["n_edges"])
 
@@ -90,9 +92,12 @@ def run_one(init_path, cfg, rate, rep, out_dir):
         hdv_c = cfg["hdv0"] * f_cum
         s.set_codim3_degree_variance_coef(vdv_c)
         s.set_hinge_degree_variance_coef(hdv_c)
-        if cfg.get("zleg0") or cfg.get("cimp0"):
+        tilt0 = cfg.get("tilt0")
+        if cfg.get("zleg0") or cfg.get("cimp0") or tilt0:
+            tf = 1.0 if cfg.get("tilt_fixed") else f_cum
             s.set_n6_potential(cfg.get("zleg0", 0.0) * f_cum,
-                               cfg.get("cimp0", 0.0) * f_cum)
+                               cfg.get("cimp0", 0.0) * f_cum,
+                               tilt=[t * tf for t in tilt0] if tilt0 else None)
         s.reset_stats()
         s.run(sweeps=rate)
         cum += rate
@@ -146,6 +151,15 @@ def main():
                          "factor; frustration-free TCP pressure)")
     ap.add_argument("--cimp0", type=float, default=0.0,
                     help="impurity-valence m^2 start coef (ramped)")
+    ap.add_argument("--tilt0", type=float, nargs=5, default=None,
+                    metavar=("T0", "T1", "T2", "T3", "T4"),
+                    help="start chemical-potential tilts on n6 classes "
+                         "(index=n6: [Z12, illegal, Z14, Z15, Z16]; NEGATIVE "
+                         "favors; ramped by the same cumulative factor)")
+    ap.add_argument("--tilt-fixed", action="store_true",
+                    help="apply --tilt0 at full strength from step 1 instead "
+                         "of ramping (stoichiometry is selected in the fluid "
+                         "stage, so a constant tilt acts where moves are cheap)")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--out-dir", default="data/fk_anneal/N1e4_x100")
     args = ap.parse_args()
@@ -159,7 +173,8 @@ def main():
     cfg = dict(n=args.n, edge=args.edge, k=args.k, nfc=args.nfc,
                vdv0=args.vdv0, hdv0=args.hdv0, steps=args.steps,
                total_factor=args.total_factor, hold=args.hold,
-               zleg0=args.zleg0, cimp0=args.cimp0)
+               zleg0=args.zleg0, cimp0=args.cimp0, tilt0=args.tilt0,
+               tilt_fixed=args.tilt_fixed)
     with open(os.path.join(out_dir, "manifest.json"), "w") as f:
         json.dump(dict(cfg, rates=args.rates, reps=args.reps,
                        inits=inits[:args.reps]), f, indent=1)
