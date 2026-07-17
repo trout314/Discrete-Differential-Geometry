@@ -90,6 +90,9 @@ def run_one(init_path, cfg, rate, rep, out_dir):
         hdv_c = cfg["hdv0"] * f_cum
         s.set_codim3_degree_variance_coef(vdv_c)
         s.set_hinge_degree_variance_coef(hdv_c)
+        if cfg.get("zleg0") or cfg.get("cimp0"):
+            s.set_n6_potential(cfg.get("zleg0", 0.0) * f_cum,
+                               cfg.get("cimp0", 0.0) * f_cum)
         s.reset_stats()
         s.run(sweeps=rate)
         cum += rate
@@ -138,6 +141,11 @@ def main():
     ap.add_argument("--nfc", type=float, default=0.1)
     ap.add_argument("--vdv0", type=float, default=20.0)
     ap.add_argument("--hdv0", type=float, default=4050.0)
+    ap.add_argument("--zleg0", type=float, default=0.0,
+                    help="Z-legality potential start coef (ramped by the same "
+                         "factor; frustration-free TCP pressure)")
+    ap.add_argument("--cimp0", type=float, default=0.0,
+                    help="impurity-valence m^2 start coef (ramped)")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--out-dir", default="data/fk_anneal/N1e4_x100")
     args = ap.parse_args()
@@ -150,7 +158,8 @@ def main():
 
     cfg = dict(n=args.n, edge=args.edge, k=args.k, nfc=args.nfc,
                vdv0=args.vdv0, hdv0=args.hdv0, steps=args.steps,
-               total_factor=args.total_factor, hold=args.hold)
+               total_factor=args.total_factor, hold=args.hold,
+               zleg0=args.zleg0, cimp0=args.cimp0)
     with open(os.path.join(out_dir, "manifest.json"), "w") as f:
         json.dump(dict(cfg, rates=args.rates, reps=args.reps,
                        inits=inits[:args.reps]), f, indent=1)

@@ -1083,6 +1083,12 @@ private struct SamplerState
     // Role-resolved geometry ledger + event log (opt-in; dim=3 only).
     // See sampler.GeometryLedger for the role taxonomy and record layout.
     GeometryLedger!int geoLedger;
+
+    // Vertex 6-valence potential (Z-legality + chemical tilts + impurity
+    // valence; opt-in, dim=3 only). See sampler.VertexPot.
+    bool potEnabled = false;
+    VertexPot vertexPot;
+    VertexPotState!int vertexPotState;
 }
 
 extern(C) void* ddg_sampler_create(void* manifold_handle,
@@ -1313,7 +1319,14 @@ private long runSamplerDim3(SamplerState* s, long numMoves,
         );
 
         if (s.currentObjective != s.currentObjective) // NaN check
+        {
             s.currentObjective = mw.mfd.objective(params);
+            if (s.potEnabled)
+            {
+                mw.mfd.recomputeVertexPotState(s.vertexPotState, s.vertexPot);
+                s.currentObjective += s.vertexPotState.total;
+            }
+        }
 
         long accepted = 0;
         long acceptedSinceWriteback = 0;
@@ -1345,7 +1358,9 @@ private long runSamplerDim3(SamplerState* s, long numMoves,
                     s.hingeMoveProb, hT, hA, bT, bA,
                     s.trackMoveCounts ? &s.moveCounters : null,
                     (s.geoLedger.trackRoles || s.geoLedger.logEvents)
-                        ? &s.geoLedger : null))
+                        ? &s.geoLedger : null,
+                    s.potEnabled ? &s.vertexPotState : null,
+                    s.potEnabled ? &s.vertexPot : null))
             {
                 accepted++;
                 acceptedSinceWriteback++;
@@ -1377,6 +1392,11 @@ extern(C) long ddg_sampler_run_exact(void* sampler_handle, long num_moves,
     {
         if (sampler_handle is null) { setError("null sampler handle"); return -1; }
         auto state = cast(SamplerState*) sampler_handle;
+        if (state.potEnabled)
+        {
+            setError("run_exact does not support the n6 potential");
+            return -1;
+        }
 
         long runExact(int dim)(SamplerState* s, long numMoves,
             CCallback cb, void* ud)
@@ -1957,6 +1977,36 @@ extern(C) double ddg_sampler_current_objective(void* sampler_handle) nothrow
 {
     if (sampler_handle is null) return double.nan;
     return cast(double)(cast(SamplerState*) sampler_handle).currentObjective;
+}
+
+/// Configure the vertex 6-valence potential (Z-legality + chemical tilts +
+/// impurity valence; see sampler.VertexPot). dim=3 samplers only. tilt5 may be
+/// null (all-zero tilts). Passing all-zero coefficients disables the term.
+extern(C) int ddg_sampler_set_n6_potential(void* sampler_handle,
+    double zleg_coef, double imp_coef, const(double)* tilt5) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null handle"); return -1; }
+        auto state = cast(SamplerState*) sampler_handle;
+        if (state.dim != 3)
+        {
+            setError("n6 potential requires a dim=3 sampler");
+            return -1;
+        }
+        state.vertexPot.zlegCoef = cast(real) zleg_coef;
+        state.vertexPot.impCoef = cast(real) imp_coef;
+        if (tilt5 !is null)
+            foreach (i; 0 .. 5)
+                state.vertexPot.tilt[i] = cast(real) tilt5[i];
+        else
+            state.vertexPot.tilt[] = 0;
+        state.potEnabled = state.vertexPot.enabled;
+        state.currentObjective = real.nan;  // recompute (incl. state) next run
+        return 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
 }
 
 // ---------------------------------------------------------------------------

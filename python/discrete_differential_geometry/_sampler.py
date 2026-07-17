@@ -371,6 +371,32 @@ class ManifoldSampler:
         _lib.ddg_sampler_set_codim3_degree_target(self._handle, target)
         self._params.codim3_degree_target = target
 
+    def set_n6_potential(self, zleg_coef: float, imp_coef: float = 0.0,
+                         tilt=None) -> None:
+        """Configure the vertex 6-valence potential (dim=3 only; 0,0,None = off).
+
+        Per-vertex energy on n6 = #incident edges with degree >= 6 and
+        m = #incident edges with degree outside {5, 6}:
+
+            U(n6) = zleg_coef * dist^2(n6, {0,2,3,4}) + tilt[n6]  (tilt: n6 <= 4)
+            V(m)  = imp_coef * m^2
+
+        By the link sum rule, zero energy <=> the vertex is exactly a
+        Frank-Kasper coordination (Z12/Z14/Z15/Z16). ``tilt`` (length-5
+        sequence, default zeros) applies chemical potentials to the legal
+        classes: lowering tilt[2] vs tilt[4] favors Z14 (A15-type) over Z16
+        (Laves-type) stoichiometry.
+        """
+        if tilt is None:
+            tilt_ptr = None
+        else:
+            vals = list(tilt)
+            if len(vals) != 5:
+                raise ValueError("tilt must have length 5")
+            tilt_ptr = (ctypes.c_double * 5)(*vals)
+        _lib.ddg_sampler_set_n6_potential(
+            self._handle, zleg_coef, imp_coef, tilt_ptr)
+
     # -- Statistics --
 
     def get_stats(self) -> SamplerStats:

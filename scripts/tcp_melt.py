@@ -54,7 +54,7 @@ def census(view):
                 fFK=fz["Z12"] + fz["Z14"] + fz["Z15"] + fz["Z16"])
 
 
-def run_point(path, lam, sweeps, vdq_scale=1.0):
+def run_point(path, lam, sweeps, vdq_scale=1.0, zleg_scale=0.0, cimp_scale=0.0):
     m = ddg.Manifold.load(path, 3)
     eu, edeg, V = edges_from_facets(m.facets())
     qbar = float(edeg.mean())
@@ -70,6 +70,8 @@ def run_point(path, lam, sweeps, vdq_scale=1.0):
         codim3_degree_target=ddg.vertex_degree_target(qbar),
     )
     s = ddg.ManifoldSampler(m, params)
+    if zleg_scale or cimp_scale:
+        s.set_n6_potential(zleg_scale * lam, cimp_scale * lam)
     s.run(sweeps=sweeps)
     st = s.get_stats()
     v = s.manifold
@@ -94,6 +96,12 @@ def main():
                          "(the vertex-uniformity target is frustrated against "
                          "FK order — crystal vertex degrees are 20/24/26/28, "
                          "not the uniform f-vector value)")
+    ap.add_argument("--zleg-scale", type=float, default=0.0,
+                    help="Z-legality coefficient = this * lambda (vertex "
+                         "6-valence potential; frustration-free TCP pressure)")
+    ap.add_argument("--cimp-scale", type=float, default=0.0,
+                    help="impurity-valence coefficient = this * lambda "
+                         "(m^2 anti-clustering term)")
     ap.add_argument("--out", default=os.path.join(_ROOT, "out", "tcp_melt_m1.json"))
     args = ap.parse_args()
 
@@ -103,7 +111,8 @@ def main():
     for name, path in CRYSTALS:
         rows = []
         for lam in LADDER:
-            r = run_point(os.path.join(_ROOT, path), lam, args.sweeps, args.vdq_scale)
+            r = run_point(os.path.join(_ROOT, path), lam, args.sweeps,
+                          args.vdq_scale, args.zleg_scale, args.cimp_scale)
             rows.append(r)
             def rate(a, t):
                 return a / t if t else 0.0

@@ -453,6 +453,270 @@ unittest
 }
 
 // ---------------------------------------------------------------------------
+// Vertex 6-valence potential (Z-legality + chemical tilts + impurity valence)
+// ---------------------------------------------------------------------------
+//
+// A strictly-local vertex potential on two per-vertex counters (dim = 3):
+//   n6(v) = # incident edges with degree >= 6
+//   m(v)  = # incident edges with degree not in {5, 6} ("impurity valence")
+// Energy per vertex:
+//   U(n6) = zlegCoef * dist^2(n6, {0,2,3,4}) + tilt[n6] (tilt only for n6 <= 4)
+//   V(m)  = impCoef * m^2
+// Physics: by the link sum rule (sum over incident edges of (6 - deg) = 12,
+// link = S^2), a vertex with m = 0 and n6 in {0,2,3,4} is EXACTLY a
+// Frank-Kasper coordination (Z12/Z14/Z15/Z16); n6 = 1 is combinatorially
+// impossible at m = 0. So U penalizes illegal 6-valences (with quadratic
+// analytic tail — n6 is unbounded, a clamped table would leave hubs with no
+// restoring force), the tilts are chemical potentials selecting AMONG the
+// legal classes (phase selection: A15-type vs Laves-type stoichiometry), and
+// V(m) = m^2 penalizes defect CLUSTERING at a vertex (nonlinear on purpose: a
+// linear-in-m term is just an edge-level penalty in disguise since
+// sum_v m(v) = 2 * #impure-edges; the quadratic makes an octahedral vertex,
+// m = 6, cost 36 rather than 6). Zero coefficients = disabled, zero overhead.
+
+struct VertexPot
+{
+    real zlegCoef = 0;
+    real impCoef = 0;
+    real[5] tilt = [0, 0, 0, 0, 0];
+
+    bool enabled() const pure nothrow @nogc @safe
+    {
+        if (zlegCoef != 0 || impCoef != 0) return true;
+        foreach (t; tilt) if (t != 0) return true;
+        return false;
+    }
+
+    real U(long k) const pure nothrow @nogc @safe
+    {
+        real d2;
+        if (k == 0 || (k >= 2 && k <= 4)) d2 = 0;
+        else if (k == 1 || k == 5) d2 = 1;
+        else d2 = cast(real)(k - 4) ^^ 2;   // analytic quadratic tail
+        immutable t = (k >= 0 && k <= 4) ? tilt[cast(size_t) k] : 0.0L;
+        return zlegCoef * d2 + t;
+    }
+
+    real V(long m) const pure nothrow @nogc @safe
+    {
+        return impCoef * cast(real)(m * m);
+    }
+}
+
+/// Per-vertex counter state for the vertex potential. Only nonzero counters
+/// are stored; a vertex absent from both maps contributes U(0) + V(0)
+/// (= tilt[0]) so `total` must account for the vertex count (see recompute).
+struct VertexPotState(Vertex)
+{
+    int[Vertex] n6;
+    int[Vertex] mImp;
+    real total = 0;
+}
+
+private bool ind6(long d) pure nothrow @nogc @safe { return d >= 6; }
+private bool indImp(long d) pure nothrow @nogc @safe
+{
+    return d > 0 && (d < 5 || d > 6);
+}
+
+/// Rebuild the counter state from scratch (init, coefficient changes, tests).
+void recomputeVertexPotState(Vertex)(
+    const ref Manifold!(3, Vertex) mfd,
+    ref VertexPotState!Vertex st,
+    const ref VertexPot pot)
+{
+    st.n6.clear;
+    st.mImp.clear;
+    foreach (e; mfd.simplices(1))
+    {
+        immutable d = cast(long) mfd.degree(e);
+        if (ind6(d))
+        {
+            st.n6.require(e[0], 0)++;
+            st.n6.require(e[1], 0)++;
+        }
+        if (indImp(d))
+        {
+            st.mImp.require(e[0], 0)++;
+            st.mImp.require(e[1], 0)++;
+        }
+    }
+    // total = f0 * U(0)  +  corrections for vertices with nonzero counters.
+    st.total = cast(real) mfd.fVector[0] * pot.U(0);
+    foreach (v, k; st.n6) st.total += pot.U(k) - pot.U(0);
+    foreach (v, m; st.mImp) st.total += pot.V(m);
+}
+
+/// Potential delta for a bistellar move (dim 3). Must be called BEFORE the
+/// move is applied (reads pre-move degrees). With commit = true, updates the
+/// counter state and running total (still pre-move: all reads are speculative).
+real potentialBistellarDelta(Vertex)(
+    const ref Manifold!(3, Vertex) mfd,
+    const ref BistellarMove!(3, Vertex) move,
+    ref VertexPotState!Vertex st,
+    const ref VertexPot pot,
+    bool commit)
+{
+    enum dim = 3;
+    auto center = move.center;
+    auto coCenter = move.coCenter;
+    immutable cenLen = cast(int) center.length;
+    immutable coCenLen = cast(int) coCenter.length;
+
+    Vertex[dim + 2] allVertsBuf;
+    allVertsBuf[0 .. cenLen] = center[];
+    allVertsBuf[cenLen .. cenLen + coCenLen] = coCenter[];
+    auto allVerts = allVertsBuf[0 .. cenLen + coCenLen];
+    allVerts.sort();
+    immutable nv = cast(int) allVerts.length;
+
+    int[dim + 2] dn6;
+    int[dim + 2] dm;
+    foreach (subset; allVerts.subsetsOfSize(2))
+    {
+        int s_C = 0;
+        foreach (v; subset)
+            if (center.canFind(v)) s_C++;
+        immutable s_CC = 2 - s_C;
+        immutable delta = (cenLen - s_C) - (coCenLen - s_CC);
+        if (delta == 0) continue;
+
+        immutable oldDeg = cast(long) mfd.degreeOrZero!1(subset);
+        immutable newDeg = oldDeg + delta;
+        immutable d6 = (ind6(newDeg) ? 1 : 0) - (ind6(oldDeg) ? 1 : 0);
+        immutable dI = (indImp(newDeg) ? 1 : 0) - (indImp(oldDeg) ? 1 : 0);
+        if (d6 == 0 && dI == 0) continue;
+
+        foreach (v; subset)
+        {
+            foreach (i; 0 .. nv)
+            {
+                if (allVerts[i] == v)
+                {
+                    dn6[i] += d6;
+                    dm[i] += dI;
+                    break;
+                }
+            }
+        }
+    }
+
+    // 1->4 creates coCenter[0]; 4->1 destroys center[0].
+    immutable hasCreated = (coCenLen == 1);
+    immutable hasRemoved = (cenLen == 1);
+
+    real dS = 0;
+    foreach (i; 0 .. nv)
+    {
+        immutable v = allVerts[i];
+        immutable isCreated = hasCreated && v == coCenter[0];
+        immutable isRemoved = hasRemoved && v == center[0];
+        if (dn6[i] == 0 && dm[i] == 0 && !isCreated && !isRemoved) continue;
+
+        immutable long oldN6 = st.n6.get(v, 0);
+        immutable long oldM = st.mImp.get(v, 0);
+        immutable real oldE = isCreated ? 0 : pot.U(oldN6) + pot.V(oldM);
+        immutable long newN6 = oldN6 + dn6[i];
+        immutable long newM = oldM + dm[i];
+        immutable real newE = isRemoved ? 0 : pot.U(newN6) + pot.V(newM);
+        dS += newE - oldE;
+
+        if (commit)
+        {
+            if (isRemoved)
+            {
+                st.n6.remove(v);
+                st.mImp.remove(v);
+            }
+            else
+            {
+                if (newN6 != 0) st.n6[v] = cast(int) newN6;
+                else st.n6.remove(v);
+                if (newM != 0) st.mImp[v] = cast(int) newM;
+                else st.mImp.remove(v);
+            }
+        }
+    }
+    if (commit) st.total += dS;
+    return dS;
+}
+
+/// Potential delta for a 4-4 hinge move (dim 3). Same contract as the
+/// bistellar version (pre-move reads; commit updates state).
+real potentialHingeDelta(Vertex)(
+    const ref Manifold!(3, Vertex) mfd,
+    const ref HingeMove!Vertex move,
+    ref VertexPotState!Vertex st,
+    const ref VertexPot pot,
+    bool commit)
+{
+    Vertex[6] allVertsBuf;
+    allVertsBuf[0] = move.removedEdge[0];
+    allVertsBuf[1] = move.removedEdge[1];
+    allVertsBuf[2 .. 6] = move.linkCycle;
+    allVertsBuf[].sort();
+    auto allVerts = allVertsBuf[];
+
+    auto oldFacets = move.oldFacets;
+    auto newFacets = move.newFacets;
+
+    int[6] dn6;
+    int[6] dm;
+    foreach (subset; allVerts.subsetsOfSize(2))
+    {
+        int oldCount = 0;
+        foreach (ref f; oldFacets)
+            if (subset.isSubsetOf(f[])) oldCount++;
+        int newCount = 0;
+        foreach (ref f; newFacets)
+            if (subset.isSubsetOf(f[])) newCount++;
+        immutable delta = newCount - oldCount;
+        if (delta == 0) continue;
+
+        immutable oldDeg = cast(long) mfd.degreeOrZero!1(subset);
+        immutable newDeg = oldDeg + delta;
+        immutable d6 = (ind6(newDeg) ? 1 : 0) - (ind6(oldDeg) ? 1 : 0);
+        immutable dI = (indImp(newDeg) ? 1 : 0) - (indImp(oldDeg) ? 1 : 0);
+        if (d6 == 0 && dI == 0) continue;
+
+        foreach (v; subset)
+        {
+            foreach (i; 0 .. 6)
+            {
+                if (allVerts[i] == v)
+                {
+                    dn6[i] += d6;
+                    dm[i] += dI;
+                    break;
+                }
+            }
+        }
+    }
+
+    real dS = 0;
+    foreach (i; 0 .. 6)
+    {
+        if (dn6[i] == 0 && dm[i] == 0) continue;
+        immutable v = allVerts[i];
+        immutable long oldN6 = st.n6.get(v, 0);
+        immutable long oldM = st.mImp.get(v, 0);
+        immutable long newN6 = oldN6 + dn6[i];
+        immutable long newM = oldM + dm[i];
+        dS += (pot.U(newN6) + pot.V(newM)) - (pot.U(oldN6) + pot.V(oldM));
+
+        if (commit)
+        {
+            if (newN6 != 0) st.n6[v] = cast(int) newN6;
+            else st.n6.remove(v);
+            if (newM != 0) st.mImp[v] = cast(int) newM;
+            else st.mImp.remove(v);
+        }
+    }
+    if (commit) st.total += dS;
+    return dS;
+}
+
+// ---------------------------------------------------------------------------
 // Hinge move proposal
 // ---------------------------------------------------------------------------
 
@@ -957,7 +1221,9 @@ bool mcmcStep(Vertex, P)(
     ref ulong[4] bistellarTries,
     ref ulong[4] bistellarAccepts,
     MoveCounters!Vertex* counters = null,
-    GeometryLedger!Vertex* ledger = null)
+    GeometryLedger!Vertex* ledger = null,
+    VertexPotState!Vertex* potState = null,
+    const(VertexPot)* pot = null)
 {
     enum dim = 3;
     enum nVerts = dim + 1;
@@ -1013,11 +1279,19 @@ bool mcmcStep(Vertex, P)(
             hingeTries++;
             if (counters !is null)
                 addSupport(counters.valid, hingeSupport[]);
-            real deltaObj = mfd.speculativeHingeDelta(hm, currentObjective, params);
+            // currentObjective includes the potential total (when enabled); the
+            // base speculative delta needs the base-only objective as baseline.
+            real baseObj = currentObjective
+                - (potState !is null ? potState.total : 0.0L);
+            real deltaObj = mfd.speculativeHingeDelta(hm, baseObj, params);
+            if (potState !is null)
+                deltaObj += mfd.potentialHingeDelta(hm, *potState, *pot, false);
             real logAlpha = -deltaObj;
 
             if (logAlpha >= 0 || uniform01 <= exp(logAlpha))
             {
+                if (potState !is null)
+                    mfd.potentialHingeDelta(hm, *potState, *pot, true);
                 mfd.doHingeMove(hm);
                 currentObjective += deltaObj;
                 hingeAccepts++;
@@ -1083,11 +1357,17 @@ bool mcmcStep(Vertex, P)(
         bistellarTries[bm.coCenter.length - 1]++;
         if (counters !is null)
             addSupport(counters.valid, ball);
-        real deltaObj = mfd.speculativeBistellarDelta(bm, currentObjective, params);
+        real baseObj = currentObjective
+            - (potState !is null ? potState.total : 0.0L);
+        real deltaObj = mfd.speculativeBistellarDelta(bm, baseObj, params);
+        if (potState !is null)
+            deltaObj += mfd.potentialBistellarDelta(bm, *potState, *pot, false);
         real logAlpha = -deltaObj;
 
         if (logAlpha >= 0 || uniform01 <= exp(logAlpha))
         {
+            if (potState !is null)
+                mfd.potentialBistellarDelta(bm, *potState, *pot, true);
             mfd.doMove(bm);
             if (counters !is null)
                 addSupport(counters.acceptedBistellar, ball);
@@ -1185,6 +1465,104 @@ unittest
     auto actualObj = mfd.objective(params);
     assert(isClose(currentObj, actualObj, 1e-4),
         "objective drift: tracked=%s actual=%s".format(currentObj, actualObj));
+}
+
+/// Vertex 6-valence potential: incremental counter state and running total
+/// stay exact through mixed MCMC (all bistellar types + hinge moves), and the
+/// tracked objective (base + potential) matches a from-scratch recompute.
+unittest
+{
+    struct TestParams
+    {
+        int numFacetsTarget = 24;
+        real hingeDegreeTarget = 4.6;
+        real numFacetsCoef = 0.1;
+        real numHingesCoef = 0.05;
+        real hingeDegreeVarianceCoef = 0.0;
+        real coDim3DegreeVarianceCoef = 0.0;
+        real hingeDegreeTargetCoef = 0.1;
+        real coDim3DegreeTargetCoef = 0.0;
+        real coDim3DegreeTarget = 0.0;
+    }
+
+    alias BM = BistellarMove!3;
+    auto mfd = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+    auto params = TestParams();
+    mfd.doMove(BM([0,1,2,3], [5]));
+    mfd.doMove(BM([0,1,2,4], [6]));
+    mfd.doMove(BM([1,2,3,4], [7]));
+
+    VertexPot pot;
+    pot.zlegCoef = 0.3;
+    pot.impCoef = 0.05;
+    pot.tilt = [0.02L, 0, -0.04L, 0.01L, -0.03L];  // exercise every tilt slot
+    assert(pot.enabled);
+
+    // U spot checks: legal set flat at tilt, n6=1/5 pay 1, quadratic tail.
+    assert(isClose(pot.U(0), 0.02L));
+    assert(isClose(pot.U(1), 0.3L + 0.0L));
+    assert(isClose(pot.U(2), -0.04L));
+    assert(isClose(pot.U(4), -0.03L));
+    assert(isClose(pot.U(5), 0.3L));
+    assert(isClose(pot.U(7), 0.3L * 9));
+    assert(isClose(pot.V(6), 0.05L * 36));
+
+    VertexPotState!int st;
+    mfd.recomputeVertexPotState(st, pot);
+
+    // Counter invariant: sum_v n6 = 2 * #edges(deg >= 6), same for impurity.
+    void checkInvariants()
+    {
+        long s6 = 0, sI = 0;
+        foreach (v, k; st.n6) s6 += k;
+        foreach (v, m; st.mImp) sI += m;
+        long e6 = 0, eI = 0;
+        foreach (e; mfd.simplices(1))
+        {
+            immutable d = cast(long) mfd.degree(e);
+            if (d >= 6) e6++;
+            if (d < 5 || d > 6) eI++;
+        }
+        assert(s6 == 2 * e6, "n6 counter sum mismatch");
+        assert(sI == 2 * eI, "impurity counter sum mismatch");
+    }
+    checkInvariants();
+
+    auto currentObj = mfd.objective(params) + st.total;
+    int[] unusedVertices = [8];
+    ulong hingeTries, hingeAccepts;
+    ulong[4] bTries, bAccepts;
+
+    int accepted = 0;
+    foreach (step; 0 .. 600)
+    {
+        if (mfd.mcmcStep(currentObj, unusedVertices, params, 0.5,
+                hingeTries, hingeAccepts, bTries, bAccepts, null, null,
+                &st, &pot))
+            accepted++;
+
+        if (step % 100 == 99)
+        {
+            // Incremental state == from-scratch recompute
+            VertexPotState!int fresh;
+            mfd.recomputeVertexPotState(fresh, pot);
+            assert(fresh.n6 == st.n6,
+                "n6 drift at step %s".format(step));
+            assert(fresh.mImp == st.mImp,
+                "impurity drift at step %s".format(step));
+            assert(isClose(fresh.total, st.total, 1e-9L, 1e-9L),
+                "potential total drift: tracked=%s fresh=%s"
+                .format(st.total, fresh.total));
+            checkInvariants();
+
+            // Tracked objective == base + potential, recomputed
+            assert(isClose(currentObj, mfd.objective(params) + st.total, 1e-6L),
+                "objective drift with potential at step %s".format(step));
+        }
+    }
+    assert(accepted > 0, "should have accepted some moves");
+    assert(hingeAccepts + bAccepts[].sum > 0);
+    assert(mfd.findProblems.length == 0);
 }
 
 // ---------------------------------------------------------------------------
