@@ -55,6 +55,7 @@ def parse_queue(path):
             k = float(kv.get("k", 2))
             bon = float(kv.get("beta_over_n", 0))
             hon = float(kv.get("hdv_over_n", 0))
+            topology = kv.get("topology", "S3")
             # Fixed-target quadratics (VDQ/EDQ), specified as PER-TET scaled
             # couplings (same scale as beta_over_n/hdv_over_n; raw per-element
             # coefs are lambda/(6/edge-1) resp. lambda*edge/6).
@@ -66,10 +67,10 @@ def parse_queue(path):
             for tokn in kv["N"].split(","):
                 n = int(float(tokn))
                 cells.append(dict(edge=edge, k=k, bon=bon, hon=hon,
-                                  vdq=vdq, edq=edq, n=n,
+                                  vdq=vdq, edq=edq, n=n, topology=topology,
                                   prio=prio, line=lineno))
     cells.sort(key=lambda c: (c["prio"], c["n"], c["edge"], c["bon"], c["hon"],
-                              c["vdq"], c["edq"]))
+                              c["vdq"], c["edq"], c["topology"]))
     return cells
 
 
@@ -95,13 +96,25 @@ def params_at(cell, n):
 
 
 def seed_path(seeds_abs, cell, n, idx=0):
-    return os.path.join(seeds_abs, build_seed_filename("S3", params_at(cell, n), idx))
+    return os.path.join(seeds_abs,
+                        build_seed_filename(cell["topology"], params_at(cell, n), idx))
+
+
+# Root triangulations for topologies with no library presence yet. T3 root is a
+# validated TCP-crystal quotient (scripts/tcp_reference.py); it must be SMALLER
+# than the smallest queued N: growing UP through the volume pin melts the
+# crystal (volume-adding moves are pin-favored), whereas a root above target is
+# pin-frozen (no volume-removing moves exist in a perfect {5,6} crystal).
+TOPOLOGY_ROOTS = {
+    "T3": os.path.join(_ROOT, "standard_triangulations", "T3_A15_m2_N368.mfd"),
+}
 
 
 def find_source(seeds_abs, cell):
     """A starting s000 triangulation to grow from: prefer this family's own largest
-    tier below N (a stepping stone), else the nearest existing family (by edge then
-    beta/N) at the largest N <= target -- grow_seed relaxes to the objective."""
+    tier below N (a stepping stone), else the nearest existing SAME-TOPOLOGY family
+    (by edge then beta/N) at the largest N <= target, else the topology's root
+    triangulation -- grow_seed relaxes to the objective."""
     n = cell["n"]
     # 1. same family, largest smaller tier
     best_n = -1; best = None
@@ -113,10 +126,11 @@ def find_source(seeds_abs, cell):
             best, best_n = p, nn
     if best:
         return best, f"stepping-stone N={best_n}"
-    # 2. nearest existing family at largest N <= target
+    # 2. nearest existing same-topology family at largest N <= target
+    topo = cell["topology"]
     cand = None; cand_key = None
-    for p in glob.glob(os.path.join(seeds_abs, "S3_N*_1e-1_*_s000.mfd")):
-        m = re.match(r"S3_N([0-9e]+)_", os.path.basename(p))
+    for p in glob.glob(os.path.join(seeds_abs, f"{topo}_N*_1e-1_*_s000.mfd")):
+        m = re.match(rf"{topo}_N([0-9e]+)_", os.path.basename(p))
         nn = next((v for t, v in LADDER if t == m.group(1)), None) if m else None
         if nn is None or nn > n:
             continue
@@ -138,6 +152,9 @@ def find_source(seeds_abs, cell):
             cand, cand_key = p, key
     if cand:
         return cand, f"founded from {os.path.basename(cand)}"
+    root = TOPOLOGY_ROOTS.get(topo)
+    if root and os.path.exists(root):
+        return root, f"topology root {os.path.basename(root)}"
     return None, "no source"
 
 
@@ -160,8 +177,11 @@ def do_cell(args, seeds_abs, out_root, cell):
     edge, k = cell["edge"], cell["k"]
     beta, hdv = cell["bon"] * n, cell["hon"] * n
     cv, ce = vdq_raw(cell), edq_raw(cell)
-    stem = build_seed_filename("S3", params_at(cell, n)).replace(
-        f"S3_N{encode_float(n)}_", "").replace(".mfd", "")
+    topo = cell["topology"]
+    stem = build_seed_filename(topo, params_at(cell, n)).replace(
+        f"{topo}_N{encode_float(n)}_", "").replace(".mfd", "")
+    if topo != "S3":
+        stem = f"{topo}_{stem}"
     tag = f"N={n} {stem}"
     src, how = find_source(seeds_abs, cell)
     if src is None:
@@ -174,7 +194,7 @@ def do_cell(args, seeds_abs, out_root, cell):
     obj = dict(edge=edge, k=k, nfc=0.1)
     grown = os.path.join(args.scratch_dir, f"grow_N{encode_float(n)}_{stem}.mfd")
     if grow(_ROOT, src, n, obj, beta, hdv, grown, args.grow_min_free_gb,
-            vdq_coef=cv, edq_coef=ce) is None:
+            vdq_coef=cv, edq_coef=ce, topology=topo) is None:
         log(f"  {tag}: GROW-FAIL (transient? retried next pass)"); return "GROW-FAIL"
     out_dir = os.path.join(out_root, f"{stem}_N{encode_float(n)}")
     # Fresh staging every attempt: equilibrium_vdv --produce RESUMES chains whose
@@ -189,7 +209,8 @@ def do_cell(args, seeds_abs, out_root, cell):
         replicas=args.replicas, burnin=args.burnin, nsamp=args.n_samples,
         thin=args.thin, dry_run=False, seeds_dir=args.seeds_dir, out_dir=out_dir,
         num_hinges_coef=k, hdv_coef=hdv, vdq_coef=cv, edq_coef=ce,
-        max_workers=args.max_workers, max_memory_gb=args.max_memory_gb)
+        max_workers=args.max_workers, max_memory_gb=args.max_memory_gb,
+        topology=topo)
     if verdict == "FAIL" and G.retry_worthwhile(detail):
         log(f"  {tag}: FAIL ({detail}) — one longer retry")
         verdict, detail = G.run_cell(
@@ -198,7 +219,8 @@ def do_cell(args, seeds_abs, out_root, cell):
             nsamp=args.retry_n_samples, thin=args.thin, dry_run=False,
             seeds_dir=args.seeds_dir, out_dir=out_dir + "_retry",
             num_hinges_coef=k, hdv_coef=hdv, vdq_coef=cv, edq_coef=ce,
-            max_workers=args.max_workers, max_memory_gb=args.max_memory_gb)
+            max_workers=args.max_workers, max_memory_gb=args.max_memory_gb,
+            topology=topo)
     log(f"  {tag}: {verdict} {detail}")
     return verdict
 
@@ -245,12 +267,16 @@ def main():
             sys.exit("another seed_queue_runner holds the lock; exiting.")
 
     attempted_nonpass = set()   # cells tried this session that didn't PASS (avoid spin)
+
+    def cell_key(c):
+        return (c["edge"], c["k"], c["bon"], c["hon"],
+                c["vdq"], c["edq"], c["n"], c["topology"])
+
     while True:
         cells = parse_queue(args.queue)
         pending = [c for c in cells
                    if not os.path.exists(seed_path(seeds_abs, c, c["n"]))
-                   and (c["edge"], c["k"], c["bon"], c["hon"],
-                        c["vdq"], c["edq"], c["n"]) not in attempted_nonpass]
+                   and cell_key(c) not in attempted_nonpass]
         done = sum(1 for c in cells if os.path.exists(seed_path(seeds_abs, c, c["n"])))
         log(f"queue: {len(cells)} cells, {done} already in seeds/, "
             f"{len(pending)} pending, {len(attempted_nonpass)} deferred this session")
@@ -270,11 +296,10 @@ def main():
         if verdict not in ("PASS", "SKIP-EXISTS"):
             # GROW-FAIL is transient (memory) but we still defer for the session to
             # avoid spinning; a runner restart re-attempts everything deferred.
-            attempted_nonpass.add((c["edge"], c["k"], c["bon"], c["hon"],
-                                   c["vdq"], c["edq"], c["n"]))
+            attempted_nonpass.add(cell_key(c))
         if args.once and not any(
                 not os.path.exists(seed_path(seeds_abs, c2, c2["n"]))
-                and (c2["edge"], c2["k"], c2["bon"], c2["hon"], c2["n"]) not in attempted_nonpass
+                and cell_key(c2) not in attempted_nonpass
                 for c2 in cells):
             log("queue satisfied; exiting (--once)."); break
 

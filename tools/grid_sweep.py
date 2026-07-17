@@ -88,7 +88,7 @@ def retry_worthwhile(detail):
 def run_cell(root, seed, n, edgeval, beta, *, bracket, replicas, burnin, nsamp,
              thin, dry_run, seeds_dir, out_dir, num_hinges_coef=2.0, hdv_coef=0.0,
              vdq_coef=0.0, edq_coef=0.0,
-             max_workers=None, max_memory_gb=None):
+             max_workers=None, max_memory_gb=None, topology="S3"):
     """One grid cell = one `equilibrium_vdv.py --produce` invocation. Optional
     max_workers / max_memory_gb cap the concurrent-chain fan-out (cores / RAM).
     vdq_coef/edq_coef are the RAW per-element fixed-target couplings (the queue
@@ -100,7 +100,8 @@ def run_cell(root, seed, n, edgeval, beta, *, bracket, replicas, burnin, nsamp,
            "--num-facets-coef", "0.1",
            "--replicas", str(replicas), "--production-burnin", str(burnin),
            "--n-samples", str(nsamp), "--thin", str(thin),
-           "--seeds-dir", os.path.join(root, seeds_dir), "--output-dir", out_dir]
+           "--seeds-dir", os.path.join(root, seeds_dir), "--output-dir", out_dir,
+           "--topology", topology]
     if vdq_coef:
         cmd += ["--vdq-coef", str(vdq_coef)]
     if edq_coef:

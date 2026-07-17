@@ -81,7 +81,7 @@ def objective(md):
 
 
 def grow(root, src, target_n, obj, beta, hdv, out, min_free_gb,
-         vdq_coef=0.0, edq_coef=0.0):
+         vdq_coef=0.0, edq_coef=0.0, topology="S3"):
     """Grow src up to target_n facets under the family objective. Returns out on
     success (or if it already exists), else None. vdq_coef/edq_coef are the RAW
     per-element fixed-target (VDQ/EDQ) couplings, 0 = off."""
@@ -91,7 +91,8 @@ def grow(root, src, target_n, obj, beta, hdv, out, min_free_gb,
            "--from", src, "--target-facets", str(target_n), "--out", out,
            "--hinge-target", str(obj["edge"]), "--num-facets-coef", str(obj["nfc"]),
            "--num-hinges-coef", str(obj["k"]), "--hdv-coef", str(hdv),
-           "--vdv-coef", str(beta), "--min-free-gb", str(min_free_gb)]
+           "--vdv-coef", str(beta), "--min-free-gb", str(min_free_gb),
+           "--topology", topology]
     if vdq_coef:
         cmd += ["--vdq-coef", str(vdq_coef)]
     if edq_coef:
