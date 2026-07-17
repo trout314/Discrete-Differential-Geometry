@@ -66,3 +66,9 @@ dub.selections.json
 
 # Stale generated param tables (regenerate via legacy/generate_seed_params.py)
 tools/*.json
+
+# Compiled note PDFs (sources .tex are tracked; rebuild with tectonic)
+notes/*.pdf
+
+# Analysis output JSONs/figures (like data/, not version-controlled)
+/out/
