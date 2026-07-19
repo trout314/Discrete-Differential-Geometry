@@ -616,6 +616,20 @@ _lib.ddg_sampler_event_log_overflowed.argtypes = [ctypes.c_void_p]
 _lib.ddg_sampler_event_log_overflowed.restype = ctypes.c_int
 _lib.ddg_sampler_event_log_overflowed.errcheck = _check_int
 
+_lib.ddg_sampler_six_flip_log_enable.argtypes = [ctypes.c_void_p, ctypes.c_long]
+_lib.ddg_sampler_six_flip_log_enable.restype = ctypes.c_int
+_lib.ddg_sampler_six_flip_log_enable.errcheck = _check_int
+
+_lib.ddg_sampler_six_flip_log_drain.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_ubyte), ctypes.c_long,
+]
+_lib.ddg_sampler_six_flip_log_drain.restype = ctypes.c_long
+_lib.ddg_sampler_six_flip_log_drain.errcheck = _check_int
+
+_lib.ddg_sampler_six_flip_log_overflowed.argtypes = [ctypes.c_void_p]
+_lib.ddg_sampler_six_flip_log_overflowed.restype = ctypes.c_int
+_lib.ddg_sampler_six_flip_log_overflowed.errcheck = _check_int
+
 _lib.ddg_sampler_get_stats.argtypes = [
     ctypes.c_void_p,
     ctypes.POINTER(ctypes.c_long), ctypes.POINTER(ctypes.c_long),
@@ -654,6 +668,34 @@ _lib.ddg_sampler_degree_histogram.argtypes = [
 ]
 _lib.ddg_sampler_degree_histogram.restype = ctypes.c_long
 _lib.ddg_sampler_degree_histogram.errcheck = _check_int
+
+# ---------------------------------------------------------------------------
+# Disclination-network censuses (dim=3)
+# ---------------------------------------------------------------------------
+
+_lib.ddg_manifold_valence_census.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_long), ctypes.c_int, ctypes.c_int,
+]
+_lib.ddg_manifold_valence_census.restype = ctypes.c_int
+_lib.ddg_manifold_valence_census.errcheck = _check_int
+
+_lib.ddg_sampler_valence_census.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_long), ctypes.c_int, ctypes.c_int,
+]
+_lib.ddg_sampler_valence_census.restype = ctypes.c_int
+_lib.ddg_sampler_valence_census.errcheck = _check_int
+
+_lib.ddg_manifold_disclination_census.argtypes = [
+    ctypes.c_void_p, ctypes.c_int, ctypes.POINTER(ctypes.c_long), ctypes.c_long,
+]
+_lib.ddg_manifold_disclination_census.restype = ctypes.c_long
+_lib.ddg_manifold_disclination_census.errcheck = _check_int
+
+_lib.ddg_sampler_disclination_census.argtypes = [
+    ctypes.c_void_p, ctypes.c_int, ctypes.POINTER(ctypes.c_long), ctypes.c_long,
+]
+_lib.ddg_sampler_disclination_census.restype = ctypes.c_long
+_lib.ddg_sampler_disclination_census.errcheck = _check_int
 
 # ---------------------------------------------------------------------------
 # GC control

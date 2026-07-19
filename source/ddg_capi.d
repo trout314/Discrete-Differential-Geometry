@@ -1357,7 +1357,8 @@ private long runSamplerDim3(SamplerState* s, long numMoves,
             if (mw.mfd.mcmcStep(s.currentObjective, s.unusedVertices, params,
                     s.hingeMoveProb, hT, hA, bT, bA,
                     s.trackMoveCounts ? &s.moveCounters : null,
-                    (s.geoLedger.trackRoles || s.geoLedger.logEvents)
+                    (s.geoLedger.trackRoles || s.geoLedger.logEvents
+                        || s.geoLedger.logSixFlips)
                         ? &s.geoLedger : null,
                     s.potEnabled ? &s.vertexPotState : null,
                     s.potEnabled ? &s.vertexPot : null))
@@ -1850,6 +1851,87 @@ extern(C) int ddg_sampler_event_log_overflowed(void* sampler_handle) nothrow
     return r;
 }
 
+// ---------------------------------------------------------------------------
+// Six-edge flip log (disclination-network rewiring stream; dim=3 only)
+// ---------------------------------------------------------------------------
+
+/// Enable the six-edge flip log: one fixed-size record (see
+/// sampler.sixRecordBytes: u64 clock + i32 u + i32 v + i32 dir) per edge that
+/// crosses the degree 5<->6 threshold during an accepted move. The stream is
+/// the complete rewiring history of the disclination network. capacity <= 0
+/// disables. Drain regularly; on overflow records are dropped (flagged).
+extern(C) int ddg_sampler_six_flip_log_enable(void* sampler_handle,
+    long capacity_bytes) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null handle"); return -1; }
+        auto state = cast(SamplerState*) sampler_handle;
+        if (capacity_bytes > 0 && state.dim != 3)
+        {
+            setError("six-flip log is only supported for dim=3 samplers");
+            return -1;
+        }
+        auto g = &state.geoLedger;
+        if (capacity_bytes <= 0)
+        {
+            g.logSixFlips = false;
+            g.sixBuf = null;
+            g.sixUsed = 0;
+            g.sixOverflow = false;
+            return 0;
+        }
+        immutable cap = (cast(size_t) capacity_bytes / sixRecordBytes)
+                        * sixRecordBytes;
+        if (cap == 0) { setError("capacity smaller than one record"); return -1; }
+        g.sixBuf = new ubyte[cap];
+        g.sixUsed = 0;
+        g.sixOverflow = false;
+        g.logSixFlips = true;
+        return 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Drain the six-flip log. buf==null returns the number of buffered bytes.
+/// Otherwise copies up to buf_len bytes (whole records), removes them from
+/// the buffer, and returns the byte count copied.
+extern(C) long ddg_sampler_six_flip_log_drain(void* sampler_handle,
+    ubyte* buf, long buf_len) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null sampler handle"); return -1; }
+        auto g = &(cast(SamplerState*) sampler_handle).geoLedger;
+        if (buf is null) return g.sixUsed;
+        import core.stdc.string : memcpy, memmove;
+        immutable take = (min(cast(size_t) buf_len, g.sixUsed)
+                          / sixRecordBytes) * sixRecordBytes;
+        if (take > 0)
+        {
+            memcpy(buf, g.sixBuf.ptr, take);
+            if (take < g.sixUsed)
+                memmove(g.sixBuf.ptr, g.sixBuf.ptr + take, g.sixUsed - take);
+            g.sixUsed -= take;
+        }
+        return take;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Returns 1 if six-flip records were dropped, else 0. Clears the flag.
+extern(C) int ddg_sampler_six_flip_log_overflowed(void* sampler_handle) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto g = &(cast(SamplerState*) sampler_handle).geoLedger;
+    immutable r = g.sixOverflow ? 1 : 0;
+    g.sixOverflow = false;
+    return r;
+}
+
 extern(C) int ddg_sampler_set_num_facets_coef(void* sampler_handle, double coef) nothrow
 {
     clearError();
@@ -2084,4 +2166,82 @@ extern(C) long ddg_sampler_degree_histogram(void* sampler_handle, int simp_dim, 
     if (sampler_handle is null) { setError("null handle"); return -1; }
     auto mfd_handle = (cast(SamplerState*) sampler_handle).manifoldHandle;
     return ddg_manifold_degree_histogram(mfd_handle, simp_dim, out_buf);
+}
+
+// ---------------------------------------------------------------------------
+// Disclination-network censuses (dim=3 only)
+// ---------------------------------------------------------------------------
+
+/// Joint (n6, m) vertex census (see sampler.valenceCensus). Fills out_buf
+/// with (n6_cap+1)*(m_cap+1) longs, row-major [min(n6, n6_cap)][min(m, m_cap)].
+extern(C) int ddg_manifold_valence_census(void* handle, long* out_buf,
+    int n6_cap, int m_cap) nothrow
+{
+    clearError();
+    try
+    {
+        if (handle is null) { setError("null handle"); return -1; }
+        if (out_buf is null) { setError("null out_buf"); return -1; }
+        if (n6_cap < 1 || m_cap < 1) { setError("caps must be >= 1"); return -1; }
+        auto h = cast(ManifoldHandle*) handle;
+        if (h.dim != 3)
+        {
+            setError("valence census requires a dim=3 manifold");
+            return -1;
+        }
+        auto len = (n6_cap + 1) * (m_cap + 1);
+        (cast(ManifoldWrapper!3*) h.ptr).mfd.valenceCensus(
+            out_buf[0 .. len], n6_cap, m_cap);
+        return 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+extern(C) int ddg_sampler_valence_census(void* sampler_handle, long* out_buf,
+    int n6_cap, int m_cap) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto mfd_handle = (cast(SamplerState*) sampler_handle).manifoldHandle;
+    return ddg_manifold_valence_census(mfd_handle, out_buf, n6_cap, m_cap);
+}
+
+/// Disclination-network census (see sampler.DisclinationCensus). host_mask
+/// bit k marks n6-class k as a native host class (C15: (1<<0)|(1<<4)); 0 for
+/// no host/dopant split. With out_buf null, returns the required slot count
+/// (sampler.disclinationCensusSlots); otherwise fills the flattened layout
+/// documented at sampler.flattenCensus and returns the slot count.
+extern(C) long ddg_manifold_disclination_census(void* handle, int host_mask,
+    long* out_buf, long buf_len) nothrow
+{
+    clearError();
+    try
+    {
+        if (handle is null) { setError("null handle"); return -1; }
+        if (out_buf is null) return disclinationCensusSlots;
+        if (buf_len < disclinationCensusSlots)
+        {
+            setError("buffer too small for census layout");
+            return -1;
+        }
+        auto h = cast(ManifoldHandle*) handle;
+        if (h.dim != 3)
+        {
+            setError("disclination census requires a dim=3 manifold");
+            return -1;
+        }
+        auto c = (cast(ManifoldWrapper!3*) h.ptr).mfd.disclinationCensus(host_mask);
+        flattenCensus(c, out_buf[0 .. disclinationCensusSlots]);
+        return disclinationCensusSlots;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+extern(C) long ddg_sampler_disclination_census(void* sampler_handle,
+    int host_mask, long* out_buf, long buf_len) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto mfd_handle = (cast(SamplerState*) sampler_handle).manifoldHandle;
+    return ddg_manifold_disclination_census(mfd_handle, host_mask, out_buf, buf_len);
 }

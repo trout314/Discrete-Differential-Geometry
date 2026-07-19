@@ -106,6 +106,24 @@ class ManifoldView:
         """Count valid Pachner moves (including stellar subdivisions)."""
         return _lib.ddg_manifold_count_valid_moves(self._handle)
 
+    def valence_census(self, n6_cap: int = 8, m_cap: int = 8) -> np.ndarray:
+        """Joint (n6, m) vertex census, shape (n6_cap+1, m_cap+1); dim=3 only.
+
+        n6 = # incident degree>=6 edges, m = impurity valence; final bins
+        clamp. Bin (0, 0) is the FK-Z12 bulk; rows n6 >= 1 are the
+        disclination-network vertices.
+        """
+        from .disclination import valence_census_from_handle
+        return valence_census_from_handle(self._handle, n6_cap, m_cap)
+
+    def disclination_census(self, host_classes=None) -> dict:
+        """Census of the degree>=6 edge graph (the disclination network);
+        dim=3 only. host_classes = native host n6 classes (C15: [0, 4])
+        enables the host/dopant graft split. See disclination.py for keys.
+        """
+        from .disclination import disclination_census_from_handle
+        return disclination_census_from_handle(self._handle, host_classes)
+
     def importance_weight(self) -> float:
         """Return 1/V, the importance weight correcting the sampler's
         stationary distribution back to exp(-objective).

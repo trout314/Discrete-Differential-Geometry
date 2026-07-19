@@ -572,6 +572,34 @@ class ManifoldSampler:
         """True if records were dropped since last check (clears the flag)."""
         return bool(_lib.ddg_sampler_event_log_overflowed(self._handle))
 
+    # -- Six-edge flip log (disclination-network rewiring stream) --
+
+    def enable_six_flip_log(self, capacity_mb: float = 16.0) -> None:
+        """Enable the six-edge flip log (dim=3 only); 0 disables.
+
+        One fixed-size record (``disclination.SIX_FLIP_DTYPE``) per edge
+        crossing the degree 5<->6 threshold in an accepted move — the
+        complete rewiring history of the disclination network, on the same
+        clock as the move event log. Rates run a few records per accepted
+        move; drain every few sweeps.
+        """
+        _lib.ddg_sampler_six_flip_log_enable(self._handle,
+                                             int(capacity_mb * 1024 * 1024))
+
+    def drain_six_flip_log(self) -> np.ndarray:
+        """Copy out and clear buffered flip records (structured array)."""
+        from .disclination import SIX_FLIP_DTYPE
+        used = _lib.ddg_sampler_six_flip_log_drain(self._handle, None, 0)
+        if used <= 0:
+            return np.empty(0, dtype=SIX_FLIP_DTYPE)
+        buf = (ctypes.c_ubyte * used)()
+        got = _lib.ddg_sampler_six_flip_log_drain(self._handle, buf, used)
+        return np.frombuffer(bytes(buf[:got]), dtype=SIX_FLIP_DTYPE)
+
+    def six_flip_log_overflowed(self) -> bool:
+        """True if flip records were dropped since last check (clears flag)."""
+        return bool(_lib.ddg_sampler_six_flip_log_overflowed(self._handle))
+
     @property
     def current_objective(self) -> float:
         """Return the current objective function value."""

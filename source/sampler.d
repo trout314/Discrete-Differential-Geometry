@@ -717,8 +717,329 @@ real potentialHingeDelta(Vertex)(
 }
 
 // ---------------------------------------------------------------------------
-// Hinge move proposal
+// Disclination-network observables (dim = 3)
 // ---------------------------------------------------------------------------
+//
+// Near the flat mean edge degree the curvature-carrying structure is the
+// DISCLINATION NETWORK: the graph of degree>=6 edges ("six-edges"). By the
+// link sum rule a legal (m = 0) Z14 vertex carries exactly 2 six-edge ends
+// (a disclination line passing through), Z15 exactly 3 (a branch node), Z16
+// exactly 4 — so the six-edge graph IS the Frank-Kasper skeleton, and its
+// components / chains / loops / grafts are the physical line objects. This
+// block provides snapshot-cadence censuses of that graph plus the joint
+// (n6, m) vertex census. Everything is O(#edges) over a const manifold; no
+// sampler state is required, so censuses work on loaded .mfd files too.
+
+struct DisclinationCensus
+{
+    long nNetVerts;      // vertices with >= 1 incident six-edge
+    long nSixEdges;      // edges of degree >= 6
+    long nComponents;    // connected components of the six-edge graph
+    long giantSize;      // largest component (in vertices)
+    long secondSize;     // second-largest component
+    long giantDiameter;  // double-BFS pseudo-diameter of the giant component
+    long cycleRank;      // first Betti number E - V + C of the network
+    long nSegments;      // maximal chains between non-degree-2 network vertices
+    long sumSegLen;      // six-edges lying in such chains
+    long nPureLoops;     // components that are cycles of degree-2 vertices
+    long sumLoopLen;     // six-edges lying in pure loops
+    long nEndpoints;     // network vertices with exactly 1 six-edge
+    long nFrayVerts;     // network vertices with impurity valence m > 0
+    long nImpEndEdges;   // six-edges with >= 1 impure endpoint
+    long nZ14, nZ15, nZ16;  // legal (m == 0) network-vertex class populations
+    // hostMask-resolved edge categories (bit k of hostMask = "n6-class k is a
+    // native host class"). An "FK" endpoint is legal with n6 in {2, 3, 4}.
+    long eDopDop;        // both endpoints dopant-FK (legal, class not in mask)
+    long eDopHost;       // dopant-FK -- host-FK (the graft edges)
+    long eHostHost;      // both endpoints host-FK (the host's own skeleton)
+    long eImpAny;        // >= 1 endpoint impure or non-FK (n6 >= 5)
+    long[8] netDegCensus;   // network degree 1..7; index 7 clamps >= 8
+    long[64] segLenHist;    // chain length; index clamps at 63
+    long[32] compSizeHist;  // log2-binned component size (index = bsr(size))
+}
+
+/// Slot count of the flattened C-API census layout (see flattenCensus).
+enum disclinationCensusSlots = 24 + 8 + 64 + 32;
+
+/// Flatten to the C-API layout: slots 0..20 = the 21 scalar fields in
+/// declaration order, 21..23 reserved (zero), 24..31 netDegCensus,
+/// 32..95 segLenHist, 96..127 compSizeHist.
+void flattenCensus(const ref DisclinationCensus c, long[] outBuf)
+in (outBuf.length >= disclinationCensusSlots)
+{
+    import std.traits : Unqual;
+    outBuf[0 .. disclinationCensusSlots] = 0;
+    size_t i = 0;
+    foreach (field; c.tupleof)
+        static if (is(Unqual!(typeof(field)) == long))
+            outBuf[i++] = field;
+    static assert(DisclinationCensus.tupleof.length == 24);
+    assert(i == 21);
+    outBuf[24 .. 32] = c.netDegCensus[];
+    outBuf[32 .. 96] = c.segLenHist[];
+    outBuf[96 .. 128] = c.compSizeHist[];
+}
+
+/// Joint (n6, m) vertex census over ALL vertices: outBuf is row-major
+/// [min(n6, n6Cap)][min(m, mCap)] with (n6Cap+1)*(mCap+1) slots. Bin (0, 0)
+/// is the FK-Z12 bulk; rows n6 >= 1 sum to the disclination-network vertex
+/// count. Uncapped, sum_k k * row_k = 2 * #six-edges.
+void valenceCensus(Vertex)(const ref Manifold!(3, Vertex) mfd,
+    long[] outBuf, int n6Cap, int mCap)
+in (outBuf.length >= (n6Cap + 1) * (mCap + 1))
+{
+    outBuf[0 .. (n6Cap + 1) * (mCap + 1)] = 0;
+    int[Vertex] n6, mImp;
+    foreach (e; mfd.simplices(1))
+    {
+        immutable d = cast(long) mfd.degree(e);
+        if (ind6(d)) { n6.require(e[0], 0)++; n6.require(e[1], 0)++; }
+        if (indImp(d)) { mImp.require(e[0], 0)++; mImp.require(e[1], 0)++; }
+    }
+    long touched = 0;
+    foreach (v, k; n6)
+    {
+        outBuf[min(k, n6Cap) * (mCap + 1) + min(mImp.get(v, 0), mCap)]++;
+        ++touched;
+    }
+    foreach (v, m; mImp)
+    {
+        if (v in n6) continue;
+        outBuf[min(m, mCap)]++;   // n6 == 0 row
+        ++touched;
+    }
+    outBuf[0] += cast(long) mfd.fVector[0] - touched;
+}
+
+/// Full disclination-network census (see DisclinationCensus). hostMask marks
+/// the host's native n6 classes (e.g. C15: bit 0 | bit 4); pass 0 for no
+/// host/dopant split (all legal-legal edges then count as eDopDop).
+DisclinationCensus disclinationCensus(Vertex)(
+    const ref Manifold!(3, Vertex) mfd, int hostMask = 0)
+{
+    import core.bitop : bsr;
+
+    DisclinationCensus c;
+
+    // Pass 1: six-edges and per-vertex (n6, m) counters.
+    Vertex[2][] six;
+    int[Vertex] n6, mImp;
+    foreach (e; mfd.simplices(1))
+    {
+        immutable d = cast(long) mfd.degree(e);
+        if (ind6(d))
+        {
+            Vertex[2] pr = [e[0], e[1]];
+            six ~= pr;
+            n6.require(e[0], 0)++;
+            n6.require(e[1], 0)++;
+        }
+        if (indImp(d))
+        {
+            mImp.require(e[0], 0)++;
+            mImp.require(e[1], 0)++;
+        }
+    }
+    immutable nv = cast(int) n6.length;
+    c.nNetVerts = nv;
+    c.nSixEdges = cast(long) six.length;
+    if (nv == 0) return c;
+
+    // Dense reindex + CSR adjacency.
+    int[Vertex] idx;
+    auto vlab = new Vertex[nv];
+    {
+        int k = 0;
+        foreach (v, _; n6) { idx[v] = k; vlab[k] = v; ++k; }
+    }
+    auto ndeg = new int[nv];
+    foreach (ref e; six) { ndeg[idx[e[0]]]++; ndeg[idx[e[1]]]++; }
+    auto off = new int[nv + 1];
+    foreach (i; 0 .. nv) off[i + 1] = off[i] + ndeg[i];
+    auto adj = new int[2 * six.length];
+    {
+        auto fill = off[0 .. nv].dup;
+        foreach (ref e; six)
+        {
+            immutable a = idx[e[0]], b = idx[e[1]];
+            adj[fill[a]++] = b;
+            adj[fill[b]++] = a;
+        }
+    }
+
+    // Vertex classification. Note ndeg[i] == n6(vlab[i]) by construction.
+    auto imp = new bool[nv];
+    foreach (i; 0 .. nv) imp[i] = (vlab[i] in mImp) !is null;
+    bool isFK(int i) { return !imp[i] && ndeg[i] >= 2 && ndeg[i] <= 4; }
+    bool isHost(int i) { return isFK(i) && ((hostMask >> ndeg[i]) & 1); }
+
+    foreach (i; 0 .. nv)
+    {
+        c.netDegCensus[min(ndeg[i], 8) - 1]++;
+        if (ndeg[i] == 1) c.nEndpoints++;
+        if (imp[i]) c.nFrayVerts++;
+        else if (ndeg[i] == 2) c.nZ14++;
+        else if (ndeg[i] == 3) c.nZ15++;
+        else if (ndeg[i] == 4) c.nZ16++;
+    }
+    foreach (ref e; six)
+    {
+        immutable a = idx[e[0]], b = idx[e[1]];
+        if (imp[a] || imp[b]) c.nImpEndEdges++;
+        if (!isFK(a) || !isFK(b)) c.eImpAny++;
+        else
+        {
+            immutable nHost = (isHost(a) ? 1 : 0) + (isHost(b) ? 1 : 0);
+            if (nHost == 2) c.eHostHost++;
+            else if (nHost == 1) c.eDopHost++;
+            else c.eDopDop++;
+        }
+    }
+
+    // Connected components (iterative DFS with a preallocated stack).
+    auto comp = new int[nv];
+    comp[] = -1;
+    auto work = new int[nv];
+    long[] compSizes;
+    int giantId = -1;
+    foreach (s; 0 .. nv)
+    {
+        if (comp[s] >= 0) continue;
+        immutable cid = cast(int) compSizes.length;
+        size_t sp = 0;
+        work[sp++] = s;
+        comp[s] = cid;
+        long size = 0;
+        while (sp)
+        {
+            immutable u = work[--sp];
+            ++size;
+            foreach (w; adj[off[u] .. off[u + 1]])
+                if (comp[w] < 0) { comp[w] = cid; work[sp++] = w; }
+        }
+        compSizes ~= size;
+        if (size > c.giantSize)
+        {
+            c.secondSize = c.giantSize;
+            c.giantSize = size;
+            giantId = cid;
+        }
+        else if (size > c.secondSize)
+            c.secondSize = size;
+    }
+    c.nComponents = cast(long) compSizes.length;
+    c.cycleRank = c.nSixEdges - c.nNetVerts + c.nComponents;
+    foreach (sz; compSizes)
+        c.compSizeHist[min(bsr(cast(ulong) sz), 31)]++;
+
+    // Pseudo-diameter of the giant component: double BFS.
+    auto dist = new int[nv];
+    int bfsFar(int src)
+    {
+        dist[] = -1;
+        size_t head = 0, tail = 0;
+        work[tail++] = src;
+        dist[src] = 0;
+        int far = src;
+        while (head < tail)
+        {
+            immutable u = work[head++];
+            if (dist[u] > dist[far]) far = u;
+            foreach (w; adj[off[u] .. off[u + 1]])
+                if (dist[w] < 0) { dist[w] = dist[u] + 1; work[tail++] = w; }
+        }
+        return far;
+    }
+    foreach (i; 0 .. nv)
+        if (comp[i] == giantId)
+        {
+            immutable a = bfsFar(i);
+            immutable b = bfsFar(a);
+            c.giantDiameter = dist[b];
+            break;
+        }
+
+    // Segment decomposition: maximal chains of degree-2 vertices between
+    // nodes (network degree != 2), then leftover pure loops (all-degree-2
+    // cycles = free disclination loops). The six-graph is simple (edges of a
+    // simplicial complex are unique), so chain walking needs no multi-edge
+    // guards. Every six-edge lands in exactly one segment or one pure loop.
+    bool[ulong] seen;
+    ulong ekey(int a, int b)
+    {
+        return a < b ? (cast(ulong) a << 32) | cast(uint) b
+                     : (cast(ulong) b << 32) | cast(uint) a;
+    }
+    int chainNext(int prev, int cur)
+    {
+        foreach (w; adj[off[cur] .. off[cur + 1]])
+            if (w != prev) return w;
+        assert(0, "degree-2 vertex with no forward neighbor");
+    }
+    foreach (i; 0 .. nv)
+    {
+        if (ndeg[i] == 2) continue;
+        foreach (w0; adj[off[i] .. off[i + 1]])
+        {
+            if (ekey(i, w0) in seen) continue;
+            seen[ekey(i, w0)] = true;
+            int prev = i, cur = w0;
+            long len = 1;
+            while (ndeg[cur] == 2)
+            {
+                immutable nxt = chainNext(prev, cur);
+                seen[ekey(cur, nxt)] = true;
+                prev = cur;
+                cur = nxt;
+                ++len;
+            }
+            c.nSegments++;
+            c.sumSegLen += len;
+            c.segLenHist[min(len, 63)]++;
+        }
+    }
+    foreach (i; 0 .. nv)
+    {
+        if (ndeg[i] != 2) continue;
+        foreach (w0; adj[off[i] .. off[i + 1]])
+        {
+            if (ekey(i, w0) in seen) continue;
+            seen[ekey(i, w0)] = true;
+            int prev = i, cur = w0;
+            long len = 1;
+            while (cur != i)
+            {
+                immutable nxt = chainNext(prev, cur);
+                seen[ekey(cur, nxt)] = true;
+                prev = cur;
+                cur = nxt;
+                ++len;
+            }
+            c.nPureLoops++;
+            c.sumLoopLen += len;
+        }
+    }
+    return c;
+}
+
+///
+unittest
+{
+    // Boundary of the 4-simplex: every edge has degree 3 — no six-edges, and
+    // every vertex has impurity valence 4 (all 4 incident edges are degree 3).
+    auto mfd = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+    auto c = mfd.disclinationCensus(0);
+    c.nNetVerts.shouldEqual(0);
+    c.nSixEdges.shouldEqual(0);
+    c.nComponents.shouldEqual(0);
+
+    long[5 * 5] vc;
+    mfd.valenceCensus(vc[], 4, 4);
+    vc[0 * 5 + 4].shouldEqual(5);   // all 5 vertices in bin (n6=0, m=4)
+    long tot = 0;
+    foreach (x; vc) tot += x;
+    tot.shouldEqual(5);
+}
 
 /******************************************************************************
 Try to propose a hinge move on a 3-manifold. Picks a random facet, a random
@@ -910,11 +1231,13 @@ immutable bool[ERole.max + 1] eRoleIsBirthDeath =
      true, true, false, false, false];
 
 enum eventRecordBytes = 36;   // u64 clock + u32 type + 6 x i32 labels, packed
+enum sixRecordBytes = 20;     // u64 clock + i32 u + i32 v + i32 dir, packed
 
 struct GeometryLedger(Vertex)
 {
     bool trackRoles;    // role-resolved AAs + tet aggregates
     bool logEvents;     // fixed-size event records
+    bool logSixFlips;   // six-edge (degree 5<->6 crossing) flip records
 
     double[Vertex][VRole.max + 1] vertexRoles;
     double[Vertex[2]][ERole.max + 1] edgeRoles;
@@ -931,6 +1254,10 @@ struct GeometryLedger(Vertex)
     ubyte[] eventBuf;
     size_t eventUsed;
     bool eventOverflow;
+
+    ubyte[] sixBuf;
+    size_t sixUsed;
+    bool sixOverflow;
 
     void clearRoles()()
     {
@@ -1150,6 +1477,97 @@ void logEvent(Vertex)(ref GeometryLedger!Vertex g, int typeCode,
     g.eventUsed += eventRecordBytes;
 }
 
+/// Append one six-edge flip record: (clock, u < v, dir). dir = +1 when edge
+/// (u, v) crosses degree 5 -> 6 (a disclination-line edge is born), -1 for
+/// 6 -> 5 (one dies). The stream is the complete rewiring history of the
+/// disclination network: E6(t) = E6(0) + sum of dir over records.
+private void logSixFlip(Vertex)(ref GeometryLedger!Vertex g,
+    const Vertex a, const Vertex b, int dir)
+{
+    if (g.sixUsed + sixRecordBytes > g.sixBuf.length)
+    {
+        g.sixOverflow = true;
+        return;
+    }
+    import core.stdc.string : memcpy;
+    auto p = g.sixBuf.ptr + g.sixUsed;
+    immutable ulong clk = g.clock;
+    immutable int u = cast(int) min(a, b);
+    immutable int v = cast(int) max(a, b);
+    memcpy(p, &clk, 8);
+    memcpy(p + 8, &u, 4);
+    memcpy(p + 12, &v, 4);
+    memcpy(p + 16, &dir, 4);
+    g.sixUsed += sixRecordBytes;
+}
+
+/// Emit six-edge flip records for an ACCEPTED bistellar move. Must be called
+/// BEFORE the move is applied (reads pre-move degrees). Only persisting edges
+/// can cross the 5/6 threshold: per the role tables, created edges are born
+/// at degree 3 and destroyed edges die at degree 3, so the six-edge graph
+/// changes exactly at the +-1 degree crossings enumerated here.
+void sixFlipsBistellar(Vertex)(ref GeometryLedger!Vertex g,
+    const ref Manifold!(3, Vertex) mfd,
+    scope const(Vertex)[] center, scope const(Vertex)[] coCenter)
+{
+    void crossing(const Vertex a, const Vertex b, int delta)
+    {
+        Vertex[2] e = a < b ? [a, b] : [b, a];
+        immutable d = cast(long) mfd.degree(e[]);
+        if (delta > 0 && d == 5) logSixFlip(g, a, b, +1);
+        else if (delta < 0 && d == 6) logSixFlip(g, a, b, -1);
+    }
+    final switch (cast(int) coCenter.length - 1)
+    {
+    case 0: // 1->4: the 6 base edges gain a facet
+        foreach (i; 0 .. center.length)
+            foreach (j; i + 1 .. center.length)
+                crossing(center[i], center[j], +1);
+        break;
+    case 1: // 2->3: equator edges -1, spokes +1
+        foreach (i; 0 .. center.length)
+            foreach (j; i + 1 .. center.length)
+                crossing(center[i], center[j], -1);
+        foreach (cv; center)
+            foreach (p; coCenter)
+                crossing(cv, p, +1);
+        break;
+    case 2: // 3->2: coCenter triangle edges +1, spokes -1
+        foreach (i; 0 .. coCenter.length)
+            foreach (j; i + 1 .. coCenter.length)
+                crossing(coCenter[i], coCenter[j], +1);
+        foreach (cv; center)
+            foreach (q; coCenter)
+                crossing(cv, q, -1);
+        break;
+    case 3: // 4->1: the 6 base edges lose a facet
+        foreach (i; 0 .. coCenter.length)
+            foreach (j; i + 1 .. coCenter.length)
+                crossing(coCenter[i], coCenter[j], -1);
+        break;
+    }
+}
+
+/// Hinge (4-4) analog: equator edges +1, pole-passive edges -1. The removed
+/// edge dies at degree 4 and the diagonal is born at 4 — no crossings there.
+void sixFlipsHinge(Vertex)(ref GeometryLedger!Vertex g,
+    const ref Manifold!(3, Vertex) mfd, const ref HingeMove!Vertex hm)
+{
+    void crossing(const Vertex a, const Vertex b, int delta)
+    {
+        Vertex[2] e = a < b ? [a, b] : [b, a];
+        immutable d = cast(long) mfd.degree(e[]);
+        if (delta > 0 && d == 5) logSixFlip(g, a, b, +1);
+        else if (delta < 0 && d == 6) logSixFlip(g, a, b, -1);
+    }
+    foreach (i; 0 .. 4)
+        crossing(hm.linkCycle[i], hm.linkCycle[(i + 1) % 4], +1);
+    foreach (p; hm.removedEdge)
+        foreach (v; hm.linkCycle)
+            if (v != hm.addedEdge[0] && v != hm.addedEdge[1])
+                crossing(p, v, -1);
+}
+
 ///
 unittest
 {
@@ -1292,6 +1710,8 @@ bool mcmcStep(Vertex, P)(
             {
                 if (potState !is null)
                     mfd.potentialHingeDelta(hm, *potState, *pot, true);
+                if (ledger !is null && ledger.logSixFlips)
+                    sixFlipsHinge(*ledger, mfd, hm);
                 mfd.doHingeMove(hm);
                 currentObjective += deltaObj;
                 hingeAccepts++;
@@ -1368,6 +1788,8 @@ bool mcmcStep(Vertex, P)(
         {
             if (potState !is null)
                 mfd.potentialBistellarDelta(bm, *potState, *pot, true);
+            if (ledger !is null && ledger.logSixFlips)
+                sixFlipsBistellar(*ledger, mfd, bm.center, bm.coCenter);
             mfd.doMove(bm);
             if (counters !is null)
                 addSupport(counters.acceptedBistellar, ball);
@@ -1465,6 +1887,120 @@ unittest
     auto actualObj = mfd.objective(params);
     assert(isClose(currentObj, actualObj, 1e-4),
         "objective drift: tracked=%s actual=%s".format(currentObj, actualObj));
+}
+
+/// Six-flip stream + disclination census: the flip records must exactly
+/// account for the six-edge count change, and the census must satisfy its
+/// internal identities on a churned manifold.
+unittest
+{
+    struct TestParams
+    {
+        int numFacetsTarget = 64;
+        real hingeDegreeTarget = 5.1;
+        real numFacetsCoef = 0.05;
+        real numHingesCoef = 0.0;
+        real hingeDegreeVarianceCoef = 0.0;
+        real coDim3DegreeVarianceCoef = 0.0;
+        real hingeDegreeTargetCoef = 0.1;
+        real coDim3DegreeTargetCoef = 0.0;
+        real coDim3DegreeTarget = 12.0;
+    }
+
+    auto mfd = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+    auto params = TestParams();
+    auto currentObj = mfd.objective(params);
+    int[] unusedVertices;
+    ulong hingeTries, hingeAccepts;
+    ulong[4] bTries, bAccepts;
+
+    long countSixEdges()
+    {
+        long n = 0;
+        foreach (e; mfd.simplices(1))
+            if (mfd.degree(e) >= 6) ++n;
+        return n;
+    }
+
+    GeometryLedger!int g;
+    g.logSixFlips = true;
+    g.sixBuf = new ubyte[1 << 20];
+
+    immutable e6Before = countSixEdges();
+    foreach (_; 0 .. 4000)
+        mfd.mcmcStep(currentObj, unusedVertices, params, 0.5,
+            hingeTries, hingeAccepts, bTries, bAccepts, null, &g);
+    immutable e6After = countSixEdges();
+
+    assert(!g.sixOverflow, "six-flip buffer overflowed in test");
+    long net = 0;
+    ulong lastClock = 0;
+    for (size_t p = 0; p + sixRecordBytes <= g.sixUsed; p += sixRecordBytes)
+    {
+        import core.stdc.string : memcpy;
+        ulong clk; int u, v, dir;
+        memcpy(&clk, g.sixBuf.ptr + p, 8);
+        memcpy(&u, g.sixBuf.ptr + p + 8, 4);
+        memcpy(&v, g.sixBuf.ptr + p + 12, 4);
+        memcpy(&dir, g.sixBuf.ptr + p + 16, 4);
+        assert(dir == 1 || dir == -1, "bad flip direction");
+        assert(u < v, "flip labels not sorted");
+        assert(clk >= lastClock, "clock not monotone");
+        lastClock = clk;
+        net += dir;
+    }
+    assert(e6After == e6Before + net,
+        "six-flip stream does not account for six-edge count change: "
+        ~ "%s -> %s but net flips %s".format(e6Before, e6After, net));
+    assert(e6After > 0, "test manifold never grew six-edges (weak test)");
+
+    // Census identities on the churned manifold.
+    auto c = mfd.disclinationCensus(0);
+    c.nSixEdges.shouldEqual(e6After);
+    long degTot = 0, vertTot = 0;
+    foreach (k; 0 .. 8) { degTot += (k + 1) * c.netDegCensus[k]; vertTot += c.netDegCensus[k]; }
+    vertTot.shouldEqual(c.nNetVerts);
+    // netDegCensus is clamped at 8+, but a churned 64-facet manifold should
+    // not produce network degree >= 8; if it does, skip the handshake check.
+    if (c.netDegCensus[7] == 0)
+        degTot.shouldEqual(2 * c.nSixEdges);
+    (c.sumSegLen + c.sumLoopLen).shouldEqual(c.nSixEdges);
+    c.cycleRank.shouldEqual(c.nSixEdges - c.nNetVerts + c.nComponents);
+    assert(c.cycleRank >= 0);
+    assert(c.giantSize >= c.secondSize);
+    assert(c.giantDiameter <= c.giantSize);
+    long compTot = 0;
+    foreach (x; c.compSizeHist) compTot += x;
+    compTot.shouldEqual(c.nComponents);
+
+    // Valence census cross-check: rows n6 >= 1 must reproduce nNetVerts and
+    // the six-edge handshake, with caps high enough to avoid clamping.
+    enum CAP = 31;
+    long[(CAP + 1) * (CAP + 1)] vc;
+    mfd.valenceCensus(vc[], CAP, CAP);
+    long f0Tot = 0, netTot = 0, handshake = 0;
+    foreach (k; 0 .. CAP + 1)
+        foreach (m; 0 .. CAP + 1)
+        {
+            immutable cnt = vc[k * (CAP + 1) + m];
+            f0Tot += cnt;
+            if (k >= 1) { netTot += cnt; handshake += k * cnt; }
+        }
+    f0Tot.shouldEqual(mfd.fVector[0]);
+    netTot.shouldEqual(c.nNetVerts);
+    handshake.shouldEqual(2 * c.nSixEdges);
+
+    // Flattened layout must reproduce the struct (the C API path).
+    long[disclinationCensusSlots] flat;
+    flattenCensus(c, flat[]);
+    flat[0].shouldEqual(c.nNetVerts);
+    flat[1].shouldEqual(c.nSixEdges);
+    flat[6].shouldEqual(c.cycleRank);
+    flat[20].shouldEqual(c.eImpAny);
+    flat[21].shouldEqual(0);   // reserved
+    long flatDegTot = 0;
+    foreach (k; 0 .. 8) flatDegTot += flat[24 + k];
+    flatDegTot.shouldEqual(c.nNetVerts);
 }
 
 /// Vertex 6-valence potential: incremental counter state and running total
