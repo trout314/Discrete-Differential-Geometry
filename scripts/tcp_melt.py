@@ -37,11 +37,20 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import discrete_differential_geometry as ddg
 from fk_skeleton import edges_from_facets, vertex_class_census
 
-CRYSTALS = [
-    ("A15",   "data/tcp_reference/T3_A15_m6_N9936.mfd"),
-    ("C15",   "data/tcp_reference/T3_C15_m4_N8704.mfd"),
-    ("sigma", "data/tcp_reference/T3_SIGMA_m4_N11008.mfd"),
-]
+CRYSTALS = {
+    "a15":   "data/tcp_reference/T3_A15_m6_N9936.mfd",
+    "c15":   "data/tcp_reference/T3_C15_m4_N8704.mfd",
+    "sigma": "data/tcp_reference/T3_SIGMA_m4_N11008.mfd",
+    "c36":   "data/tcp_reference/T3_C36_m3_N3672.mfd",
+    "r":     "data/tcp_reference/T3_R_m3_N24462.mfd",
+    "c14":   "data/tcp_reference/T3_C14_m5_N8500.mfd",
+    "z":     "data/tcp_reference/T3_Z_m5_N5000.mfd",
+    "mu":    "data/tcp_reference/T3_MU_m3_N5994.mfd",
+    "p":     "data/tcp_reference/T3_P_m3_N8640.mfd",
+    "delta": "data/tcp_reference/T3_DELTA_m3_N8640.mfd",
+    "a15big": "data/tcp_reference/T3_A15_m13_N101062.mfd",
+    "c15big": "data/tcp_reference/T3_C15_m9_N99144.mfd",
+}
 LADDER = [3.0, 1.0, 0.3, 0.1, 0.03, 0.01, 0.003]   # per-tet scaled lambda
 
 
@@ -51,10 +60,13 @@ def census(view):
     return dict(edv=float(np.var(edeg)),
                 p56=float(np.mean((edeg == 5) | (edeg == 6))),
                 pure56=1.0 - fz["impure"],
-                fFK=fz["Z12"] + fz["Z14"] + fz["Z15"] + fz["Z16"])
+                fFK=fz["Z12"] + fz["Z14"] + fz["Z15"] + fz["Z16"],
+                fZ12=fz["Z12"], fZ14=fz["Z14"], fZ15=fz["Z15"],
+                fZ16=fz["Z16"])
 
 
-def run_point(path, lam, sweeps, vdq_scale=1.0, zleg_scale=0.0, cimp_scale=0.0):
+def run_point(path, lam, sweeps, vdq_scale=1.0, zleg_scale=0.0, cimp_scale=0.0,
+              save_path=None, tilt=None):
     m = ddg.Manifold.load(path, 3)
     eu, edeg, V = edges_from_facets(m.facets())
     qbar = float(edeg.mean())
@@ -70,11 +82,13 @@ def run_point(path, lam, sweeps, vdq_scale=1.0, zleg_scale=0.0, cimp_scale=0.0):
         codim3_degree_target=ddg.vertex_degree_target(qbar),
     )
     s = ddg.ManifoldSampler(m, params)
-    if zleg_scale or cimp_scale:
-        s.set_n6_potential(zleg_scale * lam, cimp_scale * lam)
+    if zleg_scale or cimp_scale or tilt:
+        s.set_n6_potential(zleg_scale * lam, cimp_scale * lam, tilt=tilt)
     s.run(sweeps=sweeps)
     st = s.get_stats()
     v = s.manifold
+    if save_path:
+        v.save(save_path)
     row = census(v)
     row.update(
         lam=lam, sweeps=sweeps, qbar=qbar, n=v.num_facets,
@@ -103,16 +117,34 @@ def main():
                     help="impurity-valence coefficient = this * lambda "
                          "(m^2 anti-clustering term)")
     ap.add_argument("--out", default=os.path.join(_ROOT, "out", "tcp_melt_m1.json"))
+    ap.add_argument("--structures", nargs="+", default=["a15", "c15", "sigma"],
+                    choices=list(CRYSTALS))
+    ap.add_argument("--lams", type=float, nargs="+", default=LADDER,
+                    help="per-tet lambda ladder (override for fine scans)")
+    ap.add_argument("--save-states", default=None,
+                    help="directory to save final .mfd per (structure, lambda) "
+                         "for positional analysis with crystal_match.py")
+    ap.add_argument("--tilt", type=float, nargs=5, default=None,
+                    metavar=("T0", "T1", "T2", "T3", "T4"),
+                    help="ABSOLUTE chemical-potential tilts on n6 classes "
+                         "(index=n6: [Z12, illegal, Z14, Z15, Z16]; NEGATIVE "
+                         "favors; NOT scaled by lambda — doping experiments)")
     args = ap.parse_args()
 
+    if args.save_states:
+        os.makedirs(args.save_states, exist_ok=True)
     results = {}
     print(f"{'crystal':>7} {'lam':>7} {'acc_tot':>9} {'a23':>8} {'a32':>8} "
           f"{'a14':>8} {'a44':>8} {'pure56':>7} {'fFK':>6} {'EDV':>6}")
-    for name, path in CRYSTALS:
+    for name in args.structures:
+        path = CRYSTALS[name]
         rows = []
-        for lam in LADDER:
+        for lam in args.lams:
+            sp = (os.path.join(args.save_states, f"{name}_lam{lam:g}.mfd")
+                  if args.save_states else None)
             r = run_point(os.path.join(_ROOT, path), lam, args.sweeps,
-                          args.vdq_scale, args.zleg_scale, args.cimp_scale)
+                          args.vdq_scale, args.zleg_scale, args.cimp_scale,
+                          save_path=sp, tilt=args.tilt)
             rows.append(r)
             def rate(a, t):
                 return a / t if t else 0.0
