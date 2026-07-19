@@ -630,6 +630,24 @@ _lib.ddg_sampler_six_flip_log_overflowed.argtypes = [ctypes.c_void_p]
 _lib.ddg_sampler_six_flip_log_overflowed.restype = ctypes.c_int
 _lib.ddg_sampler_six_flip_log_overflowed.errcheck = _check_int
 
+_lib.ddg_sampler_cocycle_enable.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int),
+    ctypes.c_long,
+]
+_lib.ddg_sampler_cocycle_enable.restype = ctypes.c_int
+_lib.ddg_sampler_cocycle_enable.errcheck = _check_int
+
+_lib.ddg_sampler_cocycle_read.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int),
+    ctypes.c_long,
+]
+_lib.ddg_sampler_cocycle_read.restype = ctypes.c_long
+_lib.ddg_sampler_cocycle_read.errcheck = _check_int
+
+_lib.ddg_sampler_cocycle_check.argtypes = [ctypes.c_void_p]
+_lib.ddg_sampler_cocycle_check.restype = ctypes.c_int
+_lib.ddg_sampler_cocycle_check.errcheck = _check_int
+
 _lib.ddg_sampler_get_stats.argtypes = [
     ctypes.c_void_p,
     ctypes.POINTER(ctypes.c_long), ctypes.POINTER(ctypes.c_long),

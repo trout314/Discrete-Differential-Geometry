@@ -600,6 +600,48 @@ class ManifoldSampler:
         """True if flip records were dropped since last check (clears flag)."""
         return bool(_lib.ddg_sampler_six_flip_log_overflowed(self._handle))
 
+    # -- Integer 1-cocycle tracking (T^3 winding forms) --
+
+    def enable_cocycle(self, edges, omega) -> None:
+        """Enable integer 1-cocycle tracking (dim=3 only).
+
+        edges: (n, 2) int array of edge labels; omega: (n, 3) int array,
+        omega[i] = winding values of edges[i][0] -> edges[i][1]. Must cover
+        the manifold's edge set exactly and be closed on every triangle
+        (verified in D; raises otherwise). See ``cocycle.py`` for building
+        the initial assignment from reference coordinates.
+        """
+        e = np.ascontiguousarray(np.asarray(edges, dtype=np.intc))
+        w = np.ascontiguousarray(np.asarray(omega, dtype=np.intc))
+        if e.ndim != 2 or e.shape[1] != 2 or w.shape != (e.shape[0], 3):
+            raise ValueError("edges must be (n, 2), omega must be (n, 3)")
+        _lib.ddg_sampler_cocycle_enable(
+            self._handle,
+            e.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
+            w.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
+            len(e))
+
+    def disable_cocycle(self) -> None:
+        """Disable cocycle tracking and free its state."""
+        _lib.ddg_sampler_cocycle_enable(self._handle, None, None, 0)
+
+    def read_cocycle(self) -> tuple[np.ndarray, np.ndarray]:
+        """Return (edges (n, 2) sorted u < v, omega (n, 3)) of the tracked
+        cocycle (edge order unspecified)."""
+        n = _lib.ddg_sampler_cocycle_read(self._handle, None, None, 0)
+        e = np.empty((n, 2), dtype=np.intc)
+        w = np.empty((n, 3), dtype=np.intc)
+        got = _lib.ddg_sampler_cocycle_read(
+            self._handle,
+            e.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
+            w.ctypes.data_as(ctypes.POINTER(ctypes.c_int)), n)
+        return e[:got].copy(), w[:got].copy()
+
+    def check_cocycle(self) -> None:
+        """Audit the cocycle (edge-set match + closedness on every triangle);
+        raises RuntimeError on drift. The production integrity check."""
+        _lib.ddg_sampler_cocycle_check(self._handle)
+
     @property
     def current_objective(self) -> float:
         """Return the current objective function value."""

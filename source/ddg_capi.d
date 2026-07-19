@@ -1089,6 +1089,10 @@ private struct SamplerState
     bool potEnabled = false;
     VertexPot vertexPot;
     VertexPotState!int vertexPotState;
+
+    // Integer 1-cocycle tracking (T^3 winding forms; opt-in, dim=3 only).
+    // See sampler.CocycleState.
+    CocycleState!int cocycle;
 }
 
 extern(C) void* ddg_sampler_create(void* manifold_handle,
@@ -1361,7 +1365,8 @@ private long runSamplerDim3(SamplerState* s, long numMoves,
                         || s.geoLedger.logSixFlips)
                         ? &s.geoLedger : null,
                     s.potEnabled ? &s.vertexPotState : null,
-                    s.potEnabled ? &s.vertexPot : null))
+                    s.potEnabled ? &s.vertexPot : null,
+                    s.cocycle.enabled ? &s.cocycle : null))
             {
                 accepted++;
                 acceptedSinceWriteback++;
@@ -1396,6 +1401,11 @@ extern(C) long ddg_sampler_run_exact(void* sampler_handle, long num_moves,
         if (state.potEnabled)
         {
             setError("run_exact does not support the n6 potential");
+            return -1;
+        }
+        if (state.cocycle.enabled)
+        {
+            setError("run_exact does not support cocycle tracking");
             return -1;
         }
 
@@ -1930,6 +1940,123 @@ extern(C) int ddg_sampler_six_flip_log_overflowed(void* sampler_handle) nothrow
     immutable r = g.sixOverflow ? 1 : 0;
     g.sixOverflow = false;
     return r;
+}
+
+// ---------------------------------------------------------------------------
+// Integer 1-cocycle tracking (T^3 winding forms; dim=3 only)
+// ---------------------------------------------------------------------------
+
+/// Enable cocycle tracking from an initial assignment: edges = 2*n_edges ints
+/// (u, v pairs), values = 3*n_edges ints (omega(u->v) per edge). The edge set
+/// must exactly cover the sampler's current manifold and the cochain must be
+/// closed on every triangle — both are verified here (error + disabled state
+/// on failure). n_edges <= 0 disables tracking and frees the state.
+extern(C) int ddg_sampler_cocycle_enable(void* sampler_handle,
+    const(int)* edges, const(int)* values, long n_edges) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null handle"); return -1; }
+        auto state = cast(SamplerState*) sampler_handle;
+        if (n_edges <= 0)
+        {
+            state.cocycle.enabled = false;
+            state.cocycle.omega = null;
+            return 0;
+        }
+        if (state.dim != 3)
+        {
+            setError("cocycle tracking is only supported for dim=3 samplers");
+            return -1;
+        }
+        if (edges is null || values is null)
+        {
+            setError("null edges/values");
+            return -1;
+        }
+        state.cocycle.omega = null;
+        foreach (i; 0 .. cast(size_t) n_edges)
+        {
+            immutable u = edges[2 * i], v = edges[2 * i + 1];
+            if (u == v) { setError("degenerate edge"); return -1; }
+            int[2] key = u < v ? [u, v] : [v, u];
+            immutable s = u < v ? 1 : -1;
+            int[3] val = [s * values[3 * i], s * values[3 * i + 1],
+                          s * values[3 * i + 2]];
+            if (key in state.cocycle.omega)
+            {
+                state.cocycle.omega = null;
+                setError("duplicate edge in cocycle init");
+                return -1;
+            }
+            state.cocycle.omega[key] = val;
+        }
+        state.cocycle.enabled = true;
+        auto smh = cast(ManifoldHandle*) state.manifoldHandle;
+        auto prob = cocycleProblems(
+            (cast(ManifoldWrapper!3*) smh.ptr).mfd, state.cocycle);
+        if (prob !is null)
+        {
+            state.cocycle.enabled = false;
+            state.cocycle.omega = null;
+            setError(prob);
+            return -1;
+        }
+        return 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Read the current cocycle. With null buffers, returns the edge count.
+/// Otherwise fills edges_out (2 ints/edge, sorted u < v) and values_out
+/// (3 ints/edge, omega(u->v)) for up to cap_edges edges and returns the
+/// number written (order unspecified).
+extern(C) long ddg_sampler_cocycle_read(void* sampler_handle,
+    int* edges_out, int* values_out, long cap_edges) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null handle"); return -1; }
+        auto state = cast(SamplerState*) sampler_handle;
+        if (!state.cocycle.enabled) { setError("cocycle not enabled"); return -1; }
+        if (edges_out is null || values_out is null)
+            return cast(long) state.cocycle.omega.length;
+        long i = 0;
+        foreach (key, val; state.cocycle.omega)
+        {
+            if (i >= cap_edges) break;
+            edges_out[2 * i] = key[0];
+            edges_out[2 * i + 1] = key[1];
+            values_out[3 * i] = val[0];
+            values_out[3 * i + 1] = val[1];
+            values_out[3 * i + 2] = val[2];
+            ++i;
+        }
+        return i;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Audit the tracked cocycle against the current manifold (edge-set match +
+/// closedness on every triangle). Returns 0 if clean, -1 with error set if
+/// not — the production drift check.
+extern(C) int ddg_sampler_cocycle_check(void* sampler_handle) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null handle"); return -1; }
+        auto state = cast(SamplerState*) sampler_handle;
+        if (!state.cocycle.enabled) { setError("cocycle not enabled"); return -1; }
+        auto smh = cast(ManifoldHandle*) state.manifoldHandle;
+        auto prob = cocycleProblems(
+            (cast(ManifoldWrapper!3*) smh.ptr).mfd, state.cocycle);
+        if (prob !is null) { setError(prob); return -1; }
+        return 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
 }
 
 extern(C) int ddg_sampler_set_num_facets_coef(void* sampler_handle, double coef) nothrow

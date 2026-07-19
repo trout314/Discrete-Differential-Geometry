@@ -1041,6 +1041,182 @@ unittest
     tot.shouldEqual(5);
 }
 
+// ---------------------------------------------------------------------------
+// Integer 1-cocycle tracking (T^3 winding forms / emergent coordinates)
+// ---------------------------------------------------------------------------
+//
+// Maintains representatives of a basis of H^1(M; Z^3) as integer 1-cochains
+// omega: oriented edges -> Z^3, CLOSED on every triangle (signed sum = 0).
+// For M = T^3 these are the three winding forms; the pairing sum_gamma omega
+// over a closed edge loop gamma is its winding vector — gauge-invariant, so
+// ANY representative serves for topology (winding, spanning, class checks).
+// Geometry (edge direction vectors, Fourier space, nematic order) comes from
+// the harmonic representative, computed OFFLINE in Python (graph-Laplacian
+// solve); the D side only maintains an exact integer representative.
+//
+// The update under Pachner moves is FORCED by closedness (the move ball is
+// simply connected, so path sums within it are path-independent):
+//   1->4  new vertex w in tet {a,b,c,d}: gauge choice places w at a
+//         (omega(a->w) = 0, omega(w->v) = omega(a->v)) — pure gauge.
+//   2->3  new pole-pole edge: omega(p->q) = omega(p->a) + omega(a->q) for
+//         any equator vertex a (choices agree by closedness of the old
+//         cocycle on the two old tets).
+//   3->2, 4->1  deletions only.
+//   4-4   new diagonal: omega(x->z) = omega(x->p) + omega(p->z) via a pole p;
+//         then the removed edge is deleted.
+// Values are Z^3 so the class is preserved EXACTLY forever; no float drift.
+
+struct CocycleState(Vertex)
+{
+    int[3][Vertex[2]] omega;   // key: sorted edge (u < v); value = omega(u->v)
+    bool enabled;
+}
+
+/// omega(a->b) with sign handling for the sorted-key convention.
+private int[3] cocGet(Vertex)(const ref CocycleState!Vertex st,
+    const Vertex a, const Vertex b)
+{
+    auto p = mkEdge(a, b) in st.omega;
+    assert(p !is null, "cocycle missing edge");
+    if (a < b) return *p;
+    int[3] r = [-(*p)[0], -(*p)[1], -(*p)[2]];
+    return r;
+}
+
+/// Store omega(a->b) = val under the sorted-key convention.
+private void cocSet(Vertex)(ref CocycleState!Vertex st,
+    const Vertex a, const Vertex b, const int[3] val)
+{
+    if (a < b)
+        st.omega[mkEdge(a, b)] = val;
+    else
+    {
+        int[3] r = [-val[0], -val[1], -val[2]];
+        st.omega[mkEdge(a, b)] = r;
+    }
+}
+
+/// Apply the forced cocycle update for an ACCEPTED bistellar move. Reads only
+/// edges that persist through the move, so it may run before or after doMove.
+void cocycleBistellar(Vertex)(ref CocycleState!Vertex st,
+    scope const(Vertex)[] center, scope const(Vertex)[] coCenter)
+{
+    final switch (cast(int) coCenter.length - 1)
+    {
+    case 0: // 1->4: place the new vertex at center[0] (gauge choice)
+        immutable w = coCenter[0];
+        immutable a = center[0];
+        immutable int[3] zero = [0, 0, 0];
+        cocSet(st, a, w, zero);
+        foreach (v; center[1 .. $])
+            cocSet(st, w, v, cocGet(st, a, v));
+        break;
+    case 1: // 2->3: new pole-pole edge, value forced via an equator vertex
+        immutable p = coCenter[0], q = coCenter[1], a = center[0];
+        int[3] val = cocGet(st, p, a);
+        val[] += cocGet(st, a, q)[];
+        cocSet(st, p, q, val);
+        break;
+    case 2: // 3->2: the center edge is destroyed
+        st.omega.remove(mkEdge(center[0], center[1]));
+        break;
+    case 3: // 4->1: the 4 spokes at the removed vertex are destroyed
+        immutable w = center[0];
+        foreach (v; coCenter)
+            st.omega.remove(mkEdge(w, v));
+        break;
+    }
+}
+
+/// Hinge (4-4) analog: diagonal forced via a pole, removed edge deleted.
+void cocycleHinge(Vertex)(ref CocycleState!Vertex st,
+    const ref HingeMove!Vertex hm)
+{
+    immutable p = hm.removedEdge[0];
+    int[3] val = cocGet(st, hm.addedEdge[0], p);
+    val[] += cocGet(st, p, hm.addedEdge[1])[];
+    cocSet(st, hm.addedEdge[0], hm.addedEdge[1], val);
+    st.omega.remove(mkEdge(hm.removedEdge[0], hm.removedEdge[1]));
+}
+
+/// Full audit: key set must equal the manifold's edge set and the cochain
+/// must be closed on every triangle. Returns null if clean, else a message.
+/// This is the drift check — cheap enough for test/production cadence.
+string cocycleProblems(Vertex)(const ref Manifold!(3, Vertex) mfd,
+    const ref CocycleState!Vertex st)
+{
+    long ne = 0;
+    foreach (e; mfd.simplices(1))
+    {
+        ++ne;
+        if (mkEdge(e[0], e[1]) !in st.omega)
+            return format("cocycle missing edge [%s, %s]", e[0], e[1]);
+    }
+    if (ne != st.omega.length)
+        return format("cocycle has %s edges, manifold has %s",
+                      st.omega.length, ne);
+    foreach (t; mfd.simplices(2))
+    {
+        // closedness: omega(a->b) + omega(b->c) - omega(a->c) == 0
+        immutable ab = cocGet(st, t[0], t[1]);
+        immutable bc = cocGet(st, t[1], t[2]);
+        immutable ac = cocGet(st, t[0], t[2]);
+        foreach (i; 0 .. 3)
+            if (ab[i] + bc[i] - ac[i] != 0)
+                return format("cocycle not closed on triangle [%s, %s, %s]",
+                              t[0], t[1], t[2]);
+    }
+    return null;
+}
+
+///
+unittest
+{
+    // Closedness is preserved under arbitrary churn. Start from an exact
+    // cocycle omega = delta(phi) with random integer phi (closed by
+    // construction; on S^3 every closed cochain is exact, so this loses no
+    // generality), run mixed MCMC with the cocycle attached, and audit.
+    struct TestParams
+    {
+        int numFacetsTarget = 48;
+        real hingeDegreeTarget = 5.1;
+        real numFacetsCoef = 0.05;
+        real numHingesCoef = 0.0;
+        real hingeDegreeVarianceCoef = 0.0;
+        real coDim3DegreeVarianceCoef = 0.0;
+        real hingeDegreeTargetCoef = 0.1;
+        real coDim3DegreeTargetCoef = 0.0;
+        real coDim3DegreeTarget = 12.0;
+    }
+
+    auto mfd = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+    int[int] phi;
+    foreach (v; 0 .. 5) phi[v] = uniform(-50, 50);
+
+    CocycleState!int coc;
+    coc.enabled = true;
+    foreach (e; mfd.simplices(1))
+    {
+        int[3] val = [phi[e[1]] - phi[e[0]], 2 * (phi[e[1]] - phi[e[0]]), 0];
+        coc.omega[mkEdge(e[0], e[1])] = val;
+    }
+    assert(cocycleProblems(mfd, coc) is null);
+
+    auto params = TestParams();
+    auto currentObj = mfd.objective(params);
+    int[] unusedVertices;
+    ulong hingeTries, hingeAccepts;
+    ulong[4] bTries, bAccepts;
+    foreach (step; 0 .. 3000)
+        mfd.mcmcStep(currentObj, unusedVertices, params, 0.5,
+            hingeTries, hingeAccepts, bTries, bAccepts, null, null, null, null,
+            &coc);
+
+    auto prob = cocycleProblems(mfd, coc);
+    assert(prob is null, "cocycle drift after churn: " ~ prob);
+    assert(hingeAccepts + bAccepts[].sum > 100, "churn too weak to test");
+}
+
 /******************************************************************************
 Try to propose a hinge move on a 3-manifold. Picks a random facet, a random
 edge from that facet, checks for degree 4, picks a random diagonal, and
@@ -1641,7 +1817,8 @@ bool mcmcStep(Vertex, P)(
     MoveCounters!Vertex* counters = null,
     GeometryLedger!Vertex* ledger = null,
     VertexPotState!Vertex* potState = null,
-    const(VertexPot)* pot = null)
+    const(VertexPot)* pot = null,
+    CocycleState!Vertex* cocycle = null)
 {
     enum dim = 3;
     enum nVerts = dim + 1;
@@ -1712,6 +1889,8 @@ bool mcmcStep(Vertex, P)(
                     mfd.potentialHingeDelta(hm, *potState, *pot, true);
                 if (ledger !is null && ledger.logSixFlips)
                     sixFlipsHinge(*ledger, mfd, hm);
+                if (cocycle !is null)
+                    cocycleHinge(*cocycle, hm);
                 mfd.doHingeMove(hm);
                 currentObjective += deltaObj;
                 hingeAccepts++;
@@ -1790,6 +1969,8 @@ bool mcmcStep(Vertex, P)(
                 mfd.potentialBistellarDelta(bm, *potState, *pot, true);
             if (ledger !is null && ledger.logSixFlips)
                 sixFlipsBistellar(*ledger, mfd, bm.center, bm.coCenter);
+            if (cocycle !is null)
+                cocycleBistellar(*cocycle, bm.center, bm.coCenter);
             mfd.doMove(bm);
             if (counters !is null)
                 addSupport(counters.acceptedBistellar, ball);
