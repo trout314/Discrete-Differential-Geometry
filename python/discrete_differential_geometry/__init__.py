@@ -15,6 +15,15 @@ from .convergence import (
 from ._dlang import _lib as _lib
 
 
+def set_random_seed(seed: int) -> None:
+    """Seed the D-side RNG driving move proposals and Metropolis accepts.
+
+    Chains are reproducible given (initial state, params, seed). Record the
+    seed in run metadata; replicas must use distinct seeds.
+    """
+    _lib.ddg_set_random_seed(seed & 0xFFFFFFFF)
+
+
 def gc_collect():
     """Trigger a D garbage collection cycle to reclaim temporary allocations."""
     _lib.ddg_gc_collect()
@@ -47,6 +56,7 @@ __all__ = [
     "vertex_degree_target",
     "SamplerStats",
     "join",
+    "set_random_seed",
     "gc_collect",
     "gc_minimize",
     "gc_stats",

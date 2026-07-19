@@ -58,6 +58,28 @@ def build_from_positions(edges: np.ndarray, frac: np.ndarray, box,
 
 
 # ---------------------------------------------------------------------------
+# Persistence (checkpoint/resume companion to .mfd snapshots)
+# ---------------------------------------------------------------------------
+
+def save_cocycle(path: str, edges: np.ndarray, omega: np.ndarray,
+                 **meta) -> None:
+    """Save a cocycle next to its .mfd snapshot (compressed npz). Extra
+    keyword scalars/strings are stored as metadata (e.g. scale=, box=,
+    sweeps=). The pair (snapshot.mfd, snapshot.cocycle.npz) is the complete
+    resumable state of a tracked chain."""
+    np.savez_compressed(path, edges=np.asarray(edges, dtype=np.int32),
+                        omega=np.asarray(omega, dtype=np.int32),
+                        **{k: np.asarray(v) for k, v in meta.items()})
+
+
+def load_cocycle(path: str):
+    """Load (edges, omega, meta_dict) saved by save_cocycle."""
+    z = np.load(path, allow_pickle=False)
+    meta = {k: z[k] for k in z.files if k not in ("edges", "omega")}
+    return z["edges"], z["omega"], meta
+
+
+# ---------------------------------------------------------------------------
 # Harmonic gauge (graph-Laplacian projection)
 # ---------------------------------------------------------------------------
 

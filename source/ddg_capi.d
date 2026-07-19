@@ -93,6 +93,15 @@ extern(C) void ddg_gc_stats(long* used_bytes, long* free_bytes) nothrow
     catch (Exception) {}
 }
 
+/// Seed the thread-local RNG driving all move proposals and Metropolis
+/// accepts. Chains are reproducible given (initial state, params, seed);
+/// without a call, the default unpredictable per-process seed applies.
+extern(C) void ddg_set_random_seed(uint seed) nothrow
+{
+    import std.random : rndGen;
+    try { rndGen.seed(seed); } catch (Exception) {}
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------

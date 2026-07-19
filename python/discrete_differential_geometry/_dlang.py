@@ -727,3 +727,6 @@ _lib.ddg_gc_minimize.restype = None
 
 _lib.ddg_gc_stats.argtypes = [ctypes.POINTER(ctypes.c_long), ctypes.POINTER(ctypes.c_long)]
 _lib.ddg_gc_stats.restype = None
+
+_lib.ddg_set_random_seed.argtypes = [ctypes.c_uint]
+_lib.ddg_set_random_seed.restype = None
