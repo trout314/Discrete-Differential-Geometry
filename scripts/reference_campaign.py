@@ -61,7 +61,7 @@ FLAT_VAC_MU = {"r": "1.1", "c15": "3.0"}
 # Per-family glass melt lambda: the "check melting range" step picks the lam
 # giving a LIGHT melt (pure56~0.75) at the fixed 600-sweep window, since
 # crystals melt at different rates (A15 faster than R). Default 0.4.
-MELT_LAM = {"r": "0.4", "a15": "0.5"}
+MELT_LAM = {"r": "0.4", "a15": "0.5", "sigma": "0.5"}
 
 
 def census_tilt(struct):
