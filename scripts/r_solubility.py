@@ -42,6 +42,11 @@ def main():
     ap.add_argument("--sweeps", type=int, default=20000)
     ap.add_argument("--chunk", type=int, default=500)
     ap.add_argument("--struct", default="r")
+    ap.add_argument("--edge-target", nargs="+", type=float, default=[None],
+                    help="edge-degree pin target(s); default (None) = the "
+                         "crystal's own q-bar. Set below native to test "
+                         "whether a curvature-lowering dopant (Z12) becomes "
+                         "soluble when the pin moves in its direction.")
     ap.add_argument("--out-dir", default="data/r_solubility")
     ap.add_argument("--base-seed", type=int, default=30000)
     ap.add_argument("--mem-floor-gb", type=float, default=10.0)
@@ -53,36 +58,41 @@ def main():
     launched = []
     seed = args.base_seed
     for sp in args.species:
-        for mu in args.mu:
-            mtag = f"{mu:g}".replace(".", "p")
-            for k in range(args.replicas):
-                name = f"r_sol_{sp}_mu{mtag}_r{k}"
-                base = f"{args.out_dir}/{name}"
-                # R's native classes are the host (0 2 3 4); dope_hold's
-                # n_dop counts the dopant class -> analyzer subtracts native.
-                cmd = ["python3", DOPE, "--structure", args.struct,
-                       "--dopant-class", sp, "--mu", f"{mu:g}", "--lam", "1.0",
-                       "--host-n6", "0", "2", "3", "4",
-                       "--sweeps-total", str(args.sweeps), "--chunk",
-                       str(args.chunk), "--seed", str(seed),
-                       "--out-csv", f"{base}.csv",
-                       "--save-final", f"{base}_final.mfd"]
-                seed += 1
-                if args.dry_run:
-                    if k == 0:
-                        print(f"# {sp} mu={mu:g}: " + " ".join(cmd[2:]))
-                    continue
-                while get_free_memory_gb() < args.mem_floor_gb:
-                    print(f"  mem {get_free_memory_gb():.1f}GB<floor; wait",
-                          flush=True)
-                    time.sleep(30)
-                subprocess.Popen(
-                    f"cd {_ROOT} && setsid nohup {' '.join(cmd)} "
-                    f"> {base}.log 2>&1 &", shell=True)
-                launched.append(dict(species=sp, mu=mu, replica=k, seed=seed-1,
-                                     name=name))
-                print(f"launched {name} (seed {seed-1})", flush=True)
-                time.sleep(args.stagger)
+        for et in args.edge_target:
+            for mu in args.mu:
+                mtag = f"{mu:g}".replace(".", "p")
+                ettag = "" if et is None else f"_et{et:g}".replace(".", "p")
+                for k in range(args.replicas):
+                    name = f"r_sol_{sp}{ettag}_mu{mtag}_r{k}"
+                    base = f"{args.out_dir}/{name}"
+                    # R's native classes are the host (0 2 3 4); dope_hold's
+                    # n_dop counts the dopant class -> analyzer subtracts native.
+                    cmd = ["python3", DOPE, "--structure", args.struct,
+                           "--dopant-class", sp, "--mu", f"{mu:g}",
+                           "--lam", "1.0", "--host-n6", "0", "2", "3", "4",
+                           "--sweeps-total", str(args.sweeps), "--chunk",
+                           str(args.chunk), "--seed", str(seed),
+                           "--out-csv", f"{base}.csv",
+                           "--save-final", f"{base}_final.mfd"]
+                    if et is not None:
+                        cmd += ["--edge-target", f"{et:g}"]
+                    seed += 1
+                    if args.dry_run:
+                        if k == 0:
+                            print(f"# {sp} et={et} mu={mu:g}: "
+                                  + " ".join(cmd[2:]))
+                        continue
+                    while get_free_memory_gb() < args.mem_floor_gb:
+                        print(f"  mem {get_free_memory_gb():.1f}GB<floor; wait",
+                              flush=True)
+                        time.sleep(30)
+                    subprocess.Popen(
+                        f"cd {_ROOT} && setsid nohup {' '.join(cmd)} "
+                        f"> {base}.log 2>&1 &", shell=True)
+                    launched.append(dict(species=sp, mu=mu, edge_target=et,
+                                         replica=k, seed=seed-1, name=name))
+                    print(f"launched {name} (seed {seed-1})", flush=True)
+                    time.sleep(args.stagger)
 
     if args.dry_run:
         return
