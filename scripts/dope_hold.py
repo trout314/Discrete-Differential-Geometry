@@ -163,7 +163,13 @@ def main():
         edges = np.asarray(v.simplices(1))
         if args.cocycle_file:
             e0, w0, _ = coc.load_cocycle(args.cocycle_file)
-            s.enable_cocycle(e0, w0)
+            try:
+                s.enable_cocycle(e0, w0)
+            except RuntimeError:
+                # legacy npz saved with raw sampler labels: the .mfd writer
+                # renumbers to rank order, so canonicalize and retry
+                e0, w0 = coc.canonicalize_labels(e0, w0)
+                s.enable_cocycle(e0, w0)
         else:
             if args.init:
                 raise SystemExit("--cocycle needs a crystal start; use "
@@ -208,7 +214,7 @@ def main():
             if args.snap_every and chunk_i % args.snap_every == 0:
                 v.save(f"{snap_base}_snap{done}.mfd")
                 if tracking:
-                    e1, w1 = s.read_cocycle()
+                    e1, w1 = coc.canonicalize_labels(*s.read_cocycle())
                     coc.save_cocycle(f"{snap_base}_snap{done}.cocycle.npz",
                                      e1, w1, sweeps=done)
             print(f"t={done} n_dop={r['n_dop']} comp={r['n_companion']} "
@@ -219,7 +225,7 @@ def main():
     if args.save_final:
         v.save(args.save_final)
         if tracking:
-            e1, w1 = s.read_cocycle()
+            e1, w1 = coc.canonicalize_labels(*s.read_cocycle())
             coc.save_cocycle(os.path.splitext(args.save_final)[0]
                              + ".cocycle.npz", e1, w1,
                              sweeps=args.sweeps_total)

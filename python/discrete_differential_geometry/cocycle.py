@@ -61,6 +61,22 @@ def build_from_positions(edges: np.ndarray, frac: np.ndarray, box,
 # Persistence (checkpoint/resume companion to .mfd snapshots)
 # ---------------------------------------------------------------------------
 
+def canonicalize_labels(edges: np.ndarray, omega: np.ndarray):
+    """Remap vertex labels to their rank in sorted order (0..V-1).
+
+    The .mfd writer renumbers vertices exactly this way, so a cocycle saved
+    beside a snapshot must be canonicalized to match what Manifold.load will
+    return. The map is monotone, so edge orientation (u < v) and omega signs
+    are unchanged. Live sampler labels can have holes (1->4/4->1 churn);
+    always canonicalize before persisting.
+    """
+    edges = np.asarray(edges)
+    labels = np.unique(edges)
+    lookup = np.full(int(labels.max()) + 1, -1, dtype=np.int64)
+    lookup[labels] = np.arange(len(labels))
+    return lookup[edges], np.asarray(omega)
+
+
 def save_cocycle(path: str, edges: np.ndarray, omega: np.ndarray,
                  **meta) -> None:
     """Save a cocycle next to its .mfd snapshot (compressed npz). Extra
