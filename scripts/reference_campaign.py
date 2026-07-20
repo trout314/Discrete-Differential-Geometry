@@ -34,54 +34,78 @@ import sys
 import time
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(_ROOT, "python"))
 sys.path.insert(0, os.path.join(_ROOT, "tools"))
 sys.path.insert(0, os.path.join(_ROOT, "scripts"))
+import discrete_differential_geometry as ddg
 from seed_utils import get_free_memory_gb, get_git_info
 
 DOPE = os.path.join(_ROOT, "scripts", "dope_hold.py")
 FLAT = "5.1042993"            # arccos(1/3) flat edge-degree target
-# FK-stabilizing anneal tilt, magnitudes PROPORTIONAL to R's native Z-class
-# census 27:12:6:8 (Z12:Z14:Z15:Z16), scaled to Z12=-2. A protective tilt
-# must match the crystal's composition (reusing C15's zero-on-Z15 tilt fails
-# to heal R's branch nodes; plateaus at 0.80). Composition-matched recovers
-# to 0.91 AND reproduces R's census (calibrated 2026-07-20).
-PROTECT = ["-2.0", "0", "-0.889", "-0.444", "-0.593"]
-
-# Structure name per tier. Small = m3 R (V=4293); large = m4 R (V=10176).
-STRUCT = {"small": "r", "large": "rbig"}
-
-# A stage is a list of dope_hold flags (WITHOUT --seed/--out-csv/--save-final/
-# --from, which the driver fills in). Stage 0 is a fresh --structure start;
-# later stages are continuations (the driver inserts --from <prev final> and,
-# if any physics flag is present, --override).
 COMMON = ["--chunk", "500", "--snap-every", "10", "--flip-log-mb", "32"]
 
+# Crystal families: (small, large) structure names in tcp_melt.CRYSTALS.
+# large=None where no big supercell exists yet.
+FAMILIES = {
+    "r":     ("r", "rbig"),
+    "a15":   ("a15", "a15big"),
+    "sigma": ("sigma", None),
+    "c15":   ("c15", "c15big"),
+}
 
-def fleets(struct):
+# Per-family flat-vacuum dopant chemical potential (calibrated per crystal;
+# the "check the melting/glass range" step sets this). Only meaningful for
+# crystals at or below flat that reach flat by adding six-edges (Z14).
+FLAT_VAC_MU = {"r": "1.1", "c15": "3.0"}
+
+
+def census_tilt(struct):
+    """Composition-matched FK-stabilizing tilt for `struct`: per-class
+    chemical potentials proportional to the crystal's native Z-class census
+    (Z12,Z14,Z15,Z16 at n6 indices 0,2,3,4), scaled so the most abundant
+    legal class is -2. Returns a list of 5 stringified floats for --tilt."""
+    from tcp_melt import CRYSTALS
+    from fk_skeleton import edges_from_facets, vertex_class_census
+    m = ddg.Manifold.load(CRYSTALS[struct], 3)
+    eu, ed, V = edges_from_facets(m.facets())
+    fz, _ = vertex_class_census(eu, ed, V)
+    frac = {"Z12": fz["Z12"], "Z14": fz["Z14"], "Z15": fz["Z15"],
+            "Z16": fz["Z16"]}
+    top = max(frac.values())
+    idx = {"Z12": 0, "Z14": 2, "Z15": 3, "Z16": 4}
+    tilt = [0.0] * 5
+    for cls, i in idx.items():
+        tilt[i] = -2.0 * frac[cls] / top if top > 0 else 0.0
+    return [f"{x:.3f}" for x in tilt]
+
+
+def fleets(struct, family):
     fresh = ["--structure", struct, "--dopant-class", "Z14"]
-    return {
-        # perfect R held at its own q-bar: stability baseline + cocycle ref
-        "r_crystal": [fresh + ["--mu", "0", "--lam", "1.0", "--cocycle",
-                               "--sweeps-total", "20000"] + COMMON],
-        # R + dilute Z14 gas driven to flat: the tunable flat vacuum
-        "r_flat_vac": [fresh + ["--mu", "1.1", "--lam", "1.0",
-                                "--edge-target", FLAT, "--cocycle",
-                                "--sweeps-total", "30000"] + COMMON],
-        # R dissolving a Z14 gas at its own curvature: own-pin solution
-        "r_ownpin": [fresh + ["--mu", "3.0", "--lam", "1.0", "--cocycle",
-                              "--sweeps-total", "30000"] + COMMON],
-        # LIGHT melt (lam0.4/600sw -> pure56~0.77) -> anneal at flat under the
-        # R-tuned protective tilt -> hold: the FK glass. A deep quench
-        # (pure56~0.2) does NOT recover (kinetically trapped at ~0.24); a
-        # light melt recovers to ~0.89+ once the tilt protects R's Z15 nodes.
-        "r_glass": [
+    protect = census_tilt(struct)
+    fl = {
+        # perfect crystal held at its own q-bar: stability + cocycle reference
+        "crystal": [fresh + ["--mu", "0", "--lam", "1.0", "--cocycle",
+                             "--sweeps-total", "20000"] + COMMON],
+        # crystal dissolving a Z14 gas at its own curvature: own-pin solution
+        "ownpin": [fresh + ["--mu", "3.0", "--lam", "1.0", "--cocycle",
+                            "--sweeps-total", "30000"] + COMMON],
+        # LIGHT melt -> anneal at flat under the COMPOSITION-MATCHED tilt ->
+        # hold: the FK glass (deep quench kinetically traps; light melt +
+        # census-matched tilt recovers pure56 to ~0.9).
+        "glass": [
             fresh + ["--mu", "0", "--lam", "0.4", "--cocycle",
                      "--sweeps-total", "600", "--chunk", "100",
                      "--snap-every", "10", "--flip-log-mb", "32"],
             ["--mu", "0", "--lam", "1.0", "--edge-target", FLAT,
-             "--tilt"] + PROTECT + ["--sweeps-total", "40600"] + COMMON,
+             "--tilt"] + protect + ["--sweeps-total", "40600"] + COMMON,
         ],
     }
+    # flat vacuum: drive to flat with a dilute Z14 gas (only where calibrated)
+    if family in FLAT_VAC_MU:
+        fl["flat_vac"] = [fresh + ["--mu", FLAT_VAC_MU[family], "--lam", "1.0",
+                                   "--edge-target", FLAT, "--cocycle",
+                                   "--sweeps-total", "30000"] + COMMON]
+    return fl
 
 
 def build_chain(fleet, stages, k, seed, out_dir, name):
@@ -107,7 +131,9 @@ def build_chain(fleet, stages, k, seed, out_dir, name):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--tier", choices=list(STRUCT), required=True)
+    ap.add_argument("--struct", choices=list(FAMILIES), required=True,
+                    help="crystal family (r/a15/sigma/c15)")
+    ap.add_argument("--tier", choices=["small", "large"], required=True)
     ap.add_argument("--fleets", nargs="+", required=True)
     ap.add_argument("--replicas", type=int, default=8)
     ap.add_argument("--out-dir", default="data/reference")
@@ -117,18 +143,22 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
-    struct = STRUCT[args.tier]
-    spec = fleets(struct)
+    struct = FAMILIES[args.struct][0 if args.tier == "small" else 1]
+    if struct is None:
+        raise SystemExit(f"no {args.tier}-tier crystal for family "
+                         f"{args.struct} (generate one first)")
+    spec = fleets(struct, args.struct)
     unknown = [f for f in args.fleets if f not in spec]
     if unknown:
-        raise SystemExit(f"unknown fleets {unknown}; have {list(spec)}")
+        raise SystemExit(f"unknown/unavailable fleets {unknown}; "
+                         f"have {list(spec)}")
     out_dir = os.path.join(args.out_dir, args.tier)
     os.makedirs(out_dir, exist_ok=True)
 
     launched = []
     for fi, fleet in enumerate(args.fleets):
         stages = spec[fleet]
-        name = f"{fleet}_{args.tier}"
+        name = f"{args.struct}_{fleet}_{args.tier}"
         for k in range(args.replicas):
             seed = args.base_seed + 100 * fi + k
             chain = build_chain(fleet, stages, k, seed, out_dir, name)
@@ -153,12 +183,13 @@ def main():
     if args.dry_run:
         return
     manifest = dict(
-        campaign="reference_states", tier=args.tier, struct=struct,
-        fleets=args.fleets, replicas=args.replicas, flat_target=FLAT,
-        protective_tilt=PROTECT, base_seed=args.base_seed,
+        campaign="reference_states", family=args.struct, tier=args.tier,
+        struct=struct, fleets=args.fleets, replicas=args.replicas,
+        flat_target=FLAT, census_tilt=census_tilt(struct),
+        base_seed=args.base_seed,
         started=datetime.datetime.now().isoformat(timespec="seconds"),
         git=get_git_info(), launched=launched)
-    mpath = os.path.join(out_dir, f"manifest_{args.tier}.json")
+    mpath = os.path.join(out_dir, f"manifest_{args.struct}_{args.tier}.json")
     with open(mpath, "w") as f:
         json.dump(manifest, f, indent=1)
     print(f"\n{len(launched)} chains launched; manifest -> {mpath}")
