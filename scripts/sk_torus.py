@@ -71,14 +71,16 @@ def sk_one(mfd_path, coc_path, field, nmax):
                            f"mfd {n_verts} vs cocycle {edges.max() + 1}")
 
     pos, cyc, _ = coc.tree_positions(edges, omega, n_verts)
-    basis = coc.lattice_basis(cyc)
-    M = np.abs(np.diag(basis)).astype(float)
-    if basis.shape != (3, 3) or np.any(M == 0) or np.any(
-            np.abs(basis - np.diag(np.diag(basis))) > 0):
-        raise RuntimeError(f"winding lattice not diagonal for {mfd_path}: "
+    basis = coc.lattice_basis(cyc).astype(float)   # rows = lattice vectors
+    if basis.shape != (3, 3) or abs(np.linalg.det(basis)) < 1:
+        raise RuntimeError(f"winding lattice degenerate for {mfd_path}: "
                            f"{basis}")
+    # General (possibly oblique/hexagonal, e.g. R phase) torus: fractional
+    # coordinates s = X @ B^{-1} in [0,1)^3; a commensurate mode has integer
+    # reciprocal index n with phase exp(2 pi i s.n), physical |k| ~ |B^{-T} n|.
+    Binv = np.linalg.inv(basis)
     _, phi, _ = coc.harmonic_gauge(edges, omega, n_verts)
-    X = (pos - phi) % M                       # metric torus coordinates
+    s = ((pos - phi) @ Binv) % 1.0
 
     q = charge_field(facets, n_verts, field)
     dq = q - q.mean()
@@ -99,13 +101,14 @@ def sk_one(mfd_path, coc_path, field, nmax):
     s_null = np.empty(len(nvec))
     for i0 in range(0, len(nvec), 256):
         blk = nvec[i0:i0 + 256]
-        phase = np.exp(2j * np.pi * (X / M) @ blk.T)   # (N, blk)
+        phase = np.exp(2j * np.pi * s @ blk.T)         # (N, blk)
         A = dq @ phase
         F = phase.sum(axis=0)
         s_obs[i0:i0 + len(blk)] = np.abs(A) ** 2 / S2
         s_null[i0:i0 + len(blk)] = 1.0 - (np.abs(F) ** 2 - N) / (N * (N - 1))
-    kmag = np.linalg.norm(nvec / (M / M.min()), axis=1)   # units of 2pi/L_min
-    return kmag, s_obs, s_null, M, N
+    kphys = nvec @ Binv.T                               # reciprocal vectors
+    kmag = np.linalg.norm(kphys, axis=1) / np.abs(Binv).max()
+    return kmag, s_obs, s_null, np.abs(np.diag(basis)), N
 
 
 def main():
