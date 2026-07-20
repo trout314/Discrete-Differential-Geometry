@@ -51,6 +51,7 @@ CRYSTALS = {
     "a15big": "data/tcp_reference/T3_A15_m13_N101062.mfd",
     "c15big": "data/tcp_reference/T3_C15_m9_N99144.mfd",
     "rbig":   "data/tcp_reference/T3_R_m4_N57984.mfd",
+    "sigmabig": "data/tcp_reference/T3_SIGMA_m7_N58996.mfd",
 }
 LADDER = [3.0, 1.0, 0.3, 0.1, 0.03, 0.01, 0.003]   # per-tet scaled lambda
 

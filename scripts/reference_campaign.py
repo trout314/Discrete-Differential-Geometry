@@ -49,7 +49,7 @@ COMMON = ["--chunk", "500", "--snap-every", "10", "--flip-log-mb", "32"]
 FAMILIES = {
     "r":     ("r", "rbig"),
     "a15":   ("a15", "a15big"),
-    "sigma": ("sigma", None),
+    "sigma": ("sigma", "sigmabig"),
     "c15":   ("c15", "c15big"),
 }
 
