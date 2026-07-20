@@ -40,7 +40,11 @@ from seed_utils import get_free_memory_gb, get_git_info
 
 DOPE = os.path.join(_ROOT, "scripts", "dope_hold.py")
 FLAT = "5.1042993"            # arccos(1/3) flat edge-degree target
-PROTECT = ["-1", "0", "-4", "0", "-1"]   # FK-stabilizing tilt (stage2b vacuum)
+# FK-stabilizing anneal tilt, tuned to R's node-rich census 27:12:6:8
+# (Z12:Z14:Z15:Z16). The C15 tilt (-1,0,-4,0,-1) has ZERO on Z15, so it
+# fails to heal R's branch nodes and the anneal plateaus at pure56~0.80;
+# protecting Z15 recovers to ~0.89+ (calibrated 2026-07-20).
+PROTECT = ["-1", "0", "-1", "-2", "-1"]
 
 # Structure name per tier. Small = m3 R (V=4293); large = m4 R (V=10176).
 STRUCT = {"small": "r", "large": "rbig"}
@@ -65,15 +69,16 @@ def fleets(struct):
         # R dissolving a Z14 gas at its own curvature: own-pin solution
         "r_ownpin": [fresh + ["--mu", "3.0", "--lam", "1.0", "--cocycle",
                               "--sweeps-total", "30000"] + COMMON],
-        # quench (lam0.4/4000sw -> pure56~0.2, positionally amorphous) ->
-        # anneal at flat under the protective tilt -> hold: the FK glass.
-        # A real glass-former recipe: melt past crystalline memory, then
-        # recover FK-legality (not position) by annealing.
+        # LIGHT melt (lam0.4/600sw -> pure56~0.77) -> anneal at flat under the
+        # R-tuned protective tilt -> hold: the FK glass. A deep quench
+        # (pure56~0.2) does NOT recover (kinetically trapped at ~0.24); a
+        # light melt recovers to ~0.89+ once the tilt protects R's Z15 nodes.
         "r_glass": [
             fresh + ["--mu", "0", "--lam", "0.4", "--cocycle",
-                     "--sweeps-total", "4000"] + COMMON,
+                     "--sweeps-total", "600", "--chunk", "100",
+                     "--snap-every", "10", "--flip-log-mb", "32"],
             ["--mu", "0", "--lam", "1.0", "--edge-target", FLAT,
-             "--tilt"] + PROTECT + ["--sweeps-total", "44000"] + COMMON,
+             "--tilt"] + PROTECT + ["--sweeps-total", "40600"] + COMMON,
         ],
     }
 
