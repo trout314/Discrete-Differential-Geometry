@@ -58,6 +58,11 @@ FAMILIES = {
 # crystals at or below flat that reach flat by adding six-edges (Z14).
 FLAT_VAC_MU = {"r": "1.1", "c15": "3.0"}
 
+# Per-family glass melt lambda: the "check melting range" step picks the lam
+# giving a LIGHT melt (pure56~0.75) at the fixed 600-sweep window, since
+# crystals melt at different rates (A15 faster than R). Default 0.4.
+MELT_LAM = {"r": "0.4", "a15": "0.5"}
+
 
 def census_tilt(struct):
     """Composition-matched FK-stabilizing tilt for `struct`: per-class
@@ -89,14 +94,19 @@ def fleets(struct, family):
         # crystal dissolving a Z14 gas at its own curvature: own-pin solution
         "ownpin": [fresh + ["--mu", "3.0", "--lam", "1.0", "--cocycle",
                             "--sweeps-total", "30000"] + COMMON],
-        # LIGHT melt -> anneal at flat under the COMPOSITION-MATCHED tilt ->
-        # hold: the FK glass (deep quench kinetically traps; light melt +
-        # census-matched tilt recovers pure56 to ~0.9).
+        # LIGHT melt -> anneal at the crystal's OWN q-bar under the
+        # COMPOSITION-MATCHED tilt -> hold: the FK glass (amorphous FK-legal
+        # state at the crystal's native curvature). Anneals at own q-bar, NOT
+        # flat: above-flat crystals (A15 5.111, sigma 5.109) cannot be pulled
+        # to flat (edge pin loses), so their glass lives at own curvature;
+        # near/below-flat crystals reach flat via the separate flat_vac fleet.
+        # Deep quench kinetically traps; light melt + census tilt -> pure56~0.9.
+        # (No --edge-target: stage1 inherits the melt's own-q-bar target.)
         "glass": [
-            fresh + ["--mu", "0", "--lam", "0.4", "--cocycle",
-                     "--sweeps-total", "600", "--chunk", "100",
+            fresh + ["--mu", "0", "--lam", MELT_LAM.get(family, "0.4"),
+                     "--cocycle", "--sweeps-total", "600", "--chunk", "100",
                      "--snap-every", "10", "--flip-log-mb", "32"],
-            ["--mu", "0", "--lam", "1.0", "--edge-target", FLAT,
+            ["--mu", "0", "--lam", "1.0",
              "--tilt"] + protect + ["--sweeps-total", "40600"] + COMMON,
         ],
     }
