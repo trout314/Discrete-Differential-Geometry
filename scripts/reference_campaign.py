@@ -40,11 +40,12 @@ from seed_utils import get_free_memory_gb, get_git_info
 
 DOPE = os.path.join(_ROOT, "scripts", "dope_hold.py")
 FLAT = "5.1042993"            # arccos(1/3) flat edge-degree target
-# FK-stabilizing anneal tilt, tuned to R's node-rich census 27:12:6:8
-# (Z12:Z14:Z15:Z16). The C15 tilt (-1,0,-4,0,-1) has ZERO on Z15, so it
-# fails to heal R's branch nodes and the anneal plateaus at pure56~0.80;
-# protecting Z15 recovers to ~0.89+ (calibrated 2026-07-20).
-PROTECT = ["-1", "0", "-1", "-2", "-1"]
+# FK-stabilizing anneal tilt, magnitudes PROPORTIONAL to R's native Z-class
+# census 27:12:6:8 (Z12:Z14:Z15:Z16), scaled to Z12=-2. A protective tilt
+# must match the crystal's composition (reusing C15's zero-on-Z15 tilt fails
+# to heal R's branch nodes; plateaus at 0.80). Composition-matched recovers
+# to 0.91 AND reproduces R's census (calibrated 2026-07-20).
+PROTECT = ["-2.0", "0", "-0.889", "-0.444", "-0.593"]
 
 # Structure name per tier. Small = m3 R (V=4293); large = m4 R (V=10176).
 STRUCT = {"small": "r", "large": "rbig"}
