@@ -163,7 +163,7 @@ def main():
                     help="per-tet lambda ladder (override for fine scans)")
     ap.add_argument("--save-states", default=None,
                     help="directory to save final .mfd per (structure, lambda) "
-                         "for positional analysis with crystal_match.py")
+                         "for crystalline/defect analysis with crystal_grains.py")
     ap.add_argument("--tilt", type=float, nargs=5, default=None,
                     metavar=("T0", "T1", "T2", "T3", "T4"),
                     help="ABSOLUTE chemical-potential tilts on n6 classes "

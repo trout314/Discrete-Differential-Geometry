@@ -1,37 +1,33 @@
 #!/usr/bin/env python3
-"""General crystal-defect census by directional crystal-patch growth.
+"""Crystal-defect census: a reporting front-end over the crystal_grains identifier.
 
-A defect is a vertex that does not fit onto the ideal crystal --- but detected
-so it stays LOCALIZED to the misplaced vertex, not its perturbed neighbourhood.
-Naive "vertex whose radius-r environment isn't crystalline" spreads: one point
-defect contaminates every certificate within radius r, so at finite dopant
-density the whole crystal flags. Instead we GROW the crystal patch and heal
-inward (Aaron's algorithm, one-sided accretion):
+Defect cores are the vertices that do NOT sit in a genuine crystalline grain, as
+determined by the single authoritative crystallinity detector, crystal_grains.py
+(a single-valued covering map onto the reference TCP crystal). A vertex is
+crystalline iff it develops into a registry-consistent grain of >= --min-size;
+everything else is a defect core. Because the covering map preserves BOTH the
+FK Z-class and all six edge degrees AND demands translational registry, it flags
+EVERY departure from the ideal crystal -- a native Z-class atom in the WRONG site
+(forced onto the reference vertex at its lattice position, the mismatch drops it
+out), dislocations / coherent off-registry order where every atom is locally
+native yet the lattice fails to close, and foreign phases -- while staying
+localized (the FK-shell gate breaks only for the vertices a defect actually
+touches, not their neighbours). See crystal_grains.py for the method.
 
-  local environment  = (own Z-class, multiset of (neighbour Z-class, edge deg))
-  1. SEED  crystal = vertices whose FULL local environment is a native one.
-  2. GROW  absorb an unknown vertex into the crystal iff the multiset of its
-     ALREADY-CRYSTAL neighbours is a sub-multiset of some native environment
-     of its class (treating unknown/defect neighbours as don't-cares) -- so a
-     good vertex next to a dopant still fits on its crystal-facing side.
-  3. Repeat to a fixpoint; a fully-surrounded crystal vertex whose complete
-     environment isn't native is demoted (catches early over-absorption).
-  4. Leftover = defect CORES; connected components = dopant complexes.
-
-Class-agnostic: a native Z14 in its Wyckoff site fits, a doped Z14 in the
-wrong site does not, so it separates native from excess even when the dopant
-IS a native class -- the case the Z-class census can't handle. r=1 local
-descriptor => fast (no radius-2 WL certificates).
+This script adds reporting on top of that vertex set: the defect cores broken
+down by Z-class (Z12/Z14/Z15/Z16/illegal) and clustered into connected complexes
+(dopant cores / grain boundaries), plus the crystalline fraction and grain sizes.
 
 Usage:
     python scripts/defect_census.py STATE.mfd --ref c15
+    python scripts/defect_census.py STATE.mfd --ref r --min-size 30
     python scripts/defect_census.py 'data/r_solubility/r_sol_Z14_mu4_r*_final.mfd' --ref r
 """
 import argparse
 import glob
 import os
 import sys
-from collections import Counter, defaultdict
+from collections import Counter
 
 import numpy as np
 
@@ -39,9 +35,10 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_ROOT, "python"))
 sys.path.insert(0, os.path.join(_ROOT, "scripts"))
 import discrete_differential_geometry as ddg
+import crystal_grains as cg
 from tcp_melt import CRYSTALS
+from tcp_reference import STRUCTURES
 from dopant_pairs import vertex_classes
-from fk_skeleton import edges_from_facets
 
 N6_NAME = {-1: "illegal", 0: "Z12", 2: "Z14", 3: "Z15", 4: "Z16"}
 
@@ -69,84 +66,74 @@ def patch_sizes(vertices, adj):
 
 
 def descriptors(facets):
-    """Per-vertex helpers: vclass(v), adj, and nbr(v, mask) -> sorted multiset
-    of (neighbour class, connecting-edge degree) over neighbours w with
-    mask(w) True (mask=None => all)."""
+    """Per-vertex helpers for defect-core REPORTING: vclass(v) (FK Z-class, -1 if
+    illegal) and the plain neighbour adjacency. Vertex ids match crystal_grains:
+    both relabel a facet array by the identical np.unique(F) sort, so a defect id
+    from `defect_cores` indexes straight into these."""
     n6, imp, adj = vertex_classes(facets)
-    eu, edeg, _ = edges_from_facets(facets)
-    edge_d = {}
-    for (a, b), d in zip(eu, edeg):
-        edge_d[(int(a), int(b))] = int(d)
 
     def vclass(v):
         return -1 if imp[v] else int(n6[v])
 
-    def ed(v, w):
-        return edge_d[(v, w)] if v < w else edge_d[(w, v)]
-
-    def nbr(v, mask=None):
-        ws = adj[v] if mask is None else [w for w in adj[v] if mask(w)]
-        return tuple(sorted((vclass(w), ed(v, w)) for w in ws))
-    return vclass, adj, nbr, len(n6)
+    return vclass, adj, len(n6)
 
 
-def defect_cores(facets, ref_facets):
-    rv, radj, rnbr, RV = descriptors(ref_facets)
-    native_envs = set()                       # (class, full neighbour tuple)
-    native_by_class = defaultdict(list)       # class -> list of Counter
-    for u in range(RV):
-        env = rnbr(u)
-        native_envs.add((rv(u), env))
-        native_by_class[rv(u)].append(Counter(env))
-
-    vclass, adj, nbr, V = descriptors(facets)
-    CRYSTAL, UNKNOWN = 1, 0
-    label = np.zeros(V, dtype=np.int8)
-    for v in range(V):                        # 1. seed: exact native env
-        if (vclass(v), nbr(v)) in native_envs:
-            label[v] = CRYSTAL
-
-    def fits(v):                              # crystal-facing sub-match
-        cn = Counter(nbr(v, mask=lambda w: label[w] == CRYSTAL))
-        return any(all(cn[k] <= M[k] for k in cn)
-                   for M in native_by_class.get(vclass(v), []))
-
-    changed = True                            # 2-3. grow + demote to fixpoint
-    while changed:
-        changed = False
-        for v in range(V):
-            if label[v] == UNKNOWN and any(label[w] == CRYSTAL for w in adj[v]) \
-                    and fits(v):
-                label[v] = CRYSTAL
-                changed = True
-        for v in range(V):                    # demote over-absorbed cores
-            if label[v] == CRYSTAL and all(label[w] == CRYSTAL for w in adj[v]) \
-                    and (vclass(v), nbr(v)) not in native_envs:
-                label[v] = UNKNOWN
-                changed = True
-
-    dv = [v for v in range(V) if label[v] == UNKNOWN]
-    return dv, vclass, adj, V
+def defect_cores(facets, ref_facets, ref_name, min_size):
+    """Defect cores = vertices NOT in a translational-crystalline grain of
+    >= min_size, via the crystal_grains covering map. Returns
+    (dv, vclass, adj, V, grain_sizes)."""
+    rst = cg.build_struct(ref_facets)
+    refs = {ref_name: rst}
+    idx = cg.ref_index(refs)
+    ns_of = {}                                            # translation-invariant site
+    if ref_name in STRUCTURES:
+        ns = len(STRUCTURES[ref_name][1])
+        if ns and rst["V"] % ns == 0:
+            ns_of[ref_name] = ns
+    st = cg.build_struct(facets)
+    grain_of_tet, sig_of_tet, phase_of_grain = cg.find_grains(st, refs, idx)
+    interior = cg.interior_vertices(st, grain_of_tet, sig_of_tet,
+                                    phase_of_grain, ns_of)
+    crystalline = set()
+    grain_sizes = []
+    for _, verts in cg.grain_components(st, interior):
+        if len(verts) >= min_size:
+            crystalline.update(verts)
+            grain_sizes.append(len(verts))
+    vclass, adj, V = descriptors(facets)
+    dv = [v for v in range(V) if v not in crystalline]
+    return dv, vclass, adj, V, sorted(grain_sizes, reverse=True)
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("states", nargs="+")
     ap.add_argument("--ref", required=True, choices=list(CRYSTALS))
+    ap.add_argument("--min-size", type=int, default=30,
+                    help="smallest crystalline grain kept; vertices in "
+                         "sub-threshold grains count as defects. Default 30 "
+                         "clears the coincidental-grain ceiling of a melted null "
+                         "(~18 at V~1e3, and the ceiling grows only ~ln V); for "
+                         "V >> 1e5 raise it, or calibrate against a matched melt.")
     args = ap.parse_args()
     files = []
     for s in args.states:
         files += sorted(glob.glob(s)) if any(c in s for c in "*?[") else [s]
     ref_facets = np.asarray(ddg.Manifold.load(CRYSTALS[args.ref], 3).facets())
-    print(f"reference: {args.ref}")
+    print(f"reference: {args.ref}   min-size: {args.min_size}")
     for f in files:
         facets = np.asarray(ddg.Manifold.load(f, 3).facets())
-        dv, vclass, adj, V = defect_cores(facets, ref_facets)
+        dv, vclass, adj, V, grain_sizes = defect_cores(
+            facets, ref_facets, args.ref, args.min_size)
         comp = Counter(N6_NAME.get(vclass(v), f"n6={vclass(v)}") for v in dv)
         sizes = patch_sizes(list(dv), adj)
         szh = Counter(sizes)
+        ncry = V - len(dv)
         print(f"\n{os.path.basename(f)}")
-        print(f"  defect cores: {len(dv)}/{V} ({100*len(dv)/V:.2f}%)   "
+        print(f"  crystalline: {ncry}/{V} ({100 * ncry / V:.2f}%)   "
+              f"grains (>= {args.min_size}): {len(grain_sizes)}   "
+              f"largest {grain_sizes[0] if grain_sizes else 0}")
+        print(f"  defect cores: {len(dv)}/{V} ({100 * len(dv) / V:.2f}%)   "
               f"classes: " + " ".join(f"{k}:{v}" for k, v in comp.most_common()))
         print(f"  complexes: {len(sizes)} clusters, max {sizes[0] if sizes else 0}"
               f"   sizes[size×count]: "

@@ -5,15 +5,17 @@ Identifies the connected components of the vertex graph that are *consistent
 with a piece of a reference TCP crystal* -- i.e. genuine crystalline grains,
 not merely regions of locally-crystal-like coordination.
 
-Why not per-vertex local matching (crystal_match.py / defect_census.py):
+Why not per-vertex local matching (the superseded radius-r ball approach):
   A single FK coordination polyhedron (Z12/Z14/Z15/Z16) is the universal local
   motif of *all* tetrahedrally-close-packed matter, crystalline AND amorphous,
   so any radius-r ball test is either too weak (an isolated liquid icosahedron
-  matches -- defect_census r=1) or too brittle (one perturbed edge in a ~60-
-  vertex r=2 ball breaks the match, so a 62%-ordered melt reads 0% crystal --
-  crystal_match r=2, exact). Crystallinity is *translational registry* --
-  vertices sitting in the crystal's actual periodic arrangement over an extended
-  region -- which is inherently non-local.
+  matches -- a radius-1 environment test) or too brittle (one perturbed edge in
+  a ~60-vertex radius-2 ball breaks the match, so a 62%-ordered melt reads 0%
+  crystal -- an exact radius-2 certificate). Crystallinity is *translational
+  registry* -- vertices sitting in the crystal's actual periodic arrangement
+  over an extended region -- which is inherently non-local. This covering-map
+  detector is the single authoritative crystalline/defect identifier; defect
+  census (defect_census.py) is a reporting front-end over it.
 
 Method (combinatorial covering map / "development"):
   A grain is a maximal region carrying a single-valued LOCAL ISOMORPHISM
@@ -59,6 +61,7 @@ import argparse
 import collections
 import glob
 import os
+import re
 import sys
 from itertools import permutations
 
@@ -70,11 +73,25 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import discrete_differential_geometry as ddg
 from fk_skeleton import edges_from_facets
 from dopant_pairs import vertex_classes
-from crystal_match import best_refs, REF_GLOB
 from tcp_reference import STRUCTURES
 
 # tet vertex-index pairs for the six edges
 _E6 = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)]
+
+REF_GLOB = os.path.join(_ROOT, "data", "tcp_reference", "T3_*_m*.mfd")
+
+
+def best_refs(ref_glob):
+    """Largest-m reference .mfd per structure name -> {name: path}."""
+    best = {}
+    for p in glob.glob(ref_glob):
+        mm = re.match(r"T3_([A-Z0-9]+)_m(\d+)_N\d+\.mfd", os.path.basename(p))
+        if not mm:
+            continue
+        name, m = mm.group(1).lower(), int(mm.group(2))
+        if name not in best or m > best[name][0]:
+            best[name] = (m, p)
+    return {n: p for n, (m, p) in sorted(best.items())}
 
 
 def build_struct(facets):
