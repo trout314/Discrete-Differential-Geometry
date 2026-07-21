@@ -28,16 +28,13 @@ import sys
 import time
 
 import numpy as np
-from scipy.sparse import coo_matrix
-from scipy.sparse.csgraph import connected_components
-from scipy.sparse.linalg import eigsh
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_ROOT, "python"))
 from discrete_differential_geometry import Manifold
+from discrete_differential_geometry import graph_hyperuniformity as gh
+from discrete_differential_geometry.vertex_fields import FIELDS, edges_and_degrees
 
-THETA = float(np.arccos(1.0 / 3.0))
-RNG = np.random.default_rng(0)
 NCENT, NSHUF, NSPEC = 300, 4, 41
 
 # (tag, glob pattern, n_seeds)
@@ -54,93 +51,8 @@ ENSEMBLES = [
 ]
 
 
-def load_fields(path):
-    m = Manifold.load(path, 3)
-    F = np.asarray(m.facets(), np.int64)
-    lab, inv = np.unique(F, return_inverse=True)
-    T = inv.reshape(F.shape)
-    V = len(lab)
-    deg = np.bincount(T.ravel(), minlength=V)
-    pr = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)]
-    epairs = np.sort(np.vstack([T[:, [i, j]] for i, j in pr]), axis=1)
-    eu, ecnt = np.unique(epairs, axis=0, return_counts=True)
-    delta = 2 * np.pi - THETA * ecnt
-    qR = np.zeros(V)
-    np.add.at(qR, eu[:, 0], delta / 2)
-    np.add.at(qR, eu[:, 1], delta / 2)
-    qV = deg / 4.0
-    adj = [[] for _ in range(V)]
-    for a, b in eu:
-        adj[a].append(b)
-        adj[b].append(a)
-    adj = [np.array(x) for x in adj]
-    return qR, qV, adj, eu, V
-
-
-def bfs_order(adj, V, src, mmax):
-    seen = np.zeros(V, bool)
-    seen[src] = True
-    order = [src]
-    frontier = [src]
-    while len(order) < mmax and frontier:
-        nxt = []
-        for u in frontier:
-            for w in adj[u]:
-                if not seen[w]:
-                    seen[w] = True
-                    nxt.append(w)
-        RNG.shuffle(nxt)
-        order.extend(nxt)
-        frontier = nxt
-    return np.array(order[:mmax])
-
-
-def window_variances(q, orders, mgrid):
-    sums = np.array([np.cumsum(q[o])[mgrid - 1] for o in orders])
-    return sums.var(axis=0)
-
-
-def lowpass_ratio(eu, V, dq, n_iter=3000, n_shuf=16, rng=None):
-    """Spectral estimator without an eigensolver: power of dq surviving n_iter
-    steps of y -> (I - L/lmax) y (a low-pass filter with effective cutoff
-    lambda ~ lmax/n_iter), observed / shuffled. Use INSTEAD of spectral_ratio
-    on highly symmetric states (perfect crystals): their massively degenerate
-    Laplacian spectra make ARPACK shift-invert thrash for hours, while this is
-    a few thousand sparse matvecs. Exact crystal answer is 0 (Bloch: a
-    unit-cell-periodic field has no power in sub-Brillouin-zone modes)."""
-    rng = RNG if rng is None else rng
-    ii = np.r_[eu[:, 0], eu[:, 1]]
-    jj = np.r_[eu[:, 1], eu[:, 0]]
-    A = coo_matrix((np.ones(len(ii)), (ii, jj)), shape=(V, V)).tocsr()
-    d = A.sum(1).A1
-    lmax = 2 * d.max()
-
-    def low_power(x):
-        y = x - x.mean()
-        for _ in range(n_iter):
-            y = y - (d * y - A @ y) / lmax
-            y = y - y.mean()
-        return float(y @ y)
-
-    obs = low_power(dq)
-    shuf = np.mean([low_power(rng.permutation(dq)) for _ in range(n_shuf)])
-    return obs / shuf
-
-
-def spectral_ratio(eu, V, dq, k=NSPEC):
-    ii = np.r_[eu[:, 0], eu[:, 1]]
-    jj = np.r_[eu[:, 1], eu[:, 0]]
-    A = coo_matrix((np.ones(len(ii)), (ii, jj)), shape=(V, V)).tocsr()
-    L = coo_matrix((A.sum(1).A1, (range(V), range(V))), shape=(V, V)).tocsr() - A
-    lam, phi = eigsh(L, k=min(k, V - 2), sigma=0, which="LM")
-    o = np.argsort(lam)
-    lam, phi = lam[o][1:], phi[:, o][:, 1:]      # drop constant mode
-    Sr = (phi.T @ dq) ** 2
-    Ss = np.mean([(phi.T @ RNG.permutation(dq)) ** 2 for _ in range(32)], axis=0)
-    return lam, Sr / Ss
-
-
 def main():
+    rng = np.random.default_rng(0)
     results = {}
     print(f"{'ensemble':>18} {'winR(mid)':>15} {'winR(max)':>15} {'specR(low)':>15}")
     for tag, pat, reps in ENSEMBLES:
@@ -152,16 +64,17 @@ def main():
         t0 = time.time()
         ratios, specs, lam0 = [], [], None
         for path in paths:
-            qR, qV, adj, eu, V = load_fields(path)
+            fac = np.asarray(Manifold.load(path, 3).facets(), np.int64)
+            qR = FIELDS["curvature_charge"](fac)
+            eu, ecnt, deg, V = edges_and_degrees(fac)
+            adj = gh.adjacency(eu, V)
             mmax = V // 6
             mgrid = np.unique(np.geomspace(8, mmax, 12).astype(int))
-            orders = [bfs_order(adj, V, int(RNG.integers(V)), mmax)
+            orders = [gh.bfs_order(adj, V, int(rng.integers(V)), mmax, rng)
                       for _ in range(NCENT)]
-            vr = window_variances(qR, orders, mgrid)
-            vs = np.mean([window_variances(RNG.permutation(qR), orders, mgrid)
-                          for _ in range(NSHUF)], axis=0)
-            ratios.append(vr / vs)
-            lam, sr = spectral_ratio(eu, V, qR - qR.mean())
+            ratios.append(gh.window_ratio(qR, orders, mgrid, NSHUF, rng))
+            lam, sr = gh.spectral_ratio(eu, V, qR - qR.mean(),
+                                        k=NSPEC, nshuf=32, rng=rng)
             specs.append(sr)
             lam0 = lam if lam0 is None else lam0
         M = np.array(ratios)

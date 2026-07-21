@@ -223,6 +223,34 @@ def loop_winding(loop_vertices, edges: np.ndarray, omega: np.ndarray) -> np.ndar
     return w
 
 
+def torus_positions(facets, edges, omega):
+    """Harmonic-gauge (periodic-Tutte) torus coordinates for a snapshot + its
+    tracked cocycle -- the one entry point turning (state, cocycle) into a point
+    set on the metric torus for structure-factor analysis.
+
+    Composes: canonicalize labels -> integrate the cocycle over a spanning tree
+    (lift to the cover) -> read the winding lattice off the fundamental cycles ->
+    harmonic gauge X_v = lift_v - phi_v -> fractional coordinates s = X B^{-1}.
+
+    facets: (F, 4) of the .mfd; edges, omega: as from load_cocycle (raw or
+    canonical -- canonicalized here). Returns (frac (V, 3) in [0, 1)^3, basis
+    (3, 3) winding-lattice, rows = lattice vectors). Raises on a vertex-count
+    mismatch or a degenerate winding lattice."""
+    facets = np.asarray(facets)
+    edges, omega = canonicalize_labels(edges, omega)
+    n_verts = int(facets.max()) + 1
+    if edges.max() + 1 != n_verts:
+        raise RuntimeError(f"vertex count mismatch: facets {n_verts} vs "
+                           f"cocycle {edges.max() + 1}")
+    pos, cyc, _ = tree_positions(edges, omega, n_verts)
+    basis = lattice_basis(cyc).astype(float)
+    if basis.shape != (3, 3) or abs(np.linalg.det(basis)) < 1:
+        raise RuntimeError(f"winding lattice degenerate: {basis}")
+    _, phi, _ = harmonic_gauge(edges, omega, n_verts)
+    frac = ((pos - phi) @ np.linalg.inv(basis)) % 1.0
+    return frac, basis
+
+
 # ---------------------------------------------------------------------------
 # Consumers
 # ---------------------------------------------------------------------------

@@ -60,19 +60,20 @@ def run_one(init_path, lam, rep, cfg, out_dir):
     v.save(path)
 
     # estimators on the final state
-    from curvature_hyperuniformity_g import (load_fields, bfs_order,
-                                             window_variances, lowpass_ratio)
+    from discrete_differential_geometry import graph_hyperuniformity as gh
+    from discrete_differential_geometry.vertex_fields import (
+        FIELDS, edges_and_degrees)
     rng = np.random.default_rng(1000 + rep)
-    qR, qV, adj, eu2, V2 = load_fields(path)
+    fac = np.asarray(ddg.Manifold.load(path, 3).facets(), np.int64)
+    qR = FIELDS["curvature_charge"](fac)
+    eu2, ecnt2, deg2, V2 = edges_and_degrees(fac)
+    adj = gh.adjacency(eu2, V2)
     mmax = V2 // 6
     mgrid = np.unique(np.geomspace(8, mmax, 12).astype(int))
-    orders = [bfs_order(adj, V2, int(rng.integers(V2)), mmax)
+    orders = [gh.bfs_order(adj, V2, int(rng.integers(V2)), mmax, rng)
               for _ in range(cfg["ncent"])]
-    vr = window_variances(qR, orders, mgrid)
-    vs = np.mean([window_variances(rng.permutation(qR), orders, mgrid)
-                  for _ in range(4)], axis=0)
-    ratio = (vr / vs)
-    lp = lowpass_ratio(eu2, V2, qR - qR.mean(), rng=rng)
+    ratio = gh.window_ratio(qR, orders, mgrid, 4, rng)
+    lp = gh.lowpass_ratio(eu2, V2, qR - qR.mean(), rng=rng)
     return dict(lam=lam, rep=rep, trace=rows, mgrid=mgrid.tolist(),
                 win_ratio=ratio.tolist(), win_max=float(ratio[-1]),
                 lowpass=float(lp), state=path)

@@ -29,8 +29,8 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_ROOT, "python"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import discrete_differential_geometry as ddg
+from discrete_differential_geometry.vertex_fields import FIELDS
 from dopant_pairs import vertex_classes
-from curvature_hyperuniformity_g import load_fields
 
 
 def joint_complexes(n6, imp, adj, host_n6):
@@ -97,7 +97,7 @@ def main():
         facets = np.asarray(ddg.Manifold.load(path, 3).facets())
         n6, imp, adj = vertex_classes(facets)
         V = len(n6)
-        qR = load_fields(path)[0]
+        qR = FIELDS["curvature_charge"](facets)
         comps = joint_complexes(n6, imp, adj, args.host_classes)
         name = os.path.basename(path)
         if len(comps) < 3:

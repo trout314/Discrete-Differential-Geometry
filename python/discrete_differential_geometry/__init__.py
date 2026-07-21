@@ -12,6 +12,9 @@ from .convergence import (
     integrated_autocorrelation_time,
     weighted_ess,
 )
+from . import vertex_fields, structure_factor, graph_hyperuniformity, cocycle
+from .vertex_fields import FIELDS
+from .cocycle import torus_positions
 from ._dlang import _lib as _lib
 
 
@@ -66,4 +69,10 @@ __all__ = [
     "effective_sample_size",
     "integrated_autocorrelation_time",
     "weighted_ess",
+    "vertex_fields",
+    "structure_factor",
+    "graph_hyperuniformity",
+    "cocycle",
+    "FIELDS",
+    "torus_positions",
 ]

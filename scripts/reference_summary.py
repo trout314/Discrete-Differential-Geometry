@@ -22,8 +22,10 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_ROOT, "python"))
 sys.path.insert(0, os.path.join(_ROOT, "scripts"))
 import discrete_differential_geometry as ddg
+from discrete_differential_geometry import cocycle as coc
+from discrete_differential_geometry.structure_factor import structure_factor
+from discrete_differential_geometry.vertex_fields import FIELDS
 from fk_skeleton import edges_from_facets, vertex_class_census
-from sk_torus import sk_one
 
 FAMS = ["a15", "sigma", "r", "c15"]           # ordered above-flat -> below-flat
 FLEETS = ["crystal", "flat_vac", "ownpin", "glass"]
@@ -53,7 +55,9 @@ def analyze_final(path):
     cpath = re.sub(r"\.mfd$", ".cocycle.npz", path)
     if os.path.exists(cpath):
         try:
-            kmag, s_obs, s_null, _, _ = sk_one(path, cpath, "n6", 6)
+            edges, omega, _ = coc.load_cocycle(cpath)
+            frac, basis = coc.torus_positions(facets, edges, omega)
+            kmag, s_obs, s_null = structure_factor(frac, basis, FIELDS["n6"](facets), 6)
             low = kmag <= 2.0 + 1e-9
             row["sk_lowk"] = float(np.mean(s_obs[low] / s_null[low]))
         except Exception as e:
