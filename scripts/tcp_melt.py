@@ -90,7 +90,45 @@ def run_point(path, lam, sweeps, vdq_scale=1.0, zleg_scale=0.0, cimp_scale=0.0,
     st = s.get_stats()
     v = s.manifold
     if save_path:
-        v.save(save_path)
+        sys.path.insert(0, os.path.join(_ROOT, "tools"))
+        from seed_utils import (build_metadata_comments, make_leg, obj_of,
+                                 read_history)
+        # Provenance: append a `melt` leg to the source crystal's root history so
+        # the saved state records exactly which crystal it came from and under
+        # what melt objective. obj_of captures the standard couplings; the n6
+        # potential (if any) is recorded alongside since it isn't a SamplerParam.
+        obj = obj_of(params)
+        if zleg_scale or cimp_scale or tilt:
+            obj["n6"] = {"zleg_c": zleg_scale * lam, "cimp_c": cimp_scale * lam,
+                         "tilt": list(tilt) if tilt else None}
+        melt_leg = make_leg("melt", obj, sweeps,
+                            tried=st.total_tried, accepted=st.total_accepted)
+        prior = read_history(path)
+        if prior:                              # normal: source carries a root leg
+            legs, root, note = [melt_leg], None, None
+        else:                                  # source predates crystal-root stamping
+            root = f"crystal:{os.path.splitext(os.path.basename(path))[0]}"
+            legs = [make_leg("build", {"src": os.path.basename(path)}, 0,
+                             from_=root, tried=0, accepted=0), melt_leg]
+            note = ("root synthesized from source path; regenerate the reference "
+                    "with tcp_reference.py for the exact Wyckoff root")
+        comments = build_metadata_comments(
+            topology="T3", dimension=3,
+            initial_triangulation=os.path.basename(path),
+            num_facets_target=params.num_facets_target,
+            num_facets_coef=params.num_facets_coef,
+            hinge_degree_target=params.hinge_degree_target,
+            num_hinges_coef=params.num_hinges_coef,
+            hinge_degree_variance_coef=params.hinge_degree_variance_coef,
+            codim3_degree_variance_coef=params.codim3_degree_variance_coef,
+            hinge_degree_target_coef=params.hinge_degree_target_coef,
+            codim3_degree_target_coef=params.codim3_degree_target_coef,
+            codim3_degree_target=params.codim3_degree_target,
+            growth_step_size=0, eq_sweeps_per_step=0, equilibration_sweeps=sweeps,
+            manifold_view=v, objective=s.current_objective, sampler_stats=st,
+            legs=legs, prior_history=(prior or None), root=root,
+            history_note=note)
+        v.save(save_path, comments=comments)
     row = census(v)
     row.update(
         lam=lam, sweeps=sweeps, qbar=qbar, n=v.num_facets,

@@ -227,8 +227,10 @@ def get_git_info() -> tuple[str, bool]:
 # A leg answers "how many sweeps at what objective", so a seed's full lineage is
 # reconstructable without any ancestor file on disk. All seed writers funnel
 # through build_metadata_comments(), which requires the source's prior history
-# (or root="sphere") plus this run's legs -- so lineage can never be dropped
-# silently. See read_history() to obtain the prior history from a source seed.
+# (or a root: "sphere" for from-scratch S3 seeds, "crystal:<phase>" for TCP
+# reference crystals) plus this run's legs -- so lineage can never be dropped
+# silently. See read_history() to obtain the prior history from a source seed,
+# and is_root_leg_from() for what counts as a lineage root.
 # ---------------------------------------------------------------------------
 
 def obj_of(params) -> dict:
@@ -268,6 +270,16 @@ def make_leg(op: str, obj: dict, sweeps, *, from_: str = "prev",
     return leg
 
 
+def is_root_leg_from(from_field) -> bool:
+    """True if a leg's ``from`` names a lineage ROOT -- a from-scratch origin
+    that needs no prior history. S3 seeds root at ``"sphere"``; TCP-crystal
+    lineages root at ``"crystal:<phase>@wyckoff"`` (stamped by
+    scripts/tcp_reference.py). Everything else (``"prev"`` etc.) is a
+    continuation of an existing lineage."""
+    return from_field == "sphere" or (
+        isinstance(from_field, str) and from_field.startswith("crystal:"))
+
+
 def read_history(path: str) -> list:
     """Return the flattened provenance history (list of legs) recorded in an
     .mfd header, or [] if the file predates history tracking. Writers pass the
@@ -296,8 +308,9 @@ def verify_history(path: str, manifold_view=None) -> tuple[bool, list]:
     if not legs:
         issues.append("empty history")
     else:
-        if legs[0].get("from") != "sphere":
-            issues.append(f"not rooted at sphere (first leg from={legs[0].get('from')!r})")
+        if not is_root_leg_from(legs[0].get("from")):
+            issues.append(f"not rooted (first leg from={legs[0].get('from')!r}; "
+                          f"expected 'sphere' or 'crystal:<phase>')")
         for i, leg in enumerate(legs[1:], start=1):
             if leg.get("from") != "prev":
                 issues.append(f"leg {i} from={leg.get('from')!r} (expected 'prev')")
@@ -316,10 +329,11 @@ def history_fields(history: list, note: str = None) -> list:
 
     Shared by build_metadata_comments (live writes) and the back-fill migration
     so both emit an identical schema."""
-    rooted = bool(history) and history[0].get("from") == "sphere"
+    root_from = history[0].get("from") if history else None
+    rooted = is_root_leg_from(root_from)
     tot_s = sum(l["sweeps"] for l in history if isinstance(l.get("sweeps"), (int, float)))
     tot_t = sum(l["tried"] for l in history if isinstance(l.get("tried"), (int, float)))
-    out = [f"history_root = {'sphere' if rooted else 'incomplete'}",
+    out = [f"history_root = {root_from if rooted else 'incomplete'}",
            f"history_total_sweeps = {tot_s}",
            f"history_total_tried = {tot_t}"]
     if note:
@@ -357,10 +371,11 @@ def build_metadata_comments(
 
     Lineage is mandatory: pass this run's `legs` (a non-empty list from
     make_leg) AND exactly one of `prior_history` (the source seed's history,
-    from read_history) or `root="sphere"` (a from-scratch seed). The emitted
-    `history` field is prior_history + legs, so it can never be silently
-    dropped. `history_note` is free text for caveats (e.g. reconstructed
-    ancestry).
+    from read_history) or `root` (a from-scratch origin token: `"sphere"` for
+    an S3 seed, `"crystal:<phase>"` for a TCP reference -- in which case
+    `legs[0]` must itself carry that root via `from_=`). The emitted `history`
+    field is prior_history + legs, so it can never be silently dropped.
+    `history_note` is free text for caveats (e.g. reconstructed ancestry).
     """
     if legs is None or len(legs) == 0:
         raise ValueError(
@@ -369,7 +384,7 @@ def build_metadata_comments(
     if (prior_history is None) == (root is None):
         raise ValueError(
             "build_metadata_comments requires exactly one of prior_history="
-            "<list from read_history> or root='sphere'.")
+            "<list from read_history> or root=<'sphere'|'crystal:<phase>'>.")
     git_commit, git_dirty = get_git_info()
     comments = []
     comments.append(f"git_commit = {git_commit}")

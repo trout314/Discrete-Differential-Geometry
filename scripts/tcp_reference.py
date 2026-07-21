@@ -589,15 +589,26 @@ def validate_and_save(name, m, out_dir):
                     for k in census_per_cell))
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, f"T3_{name.upper()}_m{m}_N{len(fac)}.mfd")
-    from seed_utils import get_git_info
-    git = get_git_info()
+    from seed_utils import get_git_info, make_leg, history_fields
+    commit, dirty = get_git_info()
+    qbar = float(edeg.mean())
+    # Root leg: this crystal is a from-scratch lineage ORIGIN (built exactly from
+    # Wyckoff positions, not sampled). Stamping it means downstream melt/dope/
+    # quench runs append to it via read_history() and can never lose provenance.
+    # See the history section in tools/seed_utils.py (is_root_leg_from).
+    root_leg = make_leg(
+        "build",
+        {"struct": name, "m": m, "cn": cn, "qbar": round(qbar, 6),
+         "source": "wyckoff-delaunay"},
+        sweeps=0, from_=f"crystal:{name}@wyckoff",
+        commit=commit, dirty=dirty, tried=0, accepted=0)
     mfd.save(path, comments=[
         f"topology = T3", f"structure = {name}", f"supercell = {m}",
         f"source = scripts/tcp_reference.py (periodic Delaunay of Wyckoff positions)",
-        f"git_commit = {git}",
-        f"mean_edge_degree = {edeg.mean():.6f}",
+        f"git_commit = {commit}", f"git_dirty = {'true' if dirty else 'false'}",
+        f"mean_edge_degree = {qbar:.6f}",
         f"validation = {'PASS' if good else 'PARTIAL (see census)'}",
-    ])
+    ] + history_fields([root_leg]))
     print(f"  {'VALIDATED' if good else 'PARTIAL'} -> {path}")
     return good
 
