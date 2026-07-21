@@ -33,12 +33,17 @@ Method (combinatorial covering map / "development"):
   two. Yet a covered vertex needs only its OWN link clean (not a pristine
   r=2 ball), so the map grows right up to defects: phase-exact AND tolerant.
 
-  A vertex is INTERIOR-crystalline iff its entire star develops consistently
-  into one grain (single-valued image) -- provably link-isomorphic to its
-  reference vertex. Grains = connected components of interior vertices sharing
-  a grain id. Everything else is defect/boundary. `--min-size` drops
-  coincidental sub-threshold grains (calibrate against a fully-melted null,
-  which yields ~0 grains).
+  A vertex is INTERIOR-crystalline iff (GATE) it sits in an intact Frank-Kasper
+  coordination shell -- every spoke edge has hinge degree 5 or 6 with exactly the
+  twelve mandatory fivefold disclinations -- AND (REGISTRY) the star tets the
+  development ASSIGNED all share one grain and one translation-invariant unit-cell
+  site. Star tets left unassigned because they straddle a defective neighbour are
+  don't-cares, so a good vertex keeps its crystallinity on its crystal-facing side
+  and the defect stays localized to the vertices a Pachner move actually touched
+  (the shell gate breaks for exactly those) instead of spreading by a ring. Grains
+  = connected components of interior vertices sharing a grain id. Everything else
+  is defect/boundary. `--min-size` drops coincidental sub-threshold grains
+  (calibrate against a fully-melted null, which yields ~0 grains).
 
   Registry is tracked only into the finite reference torus (single-valued; no
   continuous positions). Dislocation-type defects, where local structure is
@@ -187,11 +192,42 @@ def develop(st, rst, seed_tet, sig0):
     return assign
 
 
+def _drop_subsumed_grains(st, grain_of_tet, phase_of_grain):
+    """Un-label redundant re-seed grains: a grain whose vertex set is contained in
+    that of a single larger grain is the SAME crystal region developed a second
+    time (the covering map re-seeds wherever a defect locally blocks the flood,
+    picking an arbitrary symmetry-related frame). We drop its grain labels so its
+    tets become unassigned (don't-cares); its vertices then keep only the frame of
+    the grain that subsumes them and no longer straddle two frames of one crystal.
+    This only edits the grain->tet bookkeeping, never the manifold itself.
+
+    Only subset-of-a-SINGLE-larger-grain is dropped -- a genuine second domain
+    (real grain boundary) has interior vertices of its own that no other grain
+    covers, and holonomy-fragmented cross-phase grains (many similar-sized,
+    mutually overlapping but non-nesting patches) are left intact, so this does
+    not weaken phase discrimination."""
+    verts = collections.defaultdict(set)
+    tets = collections.defaultdict(list)
+    for t, g in grain_of_tet.items():
+        tets[g].append(t)
+        for v in st["tets"][t]:
+            verts[g].add(int(v))
+    order = sorted(verts, key=lambda g: len(verts[g]))     # smallest first
+    for i, g in enumerate(order):
+        for h in order[i + 1:]:                            # only larger-or-equal
+            if h in tets and g != h and verts[g] <= verts[h]:
+                for t in tets[g]:                          # subsumed -> unassign
+                    del grain_of_tet[t]
+                del tets[g]
+                break
+
+
 def find_grains(st, refs, idx):
     """Label sample tets by grain. Returns (grain_of_tet, sig_of_tet,
     phase_of_grain). Seeds interiors first (pure tets), so one seed grabs a
     whole grain; boundary/defect tets are reached and validated during a
-    neighbour's development or left unassigned."""
+    neighbour's development or left unassigned. Redundant re-seed grains (subsumed
+    by a larger grain) are un-labelled so their vertices carry a single frame."""
     grain_of_tet = {}
     sig_of_tet = {}
     phase_of_grain = []
@@ -219,31 +255,69 @@ def find_grains(st, refs, idx):
             if tid not in grain_of_tet:
                 grain_of_tet[tid] = gid
                 sig_of_tet[tid] = sig
+    _drop_subsumed_grains(st, grain_of_tet, phase_of_grain)
     return grain_of_tet, sig_of_tet, phase_of_grain
 
 
-def interior_vertices(st, grain_of_tet, sig_of_tet, phase_of_grain, ns_of):
-    """v -> grain id for vertices whose FULL star develops consistently into one
-    grain with a single-valued reference image MODULO the unit-cell lattice
-    (=> link-isomorphic to the reference vertex, in a consistent registry).
+def _locally_fk(st, v):
+    """Does v sit in a clean Frank-Kasper coordination shell? True iff every spoke
+    edge (v,w) has hinge degree 5 or 6 and EXACTLY twelve of them are 5.
 
-    Registry is compared by unit-cell SITE = ref_vertex % ns (ns = atoms per
-    cell), which is translation-invariant: reaching v around the sample torus at
-    reference images differing by a lattice translation (same site) is genuine
-    crystal, not a conflict. Only a true stacking/phase inconsistency changes the
-    site -- that's what excludes C14 tested against C15, and isolated motifs."""
+    The link of v is a triangulated 2-sphere, and the degree of a link node w
+    equals hinge(v,w) (both count the tets around edge (v,w)); Euler forces any
+    all-5/6 triangulated 2-sphere to carry exactly twelve fivefold vertices (the
+    mandatory disclinations, Z-class = 12 + #sixes). A single Pachner move breaks
+    this for *exactly* the vertices it touches -- a subdivided vertex gains a
+    low-degree spoke, a flipped vertex trades a fivefold spoke for a sixfold so
+    the count drops below 12 -- while every neighbour's shell is untouched. So it
+    is a local, reference-free defect gate that does NOT spread by a ring. We
+    deliberately test only spoke degrees here: neighbour FK-class and link-edge
+    degrees both shift when a neighbour is defective and would leak the defect
+    outward (that leak was the original one-ring over-flagging bug)."""
+    deg = [_edge(st, v, w) for w in st["adj"][v]]
+    return all(d in (5, 6) for d in deg) and deg.count(5) == 12
+
+
+def interior_vertices(st, grain_of_tet, sig_of_tet, phase_of_grain, ns_of):
+    """v -> grain id for interior-crystalline vertices. Two conditions, the
+    strict-seed / loose-heal pair:
+
+      GATE (strict, local): v has an intact FK shell (`_locally_fk`). This is what
+        makes a genuine wrong-degree vertex a defect while sparing its good
+        neighbours -- the defect stays localized to the vertices a move actually
+        touched instead of spreading to their 1-ring.
+      REGISTRY (loose heal): the star tets the covering map ASSIGNED all agree on
+        one grain and one unit-cell SITE. Unassigned star tets -- those the strict
+        development refused because they straddle a defective neighbour -- are
+        DON'T-CARES: a good vertex on the crystal-facing side of a defect keeps
+        its crystallinity from the tets that do develop. v needs at least one
+        assigned tet (no registry at all => not interior).
+
+    A single grain id suffices here because `find_grains` already un-labelled the
+    redundant re-seed grains that would otherwise split one crystal across two
+    frames (see `_drop_subsumed_grains`); what remains multi-grain at a vertex is
+    a genuine boundary. SITE = ref_vertex % ns (ns = atoms per cell) is
+    translation-invariant, so wrapping the sample torus to reference images
+    differing by a lattice translation (same site) is genuine crystal, not a
+    conflict; only a true stacking/phase inconsistency changes the site."""
     tets_of = collections.defaultdict(list)
     for t, tv in enumerate(st["tets"]):
         for v in tv:
             tets_of[int(v)].append(t)
     interior = {}
     for v, tl in tets_of.items():
-        gids = {grain_of_tet.get(t, -1) for t in tl}
-        if len(gids) != 1 or -1 in gids:
-            continue                                       # boundary/defect
+        if not _locally_fk(st, v):
+            continue                                       # broken shell -> defect
+        assigned = [t for t in tl if t in grain_of_tet]
+        if not assigned:
+            continue                                       # no registry -> defect
+        gids = {grain_of_tet[t] for t in assigned}
+        if len(gids) != 1:
+            continue                                       # straddles grains
         gid = gids.pop()
         ns = ns_of.get(phase_of_grain[gid], 0)
-        sites = {sig_of_tet[t][v] % ns if ns else sig_of_tet[t][v] for t in tl}
+        sites = {sig_of_tet[t][v] % ns if ns else sig_of_tet[t][v]
+                 for t in assigned}
         if len(sites) == 1:                                # consistent registry
             interior[v] = gid
     return interior
