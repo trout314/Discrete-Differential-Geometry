@@ -45,18 +45,47 @@ def analyze(tets):
                 edeg=edeg, bedges=bedges, iedges=iedges, allv=allv)
 
 
+def _vfk(a, v):
+    """Interior vertex v is Frank-Kasper (all edges {5,6}, n6 in {0,2,3,4})."""
+    d = [a["edeg"][e] for e in a["edeg"] if v in e]
+    return all(x in (5, 6) for x in d) and d.count(6) in (0, 2, 3, 4)
+
+
+# An alphabet caps how many illegal interior edges of each degree are allowed
+# (each must be a FULLY-INTERIOR edge whose endpoints are the only illegal verts).
+#   fk   : vacuum only.        deg4 : one deg-4 (4<->4 quantum).
+#   deg3 : one deg-3 (2<->3 quantum).   e34: one deg-3 AND one deg-4 (both
+#          channels; the (3,4,4)-knot's constituents).
+ALPHABETS = {"fk": {}, "deg3": {3: 1}, "deg4": {4: 1}, "e34": {3: 1, 4: 1}}
+
+
+def interior_ok(a, alphabet="fk"):
+    """Acceptance predicate for a block interior -> (accepted, species).
+
+    species is 'vac' or a name like 'deg4' / 'deg3+deg4' listing the illegal
+    edge degrees present. Every illegal edge must be one of the alphabet's
+    allowed degrees, within its count cap, fully interior; and the only illegal
+    interior vertices are the endpoints of those edges.
+    """
+    spec = ALPHABETS[alphabet]
+    bad = [e for e in a["iedges"] if a["edeg"][e] not in (5, 6)]
+    if not bad:
+        return (all(_vfk(a, v) for v in a["iverts"]), "vac")
+    degs = Counter(a["edeg"][e] for e in bad)
+    if any(d not in spec or degs[d] > spec[d] for d in degs):
+        return (False, None)
+    if not all(set(e) <= a["iverts"] for e in bad):
+        return (False, None)          # a defect edge touches the boundary
+    ep = set().union(*(set(e) for e in bad))
+    if not all(_vfk(a, v) for v in a["iverts"] - ep):
+        return (False, None)          # an extra (non-endpoint) illegal vertex
+    species = "+".join(f"deg{d}" for d in sorted(a["edeg"][e] for e in bad))
+    return (True, species)
+
+
 def fk_interior_ok(a):
-    """All interior edges deg {5,6}; all interior vertices Frank-Kasper."""
-    for e in a["iedges"]:
-        if a["edeg"][e] not in (5, 6):
-            return False
-    for v in a["iverts"]:
-        d = [a["edeg"][e] for e in a["edeg"] if v in e]
-        if any(x not in (5, 6) for x in d):
-            return False
-        if d.count(6) not in (0, 2, 3, 4):
-            return False
-    return True
+    """Back-compat: strict FK acceptance (bool)."""
+    return interior_ok(a, "fk")[0]
 
 
 # --------------------------------------------------- generic canonical labeling
