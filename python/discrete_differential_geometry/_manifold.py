@@ -131,6 +131,38 @@ class Manifold:
         """Return the variance of degree for simplices of given dimension."""
         return _lib.ddg_manifold_degree_variance(self._handle, dim)
 
+    def freeze_vertices(self, vertices, frozen: bool = True) -> None:
+        """Freeze (or unfreeze) vertices. The sampler rejects any move whose
+        support contains a frozen vertex; since every facet a move adds or
+        removes has all its vertices in the support, this preserves the frozen
+        set's entire CLOSED STAR exactly -- the facets and the degrees (hence
+        Regge curvature) of every simplex meeting a frozen vertex."""
+        arr = np.asarray(list(vertices), dtype=np.intc).ravel()
+        ptr = arr.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
+        _lib.ddg_manifold_freeze_vertices(self._handle, ptr, len(arr),
+                                          1 if frozen else 0)
+
+    def freeze_facets(self, facets) -> np.ndarray:
+        """Freeze every vertex of the given facets (rows of vertex labels).
+        This pins the facets AND the curvature on all their hinges (the
+        star-closure needed to 'fix the curvature on a shell'). Returns the
+        frozen vertex labels."""
+        verts = np.unique(np.asarray(facets, dtype=np.intc).ravel())
+        self.freeze_vertices(verts)
+        return verts
+
+    def clear_frozen(self) -> None:
+        """Unfreeze all vertices."""
+        _lib.ddg_manifold_clear_frozen(self._handle)
+
+    def vertex_frozen(self, v: int) -> bool:
+        """Is this vertex frozen?"""
+        return bool(_lib.ddg_manifold_vertex_frozen(self._handle, int(v)))
+
+    def num_frozen(self) -> int:
+        """Number of frozen vertices."""
+        return int(_lib.ddg_manifold_num_frozen(self._handle))
+
     def count_valid_moves(self) -> int:
         """Count valid Pachner moves (including stellar subdivisions)."""
         return _lib.ddg_manifold_count_valid_moves(self._handle)

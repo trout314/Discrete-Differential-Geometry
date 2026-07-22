@@ -271,6 +271,95 @@ extern(C) int ddg_manifold_euler_characteristic(void* handle) nothrow
     catch (Exception e) { setError(e.msg); return 0; }
 }
 
+/// Freeze (frozen=1) or unfreeze (frozen=0) a list of vertices. The sampler
+/// then rejects any move whose support contains a frozen vertex, preserving
+/// the frozen set's entire closed star (facets and hinge degrees/curvature).
+extern(C) int ddg_manifold_freeze_vertices(void* handle, const(int)* verts,
+                                           long n, int frozen) nothrow
+{
+    clearError();
+    try
+    {
+        if (handle is null) { setError("null handle"); return -1; }
+        if (verts is null && n > 0) { setError("null verts"); return -1; }
+        auto h = cast(ManifoldHandle*) handle;
+        switch (h.dim)
+        {
+            case 2:
+                foreach (i; 0 .. n)
+                    (cast(ManifoldWrapper!2*) h.ptr).mfd.setVertexFrozen(verts[i], frozen != 0);
+                return 0;
+            case 3:
+                foreach (i; 0 .. n)
+                    (cast(ManifoldWrapper!3*) h.ptr).mfd.setVertexFrozen(verts[i], frozen != 0);
+                return 0;
+            case 4:
+                foreach (i; 0 .. n)
+                    (cast(ManifoldWrapper!4*) h.ptr).mfd.setVertexFrozen(verts[i], frozen != 0);
+                return 0;
+            default: setError("bad dimension"); return -1;
+        }
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Unfreeze all vertices (drops the flag storage; restores the fast path).
+extern(C) int ddg_manifold_clear_frozen(void* handle) nothrow
+{
+    clearError();
+    try
+    {
+        if (handle is null) { setError("null handle"); return -1; }
+        auto h = cast(ManifoldHandle*) handle;
+        switch (h.dim)
+        {
+            case 2: (cast(ManifoldWrapper!2*) h.ptr).mfd.clearFrozenVertices(); return 0;
+            case 3: (cast(ManifoldWrapper!3*) h.ptr).mfd.clearFrozenVertices(); return 0;
+            case 4: (cast(ManifoldWrapper!4*) h.ptr).mfd.clearFrozenVertices(); return 0;
+            default: setError("bad dimension"); return -1;
+        }
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Query: 1 if vertex is frozen, 0 if not, -1 on error.
+extern(C) int ddg_manifold_vertex_frozen(void* handle, int v) nothrow
+{
+    clearError();
+    try
+    {
+        if (handle is null) { setError("null handle"); return -1; }
+        auto h = cast(ManifoldHandle*) handle;
+        switch (h.dim)
+        {
+            case 2: return (cast(ManifoldWrapper!2*) h.ptr).mfd.vertexFrozen(v) ? 1 : 0;
+            case 3: return (cast(ManifoldWrapper!3*) h.ptr).mfd.vertexFrozen(v) ? 1 : 0;
+            case 4: return (cast(ManifoldWrapper!4*) h.ptr).mfd.vertexFrozen(v) ? 1 : 0;
+            default: setError("bad dimension"); return -1;
+        }
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Number of frozen vertices (-1 on error).
+extern(C) long ddg_manifold_num_frozen(void* handle) nothrow
+{
+    clearError();
+    try
+    {
+        if (handle is null) { setError("null handle"); return -1; }
+        auto h = cast(ManifoldHandle*) handle;
+        switch (h.dim)
+        {
+            case 2: return cast(long)(cast(ManifoldWrapper!2*) h.ptr).mfd.numFrozenVertices();
+            case 3: return cast(long)(cast(ManifoldWrapper!3*) h.ptr).mfd.numFrozenVertices();
+            case 4: return cast(long)(cast(ManifoldWrapper!4*) h.ptr).mfd.numFrozenVertices();
+            default: setError("bad dimension"); return -1;
+        }
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
 extern(C) int ddg_manifold_f_vector(void* handle, long* out_buf, int buf_len) nothrow
 {
     clearError();

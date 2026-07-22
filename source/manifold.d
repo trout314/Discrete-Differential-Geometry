@@ -44,6 +44,17 @@ private:
     // Zero means vertex not present. Avoids hashing for the most frequent lookups.
     uint[] _vertexDegrees;
 
+    // Frozen-vertex flags, indexed like _vertexDegrees (parallel flat array so
+    // the sampler's frozen check shares the hot vertex-indexed access pattern;
+    // ~V bytes, L1-resident). A frozen vertex's closed star is immutable under
+    // MCMC: the sampler rejects any move whose support contains a frozen
+    // vertex, and since every facet a move adds or removes has all its
+    // vertices in the move support, no facet containing a frozen vertex is
+    // ever created or destroyed -- hence the degrees of ALL simplices meeting
+    // the frozen set are invariant (curvature pinned, star-closure built in).
+    // Empty array (the default) means nothing is frozen.
+    ubyte[] _vertexFrozen;
+
     // Per-dimension HashMaps for dimensions 1 .. dimension-1 only.
     // Dimension 0 uses _vertexDegrees; dimension `dimension` uses _facetArrayIdx.
     static foreach (_d_; 1 .. dimension_)
@@ -165,11 +176,60 @@ public:
     this(this)
     {
         _vertexDegrees = _vertexDegrees.dup;
+        _vertexFrozen = _vertexFrozen.dup;
         static foreach (d; 1 .. dimension_)
             mixin("_dimMap" ~ to!string(d) ~ " = _dimMap" ~ to!string(d) ~ ".dup;");
 
         _facetArray = _facetArray.dup();
         _facetArrayIdx = _facetArrayIdx.dup;
+    }
+
+    /***************************************************************************
+    Mark or unmark a vertex as frozen. The MCMC sampler rejects any move whose
+    support contains a frozen vertex, which preserves the frozen set's entire
+    closed star (facets AND the degrees/curvature of every simplex meeting a
+    frozen vertex). See _vertexFrozen for why this gives star-closure for free.
+    */
+    void setVertexFrozen()(Vertex v, bool frozen)
+    {
+        assert(v >= 0, "negative vertex label");
+        if (cast(size_t) v >= _vertexFrozen.length)
+        {
+            if (!frozen) return;                    // nothing to clear
+            _vertexFrozen.length = cast(size_t) v + 1;
+        }
+        _vertexFrozen[cast(size_t) v] = frozen ? 1 : 0;
+    }
+
+    /// Is this vertex frozen? (False for labels beyond the flag array.)
+    bool vertexFrozen()(Vertex v) const pure nothrow @nogc @safe
+    {
+        return v >= 0 && cast(size_t) v < _vertexFrozen.length
+            && _vertexFrozen[cast(size_t) v] != 0;
+    }
+
+    /// True if any vertex in `verts` is frozen (the sampler's rejection test).
+    bool anyFrozen(R)(R verts) const pure nothrow @nogc @safe
+        if (isIRof!(R, const(Vertex)))
+    {
+        if (_vertexFrozen.length == 0) return false;   // fast path: feature off
+        foreach (v; verts)
+            if (vertexFrozen(v)) return true;
+        return false;
+    }
+
+    /// Unfreeze everything (drops the flag array; restores the fast path).
+    void clearFrozenVertices()()
+    {
+        _vertexFrozen.length = 0;
+    }
+
+    /// Number of currently frozen vertices.
+    size_t numFrozenVertices()() const pure nothrow @nogc @safe
+    {
+        size_t n = 0;
+        foreach (f; _vertexFrozen) n += (f != 0);
+        return n;
     }
 
     /***************************************************************************

@@ -197,6 +197,24 @@ _lib.ddg_manifold_num_facets.errcheck = _check_int
 _lib.ddg_manifold_euler_characteristic.argtypes = [ctypes.c_void_p]
 _lib.ddg_manifold_euler_characteristic.restype = ctypes.c_int
 
+_lib.ddg_manifold_freeze_vertices.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_int), ctypes.c_long, ctypes.c_int,
+]
+_lib.ddg_manifold_freeze_vertices.restype = ctypes.c_int
+_lib.ddg_manifold_freeze_vertices.errcheck = _check_int
+
+_lib.ddg_manifold_clear_frozen.argtypes = [ctypes.c_void_p]
+_lib.ddg_manifold_clear_frozen.restype = ctypes.c_int
+_lib.ddg_manifold_clear_frozen.errcheck = _check_int
+
+_lib.ddg_manifold_vertex_frozen.argtypes = [ctypes.c_void_p, ctypes.c_int]
+_lib.ddg_manifold_vertex_frozen.restype = ctypes.c_int
+_lib.ddg_manifold_vertex_frozen.errcheck = _check_int
+
+_lib.ddg_manifold_num_frozen.argtypes = [ctypes.c_void_p]
+_lib.ddg_manifold_num_frozen.restype = ctypes.c_long
+_lib.ddg_manifold_num_frozen.errcheck = _check_int
+
 _lib.ddg_manifold_f_vector.argtypes = [
     ctypes.c_void_p, ctypes.POINTER(ctypes.c_long), ctypes.c_int,
 ]

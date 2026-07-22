@@ -1861,12 +1861,16 @@ bool mcmcStep(Vertex, P)(
 
             // Support = the 6 vertices whose stars the move touches.
             Vertex[6] hingeSupport = void;
+            hingeSupport[0 .. 2] = hm.removedEdge[];
+            hingeSupport[2 .. 6] = hm.linkCycle[];
             if (counters !is null)
-            {
-                hingeSupport[0 .. 2] = hm.removedEdge[];
-                hingeSupport[2 .. 6] = hm.linkCycle[];
                 addSupport(counters.proposed, hingeSupport[]);
-            }
+
+            // Frozen-region rejection: every facet this move adds/removes has
+            // all its vertices in the support, so rejecting here preserves the
+            // frozen set's closed star exactly (facets + hinge degrees).
+            if (mfd.anyFrozen(hingeSupport[]))
+                continue;
 
             if (!mfd.hasValidHingeMove(hm))
                 continue;
@@ -1941,14 +1945,19 @@ bool mcmcStep(Vertex, P)(
         // Support = the 5 vertices of the bistellar ball (one glued 4-simplex).
         Vertex[nVerts + 1] ballBuf = void;
         Vertex[] ball;
-        if (counters !is null)
         {
             size_t nb = 0;
             foreach (v; bm.center) ballBuf[nb++] = v;
             foreach (v; bm.coCenter) ballBuf[nb++] = v;
             ball = ballBuf[0 .. nb];
-            addSupport(counters.proposed, ball);
         }
+        if (counters !is null)
+            addSupport(counters.proposed, ball);
+
+        // Frozen-region rejection (see hinge branch). For a 1->4 move the
+        // coCenter vertex is new/unused, hence never frozen.
+        if (mfd.anyFrozen(ball))
+            continue;
 
         if (!mfd.hasValidMove(bm))
             continue;
@@ -2182,6 +2191,90 @@ unittest
     long flatDegTot = 0;
     foreach (k; 0 .. 8) flatDegTot += flat[24 + k];
     flatDegTot.shouldEqual(c.nNetVerts);
+}
+
+/// Frozen vertices: the sampler must preserve the frozen set's closed star
+/// EXACTLY (facets and the degrees of every simplex meeting a frozen vertex)
+/// while the rest of the manifold churns freely.
+unittest
+{
+    import std.algorithm : canFind;
+
+    struct TestParams
+    {
+        int numFacetsTarget = 48;
+        real hingeDegreeTarget = 4.8;
+        real numFacetsCoef = 0.05;
+        real numHingesCoef = 0.0;
+        real hingeDegreeVarianceCoef = 0.0;
+        real coDim3DegreeVarianceCoef = 0.0;
+        real hingeDegreeTargetCoef = 0.1;
+        real coDim3DegreeTargetCoef = 0.0;
+        real coDim3DegreeTarget = 12.0;
+    }
+
+    alias BM = BistellarMove!3;
+    auto mfd = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+    // Grow so there is bulk to churn away from the frozen star.
+    mfd.doMove(BM([0,1,2,3], [5]));
+    mfd.doMove(BM([0,1,2,4], [6]));
+    mfd.doMove(BM([1,2,3,4], [7]));
+    mfd.doMove(BM([0,1,2,5], [8]));
+
+    // Freeze vertex 7 and snapshot its closed star + incident edge degrees.
+    mfd.setVertexFrozen(7, true);
+    assert(mfd.vertexFrozen(7));
+    assert(!mfd.vertexFrozen(3));
+    assert(mfd.numFrozenVertices == 1);
+
+    int[4][] frozenStar;
+    foreach (f; mfd.facets)
+        if (f.canFind(7))
+        {
+            int[4] ff;
+            ff[] = f[0 .. 4];
+            frozenStar ~= ff;
+        }
+    size_t[int[2]] edgeDegs;      // degrees of edges at the frozen vertex
+    foreach (e; mfd.simplices(1))
+        if (e.canFind(7))
+        {
+            int[2] ee;
+            ee[] = e[0 .. 2];
+            edgeDegs[ee] = mfd.degree(e);
+        }
+    immutable frozenVtxDeg = mfd.degree([7]);
+
+    auto params = TestParams();
+    auto currentObj = mfd.objective(params);
+    int[] unusedVertices;
+    ulong hingeTries, hingeAccepts;
+    ulong[4] bTries, bAccepts;
+    int accepted = 0;
+    foreach (step; 0 .. 4000)
+    {
+        if (mfd.mcmcStep(currentObj, unusedVertices, params, 0.5,
+                hingeTries, hingeAccepts, bTries, bAccepts))
+            accepted++;
+    }
+    assert(accepted > 50, "sampler froze entirely; test not exercising moves");
+
+    // The frozen closed star is exactly intact.
+    foreach (ff; frozenStar)
+        assert(mfd.contains(ff[]), "frozen-star facet destroyed");
+    size_t starCount = 0;
+    foreach (f; mfd.facets)
+        if (f.canFind(7)) starCount++;
+    starCount.shouldEqual(frozenStar.length);   // no facet added at 7 either
+    mfd.degree([7]).shouldEqual(frozenVtxDeg);
+    foreach (ee, d; edgeDegs)
+        mfd.degree(ee[]).shouldEqual(d);        // hinge curvature at 7 pinned
+
+    // Unfreezing restores full dynamics (flag actually clears).
+    mfd.clearFrozenVertices();
+    assert(!mfd.vertexFrozen(7));
+    assert(mfd.numFrozenVertices == 0);
+    assert(mfd.findProblems.length == 0);
 }
 
 /// Vertex 6-valence potential: incremental counter state and running total
