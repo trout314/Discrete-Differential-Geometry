@@ -9,7 +9,9 @@ record everything the OCP/Stillinger-Lovett test needs:
     charge-budget audit;
   * achieved mean edge degree each TS (pin satisfaction -> neutrality budget).
 
-args: cell lam bump zleg cimp burn span ts snap mcell seed out
+args: cell lam bump zleg cimp burn span ts snap mcell seed out [start] [startcoc]
+  optional start/startcoc: resume/init from a snapshot .mfd + its .cocycle.npz
+  (cell still supplies num_facets_target and the native degree).
 """
 import json
 import os
@@ -34,12 +36,14 @@ CELL = a[1]; LAM = float(a[2]); BUMP = float(a[3])
 ZLEG = float(a[4]); CIMP = float(a[5])
 BURN = int(a[6]); SPAN = int(a[7]); TS = int(a[8]); SNAP = int(a[9])
 MCELL = int(a[10]); SEED = int(a[11]); OUT = a[12]
+START = a[13] if len(a) > 13 else None
+STARTCOC = a[14] if len(a) > 14 else None
 
 ddg.set_random_seed(SEED)
 ref = ddg.Manifold.load(CELL, 3)
 native = float(edges_from_facets(ref.facets())[1].mean())
 et = native + BUMP
-m = ddg.Manifold.load(CELL, 3)
+m = ddg.Manifold.load(START if START else CELL, 3)
 params = ddg.SamplerParams(
     num_facets_target=ref.num_facets, num_facets_coef=0.1,
     hinge_degree_target=et, num_hinges_coef=0.0,
@@ -48,9 +52,13 @@ params = ddg.SamplerParams(
 s = ddg.ManifoldSampler(m, params)
 s.set_n6_potential(ZLEG * LAM, CIMP * LAM, tilt=[0.0] * 5)
 v = s.manifold
-edges = np.asarray(v.simplices(1))
-s.enable_cocycle(edges, coc.build_from_positions(
-    edges, reference_frac_positions("r", MCELL), MCELL))
+if STARTCOC:
+    e0, w0, _ = coc.load_cocycle(STARTCOC)
+    s.enable_cocycle(np.asarray(e0), np.asarray(w0))
+else:
+    edges = np.asarray(v.simplices(1))
+    s.enable_cocycle(edges, coc.build_from_positions(
+        edges, reference_frac_positions("r", MCELL), MCELL))
 
 log = open(OUT + ".ts.jsonl", "w")
 t0 = time.time()

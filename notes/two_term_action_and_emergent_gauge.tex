@@ -1,0 +1,800 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1.1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage[colorlinks=true,linkcolor=blue!60!black,citecolor=blue!60!black,urlcolor=blue!60!black]{hyperref}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}{Proposition}
+\newtheorem*{remark}{Remark}
+
+\newcommand{\kh}{\hat{\mathbf k}}
+\newcommand{\kv}{\mathbf k}
+\newcommand{\nh}{\hat{\mathbf n}}
+\newcommand{\Nfk}{n_6}
+\DeclareMathOperator{\lk}{lk}
+\DeclareMathOperator{\divg}{div}
+
+\title{A Minimal Action for Triangulated Gravity Statics\\
+and the Emergent Gauge Structure of the Six-Edge Disclination Web\\[4pt]
+\large Session notes: aesthetics of the objective function, the fullerene theorem,\\
+the $S_{66}(\mathbf k)$ pinch-point measurement, and the exact-segment vector channel}
+\author{Working notes, Discrete Differential Geometry project}
+\date{July 20--22, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+We summarize a sequence of results on the statistical mechanics of $3$-torus
+triangulations sampled by Metropolis--Hastings over bistellar and hinge moves,
+viewed as a discrete ADM-type model: a tetrahedrally close-packed (TCP)
+crystalline host carrying a gas of quantized curvature defects. The main
+findings: (i) the working objective decomposes into a cosmological volume pin,
+an $R^2$-type curvature-square term on hinges, and a Frank--Kasper legality
+potential; (ii) an ablation ladder shows the third term is \emph{almost}
+redundant --- above a sharp stiffness threshold the two-term action alone
+sustains the crystal vacuum and a quantized defect gas; (iii) the remaining
+content of the legality term splits into a part that is a \emph{theorem}
+(disclination lines cannot end at edge-legal vertices, by the nonexistence of
+one-hexagon fullerenes) and a part that is a weak junction-valence cap;
+(iv) the degree-six edge web behaves as an emergent gauge field whose lattice
+Gauss law we measured through the longitudinal suppression of its director
+structure factor $S_{66}(\mathbf k)$, screened by monopoles (legality
+violations) at the observed density; and (v) an exact-segment-integral
+construction upgrades this diagnostic from a smeared inequality to an identity:
+the longitudinal power of the oriented six-flux equals the monopole-charge
+structure factor divided by $k^2$, vanishing identically on a closed web.
+Supporting results on host-crystal choice, constraint-preserving block moves,
+a frozen-subset sampler, and equilibrium certification are collected along the
+way.
+\end{abstract}
+
+\tableofcontents
+
+%--------------------------------------------------------------------
+\section{Setting and notation}
+\label{sec:setting}
+
+Configurations are combinatorial triangulations of $T^3$ with $N_3$
+tetrahedra, all simplices equilateral in the Regge sense. Curvature is
+concentrated on hinges (edges): an edge $e$ of degree $\deg e$ carries deficit
+\begin{equation}
+\delta_e \;=\; 2\pi - \theta\,\deg e,
+\qquad
+\theta = \arccos\tfrac13 \approx 1.230959\,,
+\label{eq:deficit}
+\end{equation}
+so the degree of an exactly flat hinge is $2\pi/\theta \approx 5.104299$,
+and the physical degrees carry
+\[
+\delta_3 = +2.590,\quad
+\delta_4 = +1.359,\quad
+\delta_5 = +0.128,\quad
+\delta_6 = -1.103 \quad (\mathrm{rad}).
+\]
+Since flat degree is not an integer, flat space is geometrically frustrated:
+the ground states are tetrahedrally close-packed (Frank--Kasper) structures
+\cite{frank-kasper,nelson,sadoc-mosseri} whose edges are degree $5$ and $6$
+only, with the degree-6 edges forming a closed line network --- the
+\emph{disclination web} (each six-edge is a $-72^\circ$ disclination
+segment). Vertex classes are labelled by $\Nfk$, the number of incident
+six-edges: $Z12$ ($\Nfk=0$), $Z14$ ($\Nfk=2$, line passes through), $Z15$
+($\Nfk=3$, Y-junction), $Z16$ ($\Nfk=4$, X-junction). \emph{FK-legality}
+comprises the edge condition ($\deg e \in \{5,6\}$) and the class condition
+($\Nfk \in \{0,2,3,4\}$).
+
+The sampler is Metropolis over bistellar (Pachner) moves plus hinge moves,
+with a configurable objective. The production host is the TCP crystal $R$
+in an $m\times m\times m$ supercell ($m=4$ throughout: $N_3 \approx 47{,}500$,
+$E \approx 68{,}000$ edges, six-fraction $\approx 0.105$). Defect positions
+use harmonic torus (cocycle) coordinates maintained incrementally by the
+sampler. The elementary excitation of the crystal is the
+\emph{$(3,4,4)$-knot}: an exact positive-disclination knot of one
+degree-3 and two degree-4 edges, carrying quantized curvature
+$q \approx -1.05$ rad relative to the cell mean. Equilibrium claims are
+gated by the project standard: quantized split-$\hat R < 1.05$, minimum
+effective sample size $\geq 100$, two-sided initialization.
+
+%--------------------------------------------------------------------
+\section{What the working objective secretly is}
+\label{sec:decomposition}
+
+The question posed: \emph{what is the most aesthetically pleasing objective
+function --- what most naturally captures local GR dynamics?} The original
+motivation was the picture of a gravitational wave distorting a sphere
+without changing its volume (hence the early vertex-degree-variance
+penalties). Decomposing the objective that actually produced the defect
+liquid ($\lambda = 0.4$):
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+term & implementation & gravity reading \\
+\midrule
+volume pin & $(N_3-\bar N)^2$ & cosmological-constant / lapse-fixing term \\
+EDQ & $\sum_e (\deg_e - \bar d)^2 \propto \sum_e(\delta_e-\bar\delta)^2$ &
+$R^2$ curvature-square on hinges \cite{hamber-williams} \\
+$n_6$ potential & $\mathrm{dist}^2(\Nfk,\{0,2,3,4\}) + m^2$ &
+FK scaffolding (the inelegant part) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Two of the three terms are standard gravity actions in disguise. Moreover,
+for equilateral complexes the Regge (Einstein--Hilbert) action is
+\emph{linear} in the $f$-vector,
+\begin{equation}
+\sum_e \delta_e \;=\; 2\pi E - 6\,\theta N_3\,,
+\end{equation}
+so ``EH $+$ $\Lambda$'' is precisely the classic dynamical-triangulations
+action \cite{ajl}, of which our pins are the soft Lagrange-multiplier
+version; the mean-degree ``bump'' knob is literally a background-curvature
+source.
+
+\paragraph{What was right and wrong about the volume-preserving instinct.}
+The instinct --- gap the scalar/volume sector, leave the transverse-traceless
+sector soft --- targets exactly the channel structure later measured in the
+liquid (scalar power $0.0023\pm0.0004$ vs.\ TT/V/L $\approx 0.011$, a
+$5\times$ gap). The error was in the variable: vertex degree is a proxy for
+local volume $\sqrt g$, but in this geometry \emph{flat space is not
+vertex-homogeneous} --- the TCP vacuum requires coordinations
+$12/14/15/16$ in crystalline proportion, so a vertex-degree-variance penalty
+declares the vacuum itself defective and fights the crystal. In Regge
+calculus curvature lives on hinges, not vertices; the corrected form of the
+same instinct is: fix the volume \emph{globally} (one soft $\Lambda$ term
+--- total volume, which a passing wave preserves), penalize \emph{curvature}
+locally ($R^2$ on hinges). Volume-preserving shape distortions ---
+rearrangements of the six-web at fixed deficit budget --- remain the soft
+directions. This suggests the candidate minimal action
+\begin{equation}
+\boxed{\;S \;=\; c_\Lambda\,(N_3-\bar N)^2 \;+\;
+c_R \sum_e (\delta_e - \bar\delta)^2\;}
+\label{eq:twoterm}
+\end{equation}
+--- two couplings, two geometric invariants, no privileged vertex
+taxonomies --- \emph{if} the $n_6$ term proves redundant.
+
+\paragraph{Two sharpenings before the test.}
+(1) \emph{EDQ is blind within the pure-$\{5,6\}$ manifold.} The deficits are
+a function of the degree multiset alone, so every pure-$\{5,6\}$ state at a
+given six-fraction has identical EDQ energy: whatever order emerges under
+EDQ-only is selected by entropy and realizability, not energy. Note also
+the link sum rule: for a vertex whose link is a triangulated $S^2$ with
+vertex valences equal to the incident edge degrees, Euler's formula gives
+$\sum_{v \in \lk} (6 - \mathrm{val}(v)) = 12$; hence pure-$\{5,6\}$ forces
+\emph{exactly twelve} five-edges per vertex. Edge-legality alone already
+fixes most of the FK vertex structure. What it does not obviously force is
+the class condition: $\Nfk = 1$ (``Z13'') and $\Nfk \geq 5$ (``Z17$^+$'')
+are edge-legal but class-illegal.
+(2) \emph{The $n_6$ term, decoded, is a line-closure condition.} Reading
+$\{0,2,3,4\}$ as web topology (none / passthrough / Y / X), the forbidden
+$\Nfk = 1$ is a disclination line \emph{ending in the bulk} --- a six-web
+monopole. ``Disclination lines do not end'' is a genuine identity of
+continuum disclination theory (a discrete Bianchi-type condition), so the
+term is respectable physics in an ugly implementation. The ablation question
+therefore sharpens to: \emph{is line closure emergent, or must it be
+imposed?}
+
+%--------------------------------------------------------------------
+\section{The EDQ-only ladder: a sharp threshold}
+\label{sec:ladder}
+
+The test: rerun the coupling ladder with the $n_6$ potential deleted
+($z_{\rm leg} = c_{\rm imp} = 0$), EDQ and volume pin retained, $m=4$ host,
+$12$k sweeps per rung.
+
+\begin{center}
+\begin{tabular}{lllll}
+\toprule
+$\lambda_{\rm EDQ}$ & state & legal-edge frac & legal-vertex frac & $\langle \deg_e\rangle$ \\
+\midrule
+0.4 & crumple-melted & 0.60 & 0.0002 & \textbf{5.62} \\
+0.8 & dense disclination fluid & 0.80 & 0.057 & 5.115 \\
+1.2 & \textbf{crystal + defect gas} & --- & 0.991 & 5.10432 \\
+1.6 & crystal, $n_{\rm ill}=2$ & --- & $\approx 1$ & flat \\
+2.4 & perfect crystal & 1.0 & 1.0 & flat \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Two failure modes at low stiffness are physically instructive. At
+$\lambda_{\rm EDQ}=0.4$ (the stiffness at which the three-term liquid is
+stable) the mean degree runs away to $5.62$: with only a soft quadratic
+regulator the state crumples --- the classic dynamical-triangulations
+crumpling instability leaking through an undersized $R^2$ term. At $0.8$
+the mean degree is held but pure-$\{5,6\}$ order does not assemble
+(legal-vertex fraction $6\%$), consistent with EDQ's energetic blindness on
+the constraint surface. Above a sharp threshold between $0.8$ and $1.2$,
+however, the two-term action \eqref{eq:twoterm} sustains \emph{both} phases
+of interest: the TCP crystal vacuum ($\lambda_{\rm EDQ} \gtrsim 1.6$) and a
+crystal-hosted quantized defect gas ($\lambda_{\rm EDQ} \approx 1.2$,
+$n_{\rm ill} \sim 60$--$90$, legal-vertex fraction $0.991$, mean degree
+pinned at flat). (Caveat: the $\lambda_{\rm EDQ}=1.2$ gas showed a residual
+drift $61 \to 92$ over the $12$k-sweep window and has not yet passed the
+certification gates; threshold-region sensitivity is expected.)
+
+%--------------------------------------------------------------------
+\section{The census and the fullerene theorem}
+\label{sec:fullerene}
+
+If line closure must be imposed, the EDQ-only gas should swarm with Z13
+endpoints. The census over pure-$\{5,6\}$ vertices:
+
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+state & edge-illegal vertices & Z13 endpoints ($\Nfk{=}1$) & Z17$^+$ ($\Nfk\geq 5$) \\
+\midrule
+$\lambda_{\rm EDQ}=1.2$ gas (no $n_6$ term) & 102 & \textbf{0} & 21 \;{\footnotesize($\Nfk = 5{:}14,\; 6{:}5,\; 8{:}2$)} \\
+$\lambda_{\rm EDQ}=1.6$ cold (no $n_6$ term) & 0 & \textbf{0} & 0 \\
+$\lambda=0.4$ liquid (with $n_6$ term) & 61 & \textbf{0} & 1 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Zero line endpoints appear anywhere --- even with the closure term deleted.
+This is not luck; it is a theorem.
+
+\begin{theorem}[line closure is free]
+No vertex of a combinatorial $3$-manifold whose incident edges all have
+degree $5$ or $6$ can have exactly one incident degree-6 edge.
+\end{theorem}
+
+\begin{proof}[Proof sketch]
+The link of such a vertex is a triangulated $S^2$ whose vertex valences are
+the incident edge degrees: twelve $5$-valent vertices (link sum rule,
+\S\ref{sec:decomposition}) and $h$ $6$-valent ones, where $h = \Nfk$. Its
+dual is a trivalent polyhedron with twelve pentagonal and $h$ hexagonal
+faces --- a fullerene. Fullerenes exist for every $h \geq 0$ \emph{except}
+$h = 1$ \cite{grunbaum-motzkin}. Hence $\Nfk = 1$ is combinatorially
+impossible at an edge-legal vertex.
+\end{proof}
+
+So the ``discrete Bianchi identity'' half of the $n_6$ term was enforcing a
+combinatorial impossibility: \emph{web closure follows from edge-legality
+alone}. The term's only non-redundant work is suppressing Z17$^+$
+over-branchings --- present at $21/10{,}176 \approx 0.2\%$ of vertices in
+the EDQ-only gas, and arguably physically admissible anyway (higher-valence
+junctions occur in real TCP and quasicrystalline systems).
+
+\paragraph{The aesthetic verdict.}
+The two-term action \eqref{eq:twoterm} generates the whole hierarchy:
+\[
+R^2\ \text{stiffness}
+\;\Rightarrow\; \text{pure-}\{5,6\}\ \text{preference}
+\;\Rightarrow\; \underbrace{\text{closed web}}_{\text{fullerene theorem}}
+\;\Rightarrow\; \text{emergent Gauss law}
+\;\Rightarrow\; \text{(with monopole suppression) Coulomb-phase statics.}
+\]
+FK-legality, line closure, and the gauge structure are theorems or
+thermodynamics --- none of them axioms. The original ``volume fixed, shape
+free'' instinct survives exactly, rephrased on hinges. Each arrow above now
+has either a measurement or a proof behind it; the last one
+(\S\ref{sec:s66}--\ref{sec:vector}) is measured but currently
+monopole-screened.
+
+%--------------------------------------------------------------------
+\section{Interlude: is $R$ the right host crystal?}
+\label{sec:host}
+
+\begin{center}
+\begin{tabular}{lllll}
+\toprule
+host & native $\langle\deg\rangle$ & offset from flat ($5.10430$) & six-web & classes \\
+\midrule
+$R$ & 5.10423 & $-7\times10^{-5}$ (flat) & bent lines, Y and X junctions & all four \\
+C15 (Laves) & 5.1000 & $-0.0043$ & diamond lattice of X-nodes & Z12, Z16 \\
+A15 & 5.1111 & $+0.0068$ & parallel straight lines, no junctions & Z12, Z14 \\
+$\sigma$ & 5.1089 & $+0.0046$ & planar nets & Z12/14/15 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+$R$'s native mean degree sits within $7\times10^{-5}$ of the ideal flat
+value --- as far as we know \emph{the} flat TCP in the equilateral-Regge
+sense. This is load-bearing for the charged-gas program: with $R$,
+``unpinned vacuum'' $\approx$ ``zero-curvature slice,'' so the bump knob
+dopes charge around genuine neutrality. C15 sits on a permanent $-0.0043$
+offset (pinning it flat is already a hard positive bump), so the
+dilute-neutral regime does not exist there. C15's roles are elsewhere:
+host-independence control for the channel measurements, the natural
+laboratory for the block-move/transport program (the synchro-Shockley /
+polytype literature lives in the Laves family, and its web --- a diamond
+lattice of X-junctions --- is the simplest closed network), and a neutral
+homogeneous positive-curvature (de Sitter-like) background for free. A15 is
+the ``hydrogen atom'' of line dynamics: three families of straight,
+junction-free disclination lines. Conclusion: keep $R$ primary for neutral
+statics; migrate interpretive web work to C15/A15 when the six-web becomes
+the protagonist.
+
+%--------------------------------------------------------------------
+\section{The block-move algebra (status: aspiration with three pillars)}
+\label{sec:blockmoves}
+
+``Block move algebra'' is our coinage, naming a compound of established
+results plus one project-specific aspiration.
+
+\emph{Pillar 1 --- moves as dynamics in discrete gravity.} Pachner's theorem
+\cite{pachner} (bistellar moves connect PL-homeomorphic triangulations) is
+the ergodicity statement for the unconstrained manifold; Sorkin's tent moves
+\cite{sorkin} and Dittrich--H\"ohn's canonical simplicial gravity
+\cite{dittrich-hohn} formulate discrete time evolution literally as Pachner
+move sequences, with the Bahr--Dittrich warning that discretization
+generically breaks diffeomorphism symmetry \cite{bahr-dittrich}. In LQG the
+Hamiltonian constraint acts by local graph moves \cite{thiemann}; in TQFT
+the $2\!\leftrightarrow\!3$ move consistency \emph{is} the pentagon identity
+--- the cleanest precedent for ``relations among moves are algebraic
+identities.''
+
+\emph{Pillar 2 --- move sets on constrained manifolds.} Worm and loop
+algorithms \cite{prokofev-svistunov}, and quasicrystal phason flips, all
+solve our structural problem: single local moves exit the constraint
+manifold, so one builds composite moves that stay on it and proves
+flip-connectivity. Single Pachner moves provably cannot preserve
+FK-legality; the constrained analog of Pachner's theorem
+(``FK-flip-connectivity'') is the hard open theorem.
+
+\emph{Pillar 3 --- the target structure.} The hypersurface-deformation
+algebra \cite{adm}
+\begin{equation}
+\{H[N], H[M]\} \;=\; D\!\left[q^{ab}(N\partial_b M - M\partial_b N)\right]:
+\end{equation}
+two local time-pushes at different points fail to commute by a spatial
+shift.
+
+\emph{The aspiration.} Generators: framed-boundary filling swaps $(R,R')$
+--- two distinct FK-legal fillings of the same boundary with matching
+per-boundary-edge interior degrees (``framing''), the atomic moves that stay
+exactly on the constraint surface. They compose partially (a groupoid), and
+the desired structure lives in the relations: disjoint supports commute
+(locality for free); the conjecture-shaped hope is that commutators of
+overlapping moves generate the defect-transport (``shift'') moves --- a
+discrete echo of $\{H,H\} \sim D$, in which the momentum sector is not added
+but \emph{is} the commutator subalgebra. Status: kinematics built and
+validated (framed boundaries, canonical forms, move detection by
+enumeration); no explicit generator yet (the enumeration wall); the
+algebraic layer unexplored. Structurally satisfying division of labor: in
+ADM, $H$ is a term in the action while $D$ generates the gauge flow ---
+\emph{penalties for $H$, moves for $D$} is arguably the correct
+discretization, not a workaround.
+
+%--------------------------------------------------------------------
+\section{The frozen-subset sampler}
+\label{sec:frozen}
+
+Motivated by the shell-fixing idea (fix curvature on a spherical shell,
+sample the rest --- boundary-condition and holographic experiments), a
+subset-constrained sampler was designed and implemented in the D core.
+
+\paragraph{Freezing tetrahedra does not fix curvature.} Curvature lives on
+hinges, and an edge's deficit depends on \emph{all} incident tetrahedra,
+including unfrozen ones outside the set; a move in the collar changes shell
+deficits without touching frozen tetrahedra. To pin the curvature on a set
+of hinges one must freeze the \emph{closed star} of those hinges.
+
+\paragraph{Support containment makes vertex-freezing exact.} The
+implementation freezes \emph{vertices}: the sampler rejects any move whose
+support (bistellar ball $\leq 5$ vertices; hinge support $6$) contains a
+frozen vertex. Since every facet a move adds or removes has all its vertices
+in the support, vertex freezing preserves the frozen set's entire closed
+star exactly --- facets \emph{and} all hinge degrees, hence all pinned
+curvature; star-closure is built in via \texttt{freeze\_facets}. Hard
+rejection by a fixed predicate restricts the chain to the sub-configuration
+space and preserves detailed balance there. Storage is a byte array parallel
+to the hot per-vertex degree array (memory-bound code; bit-stealing the
+degree array was rejected as corruption risk across $\sim 25$ arithmetic
+call sites for no measurable gain). Validation: D unittest (frozen closed
+star exactly preserved over $4{,}000$ mixed MCMC steps) and an end-to-end
+Python melt test ($300$ sweeps of full melt around a frozen shell; all $198$
+star facets and $166$ hinge degrees bit-identical). Overhead $+2.0\%$ with
+$17$ frozen vertices; feature-off fast path in the noise.
+
+\paragraph{What it enables.} (1) \emph{Cavity sampling} --- freeze everything
+except a small region; the sampler explores fillings of that exact framed
+boundary through illegal intermediates; every FK-legal configuration visited
+is a harvested block move, with realization path and relative weight ---
+the move-enumeration wall bypassed by physics. (2) \emph{Gauss-law shell
+test} --- freeze a star-closed shell around known curvature content and
+measure the exterior response: the enclosed-charge experiment in real space,
+bypassing box-size limits on $S(\mathbf k)$. (3) \emph{Measured Green's
+functions} --- two shells differing by a localized curvature perturbation;
+the difference of mean interior fields is the discrete Dirichlet Green's
+function of the medium. (4) \emph{Entropy-area scaling} --- interior
+ensemble entropy vs.\ boundary area, the holographically flavored
+measurement. (5) Carrier confinement, defect pinning, interfaces, and gauge
+anchoring.
+
+%--------------------------------------------------------------------
+\section{Penalties are not constraints}
+\label{sec:penalties}
+
+Three empirical strikes sharpened this theme into the program's central
+lesson.
+
+\paragraph{The bump ladder null.} Raising the demanded background charge
+$5\times$ (bump $8\times10^{-4} \to 4\times10^{-3}$ at $\lambda=0.4$) left
+the carrier density unchanged ($\langle n_{\rm ill}\rangle = 59, 63, 48$)
+and the achieved mean degree pinned at $\approx 5.1043$: the pin simply goes
+unsatisfied. Carrier density is thermal (set by the FK-penalty/entropy
+balance), not charge-driven. Neutrality is \emph{requested}, never
+\emph{enforced}: a real one-component-plasma background forces carriers into
+existence; a soft pin only prices their absence.
+
+\paragraph{Pin transmission is $\lambda$-dependent.} Where has the mean-degree
+pin actually been satisfied? Three tiers: the certified disordered-fluid
+seed library (satisfied exactly --- no crystal fighting back); the certified
+$\lambda=1$ knot ensemble (achieved $5.104755$ vs.\ target $5.105025$:
+$66\%$, with above- and below-initialized states agreeing to $10^{-6}$);
+the $\lambda=0.4$ liquid ($\approx 15\%$, with near-zero marginal
+susceptibility $d\langle\deg\rangle/d(\mathrm{bump})$). The soft pin is an
+applied field; the crystal host at low $\lambda$ is curvature-incompressible.
+
+\paragraph{Certification audit.} The $\lambda=0.4$ liquid ensemble narrowly
+fails the formal gates ($5$ chains $\times$ $134$ frames):
+
+\begin{center}
+\begin{tabular}{lccl}
+\toprule
+observable & quantized split-$\hat R$ & ESS & verdict (gates $1.05$ / $100$) \\
+\midrule
+$n_{\rm illegal}$ & 1.062 & 83 & fails both \\
+legal-vertex frac & 1.062 & 83 & fails both \\
+$n_{\rm comp}$ & 1.037 & 125 & passes \\
+$\langle \deg_e \rangle$ & 1.018 & 385 & passes \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent plus all five chains one-sided (initialized from the crystal,
+below in density). Remedy in flight: extend the five chains and add
+above-side chains initialized from high-density $\lambda=1$ states, then
+re-gate the pooled two-sided ensemble --- the protocol that certified the
+knot study.
+
+\paragraph{The general lesson.} No conservation law $\Rightarrow$ no sum
+rules $\Rightarrow$ no Stillinger--Lovett \cite{stillinger-lovett}, at any
+box size. Every long-range null collected in the liquid (ideal-gas carriers,
+flat dielectric response, no SL dip, bump-independent density) is the same
+fact viewed through different observables. Conversely, the frozen-vertex
+infrastructure makes \emph{rejection-based hard constraints} cheap: a
+microcanonical total-curvature window, or the budgeted-illegality sampler of
+\S\ref{sec:s66}, are a few lines on a validated pattern.
+
+%--------------------------------------------------------------------
+\section{The six-web as an emergent gauge field; $S_{66}(\mathbf k)$}
+\label{sec:s66}
+
+The degree-6 web is the model's one genuinely topological structure, and its
+legality condition maps onto emergent gauge theory
+\cite{henley,castelnovo}:
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+project object & gauge object \\
+\midrule
+six-edge web (closed line network) & field lines of an emergent flux \\
+$\Nfk \in \{0,2,3,4\}$ at every vertex & lattice Gauss law (junctions allowed) \\
+$\Nfk = 1$ vertex (line endpoint) & monopole (Gauss-law violation) \\
+$z_{\rm leg}/c_{\rm imp}$ penalties & monopole \emph{mass}, not prohibition \\
+knots / blinkers & thermally excited monopole plasma \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+When the closure constraint is exact, constrained entropy alone generates a
+Coulomb phase: algebraic dipolar correlations and pinch points in the
+structure factor \cite{isakov,henley}. At finite violation density,
+monopoles screen the emergent field with correlation width
+$\xi^{-1} \propto \sqrt{n_{\rm mono}}$; our $\lambda=0.4$ liquid carries
+$\sim 60$ illegal vertices in a $4^3$ box --- monopole spacing
+$\lesssim 1$ cell, so the Coulomb physics is screened below the shortest
+measurable wavelength. On $T^3$ the closed web additionally carries a
+$\mathbb Z^3$ homology winding $W$ (net six-flux through the three
+cross-sections), exactly conserved by local moves on the legal manifold ---
+the clean superselection charge; monopoles let $W$ drift.
+
+\paragraph{The observable.} Attach $s_e = 1$ to six-edges at midpoints
+$\mathbf x_e$ (harmonic torus coordinates, minimum image). The scalar
+channel is
+\begin{equation}
+S_{66}(\kv) = \frac{1}{N_6}
+\Big\langle \Big| \sum_{e: \deg e = 6} e^{i \kv\cdot \mathbf x_e} \Big|^2
+\Big\rangle,
+\end{equation}
+normalized against an \emph{occupation-shuffle null} (a random edge subset
+of the same size on the same skeleton), which divides out the underlying
+lattice. Since six-edges are unoriented segments with axes $\nh_e$, the
+tensor channel uses the director (see \S\ref{sec:nematic}),
+\begin{equation}
+Q^{ab}_e = \nh^a_e \nh^b_e - \tfrac{\delta^{ab}}{3},
+\qquad
+Q^{ab}(\kv) = \sum_{e:\deg e = 6} Q^{ab}_e\, e^{i\kv\cdot\mathbf x_e},
+\label{eq:director}
+\end{equation}
+helicity-decomposed about $\kh$ into transverse-traceless, vector, and
+longitudinal parts, with $L(\kv) = \tfrac32 |\kh_a Q^{ab}(\kv) \kh_b|^2$.
+Coarse-graining the web into a flux field $\mathbf B$, closure reads
+$\nabla\!\cdot\!\mathbf B = \rho_{\rm mono} = 0$, i.e.\
+$\kv\cdot\mathbf B(\kv) = 0$: longitudinal weight is forbidden mode by mode,
+and for a maximally entropic web
+$\langle B^a(\kv) B^b(-\kv)\rangle \propto \delta^{ab} - \kh^a\kh^b$
+--- the pinch-point form \cite{youngblood-axe,isakov}. Monopoles restore
+longitudinal weight over a width $\propto \sqrt{n_{\rm mono}}$.
+
+\paragraph{Measured results} (single snapshots per state; ratios to
+occupation-shuffle null; $L/T$ per $|\mathbf n|$ shell):
+
+\begin{center}
+\begin{tabular}{lccccc}
+\toprule
+state & $n_{\rm mono}$ & shell $1$--$2$ & shell $2$--$3$ & shell $3$--$5$ & pooled $L/T$, $k\in[1,2]$ \\
+\midrule
+crystal & 0 & \multicolumn{3}{c}{stealthy: $0.000$ sub-Bragg (all channels)} & --- \\
+frozen $\lambda=1$ & 62 & 0.37 & 0.74 & 0.90 & $\mathbf{0.603 \pm 0.040}$ \\
+liquid $\lambda=0.4$ & 61 & 0.53 & 1.34 & 0.77 & $0.844 \pm 0.064$ \\
+$\lambda=0.35$ & 186 & 1.16 & 0.98 & 0.98 & $\approx 1$ \\
+$\lambda=0.30$ web & 3642 & 0.91 & 1.15 & 0.75 & $\approx 1$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The pooled frozen-ensemble result, $L/T = 0.603 \pm 0.040$, is $10\sigma$
+below unity, with the suppression strongest at smallest $k$ and dying with
+monopole density exactly on the Coulomb-phase schedule: an emergent Gauss
+law, measured, and monopole-screened at current densities. Notably the
+frozen $\lambda=1$ ensemble suppresses better than the liquid at equal
+monopole \emph{count}: violation \emph{activity} (flicker), not just census,
+sets the screening. The agreed next step is the \emph{budgeted-illegality
+sampler} --- reject any move pushing the global illegal count above a small
+cap (a poor-man's worm algorithm \cite{prokofev-svistunov} on the
+frozen-vertex rejection pattern; the $n_6$ potential already tracks the
+count incrementally) --- driving $n_{\rm mono} \to 0$ while keeping the web
+mobile, with the prediction $L/T \to 0$ and pinch points sharpening as the
+budget tightens.
+
+%--------------------------------------------------------------------
+\section{Nematic vs.\ vector longitudinal channels}
+\label{sec:nematic}
+
+The director workaround in \eqref{eq:director} has a precise cost, worth
+stating carefully because it changes what ``longitudinal suppression''
+means.
+
+\paragraph{Why ``nematic.''} A six-edge has an axis but no arrow; observables
+must be invariant under $\nh_e \to -\nh_e$. The lowest surviving moment is
+the quadrupole $Q_e = \nh_e\nh_e - \mathbf I/3$ --- precisely the order
+parameter of a nematic liquid crystal (rod-like molecules with head--tail
+symmetry) \cite{degennes}. The five components of the symmetric-traceless
+$Q(\kv)$ split under rotations about $\kh$ into helicities $2+2+1$
+(TT / vector / longitudinal); the helicity-0 part
+$L = \tfrac32|\kh Q \kh|^2$ measures splay-like modulation of line density
+along the line axis.
+
+\paragraph{Why it is not the usual longitudinal channel.} The Gauss law is a
+statement about a \emph{vector} flux: for oriented lines,
+$\kv\cdot\mathbf J(\kv) = 0$ exactly, killing the vector-longitudinal
+channel identically --- the sharp, quantitative signature
+\cite{youngblood-axe}. Because $Q$ is quadratic in $\nh$, it inherits only a
+blurred image of the constraint: line \emph{bending} leaks into
+$\kh Q \kh$ even at exactly zero divergence. Hence frozen
+$L/T = 0.60$ rather than $0$: an unknown fraction of the residual is
+intrinsic nematic background, not monopole physics. The measurement
+establishes the inequality and the monopole trend; the vector channel turns
+it into an identity test.
+
+\paragraph{The orientation obstruction, and its physical meaning.} Unit
+fluxes $\sigma_e = \pm 1$ can only be divergence-free at even-valence
+vertices; the six-web has Y-junctions (Z15, $\Nfk = 3$), where unit-flux
+conservation is impossible. This is not a bookkeeping nuisance: TCP
+disclinations compose non-abelianly ($\pi_1$ of the order-parameter space
+\cite{mermin}), and the web is a string-net rather than a $U(1)$ loop gas.
+The abelianized shadow is a \emph{real-valued} flow.
+
+\paragraph{The exact-segment construction.} Two steps.
+
+\emph{(i) Cycle-space projection.} Let $B$ be the head-minus-tail incidence
+matrix of the six-web restricted to \emph{legal} vertex rows (divergence is
+permitted only at edge-illegal, i.e.\ monopole, vertices). Draw random signs
+$\sigma^0 \in \{\pm1\}^{E_6}$ and project onto the constraint:
+\begin{equation}
+\varphi = \arg\min \|\varphi - \sigma^0\|^2
+\;\;\text{s.t.}\;\; B\varphi = 0
+\qquad\Longleftrightarrow\qquad
+BB^{\!\top}\mu = B\sigma^0,\quad \varphi = \sigma^0 - B^{\!\top}\mu,
+\end{equation}
+solved by sparse least squares (LSMR handles the rank deficiency of fully
+closed components); averaging over draws of $\sigma^0$ is a Dirac-string
+gauge average. Junction branches carry fractional flux.
+
+\emph{(ii) Exact segment kernel.} Fourier the flux as a line integral along
+each segment rather than a midpoint point charge. For an edge from
+$\mathbf x_0$ along $\mathbf d$:
+\begin{equation}
+\int_0^1 \mathbf d\; e^{i\kv\cdot(\mathbf x_0 + t\mathbf d)}\,dt
+= \mathbf d\, e^{i\kv\cdot\mathbf x_0}\,
+e^{i\theta/2}\,\frac{\sin(\theta/2)}{\theta/2},
+\qquad \theta = \kv\cdot\mathbf d,
+\label{eq:kernel}
+\end{equation}
+so that the longitudinal projection \emph{telescopes}: dotting $\kv$ into
+\eqref{eq:kernel} yields a pure endpoint difference
+$\tfrac1i\!\left(e^{i\kv\cdot\mathbf x_{\rm head}} -
+e^{i\kv\cdot\mathbf x_{\rm tail}}\right)$, and summing over edges,
+\begin{equation}
+\kv\cdot\mathbf J(\kv)
+= \frac1i \sum_v D_v\, e^{i\kv\cdot\mathbf x_v},
+\qquad D_v = (\text{net divergence of }\varphi\text{ at } v).
+\label{eq:telescope}
+\end{equation}
+Every legal vertex drops out identically (commensurate $\kv$ on the torus
+makes wrap-around phases exactly $1$), leaving
+\begin{equation}
+\boxed{\;
+L_{\rm vec}(\kv) \;=\; |\kh\cdot\mathbf J(\kv)|^2
+\;=\; \frac{S_{\rm mono}(\kv)}{k^2}\;,
+\qquad
+S_{\rm mono}(\kv) = \Big|\sum_v D_v e^{i\kv\cdot\mathbf x_v}\Big|^2
+}
+\label{eq:identity}
+\end{equation}
+--- the longitudinal power \emph{is} the monopole-charge structure factor
+over $k^2$: identically zero on a closed web, and a direct census-with-
+positions of Gauss-law violations otherwise. As a bonus, the small-$k$
+behavior of $S_{\rm mono}$ tests whether the \emph{monopole plasma itself}
+screens: $S_{\rm mono} \to \sum_v D_v^2$ (flat) for uncorrelated monopoles,
+vs.\ $S_{\rm mono} \sim k^2/\kappa^2 \to 0$ for a Stillinger--Lovett-obeying
+emergent-charge plasma --- tying the hyperuniformity and gauge threads
+together in one observable.
+
+\paragraph{Implementation and first light.} Implemented as
+\texttt{scripts/defect\_dynamics/web\_vector.py} (cycle-space projection via
+LSMR; exact kernel \eqref{eq:kernel}; per-state numerical verification of
+\eqref{eq:telescope}). First run across the monopole ladder
+(identity \eqref{eq:telescope} verified per state to absolute error
+$\sim\!10^{-10}$ on channel powers of order $10^{10}$; residual legal-vertex
+divergence $\sim\!10^{-13}$):
+
+\begin{center}
+\begin{tabular}{lcccccc}
+\toprule
+state & $n_{\rm mono}$ & $\sum_v D_v^2$ & $L/T$ (shell $1$--$2$)
+& \multicolumn{3}{c}{$S_{\rm mono}/\sum D_v^2$ by shell ($1$--$2$, $2$--$3$, $3$--$5$)} \\
+\midrule
+crystal & 0 & 0 & $3\times10^{-26}$ & \multicolumn{3}{c}{--- (no sources)} \\
+frozen $\lambda=1$ & 62 & 172 & $1.5\times10^{-2}$ & 0.12 & 0.17 & 0.31 \\
+liquid $\lambda=0.4$ & 61 & 173 & $1.2\times10^{-2}$ & 0.13 & 0.23 & 0.45 \\
+$\lambda=0.35$ & 186 & 422 & $6.4\times10^{-2}$ & 0.21 & 0.36 & 0.55 \\
+$\lambda=0.30$ web & 3642 & 8304 & $4.1\times10^{-1}$ & 0.10 & 0.26 & 0.45 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent The crystal's closed web gives $L/T$ at machine zero --- the
+nematic $0.60$ upgraded to an exact null. In every monopole-bearing state
+the longitudinal weight is purely monopole-sourced, and
+$S_{\rm mono}(\kv)$ is suppressed at small $k$ to $10$--$20\%$ of its
+uncorrelated (Poisson) level $\sum_v D_v^2$, recovering toward it at large
+$k$: the emergent monopole charges are themselves strongly anticorrelated
+at long wavelength --- screening \emph{among} the violations, a
+Stillinger--Lovett-type organization of the monopole plasma visible in the
+very observable that certifies the Gauss law. The budget-dependence of both
+numbers is the budgeted-illegality campaign's target.
+
+%--------------------------------------------------------------------
+\section{Outlook}
+\label{sec:outlook}
+
+\begin{enumerate}
+\item \emph{Certification} of the $\lambda=0.4$ liquid (two-sided campaign
+running), then of the $\lambda_{\rm EDQ}=1.2$ two-term gas.
+\item \emph{Reproduce the liquid-state results under the pure two-term
+action} (channel hierarchy, $L/T$) to confirm nothing depended secretly on
+the $n_6$ scaffolding.
+\item \emph{Budgeted-illegality sampler}: cap the global illegal count via
+the validated rejection pattern; drive the monopole budget down; watch
+$L_{\rm vec} \to 0$ via \eqref{eq:identity} and the pinch points sharpen;
+then $W$-sector physics on the legal manifold.
+\item \emph{Block-move harvest by cavity sampling} (frozen-subset sampler),
+targeting the first explicit FK$\to$FK generators and their commutators ---
+the momentum-sector program.
+\item \emph{C15 host} for host-independence and curved-background controls.
+\end{enumerate}
+
+%--------------------------------------------------------------------
+\begin{thebibliography}{99}
+
+\bibitem{adm} R.~Arnowitt, S.~Deser, C.~W.~Misner,
+\emph{The dynamics of general relativity}, in \emph{Gravitation: An
+Introduction to Current Research}, ed.\ L.~Witten (Wiley, 1962);
+reprinted Gen.\ Rel.\ Grav.\ \textbf{40}, 1997 (2008).
+
+\bibitem{regge} T.~Regge,
+\emph{General relativity without coordinates},
+Nuovo Cimento \textbf{19}, 558 (1961).
+
+\bibitem{hamber-williams} H.~W.~Hamber, R.~M.~Williams,
+\emph{Higher derivative quantum gravity on a simplicial lattice},
+Nucl.\ Phys.\ B \textbf{248}, 392 (1984).
+
+\bibitem{ajl} J.~Ambj{\o}rn, J.~Jurkiewicz, R.~Loll,
+\emph{Nonperturbative quantum gravity},
+Phys.\ Rep.\ \textbf{519}, 127 (2012).
+
+\bibitem{pachner} U.~Pachner,
+\emph{P.L.\ homeomorphic manifolds are equivalent by elementary shellings},
+Eur.\ J.\ Combin.\ \textbf{12}, 129 (1991).
+
+\bibitem{sorkin} R.~Sorkin,
+\emph{Time-evolution problem in Regge calculus},
+Phys.\ Rev.\ D \textbf{12}, 385 (1975).
+
+\bibitem{dittrich-hohn} B.~Dittrich, P.~A.~H\"ohn,
+\emph{Canonical simplicial gravity},
+Class.\ Quantum Grav.\ \textbf{29}, 115009 (2012).
+
+\bibitem{bahr-dittrich} B.~Bahr, B.~Dittrich,
+\emph{(Broken) gauge symmetries and constraints in Regge calculus},
+Class.\ Quantum Grav.\ \textbf{26}, 225011 (2009).
+
+\bibitem{thiemann} T.~Thiemann,
+\emph{Quantum spin dynamics (QSD)},
+Class.\ Quantum Grav.\ \textbf{15}, 839 (1998).
+
+\bibitem{frank-kasper} F.~C.~Frank, J.~S.~Kasper,
+\emph{Complex alloy structures regarded as sphere packings I, II},
+Acta Cryst.\ \textbf{11}, 184 (1958); \textbf{12}, 483 (1959).
+
+\bibitem{nelson} D.~R.~Nelson,
+\emph{Order, frustration, and defects in liquids and glasses},
+Phys.\ Rev.\ B \textbf{28}, 5515 (1983).
+
+\bibitem{sadoc-mosseri} J.-F.~Sadoc, R.~Mosseri,
+\emph{Geometrical Frustration} (Cambridge University Press, 1999).
+
+\bibitem{grunbaum-motzkin} B.~Gr\"unbaum, T.~S.~Motzkin,
+\emph{The number of hexagons and the simplicity of geodesics on certain
+polyhedra}, Can.\ J.\ Math.\ \textbf{15}, 744 (1963).
+
+\bibitem{mermin} N.~D.~Mermin,
+\emph{The topological theory of defects in ordered media},
+Rev.\ Mod.\ Phys.\ \textbf{51}, 591 (1979).
+
+\bibitem{henley} C.~L.~Henley,
+\emph{The ``Coulomb phase'' in frustrated systems},
+Annu.\ Rev.\ Condens.\ Matter Phys.\ \textbf{1}, 179 (2010).
+
+\bibitem{castelnovo} C.~Castelnovo, R.~Moessner, S.~L.~Sondhi,
+\emph{Magnetic monopoles in spin ice},
+Nature \textbf{451}, 42 (2008).
+
+\bibitem{isakov} S.~V.~Isakov, K.~Gregor, R.~Moessner, S.~L.~Sondhi,
+\emph{Dipolar spin correlations in classical pyrochlore magnets},
+Phys.\ Rev.\ Lett.\ \textbf{93}, 167204 (2004).
+
+\bibitem{youngblood-axe} R.~W.~Youngblood, J.~D.~Axe,
+\emph{Polarization fluctuations in ferroelectric models},
+Phys.\ Rev.\ B \textbf{23}, 232 (1981).
+
+\bibitem{prokofev-svistunov} N.~Prokof'ev, B.~Svistunov,
+\emph{Worm algorithms for classical statistical models},
+Phys.\ Rev.\ Lett.\ \textbf{87}, 160601 (2001).
+
+\bibitem{stillinger-lovett} F.~H.~Stillinger, R.~Lovett,
+\emph{General restriction on the distribution of ions in electrolytes},
+J.\ Chem.\ Phys.\ \textbf{49}, 1991 (1968).
+
+\bibitem{torquato} S.~Torquato,
+\emph{Hyperuniform states of matter},
+Phys.\ Rep.\ \textbf{745}, 1 (2018).
+
+\bibitem{degennes} P.-G.~de Gennes, J.~Prost,
+\emph{The Physics of Liquid Crystals}, 2nd ed.\ (Oxford University Press,
+1993).
+
+\end{thebibliography}
+
+\end{document}
