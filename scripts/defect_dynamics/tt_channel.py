@@ -91,9 +91,13 @@ def null(Q, qsc, frac, nvec, khat, rng):
     return {k: v / NSHUF for k, v in acc.items()}
 
 
-snaps = sorted(glob.glob(f"{SP}/run5h/*_snap*.mfd"))
-if len(sys.argv) > 2:
+PATTERN = sys.argv[2] if len(sys.argv) > 2 and not sys.argv[2].isdigit() \
+    else "run5h/*_snap*.mfd"
+snaps = sorted(glob.glob(f"{SP}/{PATTERN}"))
+if len(sys.argv) > 2 and sys.argv[2].isdigit():
     snaps = snaps[:int(sys.argv[2])]
+if len(sys.argv) > 3 and sys.argv[3].isdigit():
+    snaps = snaps[:int(sys.argv[3])]
 rng = np.random.default_rng(0)
 
 CH = ["scal", "TT", "V", "L"]
