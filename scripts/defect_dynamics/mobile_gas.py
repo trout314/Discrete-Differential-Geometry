@@ -89,9 +89,24 @@ while done - BURN < SPAN:
                     seen.add(w); st.append(w)
         comps.append(sorted(int(lab[x]) for x in comp))
     sizes = sorted((len(c) for c in comps), reverse=True)
+    # per-complex centroids from the raw cocycle tree lift (the validated
+    # pass1 position protocol), min-imaged about each complex's first member
+    # so a complex straddling a lift seam can't split; aligned with `members`.
+    cents = []
+    if comps:
+        e1, w1 = s.read_cocycle()
+        e1 = np.asarray(e1)
+        pos = coc.tree_positions(e1, np.asarray(w1), int(e1.max()) + 1)[0]
+        pbox = 1.0e6 * MCELL         # raw units per box period (1e6/cell)
+        for c in comps:
+            p0 = pos[c[0]].astype(float)
+            rel = (pos[c].astype(float) - p0 + pbox / 2) % pbox - pbox / 2
+            cents.append([round(float(x), 1)
+                          for x in (p0 + rel.mean(0)) % pbox])
     log.write(json.dumps({
         "sweep": done, "t": round(time.time() - t0, 1),
         "n_illegal": int(sum(sizes)), "sizes": sizes, "members": comps,
+        "cents": cents,
         "mean_edeg": float(edeg.mean()),
         "legaledge": float(np.mean((edeg == 5) | (edeg == 6))),
         "legalvert": float(np.mean(imp == 0))}) + "\n")
