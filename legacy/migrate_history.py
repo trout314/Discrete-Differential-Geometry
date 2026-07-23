@@ -25,7 +25,8 @@ import math
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
 from seed_utils import (history_fields, load_seed_metadata, make_leg,
                         read_history, verify_history)
 

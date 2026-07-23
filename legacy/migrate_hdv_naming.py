@@ -18,7 +18,8 @@ import re
 import sys
 from types import SimpleNamespace
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
 from seed_utils import build_seed_filename, load_seed_metadata, set_header_field
 
 
