@@ -116,12 +116,23 @@ while done - BURN < SPAN:
         stem = f"{OUT}_snap{done}"
         v.save(stem + ".mfd")
         e1, w1 = s.read_cocycle()
-        coc.save_cocycle(stem + ".cocycle.npz", e1, w1, sweeps=done)
+        # canonicalize before persisting: the .mfd writer renumbers labels to
+        # rank order; raw live labels (holes from 1<->4 churn) would skew the
+        # saved pair (the "phantom detachment" postmortem, 2026-07-24).
+        e1s, w1s = coc.canonicalize_labels(np.asarray(e1), np.asarray(w1))
+        coc.save_cocycle(stem + ".cocycle.npz", e1s, w1s, sweeps=done)
         try:
             s.check_cocycle()
             drift = ""
         except Exception as e:
             drift = f" COCYCLE-DRIFT {e}"
+        # strong guard (lam35 postmortem): check_cocycle can pass while the
+        # tracked cocycle DETACHES from the manifold (edge set goes stale, no
+        # error). Compare edge sets directly; a mismatch poisons cents + resume.
+        eset = {tuple(sorted(e)) for e in np.asarray(v.simplices(1)).tolist()}
+        cset = {tuple(sorted(e)) for e in np.asarray(e1).tolist()}
+        if eset != cset:
+            drift += f" COCYCLE-DETACHED({len(eset ^ cset)} edges)"
         print(f"[{os.path.basename(OUT)}] sw{done} ({time.time()-t0:.0f}s): "
               f"nill={sum(sizes)} ncomp={len(sizes)} "
               f"<edeg>={edeg.mean():.6f} snap{nsnap}{drift}", flush=True)

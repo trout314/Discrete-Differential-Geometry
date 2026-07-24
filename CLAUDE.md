@@ -2,6 +2,23 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Reporting conventions (research sessions)
+
+Notation, terminology, and report standards live in **`notes/CONVENTIONS.md`**
+— use its symbols and terms in all responses, reports, and figures. Hard rules
+(details in that file):
+
+1. **State reports** on crystal-derived states include the standard block:
+   provenance/lineage + #chains, action + couplings (λ vs λ_EDQ — never
+   conflate), f_FK, N_gr + f_G1, e\* vs ⟨e⟩, n_ill, certification status.
+2. **Figures** stamp action/couplings, box/host, and #chains; mark provisional
+   (uncertified) data when it matters; print the full file path.
+3. **Stationarity claims** use late-window slope ± block-bootstrap σ (never
+   full-series OLS alone). **Transport claims** name the channel (tracer /
+   population / collective). **"Certified"** only after a two-sided R̂_q pass.
+4. **Run launches**: SNAP must be a multiple of TS; state instrumentation;
+   resume only from verified-consistent snapshot pairs; wrap in `caffeinate -i`.
+
 ## Project Overview
 
 A D language symbolic math package for discrete differential geometry, focused on efficient sampling of combinatorial n-manifold triangulations via Metropolis-Hastings with bistellar (Pachner) moves. The D core is exposed to Python via a C API and ctypes bindings.
