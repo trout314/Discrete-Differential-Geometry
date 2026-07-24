@@ -72,3 +72,10 @@ notes/*.pdf
 
 # Analysis output JSONs/figures (like data/, not version-controlled)
 /out/
+
+# LaTeX build artifacts
+notes/*.aux
+notes/*.log
+notes/*.out
+notes/*.synctex.gz
+notes/*.toc
