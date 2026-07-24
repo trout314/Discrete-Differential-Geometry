@@ -131,6 +131,55 @@ class Manifold:
         """Return the variance of degree for simplices of given dimension."""
         return _lib.ddg_manifold_degree_variance(self._handle, dim)
 
+    def do_bistellar_move(self, center: Sequence[int],
+                          cocenter: Sequence[int]) -> None:
+        """Apply the SPECIFIED bistellar (Pachner) move: replace star(center)
+        (= center joined with the boundary of cocenter) by the star of
+        cocenter. dim=3 grammar: 1-4 center=facet cocenter=[new vertex];
+        2-3 center=face, cocenter=the two apexes; 3-2 center=a degree-3
+        edge, cocenter=its 3 link vertices; 4-1 center=a degree-4 vertex,
+        cocenter=its 4 neighbors. All preconditions are validated in the D
+        core (raises on an invalid move).
+
+        WARNING: bypasses any ManifoldSampler cocycle tracking on this
+        manifold -- analysis/catalog use."""
+        c = np.asarray(center, dtype=np.intc).ravel()
+        cc = np.asarray(cocenter, dtype=np.intc).ravel()
+        _lib.ddg_manifold_do_bistellar_move(
+            self._handle, c.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
+            len(c), cc.ctypes.data_as(ctypes.POINTER(ctypes.c_int)), len(cc))
+
+    def has_bistellar_move(self, center: Sequence[int],
+                           cocenter: Sequence[int]) -> bool:
+        """True iff do_bistellar_move(center, cocenter) would be valid."""
+        c = np.asarray(center, dtype=np.intc).ravel()
+        cc = np.asarray(cocenter, dtype=np.intc).ravel()
+        return bool(_lib.ddg_manifold_has_bistellar_move(
+            self._handle, c.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
+            len(c), cc.ctypes.data_as(ctypes.POINTER(ctypes.c_int)), len(cc)))
+
+    def do_hinge_move(self, removed_edge: Sequence[int],
+                      link_cycle: Sequence[int], diagonal: int) -> None:
+        """Apply the specified 4-4 hinge move (dim=3): replace the star of
+        degree-4 edge `removed_edge` (link cycle `link_cycle`, in cyclic
+        order) with the retriangulation using `diagonal` = 0
+        (cycle[0]-cycle[2]) or 1 (cycle[1]-cycle[3]). Validated in the D
+        core. Same cocycle-tracking warning as do_bistellar_move."""
+        re_ = np.asarray(removed_edge, dtype=np.intc).ravel()
+        cy = np.asarray(link_cycle, dtype=np.intc).ravel()
+        _lib.ddg_manifold_do_hinge_move(
+            self._handle, re_.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
+            cy.ctypes.data_as(ctypes.POINTER(ctypes.c_int)), int(diagonal))
+
+    def has_hinge_move(self, removed_edge: Sequence[int],
+                       link_cycle: Sequence[int], diagonal: int) -> bool:
+        """True iff do_hinge_move(...) would be valid."""
+        re_ = np.asarray(removed_edge, dtype=np.intc).ravel()
+        cy = np.asarray(link_cycle, dtype=np.intc).ravel()
+        return bool(_lib.ddg_manifold_has_hinge_move(
+            self._handle, re_.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
+            cy.ctypes.data_as(ctypes.POINTER(ctypes.c_int)), int(diagonal)))
+
     def freeze_vertices(self, vertices, frozen: bool = True) -> None:
         """Freeze (or unfreeze) vertices. The sampler rejects any move whose
         support contains a frozen vertex; since every facet a move adds or

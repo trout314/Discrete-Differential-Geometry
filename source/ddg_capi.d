@@ -683,6 +683,197 @@ extern(C) int ddg_manifold_undo_pachner_move(void* handle) nothrow
 }
 
 // ---------------------------------------------------------------------------
+// Targeted moves (worm program): apply a SPECIFIED bistellar or 4-4 hinge
+// move.  All preconditions are checked explicitly here (doMove/doHingeMove
+// rely on asserts, which are compiled out in release builds).
+//
+// WARNING: these act on the bare manifold.  If a ManifoldSampler with cocycle
+// tracking wraps this manifold, targeted moves applied here bypass that
+// tracking (a genuine detachment) -- use for analysis/catalog work, or
+// re-enable the cocycle afterwards.
+// ---------------------------------------------------------------------------
+
+private string checkBistellar(int dim)(ManifoldWrapper!dim* mw,
+    const(int)[] center, const(int)[] coCenter)
+{
+    import std.algorithm : canFind, sort;
+
+    if (center.length < 1 || coCenter.length < 1
+        || center.length + coCenter.length != dim + 2)
+        return "center + coCenter must total dim+2 vertices, each nonempty";
+    foreach (v; center)
+        if (coCenter.canFind(v))
+            return "center and coCenter share a vertex";
+    auto cen = center.dup;
+    cen.sort();
+    auto coc = coCenter.dup;
+    coc.sort();
+    foreach (i; 1 .. cen.length)
+        if (cen[i] == cen[i - 1]) return "repeated vertex in center";
+    foreach (i; 1 .. coc.length)
+        if (coc[i] == coc[i - 1]) return "repeated vertex in coCenter";
+    if (!mw.mfd.contains(cen))
+        return "center is not a simplex of the manifold";
+    if (mw.mfd.contains(coc))
+        return "coCenter is already a simplex of the manifold";
+    if (mw.mfd.degree(cen) != coCenter.length)
+        return "degree(center) != |coCenter|: star does not match this move";
+    // every facet of star(center) must be center + (coCenter minus one vertex)
+    foreach (skip; 0 .. coc.length)
+    {
+        int[] facet;
+        facet ~= cen;
+        foreach (i, v; coc)
+            if (i != skip) facet ~= v;
+        facet.sort();
+        if (!mw.mfd.contains(facet))
+            return "star of center does not match coCenter (facet missing)";
+    }
+    return null;
+}
+
+extern(C) int ddg_manifold_do_bistellar_move(void* handle,
+    const(int)* center, int center_len,
+    const(int)* cocenter, int cocenter_len) nothrow
+{
+    clearError();
+    try
+    {
+        if (handle is null) { setError("null handle"); return -1; }
+        auto h = cast(ManifoldHandle*) handle;
+
+        int doIt(int dim)(ManifoldWrapper!dim* mw)
+        {
+            auto cen = center[0 .. center_len];
+            auto coc = cocenter[0 .. cocenter_len];
+            auto err = checkBistellar!dim(mw, cen, coc);
+            if (err !is null) { setError(err); return -1; }
+            auto bm = BistellarMove!(dim, int)(cen, coc);
+            mw.mfd.doMove(bm);
+            return 0;
+        }
+
+        switch (h.dim)
+        {
+            case 2: return doIt!2(cast(ManifoldWrapper!2*) h.ptr);
+            case 3: return doIt!3(cast(ManifoldWrapper!3*) h.ptr);
+            case 4: return doIt!4(cast(ManifoldWrapper!4*) h.ptr);
+            default: setError("bad dimension"); return -1;
+        }
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+extern(C) int ddg_manifold_has_bistellar_move(void* handle,
+    const(int)* center, int center_len,
+    const(int)* cocenter, int cocenter_len) nothrow
+{
+    clearError();
+    try
+    {
+        if (handle is null) { setError("null handle"); return -1; }
+        auto h = cast(ManifoldHandle*) handle;
+
+        int checkIt(int dim)(ManifoldWrapper!dim* mw)
+        {
+            auto err = checkBistellar!dim(mw, center[0 .. center_len],
+                                          cocenter[0 .. cocenter_len]);
+            return err is null ? 1 : 0;
+        }
+
+        switch (h.dim)
+        {
+            case 2: return checkIt!2(cast(ManifoldWrapper!2*) h.ptr);
+            case 3: return checkIt!3(cast(ManifoldWrapper!3*) h.ptr);
+            case 4: return checkIt!4(cast(ManifoldWrapper!4*) h.ptr);
+            default: setError("bad dimension"); return -1;
+        }
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+private string checkHinge(ManifoldWrapper!3* mw,
+    const(int)[] re, const(int)[] cyc, int diagonal, out HingeMove!int mv)
+{
+    import std.algorithm : canFind, sort;
+    import std.algorithm.comparison : min, max;
+
+    if (re.length != 2 || cyc.length != 4)
+        return "hinge move needs a 2-vertex edge and a 4-vertex link cycle";
+    if (diagonal != 0 && diagonal != 1)
+        return "diagonal must be 0 (cycle[0]-cycle[2]) or 1 (cycle[1]-cycle[3])";
+    foreach (i, v; cyc)
+    {
+        if (re.canFind(v)) return "link cycle vertex repeats an edge vertex";
+        foreach (j; 0 .. i)
+            if (cyc[j] == v) return "repeated vertex in link cycle";
+    }
+    if (re[0] == re[1]) return "degenerate edge";
+
+    int[2] edge = [min(re[0], re[1]), max(re[0], re[1])];
+    if (!mw.mfd.contains(edge[]))
+        return "removed edge is not in the manifold";
+    if (mw.mfd.degree(edge[]) != 4)
+        return "removed edge does not have degree 4";
+    foreach (i; 0 .. 4)
+    {
+        int[4] tet = [edge[0], edge[1], cast(int) cyc[i],
+                      cast(int) cyc[(i + 1) % 4]];
+        tet[].sort();
+        if (!mw.mfd.contains(tet[]))
+            return "link cycle does not match the star of the removed edge";
+    }
+    int a = diagonal == 0 ? cyc[0] : cyc[1];
+    int b = diagonal == 0 ? cyc[2] : cyc[3];
+    int[2] added = [min(a, b), max(a, b)];
+    if (mw.mfd.contains(added[]))
+        return "added edge (chosen diagonal) already exists";
+
+    mv.removedEdge = edge;
+    mv.addedEdge = added;
+    foreach (i; 0 .. 4) mv.linkCycle[i] = cyc[i];
+    return null;
+}
+
+extern(C) int ddg_manifold_do_hinge_move(void* handle,
+    const(int)* removed_edge, const(int)* link_cycle, int diagonal) nothrow
+{
+    clearError();
+    try
+    {
+        if (handle is null) { setError("null handle"); return -1; }
+        auto h = cast(ManifoldHandle*) handle;
+        if (h.dim != 3) { setError("hinge moves are dim=3 only"); return -1; }
+        auto mw = cast(ManifoldWrapper!3*) h.ptr;
+        HingeMove!int mv;
+        auto err = checkHinge(mw, removed_edge[0 .. 2], link_cycle[0 .. 4],
+                              diagonal, mv);
+        if (err !is null) { setError(err); return -1; }
+        mw.mfd.doHingeMove(mv);
+        return 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+extern(C) int ddg_manifold_has_hinge_move(void* handle,
+    const(int)* removed_edge, const(int)* link_cycle, int diagonal) nothrow
+{
+    clearError();
+    try
+    {
+        if (handle is null) { setError("null handle"); return -1; }
+        auto h = cast(ManifoldHandle*) handle;
+        if (h.dim != 3) { setError("hinge moves are dim=3 only"); return -1; }
+        auto mw = cast(ManifoldWrapper!3*) h.ptr;
+        HingeMove!int mv;
+        auto err = checkHinge(mw, removed_edge[0 .. 2], link_cycle[0 .. 4],
+                              diagonal, mv);
+        return err is null ? 1 : 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+// ---------------------------------------------------------------------------
 // SimplicialComplex lifecycle
 // ---------------------------------------------------------------------------
 

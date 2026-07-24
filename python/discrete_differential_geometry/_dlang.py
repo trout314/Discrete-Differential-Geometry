@@ -207,6 +207,34 @@ _lib.ddg_manifold_clear_frozen.argtypes = [ctypes.c_void_p]
 _lib.ddg_manifold_clear_frozen.restype = ctypes.c_int
 _lib.ddg_manifold_clear_frozen.errcheck = _check_int
 
+_lib.ddg_manifold_do_bistellar_move.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_int), ctypes.c_int,
+    ctypes.POINTER(ctypes.c_int), ctypes.c_int,
+]
+_lib.ddg_manifold_do_bistellar_move.restype = ctypes.c_int
+_lib.ddg_manifold_do_bistellar_move.errcheck = _check_int
+
+_lib.ddg_manifold_has_bistellar_move.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_int), ctypes.c_int,
+    ctypes.POINTER(ctypes.c_int), ctypes.c_int,
+]
+_lib.ddg_manifold_has_bistellar_move.restype = ctypes.c_int
+_lib.ddg_manifold_has_bistellar_move.errcheck = _check_int
+
+_lib.ddg_manifold_do_hinge_move.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_int),
+    ctypes.POINTER(ctypes.c_int), ctypes.c_int,
+]
+_lib.ddg_manifold_do_hinge_move.restype = ctypes.c_int
+_lib.ddg_manifold_do_hinge_move.errcheck = _check_int
+
+_lib.ddg_manifold_has_hinge_move.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_int),
+    ctypes.POINTER(ctypes.c_int), ctypes.c_int,
+]
+_lib.ddg_manifold_has_hinge_move.restype = ctypes.c_int
+_lib.ddg_manifold_has_hinge_move.errcheck = _check_int
+
 _lib.ddg_manifold_vertex_frozen.argtypes = [ctypes.c_void_p, ctypes.c_int]
 _lib.ddg_manifold_vertex_frozen.restype = ctypes.c_int
 _lib.ddg_manifold_vertex_frozen.errcheck = _check_int
