@@ -180,6 +180,40 @@ class Manifold:
             self._handle, re_.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
             cy.ctypes.data_as(ctypes.POINTER(ctypes.c_int)), int(diagonal)))
 
+    def illegal_edges(self):
+        """(pairs (k,2) int array, degs (k,) int array) of all edges whose
+        degree is not in {5,6} -- read from the D core's incremental degree
+        map (dim=3 only, no recomputation)."""
+        n = _lib.ddg_manifold_illegal_edges(self._handle, None, None)
+        if n == 0:
+            return (np.empty((0, 2), dtype=np.intc),
+                    np.empty(0, dtype=np.intc))
+        pbuf = (ctypes.c_int * (2 * n))()
+        dbuf = (ctypes.c_int * n)()
+        _lib.ddg_manifold_illegal_edges(self._handle, pbuf, dbuf)
+        return (np.frombuffer(pbuf, dtype=np.intc).reshape(n, 2).copy(),
+                np.array(dbuf[:n], dtype=np.intc))
+
+    def edge_link(self, a: int, b: int) -> np.ndarray:
+        """Link of edge (a,b) as (degree, 2) unordered vertex pairs, one per
+        tetrahedron of the edge's star (dim=3 only)."""
+        n = _lib.ddg_manifold_edge_link(self._handle, int(a), int(b), None)
+        buf = (ctypes.c_int * (2 * n))()
+        _lib.ddg_manifold_edge_link(self._handle, int(a), int(b), buf)
+        return np.frombuffer(buf, dtype=np.intc).reshape(n, 2).copy()
+
+    def edge_link_cycle(self, a: int, b: int, hint_tet) -> np.ndarray:
+        """Ordered link cycle of edge (a,b) via the O(degree) ridge walk.
+        hint_tet must be a CURRENT facet containing a and b (validated;
+        raises if stale -- catch and fall back to edge_link if hints may
+        be outdated)."""
+        ht = np.asarray(hint_tet, dtype=np.intc).ravel()
+        buf = (ctypes.c_int * 64)()
+        n = _lib.ddg_manifold_edge_link_cycle(
+            self._handle, int(a), int(b),
+            ht.ctypes.data_as(ctypes.POINTER(ctypes.c_int)), buf)
+        return np.array(buf[:n], dtype=np.intc)
+
     def freeze_vertices(self, vertices, frozen: bool = True) -> None:
         """Freeze (or unfreeze) vertices. The sampler rejects any move whose
         support contains a frozen vertex; since every facet a move adds or

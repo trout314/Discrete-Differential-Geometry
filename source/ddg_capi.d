@@ -855,6 +855,110 @@ extern(C) int ddg_manifold_do_hinge_move(void* handle,
     catch (Exception e) { setError(e.msg); return -1; }
 }
 
+/// Edges whose degree is NOT in {5, 6} (the FK-illegal set), dim=3 only.
+/// Returns the count; if out_pairs/out_degs are non-null they receive 2 ints
+/// per edge (sorted pair) and the degree.  Reads the manifold's own
+/// incremental degree map -- no recomputation.
+extern(C) long ddg_manifold_illegal_edges(void* handle,
+    int* out_pairs, int* out_degs) nothrow
+{
+    clearError();
+    try
+    {
+        if (handle is null) { setError("null handle"); return -1; }
+        auto h = cast(ManifoldHandle*) handle;
+        if (h.dim != 3) { setError("illegal_edges is dim=3 only"); return -1; }
+        auto mw = cast(ManifoldWrapper!3*) h.ptr;
+        auto nEdges = mw.mfd.writeSimplicesToBuffer(1, null);
+        auto buf = new int[](2 * nEdges);
+        mw.mfd.writeSimplicesToBuffer(1, buf.ptr);
+        long n = 0;
+        foreach (i; 0 .. nEdges)
+        {
+            int[2] key = [buf[2 * i], buf[2 * i + 1]];
+            auto deg = mw.mfd.degree(key[]);
+            if (deg == 5 || deg == 6) continue;
+            if (out_pairs !is null)
+            {
+                out_pairs[2 * n] = key[0];
+                out_pairs[2 * n + 1] = key[1];
+                if (out_degs !is null) out_degs[n] = cast(int) deg;
+            }
+            n++;
+        }
+        return n;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Link of an edge (dim=3): one UNORDERED vertex pair per tetrahedron in the
+/// edge's star, written flat (2 ints per pair).  Returns the pair count
+/// (= edge degree), or -1 with an error if the edge is absent.
+extern(C) long ddg_manifold_edge_link(void* handle, int a, int b,
+    int* out_pairs) nothrow
+{
+    clearError();
+    try
+    {
+        if (handle is null) { setError("null handle"); return -1; }
+        auto h = cast(ManifoldHandle*) handle;
+        if (h.dim != 3) { setError("edge_link is dim=3 only"); return -1; }
+        auto mw = cast(ManifoldWrapper!3*) h.ptr;
+        import std.algorithm.comparison : max, min;
+        int[2] eb = [min(a, b), max(a, b)];
+        if (!mw.mfd.contains(eb[]))
+        {
+            setError("edge not in manifold");
+            return -1;
+        }
+        long n = 0;
+        foreach (pr; mw.mfd.link(eb[]))
+        {
+            if (out_pairs !is null)
+            {
+                int i = 0;
+                foreach (v; pr) out_pairs[2 * n + i++] = v;
+            }
+            n++;
+        }
+        return n;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Ordered link cycle of edge (a,b) via the O(degree) ridge walk, dim=3.
+/// hint_tet: 4 vertices of a CURRENT facet containing a and b (validated).
+/// Writes the cycle vertices to out_cycle, returns the count (= degree).
+extern(C) long ddg_manifold_edge_link_cycle(void* handle, int a, int b,
+    const(int)* hint_tet, int* out_cycle) nothrow
+{
+    clearError();
+    try
+    {
+        if (handle is null) { setError("null handle"); return -1; }
+        auto h = cast(ManifoldHandle*) handle;
+        if (h.dim != 3) { setError("edge_link_cycle is dim=3 only"); return -1; }
+        auto mw = cast(ManifoldWrapper!3*) h.ptr;
+        import std.algorithm : sort;
+        int[4] tet = hint_tet[0 .. 4];
+        tet[].sort();
+        bool hasA, hasB;
+        foreach (v; tet)
+        {
+            hasA |= v == a;
+            hasB |= v == b;
+        }
+        if (!hasA || !hasB) { setError("hint tet lacks the edge"); return -1; }
+        if (!mw.mfd.contains(tet[]))
+        {
+            setError("hint tet is not a current facet");
+            return -1;
+        }
+        return mw.mfd.writeEdgeLinkCycle(a, b, tet[], out_cycle);
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
 extern(C) int ddg_manifold_has_hinge_move(void* handle,
     const(int)* removed_edge, const(int)* link_cycle, int diagonal) nothrow
 {

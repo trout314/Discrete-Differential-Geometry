@@ -235,6 +235,25 @@ _lib.ddg_manifold_has_hinge_move.argtypes = [
 _lib.ddg_manifold_has_hinge_move.restype = ctypes.c_int
 _lib.ddg_manifold_has_hinge_move.errcheck = _check_int
 
+_lib.ddg_manifold_illegal_edges.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int),
+]
+_lib.ddg_manifold_illegal_edges.restype = ctypes.c_long
+_lib.ddg_manifold_illegal_edges.errcheck = _check_int
+
+_lib.ddg_manifold_edge_link.argtypes = [
+    ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_int),
+]
+_lib.ddg_manifold_edge_link.restype = ctypes.c_long
+_lib.ddg_manifold_edge_link.errcheck = _check_int
+
+_lib.ddg_manifold_edge_link_cycle.argtypes = [
+    ctypes.c_void_p, ctypes.c_int, ctypes.c_int,
+    ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int),
+]
+_lib.ddg_manifold_edge_link_cycle.restype = ctypes.c_long
+_lib.ddg_manifold_edge_link_cycle.errcheck = _check_int
+
 _lib.ddg_manifold_vertex_frozen.argtypes = [ctypes.c_void_p, ctypes.c_int]
 _lib.ddg_manifold_vertex_frozen.restype = ctypes.c_int
 _lib.ddg_manifold_vertex_frozen.errcheck = _check_int

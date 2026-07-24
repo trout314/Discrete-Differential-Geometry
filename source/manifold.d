@@ -616,6 +616,39 @@ public:
     }
 
     /// Write simplices of the given dimension directly to a caller-provided
+    /// Ordered link cycle of edge (a, b) via the ridge-link walk (dim = 3
+    /// only): starting from a KNOWN containing facet hintTet, walk around the
+    /// edge through dimMap!2 ridge links. Writes the link vertices in cyclic
+    /// order to buf and returns their count (= the edge's degree). O(degree)
+    /// hash lookups -- no facet scan. hintTet MUST be a current facet
+    /// containing both a and b (caller-checked).
+    static if (dimension_ == 3)
+    long writeEdgeLinkCycle()(Vertex a, Vertex b, const(Vertex)[] hintTet,
+                              int* buf) const
+    {
+        Vertex[2] others;
+        size_t k = 0;
+        foreach (v; hintTet)
+            if (v != a && v != b) others[k++] = v;
+        assert(k == 2);
+
+        buf[0] = others[0];
+        Vertex prev = others[0];
+        Vertex cur = others[1];
+        long n = 1;
+        while (cur != others[0])
+        {
+            buf[n++] = cur;
+            Vertex[3] ridge = [a, b, cur];
+            ridge[].sort();
+            auto lk = dimMap!2[ridge].link;
+            Vertex nxt = (lk[0] == prev) ? lk[1] : lk[0];
+            prev = cur;
+            cur = nxt;
+        }
+        return n;
+    }
+
     /// buffer, avoiding all GC allocation. Returns the number of simplices.
     /// If buf is null, just returns the count. Each simplex is written as
     /// (dim+1) consecutive ints.

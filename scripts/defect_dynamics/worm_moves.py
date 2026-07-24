@@ -129,6 +129,78 @@ def four_four_sites(F, faces, edeg):
 
 
 # ---------------------------------------------------------------------------
+# fast targeted enumeration (numpy; for worm heads / small illegal sets):
+# sites at SPECIFIC candidate edges, without building full python tables
+# ---------------------------------------------------------------------------
+
+
+def edge_degrees_np(F):
+    """(eu (E,2) int64 sorted pairs, edeg (E,) counts) -- vectorized."""
+    F = np.asarray(F, np.int64)
+    pairs = np.vstack([np.sort(F[:, [i, j]], axis=1)
+                       for i in range(4) for j in range(i + 1, 4)])
+    eu, cnt = np.unique(pairs, axis=0, return_counts=True)
+    return eu, cnt
+
+
+def _tets_with_pair(F, a, b):
+    F = np.asarray(F)
+    m = ((F == a).any(1)) & ((F == b).any(1))
+    return np.nonzero(m)[0]
+
+
+def _contains_simplex(F, verts):
+    F = np.asarray(F)
+    m = np.ones(len(F), bool)
+    for v in verts:
+        m &= (F == v).any(1)
+    return bool(m.any())
+
+
+def three_two_sites_at(F, edges3):
+    """As three_two_sites but only at the given deg-3 edges (pairs)."""
+    F = np.asarray(F)
+    for a, b in edges3:
+        ts = _tets_with_pair(F, a, b)
+        if len(ts) != 3:
+            continue
+        link = sorted(set(F[ts].ravel().tolist()) - {int(a), int(b)})
+        if len(link) != 3:
+            continue
+        yield frozenset((int(a), int(b))), frozenset(link), \
+            not _contains_simplex(F, link)
+
+
+def four_four_sites_at(F, edges4):
+    """As four_four_sites but only at the given deg-4 edges (pairs)."""
+    F = np.asarray(F)
+    for a, b in edges4:
+        ts = _tets_with_pair(F, a, b)
+        if len(ts) != 4:
+            continue
+        pairs = [frozenset(set(F[t].tolist()) - {int(a), int(b)})
+                 for t in ts]
+        if any(len(p) != 2 for p in pairs):
+            continue
+        adj = defaultdict(set)
+        for p in pairs:
+            x, y = sorted(p)
+            adj[x].add(y)
+            adj[y].add(x)
+        verts = sorted(adj)
+        if len(verts) != 4 or any(len(adj[v]) != 2 for v in verts):
+            continue
+        v0 = verts[0]
+        v1 = min(adj[v0])
+        cyc = [v0, v1]
+        while len(cyc) < 4:
+            cyc.append(next(x for x in adj[cyc[-1]] if x != cyc[-2]))
+        for diag in (frozenset((cyc[0], cyc[2])), frozenset((cyc[1], cyc[3]))):
+            yield frozenset((int(a), int(b))), cyc, diag, \
+                not _contains_simplex(F, sorted(diag))
+
+
+# ---------------------------------------------------------------------------
 # exact degree deltas  {edge: (old, new)}; created edges get old=None,
 # removed edges new=None
 # ---------------------------------------------------------------------------
