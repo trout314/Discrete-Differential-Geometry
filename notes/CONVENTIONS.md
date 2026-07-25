@@ -31,13 +31,15 @@ edit freely — this file is the single source of truth.
 | δ(e) | angle defect at an edge, δ(e) = 2π − θ·deg(e) | rad |
 | q_R(v) | curvature "charge" at vertex v, q_R(v) = ½ Σ_{e∋v} δ(e) | rad |
 | ρ_R(v) | curvature charge density, ρ_R(v) = q_R(v)/deg(v) | rad |
-| δq(v) | curvature deviation from mean, q_R(v) − q̄_R (state the reference — usually cell-mean) | rad |
+| δq(v) | curvature deviation from a reference, q_R(v) − q̄_R (state the reference). **Not** for complex charges — see Q_c | rad |
 | w(e) | link (disclination) charge of edge e, w(e) = 6 − deg(e); flat at deg 6 | — |
 | n₆(v) | # of degree-6 edges incident to v | — |
 | imp(v) | # incident illegal edges (deg ∉ {5,6}) at v | — |
+| Z(v) | coordination = # edges at v = (#tets at v + 4)/2 | count |
+| ΣZ | total coordination of a complex, Σ_{v∈c} Z(v) — **the integer that fixes Q_c** | count |
 | n_ill | **census**: # vertices with imp > 0 | count |
 | N_cx, s | # complexes; complex size (vertices) | counts |
-| Q_c | total δq of a complex (knot ≈ −1.19 ± 0.18) | rad |
+| Q_c | **raw** curvature charge of a complex, Σ_{v∈c} q_R(v) — no background subtraction. See §1.1 | rad |
 | f_FK | FK-legal vertex fraction (`legalvert`) | % |
 | f_e | legal-edge fraction (`legaledge`) | % |
 | f_reg | in-registry (interior-crystalline) vertex fraction | % |
@@ -65,14 +67,64 @@ vertex (legal or not). The six-web / n6 / FK-legality story is a *w* statement;
 physical curvature and its transport are *q* statements. State which when you
 say "charge."
 
+### 1.1 Curvature charge is fixed by coordination — use raw sums
+
+Because the link of a vertex is a triangulated 2-sphere on Z vertices (so it
+has 2Z − 4 triangles and its degrees sum to 6Z − 12), and a link-vertex's
+degree is the ambient degree of the corresponding edge,
+
+$$\sum_{e \ni v} \deg(e) = 6Z - 12
+\qquad\Longrightarrow\qquad
+q_R(v) = Z(\pi - 3\theta) + 6\theta$$
+
+so **q_R depends on the coordination alone** — for every vertex, legal or not,
+since only Euler is used. Summing over a complex of n vertices:
+
+$$Q_c = \sum_{v\in c} q_R(v) = \left(\textstyle\sum Z\right)(\pi - 3\theta) + 6n\theta$$
+
+A complex's curvature charge is therefore set by **one integer**, its total
+coordination ΣZ, and is quantized in steps of
+
+$$\pi - 3\theta = -0.5512856\ \text{rad per unit of } \textstyle\sum Z.$$
+
+Two related identities, useful because they say what is *not* independent
+(all three verified exactly on 8000 vertices):
+
+- n₆(v) = Z + 5·imp(v) − Σ(illegal degrees at v) − 12, so n₆ and Z are
+  interchangeable once edge degrees are known;
+- every illegal edge lies **inside** a defect complex (both endpoints have
+  imp > 0), so edge degrees already determine imp(v) and that degree sum.
+
+**Report Q_c raw.** Do not subtract a background mean. Raw Q_c depends only on
+the complex's own vertices, so identical complexes give identical values; with
+the state mean q̄_R subtracted, every measurement is tied to the whole
+configuration and acquires a spurious spread. Measured over 60 species classes
+at λ = 0.40: sd(Q_c) is 4.4 × 10⁻¹⁶ (machine epsilon) raw, against 1.8 × 10⁻³
+background-subtracted. Report the relative value in addition if it is useful,
+never instead.
+
+**The (3,4,4) knot is a charge ladder**, not a single value. Its rungs, indexed
+by ΣZ over its five vertices (ΣZ = 70, i.e. mean Z = 14, is the most common):
+
+| ΣZ | 67 | 68 | 69 | 70 | 71 | 72 |
+|---|---|---|---|---|---|---|
+| Q_c (rad) | −0.0074 | −0.5586 | −1.1099 | −1.6612 | −2.2125 | −2.7638 |
+
+An earlier figure of Q_c(knot) ≈ −1.19 ± 0.18 in this file was an average over
+rungs, not a measurement of one: the quoted ±0.18 is narrower than the 0.551
+rung spacing. Quote the rung (or ΣZ) rather than a mean over the ladder.
+
 ## 2. Standard terminology
 
 | term | definition | acceptable synonyms | avoid |
 |---|---|---|---|
 | full action | edge pin + n6 legality terms (+ volume pin, always on) | — | "the objective" |
 | EDQ-only | full action with n6 off (the R² ablation) | R²-only | bare "EDQ" as an ensemble name |
-| complex | connected set of imp>0 vertices | illegal complex, defect complex | "defect" for a single vertex |
-| knot | complex with (3,4,4)-type edge signature — quantized full-action species | — | — |
+| defect vertex | imp > 0 **or** non-FK coordination (n₆ ∉ {0,2,3,4}) | — | equating it with imp > 0 alone |
+| complex | connected set of defect vertices | illegal complex, defect complex | "defect" for a single vertex |
+| induced subcomplex | every simplex whose vertices all lie in a complex — what the defect **is**. Dense, not curve-like | — | confusing it with the closed star |
+| closed star | every facet incident to a complex — the region it **occupies**; its boundary is the flux surface | — | confusing it with the induced subcomplex |
+| knot | complex whose induced subcomplex is 3 tets of ∂Δ⁴ (f = (5,10,9,3), 1-skeleton K₅, χ = 1); edge signature (3,4,4) | — | treating its Q_c as single-valued — it is a ladder, §1.1 |
 | worm | open chain of deg-4 edges — EDQ-only species | 4-segment | — |
 | monopole | edge-illegal vertex = divergence site of the six-flux | — | "line endpoint" (impossible at legal vertices — fullerene theorem) |
 | halo | FK-legal but out-of-registry vertices dressing a defect | — | — |
@@ -103,8 +155,11 @@ Every report on a crystal-derived state includes:
   nonstandard).
 - **Legality**: f_FK (and f_e when relevant).
 - **Crystallinity**: N_gr, f_G1, f_reg, host phase.
-- **Curvature**: e\* vs ⟨e⟩.
-- **Census**: n_ill (and N_cx when species matter).
+- **Curvature**: e\* vs ⟨e⟩ (and Q_c **raw**, with ΣZ, when complex charges are
+  reported — see §1.1).
+- **Census**: n_ill (and N_cx when species matter). When species are the point,
+  say which key: edge signature, induced subcomplex, or that subcomplex
+  decorated by edge degree ± n₆ (`species_report.py --group`).
 - **Certification status**: certified (gate numbers) or provisional.
 - Additional observables as relevant, if not disproportionately expensive.
 
@@ -128,8 +183,9 @@ Every report on a crystal-derived state includes:
   collective (ΔP, W). Visitation counts are upper bounds, never rates.
 - **Ensemble averages**: quote R̂_q, window, and ESS when the average carries
   the claim; label provisional data.
-- **Species**: complex censuses report size spectrum + illegal-edge signature
-  + Q_c (cell-mean reference).
+- **Species**: complex censuses report size spectrum + the grouping key used
+  (illegal-edge signature, induced subcomplex, or decorated subcomplex) + Q_c
+  **raw** with ΣZ. Never a mean over ladder rungs — see §1.1.
 
 ## 6. Run-launch checklist
 
