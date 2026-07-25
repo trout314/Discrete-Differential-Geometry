@@ -261,6 +261,141 @@ class DefectState:
             out.append(Complex(sorted(comp), tuple(sig), tuple(nodes)))
         return out
 
+    def induced(self, verts):
+        """The subcomplex INDUCED by `verts`: every simplex of the
+        triangulation all of whose vertices are defect vertices.
+
+        Returned as {dim: sorted list of simplices}. This is the full
+        subcomplex, not just the top-dimensional part -- an edge with both
+        endpoints in the set belongs to it even when no tet of the set
+        contains it.
+
+        It is DENSE, not curve-like. Measured: a (3,4,4) knot always induces
+        f = (5, 10, 9, 3), and since C(5,2) = 10 its 1-skeleton is the
+        complete graph K5 -- every defect vertex adjacent to every other --
+        with 9 of the 10 triangles and 3 of the 5 tets, i.e. a fixed
+        subcomplex of the boundary of the 4-simplex, identical in all 82
+        instances checked. The curve-like object is a different one: the
+        ILLEGAL-EDGE subgraph (edges of `ill_edges` inside the set), which for
+        a (3,4,4) knot has 3 edges with degree sequence (2,1,1,1,1) -- a
+        2-edge path plus a disjoint edge. Do not confuse the two.
+
+        Distinct from `star`: the induced subcomplex is what the defect IS
+        (it has the defect's vertices and nothing else), while the closed star
+        is the region the defect OCCUPIES (it pulls in a shell of legal
+        neighbours). Both are useful; they answer different questions.
+
+        Every simplex is a face of some tet, and any tet containing a simplex
+        with all vertices in the set is incident to the set, so scanning the
+        incident tets finds everything -- O(|S| * Z), no global scan.
+        """
+        S = set(verts)
+        out = {0: sorted(S), 1: set(), 2: set(), 3: set()}
+        for v in S:
+            for t in self.v2t.get(v, ()):
+                inside = [x for x in t if x in S]
+                if len(inside) < 2:
+                    continue
+                for e in combinations(inside, 2):
+                    out[1].add(e)
+                for f in combinations(inside, 3):
+                    out[2].add(f)
+                if len(inside) == 4:
+                    out[3].add(tuple(t))
+        for d in (1, 2, 3):
+            out[d] = sorted(out[d])
+        return out
+
+    def induced_facets(self, verts):
+        """Maximal simplices of the induced subcomplex -- the data that
+        determines it. Returned as a sorted list of tuples."""
+        ind = self.induced(verts)
+        facets = []
+        for d in (3, 2, 1, 0):
+            for s in ind[d]:
+                s = (s,) if d == 0 else tuple(s)
+                if not any(set(s) < set(f) for f in facets):
+                    facets.append(s)
+        return sorted(facets, key=lambda f: (-len(f), f))
+
+    def induced_shape(self, verts):
+        """Coarse shape summary of the induced subcomplex: the f-vector, the
+        sorted degree sequence of its 1-skeleton, and the number of connected
+        components / independent cycles of that 1-skeleton.
+
+        Note these describe the DENSE induced subcomplex, so `cycles` is
+        large (6 for a (3,4,4) knot, whose 1-skeleton is K5) and is not a
+        curve invariant. For curve-like structure use the illegal-edge
+        subgraph instead -- see `illegal_shape`."""
+        ind = self.induced(verts)
+        nv, ne = len(ind[0]), len(ind[1])
+        deg = Counter()
+        for u, w in ind[1]:
+            deg[u] += 1
+            deg[w] += 1
+        adj = defaultdict(set)
+        for u, w in ind[1]:
+            adj[u].add(w)
+            adj[w].add(u)
+        seen, ncomp = set(), 0
+        for v in ind[0]:
+            if v in seen:
+                continue
+            ncomp += 1
+            stack = [v]
+            seen.add(v)
+            while stack:
+                x = stack.pop()
+                for y in adj[x]:
+                    if y not in seen:
+                        seen.add(y)
+                        stack.append(y)
+        return {
+            "f": (nv, ne, len(ind[2]), len(ind[3])),
+            "degseq": tuple(sorted((deg[v] for v in ind[0]), reverse=True)),
+            "components": ncomp,
+            "cycles": ne - nv + ncomp,       # first Betti number of the graph
+        }
+
+    def illegal_shape(self, verts):
+        """Shape of the ILLEGAL-EDGE subgraph inside a defect: the
+        disclination line itself, as opposed to the dense induced subcomplex.
+
+        This is the curve-like object. A (3,4,4) knot gives 3 edges with
+        degree sequence (2,1,1,1,1) -- a 2-edge path plus a disjoint edge, so
+        two graph components even though the defect is connected through the
+        triangulation's 1-skeleton."""
+        S = set(verts)
+        edges = [e for e in self.ill_edges if e[0] in S and e[1] in S]
+        deg = Counter()
+        adj = defaultdict(set)
+        for u, w in edges:
+            deg[u] += 1
+            deg[w] += 1
+            adj[u].add(w)
+            adj[w].add(u)
+        touched = set(deg)
+        seen, ncomp = set(), 0
+        for v in touched:
+            if v in seen:
+                continue
+            ncomp += 1
+            stack = [v]
+            seen.add(v)
+            while stack:
+                x = stack.pop()
+                for y in adj[x]:
+                    if y not in seen:
+                        seen.add(y)
+                        stack.append(y)
+        return {
+            "n_edges": len(edges),
+            "degseq": tuple(sorted(deg.values(), reverse=True)),
+            "components": ncomp,
+            "cycles": len(edges) - len(touched) + ncomp,
+            "isolated_vertices": len(S) - len(touched),
+        }
+
     def star(self, verts):
         """Closed star of a vertex set: every tet incident to any of them.
 
