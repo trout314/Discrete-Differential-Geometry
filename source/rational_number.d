@@ -40,7 +40,16 @@ pure @safe unittest
 
     auto pi = rational(BigInt(4)) / getTerm(1);
     assert(pi.to!string == "586398465775082011623424/186656428899215824574025");
-    assert("%.18f".format(cast(real) pi) == "3.141592653589793238");
+    // The exact rational is pinned above; this checks the rational -> real
+    // conversion to the full precision `real` actually has, which is
+    // architecture dependent: x87's 80-bit extended has mant_dig 64, while on
+    // AArch64 (and anywhere else without x87) `real` IS `double`, mant_dig 53.
+    // Asking for 18 decimals unconditionally hard-codes the x86 expansion and
+    // fails everywhere else.
+    static if (real.mant_dig >= 64)
+        assert("%.18f".format(cast(real) pi) == "3.141592653589793238");
+    else
+        assert("%.15f".format(cast(real) pi) == "3.141592653589793");
 }
 
 alias abs = std.math.abs; // Allow cross-module overloading.

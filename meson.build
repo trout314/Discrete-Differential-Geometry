@@ -12,7 +12,13 @@ dc_dir = run_command('dirname', dc_path, check : true).stdout().strip()
 # LDC uses ../lib, DMD uses ../lib64
 dc_lib_dir = dc_dir / '..' / 'lib'
 dc_lib64_dir = dc_dir / '..' / 'lib64'
-d_link_args = ['-L=-rpath=' + dc_lib_dir, '-L=-rpath=' + dc_lib64_dir]
+# Pass -rpath and its path as SEPARATE linker tokens. The joined "-rpath=PATH"
+# spelling is a GNU ld extension; Apple's ld64 only accepts the two-argument
+# form and fails the link outright with "ld: unknown option: -rpath=...".
+d_link_args = [
+  '-L=-rpath', '-L=' + dc_lib_dir,
+  '-L=-rpath', '-L=' + dc_lib64_dir,
+]
 
 # ---------------------------------------------------------------------------
 # Source files
@@ -72,4 +78,9 @@ test_exe = executable('unittest',
   link_args : d_link_args,
 )
 
-test('unittests', test_exe, workdir : meson.project_source_root())
+# The suite runs unoptimized (-d-debug, asserts on) and takes ~20 s here, so
+# meson's 30 s default leaves no headroom on a slower or loaded machine.
+test('unittests', test_exe,
+  workdir : meson.project_source_root(),
+  timeout : 300,
+)

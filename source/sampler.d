@@ -2189,6 +2189,129 @@ bool trySlideMove(Vertex, P)(
     return true;
 }
 
+/// Rollback exactness: a slide that does not commit must leave the manifold
+/// bitwise as it found it, whatever the reason it declined -- malformed
+/// frame, a mid-composite Pachner move that fails to validate, an unclean
+/// (species-changing) end state, or a Metropolis rejection. The trial pass
+/// applies all four moves for real, so this is the invariant that keeps a
+/// rejected proposal from corrupting the state.
+///
+/// COVERAGE: a thermalized sphere has degree-3 chords whose frames derive, so
+/// the composite really is applied and rolled back here (the test asserts as
+/// much, so it cannot quietly decay into checking nothing). It does NOT
+/// produce CLEAN slides -- those need a (3,4,4) knot embedded in a
+/// Boerdijk-Coxeter chain, i.e. a crystal-derived state, not a random one.
+/// The clean/commit half of the move is covered exhaustively against the
+/// Python oracle by scripts/defect_dynamics/worm_slide.py --dcross.
+unittest
+{
+    import std.random : rndGen;
+
+    struct TestParams
+    {
+        int numFacetsTarget = 150;
+        real hingeDegreeTarget = 5.105025;
+        real numFacetsCoef = 0.1;
+        real numHingesCoef = 0.0;
+        real hingeDegreeVarianceCoef = 0.0;
+        real coDim3DegreeVarianceCoef = 0.0;
+        real hingeDegreeTargetCoef = 0.85;
+        real coDim3DegreeTargetCoef = 0.0;
+        real coDim3DegreeTarget = 9.5;
+    }
+
+    static int[][] snapshot(ref Manifold!3 mfd)
+    {
+        int[][] fs;
+        foreach (f; mfd.facets)
+            fs ~= f.dup;
+        fs.sort();
+        return fs;
+    }
+
+    rndGen.seed(20260724);          // deterministic thermalization
+    auto mfd = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+    auto params = TestParams();
+    {
+        real obj = mfd.objective(params);
+        int[] unused;
+        ulong hT, hA;
+        ulong[4] bT, bA;
+        foreach (_; 0 .. 2000)
+            mfd.mcmcStep(obj, unused, params, 0.0, hT, hA, bT, bA);
+    }
+
+    auto before = snapshot(mfd);
+    auto fvec0 = mfd.fVector.dup;
+    static immutable int[2][6] picks =
+        [[0, 1], [0, 2], [1, 0], [1, 2], [2, 0], [2, 1]];
+
+    int nProbed = 0, nFramed = 0, nClean = 0;
+    foreach (edge; mfd.simplices(1).map!(e => [e[0], e[1]]).array)
+    {
+        if (mfd.degree(edge) != 3) continue;
+
+        // any facet on the edge serves as the link-walk hint
+        int[] hint;
+        foreach (f; mfd.facets)
+            if (edge[].isSubsetOf(f[])) { hint = f.dup; break; }
+        assert(hint.length == 4);
+
+        foreach (slot; 0 .. SLIDE_SLOTS)
+        {
+            nProbed++;
+            // Derive the frame separately, purely to measure how deep this
+            // probe reaches: a derived frame means trySlideMove below really
+            // applies the composite (and must therefore really roll it back).
+            bool framed = false;
+            {
+                immutable c0 = slot / 6 == 0 ? edge[0] : edge[1];
+                immutable c4 = slot / 6 == 0 ? edge[1] : edge[0];
+                int[8] lb = 0;
+                if (mfd.writeEdgeLinkCycle(edge[0], edge[1], hint, lb.ptr) == 3)
+                {
+                    int[3] lk = [lb[0], lb[1], lb[2]];
+                    lk[].sort();
+                    SlideFrame!int fr;
+                    if (deriveSlideFrame(mfd, c0, c4, lk[picks[slot % 6][0]],
+                                         lk[picks[slot % 6][1]], fr))
+                        { nFramed++; framed = true; }
+                }
+            }
+
+            real obj = mfd.objective(params);
+            immutable objIn = obj;
+            bool valid = false;
+            real dS = real.nan;
+            immutable committed = mfd.trySlideMove(obj, edge[0], edge[1],
+                hint, slot, params, valid, null, null, null, null, null,
+                SlideAccept.trialOnly, &dS);
+
+            // trialOnly never commits, whatever the verdict
+            assert(!committed);
+            assert(obj == objIn, "trial pass leaked an objective change");
+            assert(snapshot(mfd) == before, "slide trial did not roll back");
+            assert(mfd.fVector == fvec0);
+            // The incremental degree/ridge maps must survive the rollback
+            // too, not just the facet set -- audit them wherever a composite
+            // was actually applied and undone. (validateMaps is the cheap
+            // per-probe check; the full topological audit runs once below,
+            // since findProblems rebuilds a SimplicialComplex.)
+            if (framed)
+                assert(mfd.validateMaps is null);
+            if (valid)
+            {
+                nClean++;
+                assert(dS == dS, "a valid slide must report a finite dS");
+            }
+        }
+    }
+    assert(nProbed > 0, "no degree-3 chords to probe");
+    assert(nFramed > 0, "no frame derived: the composite was never applied, "
+                        ~ "so rollback exactness went untested");
+    assert(mfd.findProblems.length == 0);
+}
+
 /******************************************************************************
 Run one MCMC step using a unified proposal that naturally includes both
 bistellar (Pachner) moves and 4-4 hinge moves.
