@@ -1793,6 +1793,403 @@ unittest
 }
 
 /******************************************************************************
+                            KNOT SLIDE (worm move)
+*******************************************************************************
+
+A "slide" translates a (3,4,4) illegal-degree knot one step along its local
+Boerdijk-Coxeter chain. It is a COMPOSITE of four Pachner moves that, taken
+together, destroy the degree-3 chord (c0,c4) and create a degree-3 chord
+(c4,c8) four steps down the chain, translating the knot's entire local degree
+pattern:
+
+    M1  3->2  center (c0,c4), coCenter = its 3-vertex link
+    M2  2->3  center face (c3,c4,c5), coCenter apexes (c2,c6)
+    M3  2->3  center face (c5,c6,c7), coCenter apexes (c4,c8)
+    M4  3->2  center (c2,c6), coCenter = its (then-current) 3-vertex link
+
+Net effect on the f-vector is ZERO in every dimension (two 3->2 and two 2->3),
+so N_3 and E are exactly preserved and every global/extensive term of the
+action cancels identically. The frame c5..c8 is derived from (c0,c4,c2,c3) by
+the sliding-window rule, each step an O(1) ridge-link lookup:
+
+    c5 = apex(c2,c3,c4) != c0     c6 = apex(c3,c4,c5) != c2
+    c7 = apex(c4,c5,c6) != c3     c8 = apex(c5,c6,c7) != c4
+
+MOVE CLASS: only CLEAN (species-preserving) slides are in the class -- those
+that leave the multiset of illegal edge degrees unchanged. Cleanliness is
+tested locally on the O(1) set of edges the composite can touch (an edge whose
+degree changes must be an edge of an added or removed tet, hence has both
+endpoints in the move support); unchanged edges contribute identically to the
+global multiset, so local == global. Restricting to the clean class buys three
+things: the class is inverse-closed by construction, n_3 (the number of
+degree-3 chords, i.e. slide handles) is preserved so the proposal is
+symmetric, and the Hastings ratio collapses to plain Metropolis,
+
+    alpha = min(1, exp(-dS)).
+
+Verified exhaustively on four states (a crystal + one knot and three thermal
+lam=0.40 snapshots): 58/58 clean transitions inverse-closed with k_f = k_r = 1
+on every one, and zero local-vs-global cleanliness disagreements. See
+scripts/defect_dynamics/worm_slide.py --closure-test (the Python oracle).
+
+PROPOSAL: piggybacks on the unified facet proposal. A degree-3 edge lies in
+exactly 3 facets, so drawing a random facet and a random 2-subset hits every
+degree-3 edge with the SAME probability 3/(15*N_3) -- uniform over chords with
+no global list to maintain. A slot j in [0, SLIDE_SLOTS) then fixes the frame:
+2 chord orientations x 6 ordered (c2,c3) picks from the sorted 3-vertex link.
+The slot count is deliberately constant, not a count of valid frames: an
+invalid slot is a rejected proposal, so the denominator is identical in both
+states and cancels.
+*/
+
+/// 2 chord orientations x 6 ordered (c2,c3) picks from the 3-vertex link.
+enum int SLIDE_SLOTS = 12;
+
+/// Slide-move configuration + counters, passed to mcmcStep as an optional
+/// trailing pointer (null = slides disabled, the default for every existing
+/// call site). `prob` is the probability of proposing a slide rather than the
+/// ordinary 3->2 bistellar move once the unified proposal has landed on a
+/// degree-3 edge.
+struct SlideConfig
+{
+    real prob = 0.0L;
+    ulong tries;      // proposals that formed a legal CLEAN slide
+    ulong accepts;
+}
+
+/// What trySlideMove does once it has a legal clean slide in hand.
+enum SlideAccept
+{
+    metropolis,   ///< the sampler's rule: accept with min(1, exp(-dS))
+    trialOnly,    ///< never commit -- measure dS and cleanliness, then restore
+    force,        ///< always commit (crossval / scripted transport only)
+}
+
+/// One applied Pachner move of a slide, kept for rollback.
+private struct SlideRec(Vertex)
+{
+    Vertex[3] center;
+    Vertex[3] coCenter;
+    int centerLen;
+    int coCenterLen;
+}
+
+/// The apex of triangle (a,b,c) that is not `excl`. Returns false if the
+/// triangle is absent or `excl` is not one of its apexes (frame broken).
+private bool apexExcluding(Vertex)(const ref Manifold!(3, Vertex) mfd,
+    Vertex a, Vertex b, Vertex c, Vertex excl, out Vertex result)
+{
+    int[2] lk = 0;
+    if (mfd.writeFaceApexes(a, b, c, lk.ptr) != 2) return false;
+    if (lk[0] == excl) { result = cast(Vertex) lk[1]; return true; }
+    if (lk[1] == excl) { result = cast(Vertex) lk[0]; return true; }
+    return false;
+}
+
+/// The eight frame vertices of a slide, in template order.
+struct SlideFrame(Vertex)
+{
+    Vertex c0, c2, c3, c4, c5, c6, c7, c8;
+}
+
+/// Derive c5..c8 from the chord (c0,c4) and the ordered link pick (c2,c3) by
+/// the sliding-window rule. Returns false if any window face is missing, the
+/// frame assumption breaks, or the eight vertices are not distinct.
+bool deriveSlideFrame(Vertex)(const ref Manifold!(3, Vertex) mfd,
+    Vertex c0, Vertex c4, Vertex c2, Vertex c3, out SlideFrame!Vertex f)
+{
+    Vertex c5, c6, c7, c8;
+    if (!apexExcluding(mfd, c2, c3, c4, c0, c5)) return false;
+    if (!apexExcluding(mfd, c3, c4, c5, c2, c6)) return false;
+    if (!apexExcluding(mfd, c4, c5, c6, c3, c7)) return false;
+    if (!apexExcluding(mfd, c5, c6, c7, c4, c8)) return false;
+
+    Vertex[8] all = [c0, c2, c3, c4, c5, c6, c7, c8];
+    Vertex[8] sorted_ = all;
+    sorted_[].sort();
+    foreach (i; 0 .. 7)
+        if (sorted_[i] == sorted_[i + 1]) return false;   // degenerate frame
+
+    f = SlideFrame!Vertex(c0, c2, c3, c4, c5, c6, c7, c8);
+    return true;
+}
+
+/// Is this edge degree illegal (an FK/TCP defect)? Legal degrees are 5 and 6.
+private bool isIllegalDegree(size_t d) { return d != 0 && d != 5 && d != 6; }
+
+/******************************************************************************
+Attempt one knot slide at the degree-3 chord (a,b) using slot `slot`.
+
+Runs in two passes. The TRIAL pass applies the four Pachner moves for real,
+accumulating the action change through the SAME speculative-delta path every
+other move uses (there is no parallel reimplementation of the action to drift
+out of sync), tests cleanliness, then rolls the composite back exactly. If the
+Metropolis test passes, the COMMIT pass replays the recorded moves with the
+full instrumentation in lockstep, so an accepted slide touches the potential
+state, cocycle, six-flip ledger and event log through exactly the same calls,
+in the same order, as four ordinary accepted bistellar moves.
+
+Returns true if the slide was accepted (manifold, currentObjective, potState
+and cocycle all advanced); false otherwise, with every structure restored.
+`valid` is set when the proposal formed a legal CLEAN slide, i.e. when the
+attempt counted as a Metropolis try rather than a malformed proposal.
+*/
+bool trySlideMove(Vertex, P)(
+    ref Manifold!(3, Vertex) mfd,
+    ref real currentObjective,
+    Vertex a, Vertex b, const(Vertex)[] hintTet, int slot,
+    P params,
+    out bool valid,
+    MoveCounters!Vertex* counters = null,
+    GeometryLedger!Vertex* ledger = null,
+    VertexPotState!Vertex* potState = null,
+    const(VertexPot)* pot = null,
+    CocycleState!Vertex* cocycle = null,
+    SlideAccept policy = SlideAccept.metropolis,
+    real* dSOut = null)
+{
+    alias BM = BistellarMove!(3, Vertex);
+    valid = false;
+    if (dSOut !is null) *dSOut = real.nan;
+
+    // --- the chord's link: 3 vertices, sorted so slot -> (c2,c3) is a
+    // state-independent map (this is what makes k_f = k_r = 1 hold).
+    int[8] linkBuf = 0;
+    auto nl = mfd.writeEdgeLinkCycle(a, b, hintTet, linkBuf.ptr);
+    if (nl != 3) return false;
+    Vertex[3] link = [cast(Vertex) linkBuf[0], cast(Vertex) linkBuf[1],
+                      cast(Vertex) linkBuf[2]];
+    link[].sort();
+
+    // --- decode the slot: orientation x ordered (c2,c3) pick.
+    immutable int orient = slot / 6;
+    immutable int pick = slot % 6;
+    immutable Vertex c0 = orient == 0 ? a : b;
+    immutable Vertex c4 = orient == 0 ? b : a;
+    static immutable int[2][6] picks =
+        [[0, 1], [0, 2], [1, 0], [1, 2], [2, 0], [2, 1]];
+    immutable Vertex c2 = link[picks[pick][0]];
+    immutable Vertex c3 = link[picks[pick][1]];
+
+    SlideFrame!Vertex f;
+    if (!deriveSlideFrame(mfd, c0, c4, c2, c3, f)) return false;
+
+    // --- support: the frame plus the chord's link (the third link vertex is
+    // generally not a frame vertex). Every tet the composite adds or removes
+    // has all four vertices in this set, so every edge whose degree can
+    // change has both endpoints in it -- that is what makes the local
+    // cleanliness test exact.
+    Vertex[9] supBuf = 0;
+    int nsup = 0;
+    void addSup(Vertex v)
+    {
+        foreach (i; 0 .. nsup) if (supBuf[i] == v) return;
+        supBuf[nsup++] = v;
+    }
+    addSup(f.c0); addSup(f.c2); addSup(f.c3); addSup(f.c4);
+    addSup(f.c5); addSup(f.c6); addSup(f.c7); addSup(f.c8);
+    foreach (v; link) addSup(v);
+    auto support = supBuf[0 .. nsup];
+
+    if (counters !is null)
+        addSupport(counters.proposed, support);
+
+    // Frozen-region rejection: as for the other move types, every facet the
+    // composite adds or removes has all its vertices in the support.
+    if (mfd.anyFrozen(support)) return false;
+
+    // --- degrees of every support edge BEFORE the composite.
+    size_t[36] degBefore = 0;
+    int npair = 0;
+    foreach (i; 0 .. nsup)
+        foreach (j; i + 1 .. nsup)
+        {
+            Vertex[2] e = [supBuf[i], supBuf[j]];
+            e[].sort();
+            degBefore[npair++] = mfd.degreeOrZero!1(e[]);
+        }
+
+    // --- TRIAL PASS: apply the four moves, accumulating the action change
+    // through the ordinary speculative-delta path.
+    SlideRec!Vertex[4] recs;
+    int nApplied = 0;
+    real baseRun = currentObjective - (potState !is null ? potState.total : 0.0L);
+    real deltaTotal = 0.0L;
+
+    void rollback()
+    {
+        foreach_reverse (k; 0 .. nApplied)
+        {
+            auto inv = BM(recs[k].coCenter[0 .. recs[k].coCenterLen],
+                          recs[k].center[0 .. recs[k].centerLen]);
+            assert(mfd.hasValidMove(inv), "slide rollback: inverse invalid");
+            if (potState !is null)
+                mfd.potentialBistellarDelta(inv, *potState, *pot, true);
+            mfd.doMove(inv);
+        }
+    }
+
+    /// Form, validate and apply one step. Returns false (after rolling the
+    /// whole composite back) if the step is not a legal Pachner move here.
+    bool step(scope const(Vertex)[] center, scope const(Vertex)[] coCenter)
+    {
+        auto bm = BM(center, coCenter);
+        if (!mfd.hasValidMove(bm)) { rollback(); return false; }
+        real dBase = mfd.speculativeBistellarDelta(bm, baseRun, params);
+        real dPot = 0.0L;
+        if (potState !is null)
+            dPot = mfd.potentialBistellarDelta(bm, *potState, *pot, true);
+        mfd.doMove(bm);
+        baseRun += dBase;
+        deltaTotal += dBase + dPot;
+        recs[nApplied].centerLen = cast(int) center.length;
+        recs[nApplied].coCenterLen = cast(int) coCenter.length;
+        recs[nApplied].center[0 .. center.length] = center[];
+        recs[nApplied].coCenter[0 .. coCenter.length] = coCenter[];
+        nApplied++;
+        return true;
+    }
+
+    // M1: 3->2 destroying the chord itself.
+    Vertex[2] m1c = [c0, c4]; m1c[].sort();
+    if (!step(m1c[], link[])) return false;
+
+    // M2: 2->3 on face (c3,c4,c5) with apexes (c2,c6).
+    Vertex[3] m2c = [f.c3, f.c4, f.c5]; m2c[].sort();
+    Vertex[2] m2cc = [f.c2, f.c6]; m2cc[].sort();
+    if (!step(m2c[], m2cc[])) return false;
+
+    // M3: 2->3 on face (c5,c6,c7) with apexes (c4,c8) -- creates the arrival
+    // chord (c4,c8).
+    Vertex[3] m3c = [f.c5, f.c6, f.c7]; m3c[].sort();
+    Vertex[2] m3cc = [f.c4, f.c8]; m3cc[].sort();
+    if (!step(m3c[], m3cc[])) return false;
+
+    // M4: 3->2 on (c2,c6); its link is resolved against the current state.
+    Vertex[2] m4c = [f.c2, f.c6]; m4c[].sort();
+    {
+        auto degc = mfd.degreeOrZero!1(m4c[]);
+        if (degc != 3) { rollback(); return false; }
+        // any current facet on the edge serves as the walk hint
+        Vertex[4] hint = 0;
+        {
+            int[2] ap = 0;
+            if (mfd.writeFaceApexes(f.c2, f.c6, f.c3, ap.ptr) != 2)
+            { rollback(); return false; }
+            hint = [f.c2, f.c6, f.c3, cast(Vertex) ap[0]];
+            hint[].sort();
+        }
+        int[8] lb4 = 0;
+        auto n4 = mfd.writeEdgeLinkCycle(m4c[0], m4c[1], hint[], lb4.ptr);
+        if (n4 != 3) { rollback(); return false; }
+        Vertex[3] m4cc = [cast(Vertex) lb4[0], cast(Vertex) lb4[1],
+                          cast(Vertex) lb4[2]];
+        m4cc[].sort();
+        if (!step(m4c[], m4cc[])) return false;
+    }
+
+    // --- LANDED: the arrival chord must be a degree-3 edge, i.e. the knot
+    // came to rest with a usable handle. M3 creates (c4,c8) as a pole-pole
+    // edge born at degree 3 and M4's three tets (on the edge (c2,c6), whose
+    // link is then {c3,c4,c5}) contain no c8, so this always holds -- it is
+    // checked rather than assumed because the whole inverse-closure argument
+    // rests on it.
+    {
+        Vertex[2] arrival = [f.c4, f.c8]; arrival[].sort();
+        if (mfd.degreeOrZero!1(arrival[]) != 3) { rollback(); return false; }
+    }
+
+    // --- CLEANLINESS: the multiset of illegal degrees over CHANGED support
+    // edges must be identical before and after. Unchanged edges contribute
+    // identically to the global multiset, so this local test is exact.
+    // Degrees are small; tally them in a fixed histogram (degree 0 = absent).
+    enum int MAXDEG = 64;
+    int[MAXDEG + 1] histo = 0;
+    bool overflow = false;
+    {
+        int k = 0;
+        foreach (i; 0 .. nsup)
+            foreach (j; i + 1 .. nsup)
+            {
+                Vertex[2] e = [supBuf[i], supBuf[j]];
+                e[].sort();
+                immutable d0 = degBefore[k++];
+                immutable d1 = mfd.degreeOrZero!1(e[]);
+                if (d0 == d1) continue;                 // unchanged: cancels
+                if (d0 > MAXDEG || d1 > MAXDEG) { overflow = true; break; }
+                if (isIllegalDegree(d0)) histo[d0]++;
+                if (isIllegalDegree(d1)) histo[d1]--;
+            }
+    }
+    bool clean = !overflow;
+    if (clean)
+        foreach (h; histo)
+            if (h != 0) { clean = false; break; }
+
+    // The trial is over either way: put the manifold back exactly as it was.
+    rollback();
+
+    if (!clean) return false;
+
+    valid = true;
+    if (dSOut !is null) *dSOut = deltaTotal;
+    if (counters !is null)
+        addSupport(counters.valid, support);
+
+    // --- Metropolis. k_f = k_r = 1 and n_3 is preserved on the clean class,
+    // so the Hastings ratio is exactly exp(-dS) with no correction.
+    final switch (policy)
+    {
+    case SlideAccept.trialOnly:
+        return false;
+    case SlideAccept.force:
+        break;
+    case SlideAccept.metropolis:
+        immutable real logAlpha = -deltaTotal;
+        if (logAlpha < 0 && uniform01 > exp(logAlpha))
+            return false;
+        break;
+    }
+
+    // --- COMMIT PASS: replay the recorded moves with full instrumentation,
+    // exactly as four ordinary accepted bistellar moves.
+    real committed = 0.0L;
+    real baseCommit = currentObjective
+        - (potState !is null ? potState.total : 0.0L);
+    foreach (k; 0 .. nApplied)
+    {
+        auto bm = BM(recs[k].center[0 .. recs[k].centerLen],
+                     recs[k].coCenter[0 .. recs[k].coCenterLen]);
+        assert(mfd.hasValidMove(bm), "slide commit: replayed move invalid");
+        real dBase = mfd.speculativeBistellarDelta(bm, baseCommit, params);
+        committed += dBase;
+        baseCommit += dBase;
+        if (potState !is null)
+            committed += mfd.potentialBistellarDelta(bm, *potState, *pot, true);
+        if (ledger !is null && ledger.logSixFlips)
+            sixFlipsBistellar(*ledger, mfd, bm.center, bm.coCenter);
+        if (cocycle !is null && cocycle.enabled)
+            cocycleBistellar(*cocycle, bm.center, bm.coCenter);
+        mfd.doMove(bm);
+        if (ledger !is null)
+        {
+            if (ledger.trackRoles)
+                recordBistellar(*ledger, bm.center, bm.coCenter);
+            if (ledger.logEvents)
+                logEvent(*ledger, cast(int) bm.coCenter.length - 1,
+                         bm.center, bm.coCenter);
+        }
+    }
+    assert(abs(committed - deltaTotal) < 1e-9L,
+        "slide commit delta disagrees with trial delta");
+
+    currentObjective += committed;
+    if (counters !is null)
+        addSupport(counters.acceptedBistellar, support);
+    return true;
+}
+
+/******************************************************************************
 Run one MCMC step using a unified proposal that naturally includes both
 bistellar (Pachner) moves and 4-4 hinge moves.
 
@@ -1818,7 +2215,8 @@ bool mcmcStep(Vertex, P)(
     GeometryLedger!Vertex* ledger = null,
     VertexPotState!Vertex* potState = null,
     const(VertexPot)* pot = null,
-    CocycleState!Vertex* cocycle = null)
+    CocycleState!Vertex* cocycle = null,
+    SlideConfig* slide = null)
 {
     enum dim = 3;
     enum nVerts = dim + 1;
@@ -1846,6 +2244,24 @@ bool mcmcStep(Vertex, P)(
 
         auto centerDim = centerLen - 1;
         auto centerDeg = mfd.degree(center);
+
+        // --- Edge of degree 3: with probability slide.prob, propose a knot
+        // slide instead of the ordinary 3->2 on this chord. A degree-3 edge
+        // sits in exactly 3 facets, so this proposal is uniform over chords.
+        if (slide !is null && slide.prob > 0
+            && centerDim == 1 && centerDeg == 3 && uniform01 < slide.prob)
+        {
+            bool slideValid = false;
+            immutable ok = trySlideMove(mfd, currentObjective,
+                center[0], center[1], facet, uniform(0, SLIDE_SLOTS), params,
+                slideValid, counters, ledger, potState, pot, cocycle);
+            // A malformed or unclean slot is not a move of this class: redraw,
+            // exactly as for an invalid bistellar or hinge proposal.
+            if (!slideValid) continue;
+            slide.tries++;
+            if (ok) { slide.accepts++; return true; }
+            return false;
+        }
 
         // --- Edge of degree 4: propose hinge move ---
         if (centerDim == 1 && centerDeg == 4)

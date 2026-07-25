@@ -12,9 +12,12 @@ record everything the OCP/Stillinger-Lovett test needs:
 args: cell lam bump zleg cimp burn span ts snap mcell seed out [start] [startcoc]
   optional start/startcoc: resume/init from a snapshot .mfd + its .cocycle.npz
   (cell still supplies num_facets_target and the native degree).
-  optional nslide=K (anywhere in argv): K MH knot-slide proposals per TS block
-  (worm_slide.mh_slide_step through the sampler -- cocycle-safe, exact
-  Hastings correction; couplings taken from this run's et/LAM/ZLEG/CIMP).
+  optional slideprob=P (anywhere in argv): enable the D-side knot-slide move
+  type with probability P of proposing a slide once the unified proposal
+  lands on a degree-3 edge (0 = off, the default). Slides are clean
+  (species-preserving) by construction, so acceptance is plain Metropolis on
+  the exact action change; they run inside the D sampler and participate in
+  objective tracking and cocycle updates like any other move type.
 """
 import json
 import os
@@ -34,19 +37,15 @@ from cocycle_check import reference_frac_positions
 from fk_skeleton import edges_from_facets
 from dopant_pairs import vertex_classes
 
-NSLIDE = next((int(x.split("=", 1)[1]) for x in sys.argv
-               if x.startswith("nslide=")), 0)
-a = [x for x in sys.argv if not x.startswith("nslide=")]
+SLIDEPROB = next((float(x.split("=", 1)[1]) for x in sys.argv
+                  if x.startswith("slideprob=")), 0.0)
+a = [x for x in sys.argv if not x.startswith("slideprob=")]
 CELL = a[1]; LAM = float(a[2]); BUMP = float(a[3])
 ZLEG = float(a[4]); CIMP = float(a[5])
 BURN = int(a[6]); SPAN = int(a[7]); TS = int(a[8]); SNAP = int(a[9])
 MCELL = int(a[10]); SEED = int(a[11]); OUT = a[12]
 START = a[13] if len(a) > 13 else None
 STARTCOC = a[14] if len(a) > 14 else None
-if NSLIDE:
-    import worm_slide as ws
-    slide_rng = np.random.default_rng(SEED * 7919 + 17)
-
 ddg.set_random_seed(SEED)
 ref = ddg.Manifold.load(CELL, 3)
 native = float(edges_from_facets(ref.facets())[1].mean())
@@ -59,6 +58,8 @@ params = ddg.SamplerParams(
     hinge_degree_target_coef=LAM * et / 6.0)
 s = ddg.ManifoldSampler(m, params)
 s.set_n6_potential(ZLEG * LAM, CIMP * LAM, tilt=[0.0] * 5)
+if SLIDEPROB:
+    s.set_slide_prob(SLIDEPROB)
 v = s.manifold
 if STARTCOC:
     e0, w0, _ = coc.load_cocycle(STARTCOC)
@@ -79,18 +80,6 @@ nsnap = 0
 while done - BURN < SPAN:
     s.run(sweeps=TS)
     done += TS
-    slide_acc = 0
-    slide_dS = []
-    if NSLIDE:
-        for _ in range(NSLIDE):
-            r = ws.mh_slide_step(s, LAM, slide_rng,
-                                 estar=et, zleg=ZLEG, cimp=CIMP)
-            if r.get("warn"):
-                print(f"[{os.path.basename(OUT)}] SLIDE-WARN sw{done}: "
-                      f"{r['warn']} {r.get('chord')}", flush=True)
-            if r["status"] == "accepted":
-                slide_acc += 1
-                slide_dS.append(round(r["dS"], 4))
     fac = np.asarray(v.facets())
     eu, edeg, V = edges_from_facets(fac)
     n6, imp, adj = vertex_classes(fac)
@@ -130,10 +119,10 @@ while done - BURN < SPAN:
         "mean_edeg": float(edeg.mean()),
         "legaledge": float(np.mean((edeg == 5) | (edeg == 6))),
         "legalvert": float(np.mean(imp == 0))}
-    if NSLIDE:
-        rec["slide_prop"] = NSLIDE
-        rec["slide_acc"] = slide_acc
-        rec["slide_dS"] = slide_dS
+    if SLIDEPROB:
+        st, sa = s.slide_stats()          # cumulative; difference per block
+        rec["slide_tries"] = st
+        rec["slide_accepts"] = sa
     log.write(json.dumps(rec) + "\n")
     log.flush()
     if (done - BURN) % SNAP == 0:

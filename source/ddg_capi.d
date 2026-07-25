@@ -1519,6 +1519,10 @@ private struct SamplerState
     ulong[5] bistellarAccepts;
     long totalAccepted, totalTried;
 
+    // Knot-slide move class (dim=3 only): probability of proposing a slide
+    // once the unified proposal lands on a degree-3 edge, plus its counters.
+    SlideConfig slideCfg;
+
     // Per-vertex move-attribution counters (measured combinatorial lapse).
     // Opt-in (small per-proposal AA overhead); dim=3 only. See sampler.MoveCounters.
     bool trackMoveCounts = false;
@@ -1818,7 +1822,8 @@ private long runSamplerDim3(SamplerState* s, long numMoves,
                         ? &s.geoLedger : null,
                     s.potEnabled ? &s.vertexPotState : null,
                     s.potEnabled ? &s.vertexPot : null,
-                    s.cocycle.enabled ? &s.cocycle : null))
+                    s.cocycle.enabled ? &s.cocycle : null,
+                    (s.dim == 3 && s.slideCfg.prob > 0) ? &s.slideCfg : null))
             {
                 accepted++;
                 acceptedSinceWriteback++;
@@ -2607,6 +2612,127 @@ extern(C) int ddg_sampler_reset_stats(void* sampler_handle) nothrow
     s.bistellarAccepts[] = 0;
     s.totalAccepted = 0;
     s.totalTried = 0;
+    s.slideCfg.tries = 0;
+    s.slideCfg.accepts = 0;
+    return 0;
+}
+
+/******************************************************************************
+Enable the knot-slide move class (dim = 3 only).
+
+`prob` is the probability of proposing a slide rather than the ordinary 3->2
+bistellar move, given that the unified proposal has landed on a degree-3 edge.
+0 (the default) disables slides entirely. Only CLEAN, species-preserving
+slides are in the class, so the acceptance is plain Metropolis on the exact
+action change -- see sampler.trySlideMove.
+*/
+extern(C) int ddg_sampler_set_slide_prob(void* sampler_handle, double prob) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto s = cast(SamplerState*) sampler_handle;
+    if (!(prob >= 0.0 && prob <= 1.0))
+    { setError("slide probability must be in [0, 1]"); return -1; }
+    if (s.dim != 3 && prob > 0)
+    { setError("knot slides are dim=3 only"); return -1; }
+    s.slideCfg.prob = cast(real) prob;
+    return 0;
+}
+
+/******************************************************************************
+Attempt the knot slide at chord (a, b) in slot `slot` directly (dim = 3).
+
+This is the scripted / crossval entry point into the same code path the
+sampler's slide move uses -- not a sampling path. `mode` selects what happens
+once a legal clean slide is in hand:
+
+    0  trial only: measure dS and cleanliness, restore the state exactly
+    1  force: always commit (objective, potential, cocycle and ledger all
+       updated as for an accepted move)
+
+Writes the exact action change to *out_dS when the slot yields a legal clean
+slide. Returns 1 if it did (and, for mode 1, was committed), 0 if the slot is
+not a clean slide of this state, or -1 on error.
+*/
+extern(C) int ddg_sampler_slide_at(void* sampler_handle,
+    int a, int b, int slot, int mode, double* out_dS) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null handle"); return -1; }
+        auto s = cast(SamplerState*) sampler_handle;
+        if (s.dim != 3) { setError("knot slides are dim=3 only"); return -1; }
+        if (slot < 0 || slot >= SLIDE_SLOTS)
+        { setError("slot out of range"); return -1; }
+        if (mode != 0 && mode != 1)
+        { setError("mode must be 0 (trial) or 1 (force)"); return -1; }
+
+        auto mw = cast(ManifoldWrapper!3*)(
+            cast(ManifoldHandle*) s.manifoldHandle).ptr;
+        import std.algorithm.comparison : max, min;
+        int[2] eb = [min(a, b), max(a, b)];
+        if (!mw.mfd.contains(eb[])) { setError("edge not in manifold"); return -1; }
+
+        // any facet on the edge serves as the link-walk hint
+        int[4] hint = 0;
+        {
+            bool got = false;
+            foreach (pr; mw.mfd.link(eb[]))
+            {
+                int i = 0;
+                foreach (v; pr) hint[2 + i++] = v;
+                got = true;
+                break;
+            }
+            if (!got) { setError("edge has empty link"); return -1; }
+            hint[0] = eb[0]; hint[1] = eb[1];
+            hint[].sort();
+        }
+
+        if (s.currentObjective != s.currentObjective) // NaN check
+            recomputeObjective(s);
+
+        struct Params { int numFacetsTarget; real hingeDegreeTarget;
+            real numFacetsCoef; real numHingesCoef; real hingeDegreeVarianceCoef;
+            real coDim3DegreeVarianceCoef; real hingeDegreeTargetCoef;
+            real coDim3DegreeTargetCoef; real coDim3DegreeTarget; }
+        auto params = Params(s.numFacetsTarget,
+            cast(real) s.hingeDegreeTarget, cast(real) s.numFacetsCoef,
+            cast(real) s.numHingesCoef, cast(real) s.hingeDegreeVarianceCoef,
+            cast(real) s.coDim3DegreeVarianceCoef,
+            cast(real) s.hingeDegreeTargetCoef,
+            cast(real) s.coDim3DegreeTargetCoef,
+            cast(real) s.coDim3DegreeTarget);
+
+        bool valid = false;
+        real dS = real.nan;
+        mw.mfd.trySlideMove(s.currentObjective, eb[0], eb[1], hint[], slot,
+            params, valid, s.trackMoveCounts ? &s.moveCounters : null,
+            (s.geoLedger.trackRoles || s.geoLedger.logEvents
+                || s.geoLedger.logSixFlips) ? &s.geoLedger : null,
+            s.potEnabled ? &s.vertexPotState : null,
+            s.potEnabled ? &s.vertexPot : null,
+            s.cocycle.enabled ? &s.cocycle : null,
+            mode == 0 ? SlideAccept.trialOnly : SlideAccept.force,
+            &dS);
+        if (!valid) return 0;
+        if (out_dS !is null) *out_dS = cast(double) dS;
+        return 1;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Slide-move counters: proposals that formed a legal clean slide, and how
+/// many of those were accepted. Both pointers optional.
+extern(C) int ddg_sampler_slide_stats(void* sampler_handle,
+    long* out_tries, long* out_accepts) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto s = cast(SamplerState*) sampler_handle;
+    if (out_tries !is null) *out_tries = cast(long) s.slideCfg.tries;
+    if (out_accepts !is null) *out_accepts = cast(long) s.slideCfg.accepts;
     return 0;
 }
 

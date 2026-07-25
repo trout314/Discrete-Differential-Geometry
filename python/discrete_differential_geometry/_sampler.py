@@ -16,6 +16,12 @@ from ._manifold_view import ManifoldView
 
 _lib = _dlang._lib
 
+#: Slots per chord in the knot-slide proposal: 2 chord orientations x 6
+#: ordered ``(c2, c3)`` picks from the chord's sorted 3-vertex link. Constant
+#: by construction (an invalid slot is a rejected proposal, not a smaller
+#: menu), so the proposal denominator cancels from the Hastings ratio.
+SLIDE_SLOTS = 12
+
 
 @dataclass
 class SamplerParams:
@@ -344,6 +350,52 @@ class ManifoldSampler:
         _lib.ddg_sampler_do_bistellar_move(
             self._handle, c.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
             len(c), cc.ctypes.data_as(ctypes.POINTER(ctypes.c_int)), len(cc))
+
+    def set_slide_prob(self, prob: float) -> None:
+        """Enable the knot-slide move class (dim = 3 only).
+
+        ``prob`` is the probability of proposing a knot slide rather than the
+        ordinary 3->2 bistellar move, given that the unified proposal has
+        landed on a degree-3 edge. 0 (the default) disables slides.
+
+        Only clean (species-preserving) slides are in the move class: a slide
+        translates a knot's whole local degree pattern along its
+        Boerdijk-Coxeter chain, preserving N3, E and the illegal-degree
+        multiset, so the acceptance is plain Metropolis on the exact action
+        change with no Hastings correction. Slides run entirely inside the D
+        sampler and participate in objective tracking, cocycle updates, the
+        geometry ledger and move counters like any other move type."""
+        _lib.ddg_sampler_set_slide_prob(self._handle, float(prob))
+
+    def slide_stats(self) -> tuple[int, int]:
+        """``(tries, accepts)`` for the knot-slide move class. ``tries``
+        counts proposals that formed a legal clean slide (i.e. reached the
+        Metropolis test), not raw slot draws."""
+        t = ctypes.c_long()
+        a = ctypes.c_long()
+        _lib.ddg_sampler_slide_stats(
+            self._handle, ctypes.byref(t), ctypes.byref(a))
+        return int(t.value), int(a.value)
+
+    def slide_at(self, a: int, b: int, slot: int,
+                 commit: bool = False) -> "float | None":
+        """Attempt the knot slide at chord ``(a, b)`` in slot ``slot``.
+
+        Scripted / crossval entry into the same D code path the sampler's
+        slide move uses -- NOT a sampling path (it bypasses the Metropolis
+        test). Returns the exact action change if the slot yields a legal
+        clean slide, or ``None`` if it does not. With ``commit=False`` the
+        state is restored exactly; with ``commit=True`` the slide is applied
+        unconditionally and all bookkeeping advances as for an accepted move.
+
+        There are :data:`SLIDE_SLOTS` = 12 slots per chord: 2 chord
+        orientations x 6 ordered picks of ``(c2, c3)`` from the chord's sorted
+        3-vertex link."""
+        ds = ctypes.c_double()
+        rc = _lib.ddg_sampler_slide_at(
+            self._handle, int(a), int(b), int(slot),
+            1 if commit else 0, ctypes.byref(ds))
+        return float(ds.value) if rc == 1 else None
 
     # -- Parameter setters --
 

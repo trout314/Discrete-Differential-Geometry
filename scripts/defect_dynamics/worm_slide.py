@@ -159,22 +159,33 @@ def knot_chords(m):
     return e3, ill
 
 
-def candidate_slides(m, chord):
-    """All valid slide frames from this chord (both orientations x 6 link
-    orderings), deduplicated by resulting move list."""
-    out = []
+N_SLOTS = 12   # 2 chord orientations x 6 ordered (c2,c3) picks from the link
+
+
+def slide_slots(m, chord):
+    """The FIXED slot family at a chord: 2 orientations x 6 ordered link
+    picks = N_SLOTS entries, each (cs, mv) or None where the frame or the
+    move template fails to validate.
+
+    The slot count is deliberately constant (not a count of valid slides):
+    the MH proposal draws a slot uniformly from N_SLOTS and treats an
+    invalid slot as a rejected proposal, so the denominator is the same in
+    both states and cancels from the Hastings ratio."""
     link = edge_link_verts(m, *chord)
     if len(link) != 3:
-        return out
-    for c0, c4 in (chord, chord[::-1]):
+        return [None] * N_SLOTS
+    out = []
+    for c0, c4 in (tuple(chord), tuple(chord)[::-1]):
         for c2, c3 in permutations(link, 2):
             cs = derive_frame(m, c0, c4, c2, c3)
-            if cs is None:
-                continue
-            mv = slide_moves(m, cs)
-            if mv is not None:
-                out.append((cs, mv))
+            mv = slide_moves(m, cs) if cs is not None else None
+            out.append((cs, mv) if mv is not None else None)
     return out
+
+
+def candidate_slides(m, chord):
+    """The valid slots at this chord, as [(cs, mv), ...]."""
+    return [s for s in slide_slots(m, chord) if s is not None]
 
 
 def facset(m):
@@ -254,6 +265,30 @@ def slide_net_diff(recs):
             for p, q in ((f1, f2), (f2, f3), (f1, f3)):
                 net[tuple(sorted((d, e, p, q)))] += 1
     return frozenset((t, c) for t, c in net.items() if c != 0)
+
+
+def clean_verdict(em_before, em_after, arrival_chord):
+    """Is this slide species-preserving ("clean")?
+
+    Returns (global_clean, local_clean). The GLOBAL test compares the whole
+    illegal-degree multiset; the LOCAL test compares it only over edges
+    whose degree changed. The two are equivalent -- unchanged edges
+    contribute identically to both multisets -- and the local form is what
+    the D implementation uses, since a slide's changed edges are exactly the
+    template's touched edges (O(1) off the incremental degree map, no global
+    scan). closure_test asserts the equivalence on real states.
+
+    Both also require the arrival chord to be a degree-3 edge, i.e. the knot
+    actually landed with a usable handle."""
+    def ill(d):
+        return sorted(x for x in d if x not in (5, 6))
+    landed = em_after.get(arrival_chord) == 3
+    gclean = ill(em_before.values()) == ill(em_after.values()) and landed
+    changed = [k for k in set(em_before) | set(em_after)
+               if em_before.get(k) != em_after.get(k)]
+    lb = ill([em_before[k] for k in changed if k in em_before])
+    la = ill([em_after[k] for k in changed if k in em_after])
+    return gclean, (lb == la and landed)
 
 
 def enumerate_slides(m):
@@ -510,6 +545,127 @@ def thermal_test(args):
               f"mean {acc.mean():.3f}")
 
 
+def clean_slots_at(m, chord, em0=None):
+    """Every CLEAN slide at `chord`, as [(cs, mv, key, em_after), ...]:
+    frame, move template, end-state key (net facet diff), post-state edge
+    degrees. Also returns the count of slots where the local and global
+    cleanliness verdicts disagreed (must be 0)."""
+    if em0 is None:
+        em0 = edeg_dict(m)
+    out = []
+    ndisagree = 0
+    for slot in slide_slots(m, chord):
+        if slot is None:
+            continue
+        cs, mv = slot
+        recs = apply_slide(m, mv)
+        if recs is None:
+            continue
+        em1 = edeg_dict(m)
+        arrival = tuple(sorted((cs["c4"], cs["c8"])))
+        gclean, lclean = clean_verdict(em0, em1, arrival)
+        if gclean != lclean:
+            ndisagree += 1
+        key = slide_net_diff(recs)
+        undo_slide(m, recs)
+        if gclean:
+            out.append((cs, mv, key, em1))
+    return out, ndisagree
+
+
+def closure_test(args):
+    """EXHAUSTIVE inverse-closure check for the clean-slide move class.
+
+    For every clean slide of the state: apply it, then enumerate the slot
+    family at the ARRIVAL chord and count the clean slots there whose net
+    facet diff is the exact inverse. That count is k_r; the number of clean
+    slots at the departure chord mapping to the same end state is k_f.
+
+    Option B (clean-only move class) requires k_r >= 1 for every clean
+    slide -- otherwise the class is not inverse-closed and the Hastings
+    ratio has a zero denominator branch that is a BUG rather than a
+    physical rejection. Also verifies local == global cleanliness.
+    """
+    if args.crystal_test or args.ref:
+        path = args.ref or best_refs(REF_GLOB)["r"]
+        m = ddg.Manifold.load(path, 3)
+        F = np.asarray(m.facets())
+        faces0, edeg0, vedges0 = wm.build_tables(F)
+        site = None
+        for face, d, e, valid in wm.two_three_sites(F, faces0, edeg0):
+            if not valid:
+                continue
+            sf = sorted(face)
+            degs = sorted(edeg0[frozenset(p)] for p in
+                          [(sf[0], sf[1]), (sf[1], sf[2]), (sf[2], sf[0])])
+            if degs == [5, 5, 6]:
+                deltas = wm.delta_two_three(face, d, e, edeg0)
+                if sorted(nw for _, nw in deltas.values()
+                          if nw is not None and nw not in (5, 6)) == [3, 4, 4]:
+                    site = (face, d, e)
+                    break
+        assert site is not None
+        m.do_bistellar_move(sorted(site[0]), [site[1], site[2]])
+        label = f"crystal {os.path.basename(path)} + one knot"
+    else:
+        m = ddg.Manifold.load(args.closure_test, 3)
+        label = os.path.basename(args.closure_test)
+    e3, ill = knot_chords(m)
+    print(f"state: {label}  N3={m.num_facets}  "
+          f"illegal {len(ill)}  deg-3 chords {len(e3)}")
+
+    em0 = edeg_dict(m)
+    n_clean = n_closed = 0
+    kf_hist = defaultdict(int)
+    kr_hist = defaultdict(int)
+    disagree = 0
+    failures = []
+    for chord in e3:
+        fwd, nd = clean_slots_at(m, chord, em0)
+        disagree += nd
+        bykey = defaultdict(list)
+        for cs, mv, key, em1 in fwd:
+            bykey[key].append((cs, mv, em1))
+        for key, group in bykey.items():
+            k_f = len(group)
+            cs, mv, em1 = group[0]
+            n_clean += 1
+            recs = apply_slide(m, mv)
+            assert recs is not None
+            arrival = tuple(sorted((cs["c4"], cs["c8"])))
+            inv = frozenset((t, -c) for t, c in key)
+            rev, nd2 = clean_slots_at(m, arrival, em1)
+            disagree += nd2
+            k_r = sum(1 for _, _, rk, _ in rev if rk == inv)
+            del em1
+            undo_slide(m, recs)
+            kf_hist[k_f] += 1
+            kr_hist[k_r] += 1
+            if k_r >= 1:
+                n_closed += 1
+            else:
+                failures.append((chord, arrival, k_f))
+                print(f"  NOT CLOSED: {chord} -> {arrival} (k_f={k_f}, "
+                      f"{len(rev)} clean slots at arrival)")
+        ddg.gc_collect()
+    print(f"\nclean slides (distinct transitions): {n_clean}")
+    print(f"  inverse-closed (k_r >= 1): {n_closed}/{n_clean}")
+    print(f"  k_f histogram: {dict(sorted(kf_hist.items()))}")
+    print(f"  k_r histogram: {dict(sorted(kr_hist.items()))}")
+    print(f"  local-vs-global cleanliness disagreements: {disagree}")
+    ok = (n_closed == n_clean and disagree == 0 and n_clean > 0)
+    if ok and set(kf_hist) == {1} and set(kr_hist) == {1}:
+        print("PASS: clean-slide class is inverse-closed, and k_f = k_r = 1 "
+              "on every transition (Hastings ratio reduces to exp(-lam dS))")
+    elif ok:
+        print("PASS: clean-slide class is inverse-closed and the local "
+              "cleanliness test is exact; multiplicities are NOT all 1, so "
+              "the k_r/k_f factor must be kept")
+    else:
+        print("FAIL")
+        sys.exit(1)
+
+
 def mh_test(args):
     """Integration test of mh_slide_step against a live sampler: cocycle
     stays attached across accepted slides, the tracked objective moves by
@@ -587,6 +743,202 @@ def mh_test(args):
     print("PASS")
 
 
+def dcross_test(args):
+    """CROSSVAL: the D-side slide move against this oracle, slot for slot.
+
+    For every degree-3 chord of the state and every one of the SLIDE_SLOTS
+    slots, compare:
+
+      * the CLEAN / not-clean verdict -- D's O(1) local changed-edge test
+        against the oracle's global illegal-multiset comparison;
+      * the action change -- D's speculative-delta accumulation through the
+        real tracked objective against the oracle's independent recount (in
+        lam = 1 units, so D's value must equal lam * the oracle's);
+      * the resulting state, facet set for facet set, on a committed slide;
+      * that the tracked objective moves by exactly that dS.
+
+    This is the regression pinning the D move type to the reference
+    implementation the inverse-closure proof was established on. The sampler
+    state is restored after each committed slide by replaying the composite's
+    inverse through the bookkeeping-safe targeted-move API.
+    """
+    snap = args.dcross
+    lam, et = args.lam, args.etarget
+    ddg.set_random_seed(args.seed)
+    mo = ddg.Manifold.load(snap, 3)            # oracle playground
+    m = ddg.Manifold.load(snap, 3)             # sampler manifold
+    p = ddg.SamplerParams(
+        num_facets_target=m.num_facets, hinge_degree_target=et,
+        num_facets_coef=0.1, num_hinges_coef=0.0,
+        hinge_degree_variance_coef=0.0, codim3_degree_variance_coef=0.0,
+        hinge_degree_target_coef=lam * et / 6.0)
+    s = ddg.ManifoldSampler(m, p)
+    s.set_n6_potential(args.zleg * lam, args.cimp * lam, tilt=[0.0] * 5)
+    v = s.manifold
+    e3, _ = knot_chords(mo)
+    print(f"state: {os.path.basename(snap)}  N3={mo.num_facets}  "
+          f"deg-3 chords {len(e3)}  lam={lam}  e*={et:.6f}  "
+          f"(zleg={args.zleg} cimp={args.cimp})")
+
+    em0 = edeg_dict(mo)
+    obj_base = s.current_objective
+    nslot = nclean = 0
+    worst_dS = worst_obj = 0.0
+    verdict_bad, state_bad, restore_bad = [], [], []
+
+    for chord in e3:
+        for j, slot in enumerate(slide_slots(mo, chord)):
+            nslot += 1
+
+            # --- oracle verdict for this slot
+            py_ds, py_fac, py_recs = None, None, None
+            if slot is not None:
+                cs, mv = slot
+                recs = apply_slide(mo, mv)
+                if recs is not None:
+                    em1 = edeg_dict(mo)
+                    arrival = tuple(sorted((cs["c4"], cs["c8"])))
+                    gclean, lclean = clean_verdict(em0, em1, arrival)
+                    if gclean != lclean:
+                        verdict_bad.append((chord, j, "oracle local != global"))
+                    if gclean:
+                        py_ds = dS_between(em0, em1, zleg=args.zleg,
+                                           cimp=args.cimp, estar=et)
+                        py_fac = facset(mo)
+                        py_recs = recs
+                    undo_slide(mo, recs)
+
+            # --- D verdict for the same slot (trial: no state change)
+            d_ds = s.slide_at(chord[0], chord[1], j, commit=False)
+            if (py_ds is None) != (d_ds is None):
+                verdict_bad.append((chord, j, f"clean: oracle="
+                                    f"{py_ds is not None} D={d_ds is not None}"))
+                continue
+            if py_ds is None:
+                continue
+            nclean += 1
+            err = abs(d_ds - lam * py_ds)
+            worst_dS = max(worst_dS, err)
+            assert err < 1e-9, (f"dS mismatch at chord {chord} slot {j}: "
+                                f"D={d_ds!r} vs lam*oracle={lam * py_ds!r}")
+
+            # --- commit through D and compare the end state
+            obj0 = s.current_objective
+            d_commit = s.slide_at(chord[0], chord[1], j, commit=True)
+            assert d_commit is not None and abs(d_commit - d_ds) < 1e-12
+            worst_obj = max(worst_obj,
+                            abs((s.current_objective - obj0) - d_ds))
+            if facset(v) != py_fac:
+                state_bad.append((chord, j))
+
+            # --- restore: replay the composite's inverse through the
+            # bookkeeping-safe targeted-move API (reverse order, swap
+            # center/coCenter).
+            for _kind, cen, coc in reversed(py_recs):
+                s.do_bistellar_move(coc, cen)
+            if abs(s.current_objective - obj_base) > 1e-9:
+                restore_bad.append((chord, j, s.current_objective - obj_base))
+            ddg.gc_collect()
+
+    print(f"\nslots examined: {nslot}    clean (verdicts agree): {nclean}")
+    print(f"  clean/not-clean verdict mismatches: {len(verdict_bad)}")
+    for x in verdict_bad[:10]:
+        print(f"    {x}")
+    print(f"  end-state (facet set) mismatches:   {len(state_bad)}")
+    for x in state_bad[:10]:
+        print(f"    {x}")
+    print(f"  restore-objective failures:         {len(restore_bad)}")
+    for x in restore_bad[:10]:
+        print(f"    {x}")
+    print(f"  worst |dS_D - lam*dS_oracle|:       {worst_dS:.3e}")
+    print(f"  worst |tracked objective step - dS|:{worst_obj:.3e}")
+    ok = not (verdict_bad or state_bad or restore_bad) and nclean > 0
+    print("PASS: the D slide move reproduces the oracle exactly "
+          "(verdict, dS and end state)" if ok else "FAIL")
+    if not ok:
+        sys.exit(1)
+
+
+def dsampler_test(args):
+    """Integration test of the D-side slide MOVE TYPE inside a live sampler.
+
+    Runs the ordinary sampler with slides enabled and verifies that after
+    thousands of interleaved thermal moves and slides:
+
+      * slides actually fire (tries/accepts > 0) at the expected rate;
+      * the incremental degree/ridge maps still validate;
+      * N_3 is unchanged by the slide channel (slides are f-vector neutral);
+      * the cocycle is still attached and closed;
+      * the tracked objective agrees with a from-scratch recompute.
+
+    Also times the same run with slides off, to price the channel."""
+    from discrete_differential_geometry import cocycle as coc
+    import time
+    snap = args.dsampler
+    lam, et = args.lam, args.etarget
+
+    def build(seed):
+        ddg.set_random_seed(seed)
+        m = ddg.Manifold.load(snap, 3)
+        p = ddg.SamplerParams(
+            num_facets_target=m.num_facets, hinge_degree_target=et,
+            num_facets_coef=0.1, num_hinges_coef=0.0,
+            hinge_degree_variance_coef=0.0, codim3_degree_variance_coef=0.0,
+            hinge_degree_target_coef=lam * et / 6.0)
+        s = ddg.ManifoldSampler(m, p)
+        s.set_n6_potential(args.zleg * lam, args.cimp * lam, tilt=[0.0] * 5)
+        return m, p, s
+
+    m0, _, s0 = build(args.seed)
+    n3_0 = m0.num_facets
+    e3_0, _ = knot_chords(m0)
+    print(f"state: {os.path.basename(snap)}  N3={n3_0}  "
+          f"deg-3 chords {len(e3_0)}  lam={lam}  e*={et:.6f}")
+    t0 = time.time()
+    s0.run(sweeps=args.sweeps)
+    t_off = time.time() - t0
+    del m0, s0
+
+    m, p, s = build(args.seed)
+    cocpath = snap.replace(".mfd", ".cocycle.npz")
+    have_coc = os.path.exists(cocpath)
+    if have_coc:
+        e0, w0, _ = coc.load_cocycle(cocpath)
+        s.enable_cocycle(np.asarray(e0), np.asarray(w0))
+        s.check_cocycle()
+    v = s.manifold
+    s.set_slide_prob(args.slide_prob)
+    t0 = time.time()
+    s.run(sweeps=args.sweeps)
+    t_on = time.time() - t0
+    tries, accepts = s.slide_stats()
+
+    print(f"\n{args.sweeps} sweeps, slide_prob={args.slide_prob}")
+    print(f"  slides: {tries} tries, {accepts} accepts "
+          f"({100.0 * accepts / max(tries, 1):.1f}% acceptance)")
+    print(f"  wall clock: {t_on:.1f}s with slides vs {t_off:.1f}s without "
+          f"({100.0 * (t_on - t_off) / t_off:+.1f}%)")
+    m.validate_maps()
+    print(f"  incremental maps: OK")
+    assert m.num_facets == n3_0, f"N3 changed: {n3_0} -> {m.num_facets}"
+    print(f"  N3 preserved: {m.num_facets}")
+    if have_coc:
+        s.check_cocycle()
+        e1, _ = s.read_cocycle()
+        eset = {tuple(sorted(e)) for e in np.asarray(v.simplices(1)).tolist()}
+        cset = {tuple(sorted(e)) for e in np.asarray(e1).tolist()}
+        assert eset == cset, f"cocycle DETACHED ({len(eset ^ cset)} edges)"
+        print(f"  cocycle: closed and attached")
+    m2 = v.dup()
+    s2 = ddg.ManifoldSampler(m2, p)
+    s2.set_n6_potential(args.zleg * lam, args.cimp * lam, tilt=[0.0] * 5)
+    drift = abs(s.current_objective - s2.current_objective)
+    print(f"  tracked objective vs from-scratch: {drift:.3e}")
+    assert drift < 1e-6, f"objective drift {drift}"
+    assert tries > 0, "no slides fired -- the move type is not wired in"
+    print("PASS: the D slide move type runs clean inside the sampler")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("ref", nargs="?", default=None)
@@ -596,6 +948,22 @@ def main():
     ap.add_argument("--mh-test", default=None,
                     help="snapshot .mfd: run MH slide proposals against a "
                          "live sampler and verify bookkeeping")
+    ap.add_argument("--closure-test", nargs="?", const="", default=None,
+                    help="exhaustive inverse-closure + k_f/k_r check for the "
+                         "clean-slide class; give a snapshot .mfd, or pass "
+                         "--crystal-test to run on the reference crystal")
+    ap.add_argument("--dcross", default=None,
+                    help="snapshot .mfd: crossval the D-side slide move type "
+                         "against this oracle, slot for slot (verdict, dS, "
+                         "end state)")
+    ap.add_argument("--dsampler", default=None,
+                    help="snapshot .mfd: run the live sampler with the D-side "
+                         "slide move type enabled and verify bookkeeping")
+    ap.add_argument("--sweeps", type=int, default=200,
+                    help="--dsampler: sweeps per run")
+    ap.add_argument("--slide-prob", type=float, default=1.0,
+                    help="--dsampler: probability of proposing a slide once "
+                         "the unified proposal lands on a degree-3 edge")
     ap.add_argument("--props", type=int, default=8,
                     help="--mh-test: number of proposals (each is ~4s / "
                          "~1.8GB of D-side garbage in this reference "
@@ -606,6 +974,15 @@ def main():
     ap.add_argument("--cimp", type=float, default=1.0)
     ap.add_argument("--seed", type=int, default=4242)
     args = ap.parse_args()
+    if args.dsampler:
+        dsampler_test(args)
+        return
+    if args.dcross:
+        dcross_test(args)
+        return
+    if args.closure_test is not None:
+        closure_test(args)
+        return
     if args.crystal_test:
         crystal_test(args)
     if args.thermal:

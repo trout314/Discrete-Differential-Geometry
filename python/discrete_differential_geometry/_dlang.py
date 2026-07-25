@@ -745,6 +745,27 @@ _lib.ddg_sampler_do_bistellar_move.restype = ctypes.c_int
 _lib.ddg_sampler_do_bistellar_move.errcheck = _check_int
 
 # ---------------------------------------------------------------------------
+# Knot-slide move class (dim = 3)
+# ---------------------------------------------------------------------------
+
+_lib.ddg_sampler_set_slide_prob.argtypes = [ctypes.c_void_p, ctypes.c_double]
+_lib.ddg_sampler_set_slide_prob.restype = ctypes.c_int
+_lib.ddg_sampler_set_slide_prob.errcheck = _check_int
+
+_lib.ddg_sampler_slide_stats.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_long), ctypes.POINTER(ctypes.c_long),
+]
+_lib.ddg_sampler_slide_stats.restype = ctypes.c_int
+_lib.ddg_sampler_slide_stats.errcheck = _check_int
+
+_lib.ddg_sampler_slide_at.argtypes = [
+    ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+    ctypes.POINTER(ctypes.c_double),
+]
+_lib.ddg_sampler_slide_at.restype = ctypes.c_int
+_lib.ddg_sampler_slide_at.errcheck = _check_int
+
+# ---------------------------------------------------------------------------
 # Degree variance
 # ---------------------------------------------------------------------------
 

@@ -3,7 +3,8 @@
 from ._simplicial_complex import SimplicialComplex, join
 from ._manifold import Manifold
 from ._manifold_view import ManifoldView
-from ._sampler import ManifoldSampler, SamplerParams, SamplerStats, vertex_degree_target
+from ._sampler import (ManifoldSampler, SamplerParams, SamplerStats,
+                       SLIDE_SLOTS, vertex_degree_target)
 from .convergence import (
     split_rhat,
     rank_normalized_rhat,
@@ -56,6 +57,7 @@ __all__ = [
     "ManifoldView",
     "ManifoldSampler",
     "SamplerParams",
+    "SLIDE_SLOTS",
     "vertex_degree_target",
     "SamplerStats",
     "join",
