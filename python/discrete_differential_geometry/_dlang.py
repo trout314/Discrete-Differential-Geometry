@@ -254,6 +254,17 @@ _lib.ddg_manifold_edge_link_cycle.argtypes = [
 _lib.ddg_manifold_edge_link_cycle.restype = ctypes.c_long
 _lib.ddg_manifold_edge_link_cycle.errcheck = _check_int
 
+_lib.ddg_manifold_face_apexes.argtypes = [
+    ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+    ctypes.POINTER(ctypes.c_int),
+]
+_lib.ddg_manifold_face_apexes.restype = ctypes.c_long
+_lib.ddg_manifold_face_apexes.errcheck = _check_int
+
+_lib.ddg_manifold_validate_maps.argtypes = [ctypes.c_void_p]
+_lib.ddg_manifold_validate_maps.restype = ctypes.c_int
+_lib.ddg_manifold_validate_maps.errcheck = _check_int
+
 _lib.ddg_manifold_vertex_frozen.argtypes = [ctypes.c_void_p, ctypes.c_int]
 _lib.ddg_manifold_vertex_frozen.restype = ctypes.c_int
 _lib.ddg_manifold_vertex_frozen.errcheck = _check_int

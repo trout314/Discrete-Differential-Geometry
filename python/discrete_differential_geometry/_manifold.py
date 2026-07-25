@@ -214,6 +214,18 @@ class Manifold:
             ht.ctypes.data_as(ctypes.POINTER(ctypes.c_int)), buf)
         return np.array(buf[:n], dtype=np.intc)
 
+    def validate_maps(self) -> None:
+        """Audit internal hash maps; raises with a description on the
+        first inconsistency (probe-chain break, duplicate key, desync)."""
+        _lib.ddg_manifold_validate_maps(self._handle)
+
+    def face_apexes(self, a: int, b: int, c: int):
+        """The two apex vertices of interior triangle (a,b,c) -- the 2-3
+        move's cocenter candidates. O(1) ridge-link lookup (dim=3)."""
+        buf = (ctypes.c_int * 2)()
+        _lib.ddg_manifold_face_apexes(self._handle, int(a), int(b), int(c), buf)
+        return int(buf[0]), int(buf[1])
+
     def freeze_vertices(self, vertices, frozen: bool = True) -> None:
         """Freeze (or unfreeze) vertices. The sampler rejects any move whose
         support contains a frozen vertex; since every facet a move adds or

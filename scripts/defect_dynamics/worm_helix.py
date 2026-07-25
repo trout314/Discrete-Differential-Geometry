@@ -150,6 +150,8 @@ def main():
                     help="face-candidate window width (chain vertices)")
     ap.add_argument("--mcell", type=int, default=3)
     ap.add_argument("--json", default=None)
+    ap.add_argument("--propagate", action="store_true",
+                    help="drive the worm around the full orbit and close")
     args = ap.parse_args()
     path = args.ref or best_refs(REF_GLOB)["r"]
     m = ddg.Manifold.load(path, 3)
@@ -240,6 +242,7 @@ def main():
                     found.append(dict(period=c[0] - pb,
                                       start_at=pi,
                                       motif=pathrel[pi:],
+                                      base_from=pb,
                                       code=prel))
                     return
             pathcodes = pathcodes + [c]
@@ -263,15 +266,17 @@ def main():
             rec = ov_apply(deltas)
             dfs(pathrel + [("3-2", pos_of.get(a), pos_of.get(b))],
                 pathcodes, moves_left - 1)
+            if found:
+                return                      # keep state committed
             m.do_bistellar_move(link, [a, b])
             ov_revert(rec)
-            if found:
-                return
         for tri in combinations(cand_v, 3):
             try:
                 ap1, ap2 = m.face_apexes(*tri)
             except RuntimeError:
                 continue
+            if pos_of.get(ap1) is None or pos_of.get(ap2) is None:
+                continue                    # chain-internal moves only
             if not m.has_bistellar_move(list(tri), [ap1, ap2]):
                 continue
             deltas = wm.delta_two_three(frozenset(tri), ap1, ap2, dv)
@@ -286,10 +291,10 @@ def main():
             dfs(pathrel + [("2-3", tuple(pos_of.get(x) for x in fl),
                             (pos_of.get(ap1), pos_of.get(ap2)))],
                 pathcodes, moves_left - 1)
+            if found:
+                return                      # keep state committed
             m.do_bistellar_move([ap1, ap2], fl)
             ov_revert(rec)
-            if found:
-                return
 
     t0 = time.time()
     dfs([], [], args.depth)
@@ -303,11 +308,278 @@ def main():
     print(f"  worm code: {mo['code']}")
     for mv in mo["motif"]:
         print(f"    {mv}")
+    if not args.propagate:
+        if args.json:
+            with open(args.json, "w") as f:
+                json.dump(dict(orbit_len=L, winding=wind.tolist(),
+                               period=mo["period"], motif=mo["motif"],
+                               code=[list(x) for x in mo["code"]]),
+                          f, indent=1, default=str)
+            print(f"wrote {os.path.abspath(args.json)}")
+        return
+
+    # ================= stage 3-4: propagation + closure =================
+    steady_rel = tuple(mo["code"])
+    fdiff = {}
+
+    def fdiff_apply(remove, add):
+        rec = []
+        for t, s in [(t, -1) for t in remove] + [(t, +1) for t in add]:
+            rec.append((t, fdiff.get(t, 0)))
+            c = fdiff.get(t, 0) + s
+            if c == 0:
+                fdiff.pop(t, None)
+            else:
+                fdiff[t] = c
+        return rec
+
+    def fdiff_revert(rec):
+        for t, prev in reversed(rec):
+            if prev == 0:
+                fdiff.pop(t, None)
+            else:
+                fdiff[t] = prev
+
+    nmv = [0]
+
+    def apply_23(tri, a1, a2):
+        fl = sorted(tri)
+        deltas = wm.delta_two_three(frozenset(tri), a1, a2, dv)
+        m.do_bistellar_move(fl, [a1, a2])
+        ovr = ov_apply(deltas)
+        fr = fdiff_apply(
+            [tuple(sorted(fl + [a1])), tuple(sorted(fl + [a2]))],
+            [tuple(sorted((fl[0], fl[1], a1, a2))),
+             tuple(sorted((fl[1], fl[2], a1, a2))),
+             tuple(sorted((fl[2], fl[0], a1, a2)))])
+        nmv[0] += 1
+        return ("23", fl, a1, a2, ovr, fr)
+
+    def apply_32(a, b, link):
+        lk = sorted(link)
+        deltas = wm.delta_three_two(frozenset((a, b)), frozenset(lk), dv)
+        m.do_bistellar_move([a, b], lk)
+        ovr = ov_apply(deltas)
+        fr = fdiff_apply(
+            [tuple(sorted([lk[0], lk[1], a, b])),
+             tuple(sorted([lk[1], lk[2], a, b])),
+             tuple(sorted([lk[2], lk[0], a, b]))],
+            [tuple(sorted(lk + [a])), tuple(sorted(lk + [b]))])
+        nmv[0] += 1
+        return ("32", a, b, lk, ovr, fr)
+
+    def undo_move(r):
+        if r[0] == "23":
+            m.do_bistellar_move([r[2], r[3]], r[1])
+        else:
+            m.do_bistellar_move(r[3], [r[1], r[2]])
+        ov_revert(r[4])
+        fdiff_revert(r[5])
+        nmv[0] -= 1
+
+    def remap(base):
+        pos_of.clear()
+        for i in range(max(0, base - 3), base + args.win + 10):
+            pos_of[verts[i % L]] = i
+
+    def n_ill():
+        return sum(1 for _, (d0, d1) in overlay.items()
+                   if d1 is not None and d1 not in (5, 6))
+
+    nodes = [0]
+
+    def seq_dfs(depth, accept, base_lo):
+        if accept():
+            return []
+        if depth <= 0:
+            return None
+        nodes[0] += 1
+        if nodes[0] > 100000:
+            return None
+        # 3-2 on worm deg-3 edges
+        for (a, b), (d0, d1) in list(overlay.items()):
+            if d1 != 3:
+                continue
+            lk = m.edge_link(a, b).tolist()
+            link = sorted({x for pr in lk for x in pr})
+            if len(link) != 3 or not m.has_bistellar_move([a, b], link):
+                continue
+            r = apply_32(a, b, link)
+            sub = seq_dfs(depth - 1, accept, base_lo)
+            if sub is not None:
+                return [r] + sub
+            undo_move(r)
+        # 2-3 on chain-window triples
+        cand_v = [verts[i % L] for i in range(base_lo, base_lo + args.win + 2)]
+        for tri in combinations(cand_v, 3):
+            try:
+                ap1, ap2 = m.face_apexes(*tri)
+            except RuntimeError:
+                continue
+            if not m.has_bistellar_move(list(tri), [ap1, ap2]):
+                continue
+            deltas = wm.delta_two_three(frozenset(tri), ap1, ap2, dv)
+            grow = sum((nw is not None and nw not in (5, 6))
+                       - (o is not None and o not in (5, 6))
+                       for o, nw in deltas.values())
+            if n_ill() + grow > args.budget:
+                continue
+            r = apply_23(tri, ap1, ap2)
+            sub = seq_dfs(depth - 1, accept, base_lo)
+            if sub is not None:
+                return [r] + sub
+            undo_move(r)
+        return None
+
+    # ---- start from the motif search's committed state ----
+    def at_steady_past(bmin):
+        def acc():
+            c = code()
+            return c is not None and c[1] == steady_rel and c[0] >= bmin
+        return acc
+
+    c0 = code()
+    assert c0 is not None and c0[1] == steady_rel, "state not at steady code"
+    base = c0[0]
+    # reconstruct the facet diff once, exactly
+    fs0 = set(map(tuple, np.sort(F, axis=1).tolist()))
+    fs1 = set(map(tuple, np.sort(np.asarray(m.facets()), axis=1).tolist()))
+    for t in fs1 - fs0:
+        fdiff[t] = 1
+    for t in fs0 - fs1:
+        fdiff[t] = -1
+    print(f"\n[propagate] starting from committed state: base {base}, "
+          f"facet diff {len(fdiff)} tets")
+
+    # ---- drive around the full orbit; fast-path = replay last period ----
+    import gc as _gc
+    from discrete_differential_geometry import _dlang as _dl
+    bf = mo["base_from"]
+    last_rel = []
+    for mv in mo["motif"]:
+        if mv[0] == "2-3":
+            if None in mv[1] or mv[2][0] is None or mv[2][1] is None:
+                last_rel = None
+                break
+            last_rel.append(("23", tuple(i - bf for i in mv[1]),
+                             mv[2][0] - bf, mv[2][1] - bf))
+        else:
+            if mv[1] is None or mv[2] is None:
+                last_rel = None
+                break
+            last_rel.append(("32", mv[1] - bf, mv[2] - bf))
+    if last_rel is not None:
+        print(f"[propagate] fast-path seeded from motif "
+              f"({len(last_rel)} moves, rebased -{bf})")
+    period_hist = []
+    target_total = L          # one full orbit returns worm to launch site
+    t2 = time.time()
+    fails = 0
+    while base < target_total:
+        prev_base = base
+        remap(base)
+        advanced = None
+        if last_rel is not None:
+            recs = []
+            ok = True
+            for mv in last_rel:
+                if mv[0] == "23":
+                    tri = [verts[(base + i) % L] for i in mv[1]]
+                    a1 = verts[(base + mv[2]) % L]
+                    a2 = verts[(base + mv[3]) % L]
+                    if not m.has_bistellar_move(sorted(tri), [a1, a2]):
+                        ok = False
+                        break
+                    recs.append(apply_23(tuple(tri), a1, a2))
+                else:
+                    a = verts[(base + mv[1]) % L]
+                    b = verts[(base + mv[2]) % L]
+                    lk = m.edge_link(a, b).tolist() if True else None
+                    link = sorted({x for pr in lk for x in pr})
+                    if len(link) != 3 or \
+                            not m.has_bistellar_move([a, b], link):
+                        ok = False
+                        break
+                    recs.append(apply_32(a, b, link))
+            if ok:
+                c = code()
+                if c is not None and c[1] == steady_rel and c[0] > base:
+                    advanced = c[0]
+            if advanced is None:
+                for r in reversed(recs):
+                    undo_move(r)
+        if advanced is None:
+            nodes[0] = 0
+            seq = seq_dfs(len(mo["motif"]) + 2, at_steady_past(base + 1),
+                          base)
+            if seq is None:
+                fails += 1
+                print(f"[propagate] STUCK at base {base} "
+                      f"({nmv[0]} moves so far)")
+                break
+            advanced = code()[0]
+            # record the successful sequence relative to prev_base
+            last_rel = []
+            for r in seq:
+                if r[0] == "23":
+                    idx = [pos_of.get(x) for x in r[1]]
+                    i1, i2 = pos_of.get(r[2]), pos_of.get(r[3])
+                    if None in idx or i1 is None or i2 is None:
+                        last_rel = None
+                        break
+                    last_rel.append(("23",
+                                     tuple(i - prev_base for i in idx),
+                                     i1 - prev_base, i2 - prev_base))
+                else:
+                    i1, i2 = pos_of.get(r[1]), pos_of.get(r[2])
+                    if i1 is None or i2 is None:
+                        last_rel = None
+                        break
+                    last_rel.append(("32", i1 - prev_base, i2 - prev_base))
+        period_hist.append(advanced - prev_base)
+        base = advanced
+        if len(period_hist) % 50 == 0:
+            _gc.collect()
+            _dl._lib.ddg_gc_collect()
+        if len(period_hist) % 100 == 0:
+            print(f"[propagate] base {base}/{target_total} "
+                  f"({nmv[0]} moves, {time.time() - t2:.0f}s)")
+
+    if base >= target_total:
+        print(f"[propagate] WRAPPED the orbit: base {base} >= {L}, "
+              f"{nmv[0]} moves, {time.time() - t2:.0f}s; closing...")
+        remap(base)
+
+        def legal_now():
+            return n_ill() == 0
+
+        nodes[0] = 0
+        seq = seq_dfs(args.depth, lambda: legal_now(), base)
+        if seq is None:
+            print("[close] could not reach legality within depth "
+                  f"{args.depth}")
+        else:
+            pairs, _ = m.illegal_edges()
+            assert len(pairs) == 0, "D core disagrees on legality"
+            deg_net = {k: v for k, v in overlay.items()}
+            print(f"\n════ CLOSED after {nmv[0]} moves ════")
+            print(f"  degree net (overlay): {len(deg_net)} edges changed")
+            for k, (d0, d1) in sorted(deg_net.items())[:12]:
+                print(f"    {k}: {d0} -> {d1}")
+            print(f"  FACET TRAIL: {len(fdiff)} tets differ from crystal")
+            if not deg_net and not fdiff:
+                print("  => IDENTITY (wrap acted trivially)")
+            else:
+                print("  => NONTRIVIAL LEGAL CYCLE"
+                      + (" (dS = 0: pure degree-preserving "
+                         "retriangulation)" if not deg_net else ""))
     if args.json:
         with open(args.json, "w") as f:
             json.dump(dict(orbit_len=L, winding=wind.tolist(),
-                           period=mo["period"], motif=mo["motif"],
-                           code=[list(x) for x in mo["code"]]),
+                           period=mo["period"], motif_moves=len(mo["motif"]),
+                           total_moves=nmv[0], final_base=base,
+                           n_deg_net=len(overlay), n_facet_trail=len(fdiff),
+                           period_hist=period_hist[:50]),
                       f, indent=1, default=str)
         print(f"wrote {os.path.abspath(args.json)}")
 

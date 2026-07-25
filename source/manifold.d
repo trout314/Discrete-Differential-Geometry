@@ -616,6 +616,22 @@ public:
     }
 
     /// Write simplices of the given dimension directly to a caller-provided
+    /// Audit the per-dimension hash maps (see HashMap.validate). Returns
+    /// null if all healthy, else "dimMap!d: <problem>".
+    string validateMaps()() const
+    {
+        import std.conv : to;
+        static foreach (d; 1 .. dimension)
+        {{
+            auto err = dimMap!d.validate();
+            if (err !is null)
+                return "dimMap!" ~ d.to!string ~ " (cap "
+                    ~ dimMap!d.capacity.to!string ~ ", len "
+                    ~ dimMap!d.length.to!string ~ "): " ~ err;
+        }}
+        return null;
+    }
+
     /// Ordered link cycle of edge (a, b) via the ridge-link walk (dim = 3
     /// only): starting from a KNOWN containing facet hintTet, walk around the
     /// edge through dimMap!2 ridge links. Writes the link vertices in cyclic
@@ -647,6 +663,21 @@ public:
             cur = nxt;
         }
         return n;
+    }
+
+    /// The two apexes of interior triangle (a,b,c) -- the ridge link, an
+    /// O(1) hash lookup (dim = 3 only). Returns 2 and fills buf[0..2], or -1
+    /// if the triangle is not in the manifold.
+    static if (dimension_ == 3)
+    long writeFaceApexes()(Vertex a, Vertex b, Vertex c, int* buf) const
+    {
+        Vertex[3] ridge = [a, b, c];
+        ridge[].sort();
+        auto ptr = ridge in dimMap!2;
+        if (ptr is null) return -1;
+        buf[0] = ptr.link[0];
+        buf[1] = ptr.link[1];
+        return 2;
     }
 
     /// buffer, avoiding all GC allocation. Returns the number of simplices.

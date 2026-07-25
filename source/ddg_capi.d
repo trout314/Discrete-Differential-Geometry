@@ -959,6 +959,47 @@ extern(C) long ddg_manifold_edge_link_cycle(void* handle, int a, int b,
     catch (Exception e) { setError(e.msg); return -1; }
 }
 
+/// The two apexes of interior triangle (a,b,c): O(1) ridge-link lookup.
+extern(C) long ddg_manifold_face_apexes(void* handle, int a, int b, int c,
+    int* out_apexes) nothrow
+{
+    clearError();
+    try
+    {
+        if (handle is null) { setError("null handle"); return -1; }
+        auto h = cast(ManifoldHandle*) handle;
+        if (h.dim != 3) { setError("face_apexes is dim=3 only"); return -1; }
+        auto mw = cast(ManifoldWrapper!3*) h.ptr;
+        auto n = mw.mfd.writeFaceApexes(a, b, c, out_apexes);
+        if (n < 0) { setError("triangle not in manifold"); return -1; }
+        return n;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Audit the manifold's internal hash maps; returns 0 healthy, -1 with an
+/// error message describing the first inconsistency.
+extern(C) int ddg_manifold_validate_maps(void* handle) nothrow
+{
+    clearError();
+    try
+    {
+        if (handle is null) { setError("null handle"); return -1; }
+        auto h = cast(ManifoldHandle*) handle;
+        string err;
+        switch (h.dim)
+        {
+            case 2: err = (cast(ManifoldWrapper!2*) h.ptr).mfd.validateMaps; break;
+            case 3: err = (cast(ManifoldWrapper!3*) h.ptr).mfd.validateMaps; break;
+            case 4: err = (cast(ManifoldWrapper!4*) h.ptr).mfd.validateMaps; break;
+            default: setError("bad dimension"); return -1;
+        }
+        if (err !is null) { setError(err); return -1; }
+        return 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
 extern(C) int ddg_manifold_has_hinge_move(void* handle,
     const(int)* removed_edge, const(int)* link_cycle, int diagonal) nothrow
 {

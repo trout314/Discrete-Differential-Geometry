@@ -136,6 +136,44 @@ struct HashMap(K, V)
         return result;
     }
 
+    /// Consistency audit: returns null if healthy, else a description.
+    /// Checks _length == #OCCUPIED, and that every OCCUPIED key can be
+    /// re-located by keyed lookup (probe-chain integrity).
+    string validate() const
+    {
+        size_t occ = 0;
+        foreach (i; 0 .. _ctrl.length)
+        {
+            if (_ctrl[i] != OCCUPIED) continue;
+            occ++;
+            auto j = locate(cast(K) _keys[i]);
+            if (j == size_t.max)
+                return "key at slot " ~ intToStr(i)
+                    ~ " unreachable by lookup (broken probe chain)";
+            if (j != i)
+                return "key at slot " ~ intToStr(i) ~ " located at slot "
+                    ~ intToStr(j) ~ " (duplicate key)";
+        }
+        if (occ != _length)
+            return "occupied " ~ intToStr(occ) ~ " != length "
+                ~ intToStr(_length);
+        if (_ctrl.length != _keys.length || _ctrl.length != _values.length)
+            return "array length desync";
+        return null;
+    }
+
+    static string intToStr(size_t x) pure nothrow
+    {
+        if (x == 0) return "0";
+        char[24] tmp;
+        size_t p = 24;
+        while (x) { tmp[--p] = cast(char)('0' + x % 10); x /= 10; }
+        return tmp[p .. $].idup;
+    }
+
+    /// Capacity (for diagnostics).
+    size_t capacity() const pure nothrow @nogc @safe { return _ctrl.length; }
+
     /// Return a shallow copy.
     HashMap dup() const
     {
