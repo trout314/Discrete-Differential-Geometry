@@ -85,6 +85,7 @@ def main():
 
     spec = Counter()
     size_of, star_of, chg_of = (defaultdict(list) for _ in range(3))
+    rel_of, sumz_of = defaultdict(list), defaultdict(list)
     shape_of = {}
     n6_of = defaultdict(Counter)
     sig_of = defaultdict(Counter)
@@ -129,7 +130,9 @@ def main():
             spec[key] += 1
             size_of[key].append(len(cx.verts))
             star_of[key].append(len(st.star(cx.verts)))
-            chg_of[key].append(st.complex_charge(cx.verts, q, qbar))
+            chg_of[key].append(st.complex_charge(cx.verts, q))
+            rel_of[key].append(st.complex_charge_rel(cx.verts, q, qbar))
+            sumz_of[key].append(st.total_coordination(cx.verts))
         del st, m
 
     def pm(x):
@@ -176,8 +179,9 @@ def main():
             print(f"  WARNING: {inexact} complexes hit the canonical-form "
                   f"search limit -- their keys are strong invariants, not "
                   f"certificates")
-        hdr = (f"{'#':<4} {'f=(v,e,t,T)':<17} {'facets':<7} {'degseq (1-skel)':<22} "
-               f"{'n':>5} {'%':>6} {'star':>6} {'Q_c (rad)':>15}")
+        hdr = (f"{'#':<4} {'f=(v,e,t,T)':<17} {'facets':<6} "
+               f"{'degseq (1-skel)':<20} {'n':>5} {'%':>6} {'sumZ':>6} "
+               f"{'Q_c raw':>16} {'Q_c-bg':>9}")
         print(hdr)
         print("-" * len(hdr))
         rows = []
@@ -193,11 +197,16 @@ def main():
                          "sigs": {str(a): b for a, b in sig_of[k].items()},
                          "nodes": {str(a): b for a, b in nodes_of[k].items()},
                          "star": float(np.mean(star_of[k])),
-                         "Q_c": float(np.mean(chg_of[k])),
-                         "Q_c_sd": float(np.std(chg_of[k]))})
-            print(f"{i:<4} {str(sh['f']):<17} {nf:<7} {dq[:21]:<22} "
-                  f"{n:5d} {100*n/ncomp:5.1f}% {np.mean(star_of[k]):6.0f} "
-                  f"{np.mean(chg_of[k]):7.2f}+-{np.std(chg_of[k]):<6.2f}")
+                         "sum_Z": float(np.mean(sumz_of[k])),
+                         "Q_c_raw": float(np.mean(chg_of[k])),
+                         "Q_c_raw_sd": float(np.std(chg_of[k])),
+                         "Q_c_rel": float(np.mean(rel_of[k])),
+                         "Q_c_rel_sd": float(np.std(rel_of[k]))})
+            sz = np.mean(sumz_of[k])
+            print(f"{i:<4} {str(sh['f']):<17} {nf:<6} {dq[:19]:<20} "
+                  f"{n:5d} {100*n/ncomp:5.1f}% {sz:6.1f} "
+                  f"{np.mean(chg_of[k]):8.3f}+-{np.std(chg_of[k]):<7.2g} "
+                  f"{np.mean(rel_of[k]):9.3f}")
         # how well does shape determine the historical label, and vice versa?
         print()
         print("class -> illegal-edge signatures it contains "
@@ -243,8 +252,11 @@ def main():
             rows.append({"sig": list(sig), "nodes": list(nodes), "n": n,
                          "frac": n / ncomp, "size": float(np.mean(size_of[k])),
                          "star": float(np.mean(star_of[k])), "sum_w": w,
-                         "Q_c": float(np.mean(chg_of[k])),
-                         "Q_c_sd": float(np.std(chg_of[k]))})
+                         "sum_Z": float(np.mean(sumz_of[k])),
+                         "Q_c_raw": float(np.mean(chg_of[k])),
+                         "Q_c_raw_sd": float(np.std(chg_of[k])),
+                         "Q_c_rel": float(np.mean(rel_of[k])),
+                         "Q_c_rel_sd": float(np.std(rel_of[k]))})
             print(f"{sig_str(sig):<20} {str(nodes) if nodes else '':<9} {n:5d} "
                   f"{100*n/ncomp:5.1f}% "
                   f"{np.mean(size_of[k]):6.1f}+-{np.std(size_of[k]):<5.1f} "

@@ -548,14 +548,47 @@ class DefectState:
             q[w] += half
         return q
 
-    def complex_charge(self, verts, q=None, qbar=None):
-        """Q_c = sum_{v in c} (q_R(v) - qbar), the complex's curvature charge
-        relative to a reference (default: the state mean, i.e. cell-mean)."""
+    def qbar(self, q=None):
+        """State-mean q_R -- the crystal-background reference. Small but not
+        zero: sum_v q_R = 2*pi*E - 6*theta*N_3, which is a topological
+        constant for the box, so qbar drifts only with the f-vector."""
+        if q is None:
+            q = self.vertex_charges()
+        return float(np.mean([q[v] for v in self.v2t])) if self.v2t else 0.0
+
+    def complex_charge(self, verts, q=None):
+        """Q_c = sum_{v in c} q_R(v) -- the RAW curvature charge, with no
+        background subtraction.
+
+        Raw is the primary quantity because it is reference-free: it depends
+        only on the complex's own vertices, so it is exactly reproducible and
+        identical complexes give identical values. Subtracting a state mean
+        makes it depend on the whole configuration and introduces a spurious
+        spread (measured: sd ~ 1e-3 across snapshots purely from qbar drift).
+
+        Because q_R(v) = Z(pi - 3 theta) + 6 theta, the raw charge of an
+        n-vertex complex is fixed by its TOTAL coordination:
+
+            Q_c = (sum Z) * (pi - 3 theta) + 6 n theta
+
+        so it is quantised in steps of (pi - 3 theta) = -0.5512856 rad per
+        unit of total coordination."""
+        if q is None:
+            q = self.vertex_charges()
+        return float(sum(q[v] for v in verts))
+
+    def complex_charge_rel(self, verts, q=None, qbar=None):
+        """Q_c relative to the crystal background: sum (q_R(v) - qbar)."""
         if q is None:
             q = self.vertex_charges()
         if qbar is None:
-            qbar = float(np.mean([q[v] for v in self.v2t])) if self.v2t else 0.0
+            qbar = self.qbar(q)
         return float(sum(q[v] - qbar for v in verts))
+
+    def total_coordination(self, verts):
+        """sum of Z over the complex -- the integer that indexes its raw
+        charge (see complex_charge)."""
+        return sum((len(self.v2t[v]) + 4) // 2 for v in verts)
 
     # -- audit --------------------------------------------------------------
 
