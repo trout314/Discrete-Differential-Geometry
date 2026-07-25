@@ -61,6 +61,11 @@ def main():
     ap.add_argument("--provenance", default=None)
     ap.add_argument("--certified", default=None,
                     help="gate numbers if certified; omitted => PROVISIONAL")
+    ap.add_argument("--group", choices=("sig", "induced"), default="sig",
+                    help="sig: group by illegal-edge signature (historical). "
+                         "induced: group by the ISOMORPHISM CLASS of the "
+                         "subcomplex induced by the defect's vertices -- the "
+                         "defect's actual combinatorial shape.")
     ap.add_argument("--top", type=int, default=25)
     ap.add_argument("--min-count", type=int, default=1)
     ap.add_argument("--out", default=None, help="write the table as JSON too")
@@ -74,6 +79,10 @@ def main():
 
     spec = Counter()
     size_of, star_of, chg_of = (defaultdict(list) for _ in range(3))
+    shape_of = {}
+    sig_of = defaultdict(Counter)
+    nodes_of = defaultdict(Counter)
+    inexact = 0
     ncx_per, nill_per, ffk_per, fe_per, edeg_per = [], [], [], [], []
     n3_states = []
     ncomp = 0
@@ -92,10 +101,21 @@ def main():
         edeg_per.append(c["mean_edeg"])
         n3_states.append(m.num_facets)
         for cx in comps:
-            spec[cx.key] += 1
-            size_of[cx.key].append(len(cx.verts))
-            star_of[cx.key].append(len(st.star(cx.verts)))
-            chg_of[cx.key].append(st.complex_charge(cx.verts, q, qbar))
+            if args.group == "induced":
+                fac = st.induced_facets(cx.verts)
+                ck, exact = ds.canonical_key(fac)
+                if not exact:
+                    inexact += 1
+                key = ck
+                shape_of[key] = st.induced_shape(cx.verts)
+                sig_of[key][cx.sig] += 1
+                nodes_of[key][cx.nodes] += 1
+            else:
+                key = cx.key
+            spec[key] += 1
+            size_of[key].append(len(cx.verts))
+            star_of[key].append(len(st.star(cx.verts)))
+            chg_of[key].append(st.complex_charge(cx.verts, q, qbar))
         del st, m
 
     def pm(x):
@@ -131,34 +151,91 @@ def main():
     print(f"Totals       : {ncomp} complexes, {len(spec)} distinct species")
     print()
 
-    hdr = (f"{'illegal-edge signature':<20} {'nodes':<9} {'n':>5} {'%':>6} "
-           f"{'s (verts)':>13} {'star':>7} {'sum w':>6} {'Q_c (rad)':>15}")
-    print(hdr)
-    print("-" * len(hdr))
-    rows = []
-    for k, n in spec.most_common():
-        if n < args.min_count or len(rows) >= args.top:
-            break
-        sig, nodes = k
-        w = sum(6 - d for d in sig)
-        row = {"sig": list(sig), "nodes": list(nodes), "n": n,
-               "frac": n / ncomp, "size": float(np.mean(size_of[k])),
-               "star": float(np.mean(star_of[k])), "sum_w": w,
-               "Q_c": float(np.mean(chg_of[k])),
-               "Q_c_sd": float(np.std(chg_of[k]))}
-        rows.append(row)
-        print(f"{sig_str(sig):<20} {str(nodes) if nodes else '':<9} {n:5d} "
-              f"{100*n/ncomp:5.1f}% "
-              f"{np.mean(size_of[k]):6.1f}+-{np.std(size_of[k]):<5.1f} "
-              f"{np.mean(star_of[k]):7.0f} {w:6d} "
-              f"{np.mean(chg_of[k]):7.2f}+-{np.std(chg_of[k]):<6.2f}")
+    if args.group == "induced":
+        print(f"Grouped by ISOMORPHISM CLASS of the induced subcomplex "
+              f"({len(spec)} classes)")
+        if inexact:
+            print(f"  WARNING: {inexact} complexes hit the canonical-form "
+                  f"search limit -- their keys are strong invariants, not "
+                  f"certificates")
+        hdr = (f"{'#':<4} {'f=(v,e,t,T)':<17} {'facets':<7} {'degseq (1-skel)':<22} "
+               f"{'n':>5} {'%':>6} {'star':>6} {'Q_c (rad)':>15}")
+        print(hdr)
+        print("-" * len(hdr))
+        rows = []
+        for i, (k, n) in enumerate(spec.most_common()):
+            if n < args.min_count or i >= args.top:
+                break
+            sh = shape_of[k]
+            dq = str(sh["degseq"])
+            rows.append({"class": i, "f": list(sh["f"]), "n_facets": len(k),
+                         "degseq": list(sh["degseq"]), "n": n,
+                         "frac": n / ncomp,
+                         "sigs": {str(a): b for a, b in sig_of[k].items()},
+                         "nodes": {str(a): b for a, b in nodes_of[k].items()},
+                         "star": float(np.mean(star_of[k])),
+                         "Q_c": float(np.mean(chg_of[k])),
+                         "Q_c_sd": float(np.std(chg_of[k]))})
+            print(f"{i:<4} {str(sh['f']):<17} {len(k):<7} {dq[:21]:<22} "
+                  f"{n:5d} {100*n/ncomp:5.1f}% {np.mean(star_of[k]):6.0f} "
+                  f"{np.mean(chg_of[k]):7.2f}+-{np.std(chg_of[k]):<6.2f}")
+        # how well does shape determine the historical label, and vice versa?
+        print()
+        print("shape class -> illegal-edge signatures it contains "
+              "(is shape finer or coarser than the old label?)")
+        for i, (k, n) in enumerate(spec.most_common(min(args.top, 12))):
+            sigs = sig_of[k]
+            pretty = ", ".join(f"{sig_str(a)}x{b}" for a, b in sigs.most_common(4))
+            print(f"   class {i:<3} (n={n:4d}): {pretty}"
+                  + ("  ..." if len(sigs) > 4 else ""))
+        rev = defaultdict(set)
+        for k in spec:
+            for a in sig_of[k]:
+                rev[a].add(k)
+        multi = {a: len(v) for a, v in rev.items() if len(v) > 1}
+        print(f"\n   signatures realised by more than one shape: "
+              f"{len(multi)} of {len(rev)}")
+        for a, c in sorted(multi.items(), key=lambda x: -x[1])[:6]:
+            print(f"      {sig_str(a)} appears as {c} distinct shapes")
+    else:
+        hdr = (f"{'illegal-edge signature':<20} {'nodes':<9} {'n':>5} {'%':>6} "
+               f"{'s (verts)':>13} {'star':>7} {'sum w':>6} {'Q_c (rad)':>15}")
+        print(hdr)
+        print("-" * len(hdr))
+        rows = []
+        for k, n in spec.most_common():
+            if n < args.min_count or len(rows) >= args.top:
+                break
+            sig, nodes = k
+            w = sum(6 - d for d in sig)
+            rows.append({"sig": list(sig), "nodes": list(nodes), "n": n,
+                         "frac": n / ncomp, "size": float(np.mean(size_of[k])),
+                         "star": float(np.mean(star_of[k])), "sum_w": w,
+                         "Q_c": float(np.mean(chg_of[k])),
+                         "Q_c_sd": float(np.std(chg_of[k]))})
+            print(f"{sig_str(sig):<20} {str(nodes) if nodes else '':<9} {n:5d} "
+                  f"{100*n/ncomp:5.1f}% "
+                  f"{np.mean(size_of[k]):6.1f}+-{np.std(size_of[k]):<5.1f} "
+                  f"{np.mean(star_of[k]):7.0f} {w:6d} "
+                  f"{np.mean(chg_of[k]):7.2f}+-{np.std(chg_of[k]):<6.2f}")
 
     # --- collapsed views
     by3 = Counter()
     bydec = Counter()
-    for (sig, nodes), n in spec.items():
+    sigsrc = ([(a, b) for k in spec for a, b in
+               ((s_, sig_of[k][s_] * 1) for s_ in sig_of[k])]
+              if args.group == "induced"
+              else [(k[0], n) for k, n in spec.items()])
+    nodesrc = ([(a, b) for k in spec for a, b in
+                ((s_, nodes_of[k][s_]) for s_ in nodes_of[k])]
+               if args.group == "induced"
+               else [(k[1], n) for k, n in spec.items()])
+    for sig, n in sigsrc:
         by3[sig.count(3)] += n
+    for nodes, n in nodesrc:
         bydec[bool(nodes)] += n
+    for _unused in ():
+        pass
     print()
     print("slide handles (a slide needs a degree-3 chord):")
     for k in sorted(by3):

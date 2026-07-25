@@ -49,10 +49,11 @@ whence n5 + n6 = Z and 5*n5 + 6*n6 = 6Z - 12. So "all-legal with n6 > 4" is
 exactly "coordination Z >= 17". `audit` checks this identity as a free
 consistency test on the incremental counters.
 """
+import math
 import os
 import sys
 from collections import Counter, defaultdict
-from itertools import combinations
+from itertools import combinations, permutations, product
 
 import numpy as np
 
@@ -72,6 +73,74 @@ def _ek(u, w):
 
 def _legal(d):
     return d == 5 or d == 6
+
+
+def _refine(facets, verts):
+    """Colour-refine the vertices of an abstract complex (WL on the facet
+    hypergraph). Two vertices keep the same colour only while nothing in their
+    facet neighbourhoods distinguishes them."""
+    color = {v: 0 for v in verts}
+    for _ in range(len(verts) + 1):
+        sig = {}
+        for v in verts:
+            around = []
+            for f in facets:
+                if v in f:
+                    around.append((len(f),
+                                   tuple(sorted(color[u] for u in f if u != v))))
+            sig[v] = (color[v], tuple(sorted(around)))
+        vals = {s: i for i, s in enumerate(sorted(set(sig.values())))}
+        new = {v: vals[sig[v]] for v in verts}
+        if new == color:
+            break
+        color = new
+    return color
+
+
+def canonical_key(facets, limit=200000):
+    """Canonical form of an abstract simplicial complex given its facets.
+
+    Returns (key, exact). `key` is the facet set relabelled to 0..n-1 by the
+    vertex ordering that minimises it lexicographically, so two complexes are
+    isomorphic iff their keys are equal -- provided `exact` is True. Colour
+    refinement first cuts the search to orderings consistent with the refined
+    partition; if that still exceeds `limit` orderings the search is truncated
+    and `exact` comes back False, meaning the key is a strong invariant but no
+    longer a certificate (equal keys still imply nothing was distinguished,
+    but unequal keys could in principle be the same complex).
+
+    Defect complexes here are small (5-20 vertices) and refinement usually
+    almost discretises them: a (3,4,4) knot's induced subcomplex is three
+    tetrahedra of a 5-vertex complex, so its vertices split 2 + 3 by facet
+    count and only 2! * 3! = 12 orderings need checking.
+    """
+    facets = [tuple(sorted(f)) for f in facets]
+    verts = sorted({v for f in facets for v in f})
+    if not verts:
+        return ((), True)
+    color = _refine(facets, verts)
+    classes = defaultdict(list)
+    for v in verts:
+        classes[color[v]].append(v)
+    groups = [sorted(classes[c]) for c in sorted(classes)]
+
+    total = 1
+    for g in groups:
+        total *= math.factorial(len(g))
+    exact = total <= limit
+
+    best = None
+    seen = 0
+    for combo in product(*(permutations(g) for g in groups)):
+        order = [v for g in combo for v in g]
+        idx = {v: i for i, v in enumerate(order)}
+        rel = tuple(sorted(tuple(sorted(idx[v] for v in f)) for f in facets))
+        if best is None or rel < best:
+            best = rel
+        seen += 1
+        if seen >= limit:
+            break
+    return (best, exact)
 
 
 class Complex:
