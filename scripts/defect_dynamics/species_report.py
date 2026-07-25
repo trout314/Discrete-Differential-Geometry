@@ -6,17 +6,30 @@ distribution, following notes/CONVENTIONS.md: the standard state-report block
 (provenance, action + couplings, legality, curvature, census, certification
 status) followed by the species table.
 
-A species is labelled by its ILLEGAL-EDGE SIGNATURE -- the sorted multiset of
-illegal edge degrees inside the complex -- with any non-FK coordination
-decorations reported separately, so "(3,4,4)" keeps exactly the meaning it has
-always had. Also reported per species: complex size s, closed-star size, total
-disclination charge sum w(e) = sum (6 - deg e), and curvature charge Q_c
-against the cell-mean reference.
+By default a species is the isomorphism class of the subcomplex INDUCED by a
+defect's vertices, decorated with ambient edge degrees on its edges and n6 on
+its vertices (--group full). That is the reporting default because it is the
+only key that determines the curvature charge: it pins the coordination Z at
+every vertex, and then
+
+    Q_c = (sum Z) * (pi - 3 theta) + 6 * n_verts * theta
+
+exactly (notes/CONVENTIONS.md 1.1). Coarser keys remain available: --group
+decorated drops n6, --group induced drops all decoration, and --group sig is
+the historical illegal-edge signature, kept for continuity with earlier runs.
+
+Also reported per species: complex size s, closed-star size, total
+coordination sum Z, and the RAW curvature charge Q_c = sum q_R, with the
+background-subtracted value alongside. Raw is primary: it depends only on the
+complex's own vertices, so identical complexes give identical values, whereas
+subtracting a state mean ties every measurement to the whole configuration
+(measured sd over 60 classes: 4e-16 raw vs 2e-3 subtracted).
 
 Usage:
   species_report.py --glob 'data/mgas/lam40*_snap*.mfd' --lam 0.40 \
       --zleg 0.6 --cimp 1.0 --etarget 5.105025 \
       --provenance 'm4 r-crystal -> lam40 chains'
+  ... add --group sig to reproduce a pre-2026-07-25 species table.
 """
 import argparse
 import glob as globmod
@@ -62,16 +75,17 @@ def main():
     ap.add_argument("--certified", default=None,
                     help="gate numbers if certified; omitted => PROVISIONAL")
     ap.add_argument("--group",
-                    choices=("sig", "induced", "decorated", "full"),
-                    default="sig",
-                    help="sig: illegal-edge signature (historical). "
+                    choices=("full", "decorated", "induced", "sig"),
+                    default="full",
+                    help="full (default): the induced subcomplex decorated by "
+                         "ambient EDGE DEGREE on edges and n6 on vertices. This "
+                         "is the only key that determines Q_c, so it is the "
+                         "reporting default (CONVENTIONS.md 1.1). "
+                         "sig: illegal-edge signature (historical, for "
+                         "continuity with earlier runs). "
                          "induced: isomorphism class of the subcomplex induced "
                          "by the defect's vertices -- its bare shape. "
-                         "decorated: that subcomplex with ambient EDGE DEGREES "
-                         "on its edges, which is the shape plus the physics. "
-                         "full: edge degrees AND n6 on the vertices, which "
-                         "pins the coordination Z and hence the curvature at "
-                         "every vertex.")
+                         "decorated: edge degrees only, without n6.")
     ap.add_argument("--top", type=int, default=25)
     ap.add_argument("--min-count", type=int, default=1)
     ap.add_argument("--out", default=None, help="write the table as JSON too")
