@@ -75,11 +75,26 @@ def _legal(d):
     return d == 5 or d == 6
 
 
-def _refine(facets, verts):
-    """Colour-refine the vertices of an abstract complex (WL on the facet
-    hypergraph). Two vertices keep the same colour only while nothing in their
-    facet neighbourhoods distinguishes them."""
-    color = {v: 0 for v in verts}
+def _complex_edges(facets):
+    """Edges of an abstract complex given its facets."""
+    out = set()
+    for f in facets:
+        for e in combinations(sorted(f), 2):
+            out.add(e)
+    return out
+
+
+def _refine(facets, verts, vcolor, ecolor):
+    """Colour-refine the vertices (WL on the facet hypergraph, respecting any
+    given vertex and edge colours). Two vertices keep the same colour only
+    while nothing in their decorated neighbourhoods distinguishes them."""
+    nbr = defaultdict(set)
+    for (u, w) in _complex_edges(facets):
+        nbr[u].add(w)
+        nbr[w].add(u)
+    seed = {s_: i for i, s_ in
+            enumerate(sorted({vcolor.get(v, 0) for v in verts}))}
+    color = {v: seed[vcolor.get(v, 0)] for v in verts}
     for _ in range(len(verts) + 1):
         sig = {}
         for v in verts:
@@ -88,8 +103,10 @@ def _refine(facets, verts):
                 if v in f:
                     around.append((len(f),
                                    tuple(sorted(color[u] for u in f if u != v))))
-            sig[v] = (color[v], tuple(sorted(around)))
-        vals = {s: i for i, s in enumerate(sorted(set(sig.values())))}
+            ring = tuple(sorted((ecolor.get(_ek(v, u), 0), color[u])
+                                for u in nbr[v]))
+            sig[v] = (color[v], tuple(sorted(around)), ring)
+        vals = {s_: i for i, s_ in enumerate(sorted(set(sig.values())))}
         new = {v: vals[sig[v]] for v in verts}
         if new == color:
             break
@@ -97,28 +114,41 @@ def _refine(facets, verts):
     return color
 
 
-def canonical_key(facets, limit=200000):
-    """Canonical form of an abstract simplicial complex given its facets.
+def canonical_key(facets, vcolor=None, ecolor=None, limit=200000):
+    """Canonical form of an abstract simplicial complex, optionally DECORATED.
 
-    Returns (key, exact). `key` is the facet set relabelled to 0..n-1 by the
-    vertex ordering that minimises it lexicographically, so two complexes are
-    isomorphic iff their keys are equal -- provided `exact` is True. Colour
-    refinement first cuts the search to orderings consistent with the refined
-    partition; if that still exceeds `limit` orderings the search is truncated
-    and `exact` comes back False, meaning the key is a strong invariant but no
-    longer a certificate (equal keys still imply nothing was distinguished,
-    but unequal keys could in principle be the same complex).
+    Returns (key, exact). `key` relabels the complex to 0..n-1 by the vertex
+    ordering that minimises it lexicographically, so two decorated complexes
+    are isomorphic-as-decorated iff their keys are equal -- provided `exact`
+    is True. Colour refinement first cuts the search to orderings consistent
+    with the refined partition; if that still exceeds `limit` the search is
+    truncated and `exact` comes back False, meaning the key is a strong
+    invariant but no longer a certificate.
 
-    Defect complexes here are small (5-20 vertices) and refinement usually
-    almost discretises them: a (3,4,4) knot's induced subcomplex is three
-    tetrahedra of a 5-vertex complex, so its vertices split 2 + 3 by facet
-    count and only 2! * 3! = 12 orderings need checking.
+    `vcolor` maps vertex -> label, `ecolor` maps sorted edge pair -> label.
+    For defects the natural choice is ecolor = ambient edge degree and
+    vcolor = n6. Note those two are not independent of each other given the
+    edge decoration: every illegal edge lies INSIDE an induced defect
+    subcomplex (both endpoints of an illegal edge have imp > 0, hence are
+    defect vertices), so the edge colours already determine imp(v) and the
+    illegal degree sum at each vertex, and then
+
+        n6(v) = Z + 5*imp(v) - sum(d_illegal at v) - 12
+        q_R(v) = Z*(pi - 3*theta) + 6*theta,   theta = arccos(1/3)
+
+    with Z the coordination. So decorating with n6 is equivalent to
+    decorating with Z, and either one fixes the curvature; there is no need
+    to carry q_R as well. (Both identities follow from the vertex link being
+    a triangulated 2-sphere, and hold for every vertex, legal or not.)
     """
     facets = [tuple(sorted(f)) for f in facets]
     verts = sorted({v for f in facets for v in f})
+    vcolor = vcolor or {}
+    ecolor = ecolor or {}
     if not verts:
         return ((), True)
-    color = _refine(facets, verts)
+    edges = sorted(_complex_edges(facets))
+    color = _refine(facets, verts, vcolor, ecolor)
     classes = defaultdict(list)
     for v in verts:
         classes[color[v]].append(v)
@@ -134,7 +164,12 @@ def canonical_key(facets, limit=200000):
     for combo in product(*(permutations(g) for g in groups)):
         order = [v for g in combo for v in g]
         idx = {v: i for i, v in enumerate(order)}
-        rel = tuple(sorted(tuple(sorted(idx[v] for v in f)) for f in facets))
+        rel_f = tuple(sorted(tuple(sorted(idx[v] for v in f)) for f in facets))
+        rel_e = tuple(sorted(
+            (tuple(sorted((idx[u], idx[w]))), ecolor.get((u, w), 0))
+            for (u, w) in edges))
+        rel_v = tuple(vcolor.get(v, 0) for v in order)
+        rel = (rel_f, rel_e, rel_v)
         if best is None or rel < best:
             best = rel
         seen += 1
@@ -386,6 +421,18 @@ class DefectState:
                 if not any(set(s) < set(f) for f in facets):
                     facets.append(s)
         return sorted(facets, key=lambda f: (-len(f), f))
+
+    def decorations(self, verts):
+        """(vcolor, ecolor) for the induced subcomplex of `verts`:
+        vcolor[v] = n6(v), ecolor[edge] = ambient edge degree. Feed straight
+        to canonical_key."""
+        S = set(verts)
+        vcolor = {v: self.n6[v] for v in S}
+        ecolor = {}
+        ind = self.induced(S)
+        for e in ind[1]:
+            ecolor[e] = self.edeg[e]
+        return vcolor, ecolor
 
     def induced_shape(self, verts):
         """Coarse shape summary of the induced subcomplex: the f-vector, the

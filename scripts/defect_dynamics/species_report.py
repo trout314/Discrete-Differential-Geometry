@@ -61,11 +61,13 @@ def main():
     ap.add_argument("--provenance", default=None)
     ap.add_argument("--certified", default=None,
                     help="gate numbers if certified; omitted => PROVISIONAL")
-    ap.add_argument("--group", choices=("sig", "induced"), default="sig",
-                    help="sig: group by illegal-edge signature (historical). "
-                         "induced: group by the ISOMORPHISM CLASS of the "
-                         "subcomplex induced by the defect's vertices -- the "
-                         "defect's actual combinatorial shape.")
+    ap.add_argument("--group", choices=("sig", "induced", "decorated"),
+                    default="sig",
+                    help="sig: illegal-edge signature (historical). "
+                         "induced: isomorphism class of the subcomplex induced "
+                         "by the defect's vertices -- its bare shape. "
+                         "decorated: that subcomplex with ambient EDGE DEGREES "
+                         "on its edges, which is the shape plus the physics.")
     ap.add_argument("--top", type=int, default=25)
     ap.add_argument("--min-count", type=int, default=1)
     ap.add_argument("--out", default=None, help="write the table as JSON too")
@@ -80,6 +82,7 @@ def main():
     spec = Counter()
     size_of, star_of, chg_of = (defaultdict(list) for _ in range(3))
     shape_of = {}
+    n6_of = defaultdict(Counter)
     sig_of = defaultdict(Counter)
     nodes_of = defaultdict(Counter)
     inexact = 0
@@ -101,9 +104,14 @@ def main():
         edeg_per.append(c["mean_edeg"])
         n3_states.append(m.num_facets)
         for cx in comps:
-            if args.group == "induced":
+            if args.group in ("induced", "decorated"):
                 fac = st.induced_facets(cx.verts)
-                ck, exact = ds.canonical_key(fac)
+                if args.group == "decorated":
+                    _vc, ec = st.decorations(cx.verts)
+                    ck, exact = ds.canonical_key(fac, ecolor=ec)
+                    n6_of[ck][tuple(sorted(st.n6[v] for v in cx.verts))] += 1
+                else:
+                    ck, exact = ds.canonical_key(fac)
                 if not exact:
                     inexact += 1
                 key = ck
@@ -151,8 +159,10 @@ def main():
     print(f"Totals       : {ncomp} complexes, {len(spec)} distinct species")
     print()
 
-    if args.group == "induced":
-        print(f"Grouped by ISOMORPHISM CLASS of the induced subcomplex "
+    if args.group in ("induced", "decorated"):
+        what = ("induced subcomplex" if args.group == "induced"
+                else "induced subcomplex DECORATED BY EDGE DEGREE")
+        print(f"Grouped by ISOMORPHISM CLASS of the {what} "
               f"({len(spec)} classes)")
         if inexact:
             print(f"  WARNING: {inexact} complexes hit the canonical-form "
@@ -168,7 +178,8 @@ def main():
                 break
             sh = shape_of[k]
             dq = str(sh["degseq"])
-            rows.append({"class": i, "f": list(sh["f"]), "n_facets": len(k),
+            nf = len(k[0]) if args.group == "decorated" else len(k)
+            rows.append({"class": i, "f": list(sh["f"]), "n_facets": nf,
                          "degseq": list(sh["degseq"]), "n": n,
                          "frac": n / ncomp,
                          "sigs": {str(a): b for a, b in sig_of[k].items()},
@@ -176,18 +187,30 @@ def main():
                          "star": float(np.mean(star_of[k])),
                          "Q_c": float(np.mean(chg_of[k])),
                          "Q_c_sd": float(np.std(chg_of[k]))})
-            print(f"{i:<4} {str(sh['f']):<17} {len(k):<7} {dq[:21]:<22} "
+            print(f"{i:<4} {str(sh['f']):<17} {nf:<7} {dq[:21]:<22} "
                   f"{n:5d} {100*n/ncomp:5.1f}% {np.mean(star_of[k]):6.0f} "
                   f"{np.mean(chg_of[k]):7.2f}+-{np.std(chg_of[k]):<6.2f}")
         # how well does shape determine the historical label, and vice versa?
         print()
-        print("shape class -> illegal-edge signatures it contains "
-              "(is shape finer or coarser than the old label?)")
+        print("class -> illegal-edge signatures it contains "
+              "(is it finer or coarser than the old label?)")
         for i, (k, n) in enumerate(spec.most_common(min(args.top, 12))):
             sigs = sig_of[k]
             pretty = ", ".join(f"{sig_str(a)}x{b}" for a, b in sigs.most_common(4))
             print(f"   class {i:<3} (n={n:4d}): {pretty}"
                   + ("  ..." if len(sigs) > 4 else ""))
+        if args.group == "decorated":
+            print()
+            print("n6 multiset within each class -- would adding n6 to the key "
+                  "split it?")
+            nsplit = sum(1 for k in spec if len(n6_of[k]) > 1)
+            for i, (k, n) in enumerate(spec.most_common(min(args.top, 10))):
+                ms = n6_of[k]
+                pretty = ", ".join(f"{a}x{b}" for a, b in ms.most_common(3))
+                print(f"   class {i:<3} (n={n:4d}): {len(ms)} distinct -> "
+                      f"{pretty}" + ("  ..." if len(ms) > 3 else ""))
+            print(f"   classes whose n6 is NOT constant: {nsplit} of "
+                  f"{len(spec)}  -> adding n6 would split those")
         rev = defaultdict(set)
         for k in spec:
             for a in sig_of[k]:
@@ -224,11 +247,11 @@ def main():
     bydec = Counter()
     sigsrc = ([(a, b) for k in spec for a, b in
                ((s_, sig_of[k][s_] * 1) for s_ in sig_of[k])]
-              if args.group == "induced"
+              if args.group in ("induced", "decorated")
               else [(k[0], n) for k, n in spec.items()])
     nodesrc = ([(a, b) for k in spec for a, b in
                 ((s_, nodes_of[k][s_]) for s_ in nodes_of[k])]
-               if args.group == "induced"
+               if args.group in ("induced", "decorated")
                else [(k[1], n) for k, n in spec.items()])
     for sig, n in sigsrc:
         by3[sig.count(3)] += n
