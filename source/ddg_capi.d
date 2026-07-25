@@ -2622,10 +2622,21 @@ Enable the knot-slide move class (dim = 3 only).
 
 `prob` is the probability of proposing a slide rather than the ordinary 3->2
 bistellar move, given that the unified proposal has landed on a degree-3 edge.
-0 (the default) disables slides entirely. Only CLEAN, species-preserving
-slides are in the class, so the acceptance is plain Metropolis on the exact
-action change -- see sampler.trySlideMove.
+0 (the default) disables slides entirely. Every valid slide is in the class
+and acceptance is plain Metropolis on the exact action change; restrict to
+CLEAN (species-preserving) slides with ddg_sampler_set_slide_clean_only.
+See sampler.trySlideMove.
 */
+extern(C) int ddg_sampler_set_slide_clean_only(void* sampler_handle,
+    int clean_only) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto s = cast(SamplerState*) sampler_handle;
+    s.slideCfg.cleanOnly = (clean_only != 0);
+    return 0;
+}
+
 extern(C) int ddg_sampler_set_slide_prob(void* sampler_handle, double prob) nothrow
 {
     clearError();
@@ -2715,7 +2726,7 @@ extern(C) int ddg_sampler_slide_at(void* sampler_handle,
             s.potEnabled ? &s.vertexPot : null,
             s.cocycle.enabled ? &s.cocycle : null,
             mode == 0 ? SlideAccept.trialOnly : SlideAccept.force,
-            &dS);
+            &dS, s.slideCfg.cleanOnly);
         if (!valid) return 0;
         if (out_dS !is null) *out_dS = cast(double) dS;
         return 1;

@@ -358,14 +358,37 @@ class ManifoldSampler:
         ordinary 3->2 bistellar move, given that the unified proposal has
         landed on a degree-3 edge. 0 (the default) disables slides.
 
-        Only clean (species-preserving) slides are in the move class: a slide
-        translates a knot's whole local degree pattern along its
-        Boerdijk-Coxeter chain, preserving N3, E and the illegal-degree
-        multiset, so the acceptance is plain Metropolis on the exact action
-        change with no Hastings correction. Slides run entirely inside the D
+        Acceptance is plain Metropolis on the exact action change, with no
+        Hastings correction (k_f = k_r = 1). Slides run entirely inside the D
         sampler and participate in objective tracking, cocycle updates, the
-        geometry ledger and move counters like any other move type."""
+        geometry ledger and move counters like any other move type. See
+        :meth:`set_slide_clean_only` to restrict the class.
+
+        Note this is the probability that a whole MCMC step is a slide
+        attempt, not a conditional probability at a degree-3 edge: the slide
+        is an independent channel, so a value near 1 starves the thermal
+        channel entirely."""
         _lib.ddg_sampler_set_slide_prob(self._handle, float(prob))
+
+    def set_slide_clean_only(self, clean_only: bool) -> None:
+        """Restrict the slide move class to CLEAN (species-preserving) slides.
+
+        Off by default. Cleanliness is not needed for detailed balance -- the
+        proposal is symmetric and k_f = k_r = 1 whether or not the slide
+        preserves the illegal-degree multiset (verified on 124 transitions,
+        66 of them dirty) -- so by default every valid slide is proposed and
+        dirty ones are turned away by the Metropolis test on their real
+        energy cost rather than excluded by fiat.
+
+        Turning it ON selects a subclass with a special analytic property: a
+        clean slide preserves the ENTIRE edge-degree multiset, so under a
+        volume pin plus an edge-degree term alone its dS vanishes identically.
+        That makes the clean class an exactly zero-energy orbit -- every
+        proposal accepted, defect species conserved -- which is useful for
+        studying pure transport at fixed species, and degenerate if you want
+        the defect population to equilibrate."""
+        _lib.ddg_sampler_set_slide_clean_only(
+            self._handle, 1 if clean_only else 0)
 
     def slide_stats(self) -> tuple[int, int]:
         """``(tries, accepts)`` for the knot-slide move class. ``tries``

@@ -1815,31 +1815,45 @@ the sliding-window rule, each step an O(1) ridge-link lookup:
     c5 = apex(c2,c3,c4) != c0     c6 = apex(c3,c4,c5) != c2
     c7 = apex(c4,c5,c6) != c3     c8 = apex(c5,c6,c7) != c4
 
-MOVE CLASS: only CLEAN (species-preserving) slides are in the class -- those
-that leave the multiset of illegal edge degrees unchanged. Cleanliness is
-tested locally on the O(1) set of edges the composite can touch (an edge whose
-degree changes must be an edge of an added or removed tet, hence has both
-endpoints in the move support); unchanged edges contribute identically to the
-global multiset, so local == global. Restricting to the clean class buys three
-things: the class is inverse-closed by construction, n_3 (the number of
-degree-3 chords, i.e. slide handles) is preserved so the proposal is
-symmetric, and the Hastings ratio collapses to plain Metropolis,
+MOVE CLASS: by default EVERY valid slide is in the class, accepted by plain
+Metropolis on the exact dS. Detailed balance needs only a symmetric proposal
+and k_f = k_r, both of which hold regardless of whether the slide preserves
+the illegal-degree multiset. Setting SlideConfig.cleanOnly restricts the class
+to CLEAN (species-preserving) slides -- those that leave that multiset
+unchanged. Cleanliness is tested locally on the O(1) set of edges the
+composite can touch (an edge whose degree changes must be an edge of an added
+or removed tet, hence has both endpoints in the move support); unchanged edges
+contribute identically to the global multiset, so local == global.
 
-    alpha = min(1, exp(-dS)).
+ACCEPTANCE is plain Metropolis on the exact action change,
 
-Verified exhaustively on four states (a crystal + one knot and three thermal
-lam=0.40 snapshots): 58/58 clean transitions inverse-closed with k_f = k_r = 1
-on every one, and zero local-vs-global cleanliness disagreements. See
+    alpha = min(1, exp(-dS)),
+
+with no Hastings correction, because k_f = k_r = 1: exactly one (chord, slot)
+at the departure end produces a given end state, and exactly one at the
+arrival end comes back. Verified exhaustively on 124 transitions across four
+states (a crystal + one knot and three thermal lam=0.40 snapshots) -- 58 clean
+and 66 dirty, every one with k_f = k_r = 1 and none with k_r = 0 -- plus zero
+local-vs-global cleanliness disagreements. That dirty slides close just as
+clean ones do is why the clean restriction is not the default. See
 scripts/defect_dynamics/worm_slide.py --closure-test (the Python oracle).
 
-PROPOSAL: piggybacks on the unified facet proposal. A degree-3 edge lies in
-exactly 3 facets, so drawing a random facet and a random 2-subset hits every
-degree-3 edge with the SAME probability 3/(15*N_3) -- uniform over chords with
-no global list to maintain. A slot j in [0, SLIDE_SLOTS) then fixes the frame:
-2 chord orientations x 6 ordered (c2,c3) picks from the sorted 3-vertex link.
-The slot count is deliberately constant, not a count of valid frames: an
-invalid slot is a rejected proposal, so the denominator is identical in both
-states and cancels.
+The reverse always has a handle: M3 creates (c4,c8) as a pole-pole edge born
+at degree 3, and M4's three tets (on edge (c2,c6), whose link is then
+{c3,c4,c5}) contain no c8 -- so the arrival chord is a degree-3 edge whatever
+else the slide did. It is checked at runtime rather than assumed, since the
+whole closure argument rests on it.
+
+PROPOSAL: an independent channel, NOT part of the unified facet proposal (see
+mcmcStep for why that distinction is load-bearing). Draw a facet uniformly and
+one of its 6 vertex pairs uniformly; a degree-3 edge lies in exactly 3 facets,
+so every chord is proposed with the SAME probability 3/(6*N_3) -- independent
+of the state's defect content, with no global chord list to maintain. Since
+N_3 is slide-invariant, that factor cancels between forward and reverse. A
+slot j in [0, SLIDE_SLOTS) then fixes the frame: 2 chord orientations x 6
+ordered (c2,c3) picks from the sorted 3-vertex link. The slot count is
+deliberately constant, not a count of valid frames: an invalid slot is a
+rejected proposal, so the denominator is identical in both states.
 */
 
 /// 2 chord orientations x 6 ordered (c2,c3) picks from the 3-vertex link.
@@ -1853,7 +1867,11 @@ enum int SLIDE_SLOTS = 12;
 struct SlideConfig
 {
     real prob = 0.0L;
-    ulong tries;      // proposals that formed a legal CLEAN slide
+    /// Restrict the move class to CLEAN (species-preserving) slides. OFF by
+    /// default: cleanliness is not needed for detailed balance, and excluding
+    /// dirty slides throws away ~2/3 of the class. See trySlideMove.
+    bool cleanOnly = false;
+    ulong tries;      // proposals that formed a legal slide (reached Metropolis)
     ulong accepts;
 }
 
@@ -1946,7 +1964,8 @@ bool trySlideMove(Vertex, P)(
     const(VertexPot)* pot = null,
     CocycleState!Vertex* cocycle = null,
     SlideAccept policy = SlideAccept.metropolis,
-    real* dSOut = null)
+    real* dSOut = null,
+    bool cleanOnly = false)
 {
     alias BM = BistellarMove!(3, Vertex);
     valid = false;
@@ -2099,10 +2118,28 @@ bool trySlideMove(Vertex, P)(
         if (mfd.degreeOrZero!1(arrival[]) != 3) { rollback(); return false; }
     }
 
-    // --- CLEANLINESS: the multiset of illegal degrees over CHANGED support
-    // edges must be identical before and after. Unchanged edges contribute
+    // --- CLEANLINESS (only gates the move when `cleanOnly` is set).
+    //
+    // A slide is "clean" when the multiset of illegal degrees over CHANGED
+    // support edges is identical before and after. Unchanged edges contribute
     // identically to the global multiset, so this local test is exact.
-    // Degrees are small; tally them in a fixed histogram (degree 0 = absent).
+    //
+    // Cleanliness is NOT required for detailed balance, and is off by default.
+    // The proposal is symmetric without it: a degree-3 chord lies in exactly 3
+    // facets, so P(propose chord c) = (3/N_3)(1/6) regardless of the state's
+    // defect content, N_3 is slide-invariant, and k_f = k_r = 1 holds for
+    // dirty slides just as for clean ones (verified on 124 transitions across
+    // four states: 66 dirty, all k_f = k_r = 1, none with k_r = 0). Dirty
+    // slides simply cost energy and are turned away by the Metropolis test
+    // rather than excluded by fiat, which is both richer and more honest --
+    // species preservation becomes statistical instead of imposed.
+    //
+    // `cleanOnly` is kept because the clean subclass has a special analytic
+    // status: it preserves the ENTIRE degree multiset (cleanliness fixes the
+    // illegal part; E and sum(deg) = 6*N_3 being fixed then force n5 and n6
+    // individually), so under a volume pin plus an edge-degree term alone its
+    // dS vanishes identically -- an exactly zero-energy orbit, useful for
+    // studying pure transport at fixed species.
     enum int MAXDEG = 64;
     int[MAXDEG + 1] histo = 0;
     bool overflow = false;
@@ -2129,7 +2166,7 @@ bool trySlideMove(Vertex, P)(
     // The trial is over either way: put the manifold back exactly as it was.
     rollback();
 
-    if (!clean) return false;
+    if (cleanOnly && !clean) return false;
 
     valid = true;
     if (dSOut !is null) *dSOut = deltaTotal;
@@ -2349,6 +2386,51 @@ bool mcmcStep(Vertex, P)(
     if (ledger !is null)
         ledger.clock++;               // one tick per attempted move
 
+    // --- Knot-slide channel ---------------------------------------------
+    // An INDEPENDENT move type, chosen with a STATE-INDEPENDENT probability,
+    // so it never cannibalizes the unified proposal below. This structure is
+    // load-bearing, not stylistic: selecting the slide *inside* the proposal
+    // loop (i.e. "at a degree-3 edge, slide instead of doing the 3->2") would
+    // throttle the 3->2 move by (1 - prob) at exactly the degree-3 edges a
+    // slide competes for, while leaving untouched the 2->3 at a triangle
+    // centre that CREATES such an edge. A 3->2 on a degree-3 edge is the
+    // reverse of that 2->3, so suppressing one and not the other breaks
+    // detailed balance and degree-3 defects accumulate without bound (n_ill
+    // ran away 46 -> 232 at prob = 1 before this was restructured).
+    //
+    // Both branches satisfy detailed balance on their own -- the ordinary
+    // proposal because it is untouched, the slide because its proposal is
+    // symmetric (every degree-3 edge lies in exactly 3 facets, so a random
+    // facet + random vertex pair is uniform over chords; n_3 and N_3 are
+    // preserved on the clean class; k_f = k_r = 1; and the slot denominator
+    // is the constant SLIDE_SLOTS) -- so mixing them with a state-independent
+    // weight satisfies it too. A draw that lands on a non-chord, a malformed
+    // slot or an unclean end state is simply a rejected step, which is why
+    // the denominator can stay constant.
+    if (slide !is null && slide.prob > 0 && uniform01 < slide.prob)
+    {
+        auto facet = mfd.randomFacetOfDim(dim);
+        // one of the 6 vertex pairs of the facet, uniformly
+        static immutable int[2][6] pairIdx =
+            [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]];
+        immutable pi = pairIdx[uniform(0, 6)];
+        Vertex[2] chord = [facet[pi[0]], facet[pi[1]]];
+        chord[].sort();
+        if (mfd.degreeOrZero!1(chord[]) != 3)
+            return false;             // not a chord: rejected step
+        bool slideValid = false;
+        immutable ok = trySlideMove(mfd, currentObjective,
+            chord[0], chord[1], facet, uniform(0, SLIDE_SLOTS), params,
+            slideValid, counters, ledger, potState, pot, cocycle,
+            SlideAccept.metropolis, null, slide.cleanOnly);
+        if (slideValid)
+        {
+            slide.tries++;
+            if (ok) slide.accepts++;
+        }
+        return ok;
+    }
+
     // Unified proposal loop
     while (true)
     {
@@ -2367,24 +2449,6 @@ bool mcmcStep(Vertex, P)(
 
         auto centerDim = centerLen - 1;
         auto centerDeg = mfd.degree(center);
-
-        // --- Edge of degree 3: with probability slide.prob, propose a knot
-        // slide instead of the ordinary 3->2 on this chord. A degree-3 edge
-        // sits in exactly 3 facets, so this proposal is uniform over chords.
-        if (slide !is null && slide.prob > 0
-            && centerDim == 1 && centerDeg == 3 && uniform01 < slide.prob)
-        {
-            bool slideValid = false;
-            immutable ok = trySlideMove(mfd, currentObjective,
-                center[0], center[1], facet, uniform(0, SLIDE_SLOTS), params,
-                slideValid, counters, ledger, potState, pot, cocycle);
-            // A malformed or unclean slot is not a move of this class: redraw,
-            // exactly as for an invalid bistellar or hinge proposal.
-            if (!slideValid) continue;
-            slide.tries++;
-            if (ok) { slide.accepts++; return true; }
-            return false;
-        }
 
         // --- Edge of degree 4: propose hinge move ---
         if (centerDim == 1 && centerDeg == 4)

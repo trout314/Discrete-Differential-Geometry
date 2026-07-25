@@ -782,7 +782,7 @@ def dcross_test(args):
 
     em0 = edeg_dict(mo)
     obj_base = s.current_objective
-    nslot = nclean = 0
+    nslot = nclean = nclean_seen = 0
     worst_dS = worst_obj = 0.0
     verdict_bad, state_bad, restore_bad = [], [], []
 
@@ -801,17 +801,17 @@ def dcross_test(args):
                     gclean, lclean = clean_verdict(em0, em1, arrival)
                     if gclean != lclean:
                         verdict_bad.append((chord, j, "oracle local != global"))
-                    if gclean:
-                        py_ds = dS_between(em0, em1, zleg=args.zleg,
-                                           cimp=args.cimp, estar=et)
-                        py_fac = facset(mo)
-                        py_recs = recs
+                    py_ds = dS_between(em0, em1, zleg=args.zleg,
+                                       cimp=args.cimp, estar=et)
+                    py_fac = facset(mo)
+                    py_recs = recs
+                    nclean_seen += 1 if gclean else 0
                     undo_slide(mo, recs)
 
             # --- D verdict for the same slot (trial: no state change)
             d_ds = s.slide_at(chord[0], chord[1], j, commit=False)
             if (py_ds is None) != (d_ds is None):
-                verdict_bad.append((chord, j, f"clean: oracle="
+                verdict_bad.append((chord, j, f"valid: oracle="
                                     f"{py_ds is not None} D={d_ds is not None}"))
                 continue
             if py_ds is None:
@@ -840,7 +840,8 @@ def dcross_test(args):
                 restore_bad.append((chord, j, s.current_objective - obj_base))
             ddg.gc_collect()
 
-    print(f"\nslots examined: {nslot}    clean (verdicts agree): {nclean}")
+    print(f"\nslots examined: {nslot}    valid (verdicts agree): {nclean}"
+          f"    of which clean: {nclean_seen}")
     print(f"  clean/not-clean verdict mismatches: {len(verdict_bad)}")
     for x in verdict_bad[:10]:
         print(f"    {x}")

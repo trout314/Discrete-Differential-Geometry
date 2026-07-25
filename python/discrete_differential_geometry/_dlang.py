@@ -752,6 +752,10 @@ _lib.ddg_sampler_set_slide_prob.argtypes = [ctypes.c_void_p, ctypes.c_double]
 _lib.ddg_sampler_set_slide_prob.restype = ctypes.c_int
 _lib.ddg_sampler_set_slide_prob.errcheck = _check_int
 
+_lib.ddg_sampler_set_slide_clean_only.argtypes = [ctypes.c_void_p, ctypes.c_int]
+_lib.ddg_sampler_set_slide_clean_only.restype = ctypes.c_int
+_lib.ddg_sampler_set_slide_clean_only.errcheck = _check_int
+
 _lib.ddg_sampler_slide_stats.argtypes = [
     ctypes.c_void_p, ctypes.POINTER(ctypes.c_long), ctypes.POINTER(ctypes.c_long),
 ]
