@@ -61,13 +61,17 @@ def main():
     ap.add_argument("--provenance", default=None)
     ap.add_argument("--certified", default=None,
                     help="gate numbers if certified; omitted => PROVISIONAL")
-    ap.add_argument("--group", choices=("sig", "induced", "decorated"),
+    ap.add_argument("--group",
+                    choices=("sig", "induced", "decorated", "full"),
                     default="sig",
                     help="sig: illegal-edge signature (historical). "
                          "induced: isomorphism class of the subcomplex induced "
                          "by the defect's vertices -- its bare shape. "
                          "decorated: that subcomplex with ambient EDGE DEGREES "
-                         "on its edges, which is the shape plus the physics.")
+                         "on its edges, which is the shape plus the physics. "
+                         "full: edge degrees AND n6 on the vertices, which "
+                         "pins the coordination Z and hence the curvature at "
+                         "every vertex.")
     ap.add_argument("--top", type=int, default=25)
     ap.add_argument("--min-count", type=int, default=1)
     ap.add_argument("--out", default=None, help="write the table as JSON too")
@@ -104,11 +108,13 @@ def main():
         edeg_per.append(c["mean_edeg"])
         n3_states.append(m.num_facets)
         for cx in comps:
-            if args.group in ("induced", "decorated"):
+            if args.group in ("induced", "decorated", "full"):
                 fac = st.induced_facets(cx.verts)
-                if args.group == "decorated":
-                    _vc, ec = st.decorations(cx.verts)
-                    ck, exact = ds.canonical_key(fac, ecolor=ec)
+                if args.group in ("decorated", "full"):
+                    vc, ec = st.decorations(cx.verts)
+                    ck, exact = ds.canonical_key(
+                        fac, ecolor=ec,
+                        vcolor=(vc if args.group == "full" else None))
                     n6_of[ck][tuple(sorted(st.n6[v] for v in cx.verts))] += 1
                 else:
                     ck, exact = ds.canonical_key(fac)
@@ -159,9 +165,11 @@ def main():
     print(f"Totals       : {ncomp} complexes, {len(spec)} distinct species")
     print()
 
-    if args.group in ("induced", "decorated"):
-        what = ("induced subcomplex" if args.group == "induced"
-                else "induced subcomplex DECORATED BY EDGE DEGREE")
+    if args.group in ("induced", "decorated", "full"):
+        what = {"induced": "induced subcomplex",
+                "decorated": "induced subcomplex DECORATED BY EDGE DEGREE",
+                "full": "induced subcomplex DECORATED BY EDGE DEGREE + n6"
+                }[args.group]
         print(f"Grouped by ISOMORPHISM CLASS of the {what} "
               f"({len(spec)} classes)")
         if inexact:
@@ -178,7 +186,7 @@ def main():
                 break
             sh = shape_of[k]
             dq = str(sh["degseq"])
-            nf = len(k[0]) if args.group == "decorated" else len(k)
+            nf = len(k[0]) if args.group in ("decorated", "full") else len(k)
             rows.append({"class": i, "f": list(sh["f"]), "n_facets": nf,
                          "degseq": list(sh["degseq"]), "n": n,
                          "frac": n / ncomp,
@@ -199,10 +207,11 @@ def main():
             pretty = ", ".join(f"{sig_str(a)}x{b}" for a, b in sigs.most_common(4))
             print(f"   class {i:<3} (n={n:4d}): {pretty}"
                   + ("  ..." if len(sigs) > 4 else ""))
-        if args.group == "decorated":
+        if args.group in ("decorated", "full"):
             print()
-            print("n6 multiset within each class -- would adding n6 to the key "
-                  "split it?")
+            print("n6 multiset within each class"
+                  + (" -- would adding n6 to the key split it?"
+                     if args.group == "decorated" else " (now IN the key)"))
             nsplit = sum(1 for k in spec if len(n6_of[k]) > 1)
             for i, (k, n) in enumerate(spec.most_common(min(args.top, 10))):
                 ms = n6_of[k]
@@ -247,11 +256,11 @@ def main():
     bydec = Counter()
     sigsrc = ([(a, b) for k in spec for a, b in
                ((s_, sig_of[k][s_] * 1) for s_ in sig_of[k])]
-              if args.group in ("induced", "decorated")
+              if args.group in ("induced", "decorated", "full")
               else [(k[0], n) for k, n in spec.items()])
     nodesrc = ([(a, b) for k in spec for a, b in
                 ((s_, nodes_of[k][s_]) for s_ in nodes_of[k])]
-               if args.group in ("induced", "decorated")
+               if args.group in ("induced", "decorated", "full")
                else [(k[1], n) for k, n in spec.items()])
     for sig, n in sigsrc:
         by3[sig.count(3)] += n
