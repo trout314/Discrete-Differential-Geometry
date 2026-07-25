@@ -182,18 +182,42 @@ def facset(m):
     return frozenset(map(tuple, A.tolist()))
 
 
-def dS_between(em_before, em_after):
+def dS_between(em_before, em_after, zleg=0.6, cimp=1.0):
+    """FULL shape-action difference (lam=1 units): edge-target term PLUS the
+    n6 potential (zleg*U(n6) + cimp*m^2) — the terms that feel the halo."""
+    from collections import defaultdict
     x = ESTAR - int(ESTAR)
     dS = 0.0
-    keys = set(em_before) | set(em_after)
-    for k in keys:
+    changed = set()
+    for k in set(em_before) | set(em_after):
         d0, d1 = em_before.get(k), em_after.get(k)
         if d0 == d1:
             continue
+        changed |= set(k)
         if d0 is not None:
             dS -= (ESTAR / 6.0) * ((d0 - ESTAR) ** 2 - x * (1 - x))
         if d1 is not None:
             dS += (ESTAR / 6.0) * ((d1 - ESTAR) ** 2 - x * (1 - x))
+
+    def counters(em):
+        n6 = defaultdict(int)
+        mm = defaultdict(int)
+        for (a, b), d in em.items():
+            if a not in changed and b not in changed:
+                continue
+            if d >= 6:
+                n6[a] += 1
+                n6[b] += 1
+            if d not in (5, 6):
+                mm[a] += 1
+                mm[b] += 1
+        return n6, mm
+
+    n60, mm0 = counters(em_before)
+    n61, mm1 = counters(em_after)
+    for v in changed:
+        dS += zleg * (wm.U_zleg(n61.get(v, 0)) - wm.U_zleg(n60.get(v, 0)))
+        dS += cimp * (mm1.get(v, 0) ** 2 - mm0.get(v, 0) ** 2)
     return dS
 
 
@@ -278,40 +302,83 @@ def crystal_test(args):
           f"Slide is invertible transport over {args.steps} steps.")
 
 
+def complex_census(m):
+    """Complexes of illegal vertices with their illegal-edge signatures."""
+    pairs, degs = m.illegal_edges()
+    ill = {tuple(sorted(int(x) for x in p)): int(d)
+           for p, d in zip(pairs, degs)}
+    illv = sorted({v for e in ill for v in e})
+    adj = {v: set() for v in illv}
+    for (a, b) in ill:
+        adj[a].add(b)
+        adj[b].add(a)
+    seen = set()
+    comps = []
+    for v0 in illv:
+        if v0 in seen:
+            continue
+        st, comp = [v0], set()
+        seen.add(v0)
+        while st:
+            u = st.pop()
+            comp.add(u)
+            for w in adj[u]:
+                if w not in seen:
+                    seen.add(w)
+                    st.append(w)
+        sig = tuple(sorted(d for e, d in ill.items() if set(e) & comp))
+        comps.append((sorted(comp), sig))
+    return comps, ill
+
+
 def thermal_test(args):
     m = ddg.Manifold.load(args.thermal, 3)
     em = edeg_dict(m)
-    e3, ill = knot_chords(m)
+    comps, ill = complex_census(m)
+    ill_multiset = sorted(ill.values())
+    e3 = [e for e, d in ill.items() if d == 3]
+    from collections import Counter
     print(f"state: {os.path.basename(args.thermal)}  "
-          f"illegal edges {len(ill)}  deg-3 chords {len(e3)}")
+          f"illegal edges {len(ill)}  complexes {len(comps)}")
+    print("  complex signatures: "
+          + ", ".join(f"{sig}x{n}" for sig, n in
+                      Counter(s for _, s in comps).most_common()))
+    print(f"  deg-3 chords (slide handles): {len(e3)}")
     n_mobile = 0
-    dSs = []
-    per = []
+    clean_dS = []
+    per_clean = []
+    per_valid = []
     for chord in e3:
         cands = candidate_slides(m, chord)
-        ok = 0
+        nclean = nvalid = 0
         for cs, mv in cands:
             recs = apply_slide(m, mv)
             if recs is None:
                 continue
+            nvalid += 1
             em2 = edeg_dict(m)
-            dSs.append(dS_between(em, em2))
+            want = tuple(sorted((cs["c4"], cs["c8"])))
+            clean = (sorted(d for d in em2.values() if d not in (5, 6))
+                     == ill_multiset and em2.get(want) == 3)
+            if clean:
+                nclean += 1
+                clean_dS.append(dS_between(em, em2))
             undo_slide(m, recs)
-            ok += 1
-        per.append(ok)
-        if ok:
+        per_valid.append(nvalid)
+        per_clean.append(nclean)
+        if nclean:
             n_mobile += 1
-    print(f"chords with >=1 valid slide: {n_mobile}/{len(e3)}")
-    if per:
-        print(f"valid directions per chord: "
-              f"{np.bincount(per, minlength=1).tolist()} (histogram)")
-    if dSs:
-        dSs = np.array(dSs)
-        print(f"slide dS_shape (lam=1 units): mean {dSs.mean():+.3f}  "
-              f"med {np.median(dSs):+.3f}  min {dSs.min():+.3f}  "
-              f"max {dSs.max():+.3f}  (n={len(dSs)})")
-        print(f"  acceptance at lam=0.4 (exp(-0.4 dS)): "
-              f"med {np.exp(-0.4 * np.median(dSs)):.3f}")
+    print(f"chords with >=1 CLEAN slide (species-preserving): "
+          f"{n_mobile}/{len(e3)}")
+    print(f"  per chord: template-valid {per_valid}, clean {per_clean}")
+    if clean_dS:
+        d = np.array(clean_dS)
+        print(f"CLEAN-slide FULL dS_shape (lam=1 units): mean {d.mean():+.3f} "
+              f"med {np.median(d):+.3f}  min {d.min():+.3f}  max {d.max():+.3f}"
+              f"  (n={len(d)})")
+        acc = np.exp(-0.4 * d)
+        print(f"  acceptance exp(-0.4 dS): med {np.median(acc):.3f}  "
+              f"mean {acc.mean():.3f}")
 
 
 def main():
