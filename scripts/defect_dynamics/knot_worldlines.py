@@ -192,6 +192,13 @@ def main():
         s.enable_cocycle(edges, coc.build_from_positions(
             edges, reference_frac_positions("r", args.mcell), args.mcell))
     s.check_cocycle()
+    # Incrementally-maintained vertex lift: O(1) per move and per query, with
+    # the gauge FIXED for the run. The old path re-integrated the whole
+    # cochain per sample (O(V+E) plus a full marshal) and rebuilt the spanning
+    # tree each time, which can reassign a persisting vertex -- the gauge
+    # glitch that had to be filtered. That cannot happen here.
+    s.enable_cocycle_positions([int(CELL * args.mcell)] * 3)
+    s.check_cocycle_positions()
 
     # --- incremental edge degrees (deg4_moves protocol)
     tets = {tuple(sorted(int(x) for x in t)) for t in v.facets()}
@@ -206,16 +213,12 @@ def main():
     s.enable_event_log(args.logmb)
     s.drain_event_log()
 
-    def chord_pos(chord, pos):
-        """Midpoint of a chord in cells, min-imaged about its first endpoint."""
-        p0 = pos[chord[0]].astype(float)
-        d = (pos[chord[1]].astype(float) - p0 + pbox / 2) % pbox - pbox / 2
-        return (p0 + d / 2.0) / CELL
-
-    def positions():
-        e1, w1 = s.read_cocycle()
-        e1 = np.asarray(e1)
-        return coc.tree_positions(e1, np.asarray(w1), int(e1.max()) + 1)[0]
+    def chord_pos(chord, pos=None):
+        """Midpoint of a chord in cells, min-imaged about its first endpoint.
+        Two O(1) lookups -- no cochain marshal, no tree integration."""
+        q = s.vertex_positions(chord).astype(float)
+        d = (q[1] - q[0] + pbox / 2) % pbox - pbox / 2
+        return (q[0] + d / 2.0) / CELL
 
     tracks = {}          # chord key -> Track
     finished = []
@@ -223,10 +226,9 @@ def main():
     n_ev = n_slide = n_hop = 0
     overflow = False
 
-    pos = positions()
     for c in knot_chords_now(v):
         tracks[c] = Track(tid, 0, c)
-        tracks[c].samples.append((0, chord_pos(c, pos)))
+        tracks[c].samples.append((0, chord_pos(c)))
         tid += 1
 
     done = 0
@@ -276,10 +278,9 @@ def main():
 
         # --- chunk boundary: reconcile against the VERIFIED species set
         live = knot_chords_now(v)
-        pos = positions()
         for c in list(tracks):
             if c in live:
-                tracks[c].samples.append((done, chord_pos(c, pos)))
+                tracks[c].samples.append((done, chord_pos(c)))
                 tracks[c].sig_seen[(3, 4, 4)] += 1
             else:
                 tr = tracks.pop(c)
@@ -289,7 +290,7 @@ def main():
         for c in live:
             if c not in tracks:
                 tracks[c] = Track(tid, done, c)
-                tracks[c].samples.append((done, chord_pos(c, pos)))
+                tracks[c].samples.append((done, chord_pos(c)))
                 tracks[c].sig_seen[(3, 4, 4)] += 1
                 tid += 1
         if tets is not None:

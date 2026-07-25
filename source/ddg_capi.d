@@ -2465,6 +2465,91 @@ extern(C) int ddg_sampler_cocycle_enable(void* sampler_handle,
     catch (Exception e) { setError(e.msg); return -1; }
 }
 
+/******************************************************************************
+Enable the incrementally-maintained vertex lift (dim = 3, cocycle required).
+
+Integrates the cocycle over a spanning forest ONCE to seed a position per
+vertex, then keeps it exact move-by-move at O(1) -- see CocycleState.pos. This
+replaces the pattern of re-deriving positions from the whole cochain on every
+sample, which costs O(V+E) per call and, because it rebuilds the spanning tree
+each time, can reassign a persisting vertex (the "gauge glitch" that consumers
+otherwise have to detect and discard). Here the gauge is fixed for the run.
+
+`box` is the torus period per axis, in the same units as the cocycle values.
+*/
+extern(C) int ddg_sampler_cocycle_enable_positions(void* sampler_handle,
+    const(int)* box) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null handle"); return -1; }
+        auto state = cast(SamplerState*) sampler_handle;
+        if (!state.cocycle.enabled) { setError("cocycle not enabled"); return -1; }
+        if (box is null) { setError("null box"); return -1; }
+        int[3] b = [box[0], box[1], box[2]];
+        auto prob = cocycleSeedPositions(state.cocycle, b);
+        if (prob !is null)
+        {
+            state.cocycle.posEnabled = false;
+            state.cocycle.pos = null;
+            setError(prob);
+            return -1;
+        }
+        return 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Positions of the given vertices, 3 ints each, written to out_pos in the
+/// order requested. Returns 0, or -1 with the error set if any vertex has no
+/// position (i.e. is not in the current triangulation).
+extern(C) int ddg_sampler_cocycle_positions(void* sampler_handle,
+    const(int)* verts, long n_verts, int* out_pos) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null handle"); return -1; }
+        auto state = cast(SamplerState*) sampler_handle;
+        if (!state.cocycle.posEnabled)
+        { setError("cocycle positions not enabled"); return -1; }
+        if (verts is null || out_pos is null)
+        { setError("null buffer"); return -1; }
+        foreach (i; 0 .. cast(size_t) n_verts)
+        {
+            auto p = verts[i] in state.cocycle.pos;
+            if (p is null)
+            {
+                import std.conv : to;
+                setError("vertex " ~ verts[i].to!string ~ " has no position");
+                return -1;
+            }
+            out_pos[3 * i] = (*p)[0];
+            out_pos[3 * i + 1] = (*p)[1];
+            out_pos[3 * i + 2] = (*p)[2];
+        }
+        return 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Audit the lift: pos(v) - pos(u) == omega(u->v) mod the torus period, on
+/// every edge. Returns 0 if clean, -1 with the error set otherwise.
+extern(C) int ddg_sampler_cocycle_pos_check(void* sampler_handle) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null handle"); return -1; }
+        auto state = cast(SamplerState*) sampler_handle;
+        auto prob = cocyclePosProblems(state.cocycle);
+        if (prob !is null) { setError(prob); return -1; }
+        return 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
 /// Read the current cocycle. With null buffers, returns the edge count.
 /// Otherwise fills edges_out (2 ints/edge, sorted u < v) and values_out
 /// (3 ints/edge, omega(u->v)) for up to cap_edges edges and returns the

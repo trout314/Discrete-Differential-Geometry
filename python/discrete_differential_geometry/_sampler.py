@@ -733,6 +733,43 @@ class ManifoldSampler:
             w.ctypes.data_as(ctypes.POINTER(ctypes.c_int)), n)
         return e[:got].copy(), w[:got].copy()
 
+    def enable_cocycle_positions(self, box) -> None:
+        """Enable the incrementally-maintained vertex lift (needs a cocycle).
+
+        Integrates the cocycle over a spanning forest ONCE to seed a position
+        per vertex, then keeps it exact move-by-move at O(1). This replaces
+        re-deriving positions from the whole cochain on every sample
+        (``cocycle.tree_positions``), which is O(V+E) per call and rebuilds
+        the spanning tree each time -- so it can reassign a persisting vertex,
+        the "gauge glitch" that consumers otherwise detect and discard. Here
+        the gauge is fixed for the lifetime of the run, so glitches cannot
+        arise and displacement needs no filtering.
+
+        ``box`` is the torus period per axis, in the same units as the cocycle
+        values (e.g. ``scale * mcell`` for a cocycle built by
+        ``cocycle.build_from_positions``)."""
+        b = np.ascontiguousarray(
+            np.broadcast_to(np.asarray(box, dtype=np.intc), (3,)))
+        _lib.ddg_sampler_cocycle_enable_positions(
+            self._handle, b.ctypes.data_as(ctypes.POINTER(ctypes.c_int)))
+
+    def vertex_positions(self, verts) -> np.ndarray:
+        """Lift positions of ``verts`` as an (n, 3) int array, in the order
+        given. O(1) per vertex -- query only what you need (a chord is two
+        lookups) rather than marshalling the whole cochain."""
+        v = np.ascontiguousarray(np.asarray(verts, dtype=np.intc).ravel())
+        out = np.empty((len(v), 3), dtype=np.intc)
+        _lib.ddg_sampler_cocycle_positions(
+            self._handle, v.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
+            len(v), out.ctypes.data_as(ctypes.POINTER(ctypes.c_int)))
+        return out
+
+    def check_cocycle_positions(self) -> None:
+        """Audit the lift: ``pos(v) - pos(u) == omega(u->v)`` modulo the torus
+        period, on every edge. Raises RuntimeError if it has drifted. The
+        position-channel analogue of :meth:`check_cocycle`."""
+        _lib.ddg_sampler_cocycle_pos_check(self._handle)
+
     def check_cocycle(self) -> None:
         """Audit the cocycle (edge-set match + closedness on every triangle);
         raises RuntimeError on drift. The production integrity check."""

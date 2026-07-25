@@ -1070,6 +1070,103 @@ struct CocycleState(Vertex)
 {
     int[3][Vertex[2]] omega;   // key: sorted edge (u < v); value = omega(u->v)
     bool enabled;
+
+    // --- Vertex lift (opt-in; see cocycleSeedPositions).
+    //
+    // omega is a min-imaged real displacement, not merely a winding indicator
+    // (build_from_positions sets omega(u->v) = p(v) - p(u) - M k(u,v)), so its
+    // integral is a genuine position on the cover. `pos` maintains that
+    // integral INCREMENTALLY, which is possible because every move preserves
+    //
+    //     pos(v) - pos(u) == omega(u->v)   (mod boxM)   on every edge
+    //
+    // with at most one assignment: 2->3 forces the new pole-pole value through
+    // an equator vertex, so the difference telescopes and nothing needs
+    // updating; 3->2 and 4->1 only delete; the 4-4 diagonal telescopes through
+    // a pole the same way; and 1->4 is the sole vertex creation, where the
+    // gauge choice omega(a->w) = 0 made below puts the new vertex exactly at
+    // its base vertex, so pos[w] = pos[a].
+    //
+    // Maintaining the lift rather than re-integrating it is not only cheaper
+    // (O(1) per move and per query, against an O(V+E) spanning-tree rebuild
+    // plus a full-cochain marshal) -- it FIXES THE GAUGE for the lifetime of
+    // the run. A rebuilt spanning tree can reassign a persisting vertex, which
+    // is the origin of the "gauge glitch" steps downstream trackers have to
+    // detect and discard; here they cannot arise at all.
+    int[3][Vertex] pos;
+    int[3] boxM;               // torus period per axis, same units as omega
+    bool posEnabled;
+}
+
+/// Seed the vertex lift by integrating omega over a BFS spanning forest.
+/// O(V + E), run ONCE when positions are enabled; the lift is maintained
+/// incrementally thereafter. Returns an error message, or null if clean.
+string cocycleSeedPositions(Vertex)(ref CocycleState!Vertex st,
+    const int[3] boxM)
+{
+    if (!st.enabled)
+        return "cocycle not enabled";
+    foreach (c; 0 .. 3)
+        if (boxM[c] <= 0)
+            return "torus period must be positive in every direction";
+
+    Vertex[][Vertex] adj;
+    foreach (key; st.omega.byKey)
+    {
+        adj[key[0]] ~= key[1];
+        adj[key[1]] ~= key[0];
+    }
+    st.pos = null;
+    st.posEnabled = true;          // cocGet/pos writes below are plain AA ops
+    foreach (root; adj.byKey)
+    {
+        if (root in st.pos) continue;
+        st.pos[root] = [0, 0, 0];
+        Vertex[] stack = [root];
+        while (stack.length)
+        {
+            immutable x = stack[$ - 1];
+            stack = stack[0 .. $ - 1];
+            foreach (w; adj[x])
+            {
+                if (w in st.pos) continue;
+                int[3] pw = st.pos[x];
+                pw[] += cocGet(st, x, w)[];
+                st.pos[w] = pw;
+                stack ~= w;
+            }
+        }
+    }
+    st.boxM = boxM;
+    return null;
+}
+
+/// Audit the lift: every edge must satisfy pos(v) - pos(u) == omega(u->v)
+/// modulo the torus period. Returns null if clean, else a message -- the
+/// exact analogue of cocycleProblems for the position channel.
+string cocyclePosProblems(Vertex)(const ref CocycleState!Vertex st)
+{
+    import std.conv : to;
+    if (!st.posEnabled)
+        return "cocycle positions not enabled";
+    foreach (key, val; st.omega)
+    {
+        auto pu = key[0] in st.pos;
+        auto pv = key[1] in st.pos;
+        if (pu is null || pv is null)
+            return "edge (" ~ key[0].to!string ~ "," ~ key[1].to!string
+                 ~ ") has an endpoint with no position";
+        foreach (c; 0 .. 3)
+        {
+            immutable long d = cast(long)(*pv)[c] - cast(long)(*pu)[c]
+                             - cast(long) val[c];
+            if (d % st.boxM[c] != 0)
+                return "lift broken on edge (" ~ key[0].to!string ~ ","
+                     ~ key[1].to!string ~ ") axis " ~ c.to!string
+                     ~ ": residual " ~ (d % st.boxM[c]).to!string;
+        }
+    }
+    return null;
 }
 
 /// omega(a->b) with sign handling for the sorted-key convention.
@@ -1110,6 +1207,11 @@ void cocycleBistellar(Vertex)(ref CocycleState!Vertex st,
         cocSet(st, a, w, zero);
         foreach (v; center[1 .. $])
             cocSet(st, w, v, cocGet(st, a, v));
+        // The sole vertex creation. omega(a->w) = 0 above puts w exactly at a,
+        // and each spoke then satisfies pos(v) - pos(w) = pos(v) - pos(a)
+        // = omega(a->v) = omega(w->v), so one assignment keeps the lift exact.
+        if (st.posEnabled)
+            st.pos[w] = st.pos[a];
         break;
     case 1: // 2->3: new pole-pole edge, value forced via an equator vertex
         immutable p = coCenter[0], q = coCenter[1], a = center[0];
@@ -1124,6 +1226,8 @@ void cocycleBistellar(Vertex)(ref CocycleState!Vertex st,
         immutable w = center[0];
         foreach (v; coCenter)
             st.omega.remove(mkEdge(w, v));
+        if (st.posEnabled)
+            st.pos.remove(w);
         break;
     }
 }

@@ -752,6 +752,21 @@ _lib.ddg_sampler_set_slide_prob.argtypes = [ctypes.c_void_p, ctypes.c_double]
 _lib.ddg_sampler_set_slide_prob.restype = ctypes.c_int
 _lib.ddg_sampler_set_slide_prob.errcheck = _check_int
 
+_lib.ddg_sampler_cocycle_enable_positions.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)]
+_lib.ddg_sampler_cocycle_enable_positions.restype = ctypes.c_int
+_lib.ddg_sampler_cocycle_enable_positions.errcheck = _check_int
+
+_lib.ddg_sampler_cocycle_positions.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_int), ctypes.c_long,
+    ctypes.POINTER(ctypes.c_int)]
+_lib.ddg_sampler_cocycle_positions.restype = ctypes.c_int
+_lib.ddg_sampler_cocycle_positions.errcheck = _check_int
+
+_lib.ddg_sampler_cocycle_pos_check.argtypes = [ctypes.c_void_p]
+_lib.ddg_sampler_cocycle_pos_check.restype = ctypes.c_int
+_lib.ddg_sampler_cocycle_pos_check.errcheck = _check_int
+
 _lib.ddg_sampler_set_slide_clean_only.argtypes = [ctypes.c_void_p, ctypes.c_int]
 _lib.ddg_sampler_set_slide_clean_only.restype = ctypes.c_int
 _lib.ddg_sampler_set_slide_clean_only.errcheck = _check_int
