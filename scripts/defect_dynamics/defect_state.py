@@ -281,6 +281,31 @@ class DefectState:
                 cnt[f] += 1
         return {f for f, c in cnt.items() if c == 1}
 
+    # -- curvature charge ---------------------------------------------------
+
+    def vertex_charges(self):
+        """q_R(v) = 1/2 sum_{e ∋ v} delta(e), with delta(e) = 2*pi - theta*deg(e)
+        and theta = arccos(1/3) the regular-tetrahedron dihedral angle.
+        Returns {vertex: q_R} in radians (notes/CONVENTIONS.md symbols)."""
+        theta = np.arccos(1.0 / 3.0)
+        q = defaultdict(float)
+        for (u, w), d in self.edeg.items():
+            if d <= 0:
+                continue
+            half = 0.5 * (2.0 * np.pi - theta * d)
+            q[u] += half
+            q[w] += half
+        return q
+
+    def complex_charge(self, verts, q=None, qbar=None):
+        """Q_c = sum_{v in c} (q_R(v) - qbar), the complex's curvature charge
+        relative to a reference (default: the state mean, i.e. cell-mean)."""
+        if q is None:
+            q = self.vertex_charges()
+        if qbar is None:
+            qbar = float(np.mean([q[v] for v in self.v2t])) if self.v2t else 0.0
+        return float(sum(q[v] - qbar for v in verts))
+
     # -- audit --------------------------------------------------------------
 
     def audit(self, mfd):
