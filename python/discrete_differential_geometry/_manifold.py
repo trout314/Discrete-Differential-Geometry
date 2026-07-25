@@ -214,6 +214,36 @@ class Manifold:
             ht.ctypes.data_as(ctypes.POINTER(ctypes.c_int)), buf)
         return np.array(buf[:n], dtype=np.intc)
 
+    def induced_subcomplex(self, verts) -> "SimplicialComplex":
+        """The subcomplex INDUCED by `verts`: every simplex of the manifold
+        all of whose vertices lie in the set.
+
+        This is what a defect IS -- the subcomplex spanned by its own
+        vertices -- as against :meth:`closed_star`, the region it OCCUPIES.
+        Vertices not in the manifold are ignored; vertices present but with no
+        induced neighbours come back as isolated points. Only facets meeting
+        `verts` are examined, so the cost is the summed degree of the set, not
+        the size of the manifold."""
+        from ._simplicial_complex import SimplicialComplex
+        v = np.ascontiguousarray(np.asarray(verts, dtype=np.intc).ravel())
+        h = _lib.ddg_manifold_induced_subcomplex(
+            self._handle, v.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
+            len(v))
+        return SimplicialComplex(_handle=h)
+
+    def closed_star(self, verts) -> "SimplicialComplex":
+        """The CLOSED STAR of `verts`: every facet incident to any of them.
+
+        The region a defect occupies, as against :meth:`induced_subcomplex`,
+        which is the defect itself. Its boundary is the surface through which
+        flux into the defect would be measured."""
+        from ._simplicial_complex import SimplicialComplex
+        v = np.ascontiguousarray(np.asarray(verts, dtype=np.intc).ravel())
+        h = _lib.ddg_manifold_closed_star(
+            self._handle, v.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
+            len(v))
+        return SimplicialComplex(_handle=h)
+
     def validate_maps(self) -> None:
         """Audit internal hash maps; raises with a description on the
         first inconsistency (probe-chain break, duplicate key, desync)."""

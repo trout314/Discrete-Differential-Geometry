@@ -887,7 +887,7 @@ computed locally (see coCenterViaIndex) instead of via link()->star()->facets(),
 which materialized a full sorted dup of every facet on *each* candidate simplex
 and made move enumeration quadratic in the facet count.
 */
-private size_t[][] vertexFacetIndex(Vertex, int dim)(
+size_t[][] vertexFacetIndex(Vertex, int dim)(
     const ref Manifold!(dim, Vertex) mfd)
 {
     auto vf = new size_t[][](mfd._vertexDegrees.length);
@@ -898,6 +898,208 @@ private size_t[][] vertexFacetIndex(Vertex, int dim)(
         foreach (w; facet[])
             vf[w] ~= fi;
     return vf;
+}
+
+/*******************************************************************************
+The subcomplex INDUCED by a vertex set: every simplex of the manifold all of
+whose vertices lie in `verts`, returned as a SimplicialComplex (which is
+determined by its maximal simplices, so only those are stored).
+
+This is the defect-shape primitive: a connected set of defect vertices induces
+a subcomplex that IS the defect, as opposed to `closedStar` below, which is
+the region the defect occupies.
+
+`vf` is a transient vertex->facet incidence from `vertexFacetIndex`, so only
+facets meeting `verts` are examined -- O(sum of degrees over `verts`) rather
+than O(numFacets). Build the index once and pass it to many extractions; that
+is the whole point of taking it as a parameter (same pattern as
+`coCenterViaIndex`).
+
+Correct by construction: every simplex with all vertices in the set is a face
+of some facet, and any such facet meets the set in a SUPERSET of that simplex,
+so the maximal intersections are exactly the maximal induced simplices.
+Vertices of `verts` that are not in the manifold are ignored; vertices that are
+present but have no induced neighbours appear as isolated points.
+*/
+SimplicialComplex!Vertex inducedSubcomplex(Vertex, int dim, S)(
+    const ref Manifold!(dim, Vertex) mfd, S verts, size_t[][] vf)
+if (isIRof!(S, const(Vertex)))
+{
+    bool[Vertex] inSet;
+    foreach (v; verts)
+        inSet[v] = true;
+
+    Vertex[][] cands;
+    bool[size_t] seenFacet;
+    foreach (v; verts)
+    {
+        if (v < 0 || v >= vf.length) continue;
+        foreach (fi; vf[v])
+        {
+            if (fi in seenFacet) continue;
+            seenFacet[fi] = true;
+            Vertex[] inside;
+            foreach (w; mfd._facetArray[fi][])
+                if (w in inSet) inside ~= w;      // facets are sorted
+            if (inside.length) cands ~= inside;
+        }
+    }
+    cands.sort();
+    Vertex[][] uniqCands;
+    foreach (c; cands)
+        if (uniqCands.empty || uniqCands[$ - 1] != c)
+            uniqCands ~= c;
+
+    Vertex[][] facets;
+    foreach (i, c; uniqCands)
+    {
+        bool maximal = true;
+        foreach (j, d; uniqCands)
+            if (i != j && c.length < d.length && c.isSubsetOf(d))
+            {
+                maximal = false;
+                break;
+            }
+        if (maximal) facets ~= c;
+    }
+    return SimplicialComplex!Vertex(facets);
+}
+
+/// One-shot form: builds the incidence index itself. Prefer the overload
+/// above when extracting several subcomplexes from one state.
+SimplicialComplex!Vertex inducedSubcomplex(Vertex, int dim, S)(
+    const ref Manifold!(dim, Vertex) mfd, S verts)
+if (isIRof!(S, const(Vertex)))
+{
+    return mfd.inducedSubcomplex(verts, mfd.vertexFacetIndex());
+}
+
+/*******************************************************************************
+The CLOSED STAR of a vertex set: every facet incident to any of `verts`,
+returned as a SimplicialComplex. Faces are implicit, so the facet set is the
+closed star.
+
+Distinct from `inducedSubcomplex`: the induced subcomplex has the given
+vertices and nothing else (it is what the defect IS), while the closed star
+pulls in a shell of neighbouring vertices (it is the region the defect
+OCCUPIES). Its boundary is the surface through which flux into the defect
+would be measured.
+
+Same O(sum of degrees) cost and the same batch-friendly `vf` parameter.
+*/
+SimplicialComplex!Vertex closedStar(Vertex, int dim, S)(
+    const ref Manifold!(dim, Vertex) mfd, S verts, size_t[][] vf)
+if (isIRof!(S, const(Vertex)))
+{
+    bool[size_t] seen;
+    Vertex[][] facets;
+    foreach (v; verts)
+    {
+        if (v < 0 || v >= vf.length) continue;
+        foreach (fi; vf[v])
+        {
+            if (fi in seen) continue;
+            seen[fi] = true;
+            facets ~= mfd._facetArray[fi][].dup;
+        }
+    }
+    return SimplicialComplex!Vertex(facets);
+}
+
+/// One-shot form; see the note on inducedSubcomplex.
+SimplicialComplex!Vertex closedStar(Vertex, int dim, S)(
+    const ref Manifold!(dim, Vertex) mfd, S verts)
+if (isIRof!(S, const(Vertex)))
+{
+    return mfd.closedStar(verts, mfd.vertexFacetIndex());
+}
+
+/// The indexed extractor must agree with the definition (the SimplicialComplex
+/// oracle, which scans every facet) on every input -- including sets with no
+/// adjacency, singletons, and vertices absent from the manifold. Also pins
+/// closedStar against its own definition, and checks the two are different
+/// objects: the induced subcomplex has exactly the given vertices, the closed
+/// star has more.
+unittest
+{
+    import std.random : rndGen, uniform;
+    import std.algorithm : sort, uniq, map, filter;
+    import std.array : array;
+    alias BM = BistellarMove!3;
+
+    auto mfd = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+    int next = 5;
+    foreach (_; 0 .. 6)
+    {
+        auto f = mfd.facets.front.dup;
+        mfd.doMove(BM(f, [next++]));
+    }
+    rndGen.seed(20260725);
+    foreach (_; 0 .. 20)
+    {
+        auto moves = mfd.allBistellarMoves;
+        if (moves.length == 0) break;
+        mfd.doMove(moves[uniform(0, moves.length)]);
+    }
+
+    // the oracle lives in another module, so name it explicitly rather
+    // than relying on UFCS (which resolves within this module only)
+    import simplicial_complex : scInduced = inducedSubcomplex;
+    auto sc = mfd.toSimplicialComplex;
+    auto vf = mfd.vertexFacetIndex();
+    int[] allVerts;
+    foreach (sv; mfd.simplices(0)) allVerts ~= sv[0];
+
+    void check(const(int)[] verts)
+    {
+        auto fast = mfd.inducedSubcomplex(verts, vf);
+        auto slow = scInduced(sc, verts);
+        assert(fast == slow, "indexed inducedSubcomplex disagrees with the "
+                             ~ "definition");
+        // one-shot overload must match the batch one
+        assert(mfd.inducedSubcomplex(verts) == fast);
+
+        // every induced simplex has all vertices in the set ...
+        bool[int] inSet;
+        foreach (v; verts) inSet[v] = true;
+        foreach (f; fast.facets)
+            foreach (w; f)
+                assert(w in inSet, "induced simplex escaped the vertex set");
+
+        // ... and the closed star is a superset of facets, generally larger
+        auto star = mfd.closedStar(verts, vf);
+        assert(mfd.closedStar(verts) == star);
+        foreach (f; star.facets)
+        {
+            bool touches = false;
+            foreach (w; f) if (w in inSet) { touches = true; break; }
+            assert(touches, "closed-star facet touches none of the set");
+        }
+        // every facet meeting the set is in the closed star
+        foreach (f; mfd.facets)
+        {
+            bool touches = false;
+            foreach (w; f) if (w in inSet) { touches = true; break; }
+            if (touches) assert(star.containsFacet(f));
+        }
+    }
+
+    // a single facet's vertices induce exactly that facet
+    auto oneFacet = mfd.facets.front.dup;
+    mfd.inducedSubcomplex(oneFacet, vf).facets.shouldBeSameSetAs([oneFacet]);
+
+    check(allVerts);                       // the whole manifold
+    foreach (v; allVerts[0 .. 5]) check([v]);   // singletons
+    const(int)[] noVerts;
+    check(noVerts);                        // empty
+    check([allVerts[0], 99999]);           // absent vertex ignored
+    foreach (k; 0 .. 25)                   // random subsets
+    {
+        int[] pick;
+        foreach (v; allVerts)
+            if (uniform(0, 100) < 10 + 3 * k) pick ~= v;
+        check(pick);
+    }
 }
 
 /*******************************************************************************

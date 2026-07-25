@@ -626,6 +626,77 @@ pure @safe unittest
 Helper function template returning a newly constructed simplicial complex from
 an array of facets (given as arrays of vertices.)
 */
+/*******************************************************************************
+The subcomplex INDUCED by a vertex set, by the definition: every simplex all of
+whose vertices lie in `verts`.
+
+This is the general, obvious-by-inspection implementation -- it scans every
+facet -- and it exists mainly to be the oracle for the indexed version in
+manifold.d, which visits only incident facets and must agree with this on
+every input.
+*/
+SimplicialComplex!(Vertex, maxDim) inducedSubcomplex(Vertex, int maxDim, S)(
+    const ref SimplicialComplex!(Vertex, maxDim) sc, S verts)
+if (isIRof!(S, const(Vertex)))
+{
+    bool[Vertex] inSet;
+    foreach (v; verts)
+        inSet[v] = true;
+
+    Vertex[][] cands;
+    foreach (f; sc.facets)
+    {
+        Vertex[] inside;
+        foreach (w; f)
+            if (w in inSet) inside ~= w;
+        if (inside.length) cands ~= inside;
+    }
+    cands.sort();
+    Vertex[][] uniqCands;
+    foreach (c; cands)
+        if (uniqCands.empty || uniqCands[$ - 1] != c)
+            uniqCands ~= c;
+
+    Vertex[][] facets;
+    foreach (i, c; uniqCands)
+    {
+        bool maximal = true;
+        foreach (j, d; uniqCands)
+            if (i != j && c.length < d.length && c.isSubsetOf(d))
+            {
+                maximal = false;
+                break;
+            }
+        if (maximal) facets ~= c;
+    }
+    return SimplicialComplex!(Vertex, maxDim)(facets);
+}
+
+///
+pure @safe unittest
+{
+    auto sc = simplicialComplex([[1,2,3], [2,3,4], [4,5], [6,7]]);
+
+    // a facet's own vertices induce that facet
+    sc.inducedSubcomplex([1,2,3]).facets.shouldBeSameSetAs([[1,2,3]]);
+
+    // the shared triangle edge, with both apexes dropped
+    sc.inducedSubcomplex([2,3]).facets.shouldBeSameSetAs([[2,3]]);
+
+    // a set spanning two facets keeps only what is actually a simplex:
+    // 1-2-3-4 has edge 2-3 from both triangles, plus 1 and 4 attached
+    sc.inducedSubcomplex([1,2,3,4]).facets.shouldBeSameSetAs([[1,2,3],[2,3,4]]);
+
+    // pairwise non-adjacent vertices induce isolated points
+    sc.inducedSubcomplex([1,5,6]).facets.shouldBeSameSetAs([[1],[5],[6]]);
+
+    // vertices absent from the complex are ignored
+    sc.inducedSubcomplex([1,99]).facets.shouldBeSameSetAs([[1]]);
+
+    const(int)[] none;
+    sc.inducedSubcomplex(none).facets.shouldBeEmpty;
+}
+
 auto simplicialComplex(F)(F initialFacets)
 if (isInputRange!F && isInputRange!(ElementType!F))
 {

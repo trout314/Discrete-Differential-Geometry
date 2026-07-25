@@ -2550,6 +2550,62 @@ extern(C) int ddg_sampler_cocycle_pos_check(void* sampler_handle) nothrow
     catch (Exception e) { setError(e.msg); return -1; }
 }
 
+/******************************************************************************
+The subcomplex INDUCED by a vertex set: every simplex of the manifold all of
+whose vertices lie in `verts`. Returns a NEW SimplicialComplex handle (free it
+with ddg_sc_free), or null on error.
+
+This is what a defect IS -- the subcomplex spanned by its own vertices -- as
+opposed to ddg_manifold_closed_star, which is the region it OCCUPIES. Uses the
+transient vertex->facet incidence, so only facets meeting `verts` are examined.
+*/
+extern(C) void* ddg_manifold_induced_subcomplex(void* handle,
+    const(int)* verts, long n_verts) nothrow
+{
+    clearError();
+    try
+    {
+        if (handle is null) { setError("null handle"); return null; }
+        auto h = cast(ManifoldHandle*) handle;
+        if (h.dim != 3)
+        { setError("induced_subcomplex is dim=3 only"); return null; }
+        if (verts is null && n_verts > 0) { setError("null verts"); return null; }
+        auto mw = cast(ManifoldWrapper!3*) h.ptr;
+        auto vs = verts[0 .. cast(size_t) n_verts].dup;
+        auto w = new SimplicialComplex!int;
+        *w = mw.mfd.inducedSubcomplex(vs);
+        pinForC(cast(void*) w);
+        return cast(void*) w;
+    }
+    catch (Exception e) { setError(e.msg); return null; }
+}
+
+/******************************************************************************
+The CLOSED STAR of a vertex set: every facet incident to any of `verts`, as a
+new SimplicialComplex handle (free with ddg_sc_free), or null on error. The
+region a defect occupies; its boundary is the surface flux would cross.
+*/
+extern(C) void* ddg_manifold_closed_star(void* handle,
+    const(int)* verts, long n_verts) nothrow
+{
+    clearError();
+    try
+    {
+        if (handle is null) { setError("null handle"); return null; }
+        auto h = cast(ManifoldHandle*) handle;
+        if (h.dim != 3)
+        { setError("closed_star is dim=3 only"); return null; }
+        if (verts is null && n_verts > 0) { setError("null verts"); return null; }
+        auto mw = cast(ManifoldWrapper!3*) h.ptr;
+        auto vs = verts[0 .. cast(size_t) n_verts].dup;
+        auto w = new SimplicialComplex!int;
+        *w = mw.mfd.closedStar(vs);
+        pinForC(cast(void*) w);
+        return cast(void*) w;
+    }
+    catch (Exception e) { setError(e.msg); return null; }
+}
+
 /// Read the current cocycle. With null buffers, returns the edge count.
 /// Otherwise fills edges_out (2 ints/edge, sorted u < v) and values_out
 /// (3 ints/edge, omega(u->v)) for up to cap_edges edges and returns the

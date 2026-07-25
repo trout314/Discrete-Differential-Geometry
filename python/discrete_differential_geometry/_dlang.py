@@ -752,6 +752,16 @@ _lib.ddg_sampler_set_slide_prob.argtypes = [ctypes.c_void_p, ctypes.c_double]
 _lib.ddg_sampler_set_slide_prob.restype = ctypes.c_int
 _lib.ddg_sampler_set_slide_prob.errcheck = _check_int
 
+_lib.ddg_manifold_induced_subcomplex.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_int), ctypes.c_long]
+_lib.ddg_manifold_induced_subcomplex.restype = ctypes.c_void_p
+_lib.ddg_manifold_induced_subcomplex.errcheck = _check_null
+
+_lib.ddg_manifold_closed_star.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_int), ctypes.c_long]
+_lib.ddg_manifold_closed_star.restype = ctypes.c_void_p
+_lib.ddg_manifold_closed_star.errcheck = _check_null
+
 _lib.ddg_sampler_cocycle_enable_positions.argtypes = [
     ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)]
 _lib.ddg_sampler_cocycle_enable_positions.restype = ctypes.c_int
