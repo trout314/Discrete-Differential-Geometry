@@ -1539,6 +1539,51 @@ private struct SamplerState
     CocycleState!int cocycle;
 }
 
+/// Recompute the tracked objective from scratch, including the n6 potential
+/// state for dim=3. Parameter setters invalidate currentObjective to NaN;
+/// this is the single re-derivation used at create, at the top of run(), and
+/// lazily by ddg_sampler_current_objective.
+private void recomputeObjective(SamplerState* s)
+{
+    void doIt(int dim)(SamplerState* s)
+    {
+        auto mw = cast(ManifoldWrapper!dim*)(cast(ManifoldHandle*) s.manifoldHandle).ptr;
+        struct Params
+        {
+            int numFacetsTarget;
+            real hingeDegreeTarget;
+            real numFacetsCoef;
+            real numHingesCoef;
+            real hingeDegreeVarianceCoef;
+            real coDim3DegreeVarianceCoef;
+            real hingeDegreeTargetCoef;
+            real coDim3DegreeTargetCoef;
+            real coDim3DegreeTarget;
+        }
+        auto p = Params(s.numFacetsTarget, cast(real) s.hingeDegreeTarget,
+            cast(real) s.numFacetsCoef, cast(real) s.numHingesCoef,
+            cast(real) s.hingeDegreeVarianceCoef, cast(real) s.coDim3DegreeVarianceCoef,
+            cast(real) s.hingeDegreeTargetCoef, cast(real) s.coDim3DegreeTargetCoef,
+            cast(real) s.coDim3DegreeTarget);
+        s.currentObjective = mw.mfd.objective(p);
+        static if (dim == 3)
+        {
+            if (s.potEnabled)
+            {
+                mw.mfd.recomputeVertexPotState(s.vertexPotState, s.vertexPot);
+                s.currentObjective += s.vertexPotState.total;
+            }
+        }
+    }
+    switch (s.dim)
+    {
+        case 2: doIt!2(s); break;
+        case 3: doIt!3(s); break;
+        case 4: doIt!4(s); break;
+        default: break;
+    }
+}
+
 extern(C) void* ddg_sampler_create(void* manifold_handle,
     int numFacetsTarget, double hingeDegreeTarget,
     double numFacetsCoef, double numHingesCoef,
@@ -1590,37 +1635,7 @@ extern(C) void* ddg_sampler_create_ext(void* manifold_handle,
             default: setError("bad dimension"); return null;
         }
 
-        // Compute initial objective
-        void initObjective(int dim)(SamplerState* s)
-        {
-            auto mw = cast(ManifoldWrapper!dim*)(cast(ManifoldHandle*) s.manifoldHandle).ptr;
-            struct Params
-            {
-                int numFacetsTarget;
-                real hingeDegreeTarget;
-                real numFacetsCoef;
-                real numHingesCoef;
-                real hingeDegreeVarianceCoef;
-                real coDim3DegreeVarianceCoef;
-                real hingeDegreeTargetCoef;
-                real coDim3DegreeTargetCoef;
-                real coDim3DegreeTarget;
-            }
-            auto p = Params(s.numFacetsTarget, cast(real) s.hingeDegreeTarget,
-                cast(real) s.numFacetsCoef, cast(real) s.numHingesCoef,
-                cast(real) s.hingeDegreeVarianceCoef, cast(real) s.coDim3DegreeVarianceCoef,
-                cast(real) s.hingeDegreeTargetCoef, cast(real) s.coDim3DegreeTargetCoef,
-                cast(real) s.coDim3DegreeTarget);
-            s.currentObjective = mw.mfd.objective(p);
-        }
-
-        switch (mh.dim)
-        {
-            case 2: initObjective!2(state); break;
-            case 3: initObjective!3(state); break;
-            case 4: initObjective!4(state); break;
-            default: break;
-        }
+        recomputeObjective(state);
 
         pinForC(cast(void*) state);
         return cast(void*) state;
@@ -1674,7 +1689,7 @@ extern(C) long ddg_sampler_run(void* sampler_handle, long num_moves,
             );
 
             if (s.currentObjective != s.currentObjective) // NaN check
-                s.currentObjective = mw.mfd.objective(params);
+                recomputeObjective(s);
 
             long accepted = 0;
 
@@ -1767,14 +1782,7 @@ private long runSamplerDim3(SamplerState* s, long numMoves,
         );
 
         if (s.currentObjective != s.currentObjective) // NaN check
-        {
-            s.currentObjective = mw.mfd.objective(params);
-            if (s.potEnabled)
-            {
-                mw.mfd.recomputeVertexPotState(s.vertexPotState, s.vertexPot);
-                s.currentObjective += s.vertexPotState.total;
-            }
-        }
+            recomputeObjective(s);
 
         long accepted = 0;
         long acceptedSinceWriteback = 0;
@@ -2629,7 +2637,15 @@ extern(C) int ddg_sampler_get_stats(void* sampler_handle,
 extern(C) double ddg_sampler_current_objective(void* sampler_handle) nothrow
 {
     if (sampler_handle is null) return double.nan;
-    return cast(double)(cast(SamplerState*) sampler_handle).currentObjective;
+    auto s = cast(SamplerState*) sampler_handle;
+    // Setters invalidate the tracked value to NaN; recompute lazily so a
+    // read between configuration and the first run() sees the real objective.
+    if (s.currentObjective != s.currentObjective)
+    {
+        try recomputeObjective(s);
+        catch (Exception e) { setError(e.msg); return double.nan; }
+    }
+    return cast(double) s.currentObjective;
 }
 
 /// Configure the vertex 6-valence potential (Z-legality + chemical tilts +
