@@ -320,6 +320,60 @@ class DefectState:
         return problems
 
 
+class Worldlines:
+    """Per-move identity over defect complexes.
+
+    One Pachner move touches at most 5 vertices (center u coCenter), so every
+    complex not meeting that set is untouched -- identical vertex set,
+    identical structure -- and its identity is preserved trivially. Only the
+    complexes meeting those few vertices can change, and they inherit the
+    label held by the majority of their previous members. At one-move
+    granularity that is essentially exact; the inference that frame-based
+    linkage has to make over a 150-sweep gap does not arise.
+
+    Merges and splits are recorded rather than silently becoming deaths and
+    births: a component whose majority label is already claimed by another
+    component this step is a split-off and gets a fresh id.
+    """
+
+    def __init__(self, state):
+        self.state = state
+        self.label = {}          # vertex -> track id
+        self.born = {}           # track id -> clock
+        self.died = {}           # track id -> clock
+        self.merges = 0
+        self.splits = 0
+        self._next = 0
+
+    def step(self, clock):
+        """Relabel after the state has advanced. Returns [(Complex, tid)]."""
+        comps = self.state.components()
+        claimed, newlabel, out = set(), {}, []
+        for c in comps:
+            prev = Counter(self.label[x] for x in c.verts if x in self.label)
+            t = None
+            if prev:
+                cand = prev.most_common(1)[0][0]
+                if cand in claimed:
+                    self.splits += 1
+                else:
+                    t = cand
+                    if len(prev) > 1:
+                        self.merges += len(prev) - 1
+            if t is None:
+                t = self._next
+                self._next += 1
+                self.born[t] = clock
+            claimed.add(t)
+            for x in c.verts:
+                newlabel[x] = t
+            out.append((c, t))
+        for t in set(self.label.values()) - claimed:
+            self.died.setdefault(t, clock)
+        self.label = newlabel
+        return out
+
+
 def census(state):
     """Summary counters for a time series -- the replacement for the
     per-chunk `vertex_classes` block copied across the producer scripts."""
