@@ -25,9 +25,18 @@ complex's own vertices, so identical complexes give identical values, whereas
 subtracting a state mean ties every measurement to the whole configuration
 (measured sd over 60 classes: 4e-16 raw vs 2e-3 subtracted).
 
+Pass --flicker with a crystal_flicker.py JSON to mark which species a single
+2->3 on the PRISTINE crystal can produce, and to print the residual census with
+that background separated. This matters more than it sounds: every single-2->3
+excitation of a pristine crystal has f = (5,10,9,3), so the (3,4,4) knot is the
+shape of one Pachner move against a perfect crystal rather than an excitation
+of the melt, and at lam=0.40 96% of defect BIRTHS are exactly that. The flag is
+an upper bound, not an attribution -- see load_flicker's docstring.
+
 Usage:
   species_report.py --glob 'data/mgas/lam40*_snap*.mfd' --lam 0.40 \
       --zleg 0.6 --cimp 1.0 --etarget 5.105025 \
+      --flicker flicker_R_m4.json \
       --provenance 'm4 r-crystal -> lam40 chains'
   ... add --group sig to reproduce a pre-2026-07-25 species table.
 """
@@ -45,6 +54,7 @@ for _p in ("../../python", "../../scripts", "."):
     sys.path.insert(0, os.path.join(_HERE, _p))
 import discrete_differential_geometry as ddg
 import defect_state as ds
+import crystal_flicker as cf
 
 
 def sig_str(sig, width=30):
@@ -93,8 +103,24 @@ def main():
                          "mostly one-off configurations. Whatever is hidden is "
                          "always reported as a count, never dropped silently. "
                          "Use 1 to see everything.")
+    ap.add_argument("--flicker", default=None,
+                    help="crystal_flicker.py JSON for the SAME crystal. Marks "
+                         "each species reachable by a single 2->3 on the "
+                         "pristine crystal, and reports the census with that "
+                         "background separated out. Note this is an UPPER "
+                         "BOUND on flicker contamination: a snapshot has no "
+                         "move history, so 'reachable' is not 'was produced "
+                         "that way'. For real attribution use "
+                         "flicker_fraction.py on an event stream.")
     ap.add_argument("--out", default=None, help="write the table as JSON too")
     args = ap.parse_args()
+
+    flick, flick_meta = (set(), None)
+    if args.flicker:
+        flick, flick_meta = cf.load_flicker(args.flicker, args.group)
+        if not flick:
+            sys.exit(f"{args.flicker} has no keys for --group {args.group}; "
+                     f"regenerate it with the current crystal_flicker.py")
 
     files = sorted({f for g in args.glob for f in globmod.glob(g)})
     if not files:
@@ -109,6 +135,7 @@ def main():
     n6_of = defaultdict(Counter)
     sig_of = defaultdict(Counter)
     nodes_of = defaultdict(Counter)
+    is_flick = {}
     inexact = 0
     ncx_per, nill_per, ffk_per, fe_per, edeg_per = [], [], [], [], []
     n3_states = []
@@ -130,6 +157,7 @@ def main():
         for cx in comps:
             if args.group in ("induced", "decorated", "full"):
                 fac = st.induced_facets(cx.verts)
+                vc = ec = None           # --group induced carries no colours
                 if args.group in ("decorated", "full"):
                     vc, ec = st.decorations(cx.verts)
                     ck, exact = ds.canonical_key(
@@ -144,8 +172,14 @@ def main():
                 shape_of[key] = st.induced_shape(cx.verts)
                 sig_of[key][cx.sig] += 1
                 nodes_of[key][cx.nodes] += 1
+                if args.flicker and key not in is_flick:
+                    is_flick[key] = cf.flicker_key(
+                        args.group, facets=fac, vcolor=vc,
+                        ecolor=ec) in flick
             else:
                 key = cx.key
+                if args.flicker and key not in is_flick:
+                    is_flick[key] = cf.flicker_key("sig", cx=cx) in flick
             spec[key] += 1
             size_of[key].append(len(cx.verts))
             star_of[key].append(len(st.star(cx.verts)))
@@ -198,7 +232,8 @@ def main():
             print(f"  WARNING: {inexact} complexes hit the canonical-form "
                   f"search limit -- their keys are strong invariants, not "
                   f"certificates")
-        hdr = (f"{'#':<4} {'f=(v,e,t,T)':<17} {'facets':<6} "
+        fcol = "F " if args.flicker else ""
+        hdr = (f"{'#':<4} {fcol}{'f=(v,e,t,T)':<17} {'facets':<6} "
                f"{'degseq (1-skel)':<20} {'n':>5} {'%':>6} {'sumZ':>6} "
                f"{'Q_c raw':>16} {'Q_c-bg':>9}")
         print(hdr)
@@ -210,7 +245,8 @@ def main():
             sh = shape_of[k]
             dq = str(sh["degseq"])
             nf = len(k[0]) if args.group in ("decorated", "full") else len(k)
-            rows.append({"class": i, "f": list(sh["f"]), "n_facets": nf,
+            rows.append({"class": i, "flicker": is_flick.get(k),
+                         "f": list(sh["f"]), "n_facets": nf,
                          "degseq": list(sh["degseq"]), "n": n,
                          "frac": n / ncomp,
                          "sigs": {str(a): b for a, b in sig_of[k].items()},
@@ -222,7 +258,8 @@ def main():
                          "Q_c_rel": float(np.mean(rel_of[k])),
                          "Q_c_rel_sd": float(np.std(rel_of[k]))})
             sz = np.mean(sumz_of[k])
-            print(f"{i:<4} {str(sh['f']):<17} {nf:<6} {dq[:19]:<20} "
+            fm = ("F " if is_flick.get(k) else ". ") if args.flicker else ""
+            print(f"{i:<4} {fm}{str(sh['f']):<17} {nf:<6} {dq[:19]:<20} "
                   f"{n:5d} {100*n/ncomp:5.1f}% {sz:6.1f} "
                   f"{np.mean(chg_of[k]):8.3f}+-{np.std(chg_of[k]):<7.2g} "
                   f"{np.mean(rel_of[k]):9.3f}")
@@ -257,8 +294,10 @@ def main():
         for a, c in sorted(multi.items(), key=lambda x: -x[1])[:6]:
             print(f"      {sig_str(a)} appears as {c} distinct shapes")
     else:
-        hdr = (f"{'illegal-edge signature':<20} {'nodes':<9} {'n':>5} {'%':>6} "
-               f"{'s (verts)':>13} {'star':>7} {'sum w':>6} {'Q_c (rad)':>15}")
+        fcol = "F " if args.flicker else ""
+        hdr = (f"{fcol}{'illegal-edge signature':<20} {'nodes':<9} {'n':>5} "
+               f"{'%':>6} {'s (verts)':>13} {'star':>7} {'sum w':>6} "
+               f"{'Q_c (rad)':>15}")
         print(hdr)
         print("-" * len(hdr))
         rows = []
@@ -268,6 +307,7 @@ def main():
             sig, nodes = k
             w = sum(6 - d for d in sig)
             rows.append({"sig": list(sig), "nodes": list(nodes), "n": n,
+                         "flicker": is_flick.get(k),
                          "frac": n / ncomp, "size": float(np.mean(size_of[k])),
                          "star": float(np.mean(star_of[k])), "sum_w": w,
                          "sum_Z": float(np.mean(sumz_of[k])),
@@ -275,11 +315,64 @@ def main():
                          "Q_c_raw_sd": float(np.std(chg_of[k])),
                          "Q_c_rel": float(np.mean(rel_of[k])),
                          "Q_c_rel_sd": float(np.std(rel_of[k]))})
-            print(f"{sig_str(sig):<20} {str(nodes) if nodes else '':<9} {n:5d} "
+            fm = ("F " if is_flick.get(k) else ". ") if args.flicker else ""
+            print(f"{fm}{sig_str(sig):<20} {str(nodes) if nodes else '':<9} {n:5d} "
                   f"{100*n/ncomp:5.1f}% "
                   f"{np.mean(size_of[k]):6.1f}+-{np.std(size_of[k]):<5.1f} "
                   f"{np.mean(star_of[k]):7.0f} {w:6d} "
                   f"{np.mean(chg_of[k]):7.2f}+-{np.std(chg_of[k]):<6.2f}")
+
+    if args.flicker:
+        fl_n = sum(n for k, n in spec.items() if is_flick.get(k))
+        fl_s = sum(1 for k in spec if is_flick.get(k))
+        print()
+        print("=" * 78)
+        print("FLICKER BACKGROUND  (F in the table above)")
+        print("=" * 78)
+        print(f"reference    : {flick_meta['cell']}")
+        print(f"               {flick_meta['sites']} single-2->3 sites, "
+              f"{flick_meta['species']} distinct species, N_3 = "
+              f"{flick_meta['n3']}")
+        print(f"grouping     : --group {args.group}")
+        print(f"reachable    : {fl_s} of {len(spec)} species, "
+              f"{fl_n} of {ncomp} complexes ({100*fl_n/ncomp:.1f}%)")
+        print(f"NOT reachable: {len(spec)-fl_s} species, {ncomp-fl_n} "
+              f"complexes ({100*(ncomp-fl_n)/ncomp:.1f}%)   <- the residual "
+              f"census")
+        print()
+        print("  READ THIS AS AN UPPER BOUND on flicker contamination. A")
+        print("  species marked F is one a single 2->3 on the PRISTINE crystal")
+        print("  can produce; a snapshot carries no move history, so this")
+        print("  cannot tell you that any particular instance arose that way.")
+        print("  A long-lived complex that happens to be flicker-shaped is")
+        print("  counted here too -- measured at lam=0.40, 49 of the 57 tracks")
+        print("  living past 20 sweeps were flicker-born, so F does NOT mean")
+        print("  transient. For a real per-instance attribution, which needs")
+        print("  the birth move, run flicker_fraction.py on an event stream.")
+        if args.group != "full":
+            print()
+            print(f"  NOTE --group {args.group} is coarser than the key the")
+            print("  flicker list is most discriminating at. A coarser key")
+            print("  merges species, so it can only OVERSTATE reachability.")
+        print()
+        print("residual census after removing flicker-reachable species:")
+        res = [(k, n) for k, n in spec.most_common() if not is_flick.get(k)]
+        if not res:
+            print("   (nothing -- every observed species is flicker-reachable)")
+        for i, (k, n) in enumerate(res[:args.top]):
+            if args.group in ("induced", "decorated", "full"):
+                sh = shape_of[k]
+                print(f"   {i:<3} f={str(sh['f']):<17} n={n:5d} "
+                      f"{100*n/ncomp:5.1f}% of all   "
+                      f"{100*n/(ncomp-fl_n):5.1f}% of residual   "
+                      f"sumZ {np.mean(sumz_of[k]):6.1f}  "
+                      f"Q_c {np.mean(chg_of[k]):7.3f}")
+            else:
+                print(f"   {i:<3} {sig_str(k[0]):<20} n={n:5d} "
+                      f"{100*n/ncomp:5.1f}% of all   "
+                      f"Q_c {np.mean(chg_of[k]):7.3f}")
+        if len(res) > args.top:
+            print(f"   ... {len(res)-args.top} further residual species")
 
     kept = [(k, n) for k, n in spec.items() if n >= args.min_count]
     hid = [(k, n) for k, n in spec.items() if n < args.min_count]
@@ -327,6 +420,16 @@ def main():
             json.dump({"files": len(files), "chains": chains,
                        "complexes": ncomp, "species": len(spec),
                        "lam": args.lam, "edq_only": args.edq_only,
+                       "flicker": (None if not args.flicker else {
+                           "reference": flick_meta,
+                           "group": args.group,
+                           "species_reachable": sum(
+                               1 for k in spec if is_flick.get(k)),
+                           "complexes_reachable": sum(
+                               n for k, n in spec.items() if is_flick.get(k)),
+                           "note": "UPPER BOUND -- reachable by a single 2->3 "
+                                   "on the pristine crystal, not a per-instance "
+                                   "attribution"}),
                        "rows": rows}, fh, indent=1)
         print(f"\nwrote {args.out}")
 

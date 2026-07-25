@@ -44,6 +44,45 @@ THETA = np.arccos(1.0 / 3.0)
 UNIT = np.pi - 3 * THETA
 
 
+def load_flicker(path, group="full"):
+    """The pristine-crystal species list as a set of keys at one grouping.
+
+    Returns (keyset, meta). Membership is tested with json.dumps so tuples and
+    the lists that survive a JSON round trip compare equal.
+
+    WHAT MEMBERSHIP MEANS, and does not: a species in this set is one the
+    pristine crystal CAN make with a single 2->3. It does not follow that any
+    particular observed instance was made that way -- a static snapshot has no
+    move history. So the flicker column on a snapshot census is an UPPER BOUND
+    on flicker contamination. For a real attribution, which needs the birth
+    move, use flicker_fraction.py on an event stream.
+    """
+    fl = json.load(open(path))
+    keys = set()
+    for sp in fl["species"]:
+        for c in sp["components"]:
+            k = c.get("_keys", {}).get(group)
+            if k is None and group == "full":
+                k = c.get("_key")
+            if k is not None:
+                keys.add(json.dumps(k))
+    return keys, {"cell": fl.get("cell"), "sites": fl.get("sites"),
+                  "n3": fl.get("n3"), "species": len(fl["species"])}
+
+
+def flicker_key(group, cx=None, facets=None, vcolor=None, ecolor=None):
+    """The key of an observed complex, built exactly as load_flicker's are."""
+    if group == "sig":
+        return json.dumps([list(cx.sig), list(cx.nodes)])
+    if group == "full":
+        k, _ = ds.canonical_key(facets, ecolor=ecolor, vcolor=vcolor)
+    elif group == "decorated":
+        k, _ = ds.canonical_key(facets, ecolor=ecolor)
+    else:
+        k, _ = ds.canonical_key(facets)
+    return json.dumps(k)
+
+
 def _ev(mtype, labels):
     """A synthetic event record in the sampler's own EVENT_DTYPE."""
     e = np.zeros(1, dtype=EVENT_DTYPE)[0]
@@ -108,9 +147,20 @@ def main():
             fac = st.induced_facets(cx.verts)
             vc, ec = st.decorations(cx.verts)
             ck, exact = ds.canonical_key(fac, ecolor=ec, vcolor=vc)
+            # Keys at EVERY grouping level species_report.py offers, because a
+            # coarser key cannot be projected out of the full one -- dropping a
+            # decoration changes which vertex ordering minimises the form. A
+            # consumer grouping by --group decorated must compare against keys
+            # built the same way, or the membership test silently misses.
+            keys = {
+                "full": ck,
+                "decorated": ds.canonical_key(fac, ecolor=ec)[0],
+                "induced": ds.canonical_key(fac)[0],
+                "sig": [list(cx.sig), list(cx.nodes)],
+            }
             sumz = st.total_coordination(cx.verts)
             rec.append({
-                "key": ck, "exact": exact, "nv": len(cx.verts),
+                "key": ck, "keys": keys, "exact": exact, "nv": len(cx.verts),
                 "sig": cx.sig, "nodes": cx.nodes, "sumZ": sumz,
                 "Q_c": sumz * UNIT + 6 * len(cx.verts) * THETA,
                 "f": st.induced_shape(cx.verts)["f"],
@@ -156,11 +206,12 @@ def main():
         out.append({"count": s["n"], "share": s["n"] / ntried,
                     "components": [
                         dict({k: (list(v) if isinstance(v, tuple) else v)
-                              for k, v in r.items() if k != "key"},
-                             # the decorated key itself, so downstream
-                             # scripts can test observed defects for
-                             # membership in this pristine list
-                             _key=r["key"])
+                              for k, v in r.items()
+                              if k not in ("key", "keys")},
+                             # the keys themselves, so downstream scripts can
+                             # test observed defects for membership in this
+                             # pristine list at whatever grouping they use
+                             _key=r["key"], _keys=r["keys"])
                         for r in rec]})
 
     print("\nsumZ distribution over 2->3 sites (the flicker's charge ladder):")
