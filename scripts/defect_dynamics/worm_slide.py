@@ -182,11 +182,13 @@ def facset(m):
     return frozenset(map(tuple, A.tolist()))
 
 
-def dS_between(em_before, em_after, zleg=0.6, cimp=1.0):
+def dS_between(em_before, em_after, zleg=0.6, cimp=1.0, estar=ESTAR):
     """FULL shape-action difference (lam=1 units): edge-target term PLUS the
-    n6 potential (zleg*U(n6) + cimp*m^2) — the terms that feel the halo."""
+    n6 potential (zleg*U(n6) + cimp*m^2) — the terms that feel the halo.
+    `estar` is both the edge-degree target and the per-edge coupling scale
+    (coef estar/6); pass the run's actual target when matching a sampler."""
     from collections import defaultdict
-    x = ESTAR - int(ESTAR)
+    x = estar - int(estar)
     dS = 0.0
     changed = set()
     for k in set(em_before) | set(em_after):
@@ -195,9 +197,9 @@ def dS_between(em_before, em_after, zleg=0.6, cimp=1.0):
             continue
         changed |= set(k)
         if d0 is not None:
-            dS -= (ESTAR / 6.0) * ((d0 - ESTAR) ** 2 - x * (1 - x))
+            dS -= (estar / 6.0) * ((d0 - estar) ** 2 - x * (1 - x))
         if d1 is not None:
-            dS += (ESTAR / 6.0) * ((d1 - ESTAR) ** 2 - x * (1 - x))
+            dS += (estar / 6.0) * ((d1 - estar) ** 2 - x * (1 - x))
 
     def counters(em):
         n6 = defaultdict(int)
@@ -224,6 +226,133 @@ def dS_between(em_before, em_after, zleg=0.6, cimp=1.0):
 def edeg_dict(m):
     eu, cnt = wm.edge_degrees_np(np.asarray(m.facets()))
     return {(int(a), int(b)): int(c) for (a, b), c in zip(eu, cnt)}
+
+
+# ---------------------------------------------------------------------------
+# MH proposal integration
+# ---------------------------------------------------------------------------
+
+def slide_net_diff(recs):
+    """Net facet multiset change of a move-record list, as a canonical
+    hashable key. From a fixed start state, equal keys <=> equal end state,
+    so this identifies proposal multiplicities without facet-set hashing."""
+    from collections import Counter
+    net = Counter()
+    for kind, cen, coc in recs:
+        if kind == "32":
+            a, b = cen
+            x, y, z = coc
+            for p, q in ((x, y), (y, z), (x, z)):
+                net[tuple(sorted((a, b, p, q)))] -= 1
+            net[tuple(sorted((a, x, y, z)))] += 1
+            net[tuple(sorted((b, x, y, z)))] += 1
+        else:
+            f1, f2, f3 = cen
+            d, e = coc
+            net[tuple(sorted((d, f1, f2, f3)))] -= 1
+            net[tuple(sorted((e, f1, f2, f3)))] -= 1
+            for p, q in ((f1, f2), (f2, f3), (f1, f3)):
+                net[tuple(sorted((d, e, p, q)))] += 1
+    return frozenset((t, c) for t, c in net.items() if c != 0)
+
+
+def enumerate_slides(m):
+    """All slide candidates of the state, over every deg-3 chord:
+    [(chord, cs, mv), ...]. Template-valid only; apply-time validity of the
+    later moves is checked by apply_slide."""
+    e3, _ = knot_chords(m)
+    out = []
+    for ch in e3:
+        out += [(ch, cs, mv) for cs, mv in candidate_slides(m, ch)]
+    return out
+
+
+def mh_slide_step(sampler, lam, rng, estar=ESTAR, zleg=0.6, cimp=1.0):
+    """One Metropolis-Hastings knot-slide proposal through a sampler.
+
+    REFERENCE IMPLEMENTATION / ORACLE. This is the readable, checkable
+    version of the slide as a sampler move; it is ~4s and ~1.8GB of D-side
+    garbage per proposal (144 apply/undo ctypes round trips plus a manifold
+    copy), i.e. ~6 orders of magnitude slower per move than the D-side
+    thermal channel, so it is NOT a production sampling path. Production
+    slides belong in sampler.d as a genuine move type; this stays as the
+    crossval oracle for that implementation.
+
+    Proposal: uniform over all template-valid slide candidates of the
+    current state (2 orientations x 6 link orderings per deg-3 chord); a
+    candidate that fails apply-time validation is a rejected proposal.
+    Hastings correction: q(x'|x) = k_f/n_f and q(x|x') = k_r/n_r, where n =
+    candidate count and k = multiplicity of the transition among candidates
+    (by exact end-state key), so
+
+        alpha = min(1, exp(-lam*dS) * (k_r * n_f) / (k_f * n_r)).
+
+    dS is the FULL shape-action difference in lam=1 units (dS_between:
+    edge-target with `estar` as target and coupling scale, zleg*U(n6),
+    cimp*m^2). The composite kernel (thermal sweeps + slide proposals)
+    preserves the production ensemble exactly when estar/zleg/cimp match the
+    sampler couplings, the variance (VDV) terms are off, and the volume /
+    global terms cancel (a slide preserves N3 and E exactly).
+
+    Enumeration and trial applications run on a scratch copy; only an
+    accepted slide replays through sampler.do_bistellar_move, which keeps
+    cocycle tracking and the tracked objective coherent. Frozen-vertex
+    constraints are NOT checked here.
+
+    Returns a diagnostics dict: status (accepted / rejected / invalid /
+    no-candidates), dS, alpha, n_f, n_r, k_f, k_r, chord, chord_after.
+    """
+    W = sampler.manifold.dup()
+    fwd = enumerate_slides(W)
+    n_f = len(fwd)
+    if n_f == 0:
+        return {"status": "no-candidates", "n_f": 0}
+    keys = []
+    for _, _, mv in fwd:
+        recs = apply_slide(W, mv)
+        if recs is None:
+            keys.append(None)
+            continue
+        keys.append(slide_net_diff(recs))
+        undo_slide(W, recs)
+    i = int(rng.integers(n_f))
+    ch, cs, mv = fwd[i]
+    if keys[i] is None:
+        return {"status": "invalid", "n_f": n_f}
+    k_f = sum(1 for k in keys if k == keys[i])
+    em0 = edeg_dict(W)
+    recs = apply_slide(W, mv)
+    em1 = edeg_dict(W)
+    dS = dS_between(em0, em1, zleg=zleg, cimp=cimp, estar=estar)
+    inv_key = frozenset((t, -c) for t, c in keys[i])
+    rev = enumerate_slides(W)
+    n_r = len(rev)
+    k_r = 0
+    for _, _, mv_r in rev:
+        rr = apply_slide(W, mv_r)
+        if rr is None:
+            continue
+        if slide_net_diff(rr) == inv_key:
+            k_r += 1
+        undo_slide(W, rr)
+    out = {"status": "rejected", "dS": dS, "n_f": n_f, "n_r": n_r,
+           "k_f": k_f, "k_r": k_r,
+           "chord": (int(cs["c0"]), int(cs["c4"])),
+           "chord_after": (int(cs["c4"]), int(cs["c8"]))}
+    if k_r == 0:
+        # the mirrored template should always be a reverse candidate; a hit
+        # here means the frame derivation lost it -- reject (q(x|x')=0) and
+        # flag for investigation.
+        out["alpha"] = 0.0
+        out["warn"] = "no reverse candidate"
+        return out
+    alpha = float(np.exp(-lam * dS)) * (k_r * n_f) / (k_f * n_r)
+    out["alpha"] = min(1.0, alpha)
+    if rng.random() < alpha:
+        for _, cen, coc in recs:
+            sampler.do_bistellar_move(cen, coc)
+        out["status"] = "accepted"
+    return out
 
 
 def crystal_test(args):
@@ -381,17 +510,108 @@ def thermal_test(args):
               f"mean {acc.mean():.3f}")
 
 
+def mh_test(args):
+    """Integration test of mh_slide_step against a live sampler: cocycle
+    stays attached across accepted slides, the tracked objective moves by
+    exactly lam*dS, and the Hastings counts are sane."""
+    from discrete_differential_geometry import cocycle as coc
+    snap = args.mh_test
+    lam = args.lam
+    et = args.etarget
+    ddg.set_random_seed(args.seed)
+    m = ddg.Manifold.load(snap, 3)
+    p = ddg.SamplerParams(
+        num_facets_target=m.num_facets, hinge_degree_target=et,
+        num_facets_coef=0.1, num_hinges_coef=0.0,
+        hinge_degree_variance_coef=0.0, codim3_degree_variance_coef=0.0,
+        hinge_degree_target_coef=lam * et / 6.0)
+    s = ddg.ManifoldSampler(m, p)
+    s.set_n6_potential(args.zleg * lam, args.cimp * lam, tilt=[0.0] * 5)
+    cocpath = snap.replace(".mfd", ".cocycle.npz")
+    if os.path.exists(cocpath):
+        e0, w0, _ = coc.load_cocycle(cocpath)
+        s.enable_cocycle(np.asarray(e0), np.asarray(w0))
+        s.check_cocycle()
+        print(f"state: {os.path.basename(snap)}  N3={m.num_facets}  "
+              f"cocycle attached")
+    else:
+        cocpath = None
+        print(f"state: {os.path.basename(snap)}  N3={m.num_facets}  "
+              f"(no cocycle file; cocycle checks skipped)")
+    v = s.manifold
+    rng = np.random.default_rng(args.seed)
+    stats = defaultdict(int)
+    nobj = 0
+    for k in range(args.props):
+        obj0 = s.current_objective
+        r = mh_slide_step(s, lam, rng, estar=et, zleg=args.zleg,
+                          cimp=args.cimp)
+        stats[r["status"]] += 1
+        if r.get("warn"):
+            stats["warn"] += 1
+            print(f"  prop {k:2d}: WARN {r['warn']} chord {r.get('chord')}")
+        if r["status"] in ("accepted", "rejected"):
+            assert r["k_f"] >= 1, f"k_f=0 on a valid proposal: {r}"
+        if r["status"] != "accepted":
+            continue
+        err = abs((s.current_objective - obj0) - lam * r["dS"])
+        assert err < 1e-9, f"objective moved by != lam*dS (err {err})"
+        nobj += 1
+        if cocpath:
+            s.check_cocycle()
+            e1, _ = s.read_cocycle()
+            eset = {tuple(sorted(e))
+                    for e in np.asarray(v.simplices(1)).tolist()}
+            cset = {tuple(sorted(e)) for e in np.asarray(e1).tolist()}
+            assert eset == cset, f"cocycle DETACHED ({len(eset ^ cset)} edges)"
+        print(f"  prop {k:2d}: ACCEPT chord {r['chord']} -> "
+              f"{r['chord_after']}  dS={r['dS']:+.3f}  alpha={r['alpha']:.3f}"
+              f"  (kf={r['k_f']} kr={r['k_r']} nf={r['n_f']} nr={r['n_r']})"
+              f"  obj-check {err:.1e}"
+              + ("  cocycle OK" if cocpath else ""))
+        ddg.gc_collect()
+    print(f"\n{args.props} proposals: {dict(stats)}")
+    print(f"objective-vs-lam*dS verified on {nobj} accepts")
+    # composite kernel: thermal sweeps after slides must leave everything
+    # consistent (this is the production interleaving)
+    s.run(sweeps=2)
+    if cocpath:
+        s.check_cocycle()
+    m2 = v.dup()
+    s2 = ddg.ManifoldSampler(m2, p)
+    s2.set_n6_potential(args.zleg * lam, args.cimp * lam, tilt=[0.0] * 5)
+    drift = abs(s.current_objective - s2.current_objective)
+    assert drift < 1e-6, f"objective drift after composite kernel: {drift}"
+    print(f"composite kernel (slides + 2 sweeps): objective drift {drift:.2e}"
+          + (", cocycle OK" if cocpath else ""))
+    print("PASS")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("ref", nargs="?", default=None)
     ap.add_argument("--crystal-test", action="store_true")
     ap.add_argument("--steps", type=int, default=50)
     ap.add_argument("--thermal", default=None)
+    ap.add_argument("--mh-test", default=None,
+                    help="snapshot .mfd: run MH slide proposals against a "
+                         "live sampler and verify bookkeeping")
+    ap.add_argument("--props", type=int, default=8,
+                    help="--mh-test: number of proposals (each is ~4s / "
+                         "~1.8GB of D-side garbage in this reference "
+                         "implementation; keep it small)")
+    ap.add_argument("--lam", type=float, default=0.40)
+    ap.add_argument("--etarget", type=float, default=ESTAR)
+    ap.add_argument("--zleg", type=float, default=0.6)
+    ap.add_argument("--cimp", type=float, default=1.0)
+    ap.add_argument("--seed", type=int, default=4242)
     args = ap.parse_args()
     if args.crystal_test:
         crystal_test(args)
     if args.thermal:
         thermal_test(args)
+    if args.mh_test:
+        mh_test(args)
 
 
 if __name__ == "__main__":

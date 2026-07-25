@@ -6,7 +6,7 @@ import ctypes
 import sys
 import time
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Callable, Optional, Sequence
 
 import numpy as np
 
@@ -323,6 +323,27 @@ class ManifoldSampler:
         # Final display
         _display(1, 1)
         return result
+
+    def do_bistellar_move(self, center: Sequence[int],
+                          cocenter: Sequence[int]) -> None:
+        """Apply a SPECIFIED bistellar move through the sampler.
+
+        Unlike ``Manifold.do_bistellar_move`` on a bare manifold, this acts
+        on the sampler's internal state and keeps its bookkeeping coherent:
+        the forced cocycle update is applied when cocycle tracking is
+        enabled, and the tracked objective is invalidated (recomputed lazily,
+        along with the n6-potential state). Use this to apply externally
+        proposed compound moves (e.g. the knot slide) mid-run.
+
+        Vertex-changing moves (1-4 / 4-1) are rejected by the D core. The
+        opt-in geometry ledger / event logs do not see these moves. All
+        preconditions are validated in the D core (raises on an invalid
+        move)."""
+        c = np.asarray(center, dtype=np.intc).ravel()
+        cc = np.asarray(cocenter, dtype=np.intc).ravel()
+        _lib.ddg_sampler_do_bistellar_move(
+            self._handle, c.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
+            len(c), cc.ctypes.data_as(ctypes.POINTER(ctypes.c_int)), len(cc))
 
     # -- Parameter setters --
 

@@ -737,6 +737,13 @@ _lib.ddg_sampler_get_stats.errcheck = _check_int
 _lib.ddg_sampler_current_objective.argtypes = [ctypes.c_void_p]
 _lib.ddg_sampler_current_objective.restype = ctypes.c_double
 
+_lib.ddg_sampler_do_bistellar_move.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_int), ctypes.c_int,
+    ctypes.POINTER(ctypes.c_int), ctypes.c_int,
+]
+_lib.ddg_sampler_do_bistellar_move.restype = ctypes.c_int
+_lib.ddg_sampler_do_bistellar_move.errcheck = _check_int
+
 # ---------------------------------------------------------------------------
 # Degree variance
 # ---------------------------------------------------------------------------

@@ -2648,6 +2648,52 @@ extern(C) double ddg_sampler_current_objective(void* sampler_handle) nothrow
     return cast(double) s.currentObjective;
 }
 
+/// Targeted bistellar move applied THROUGH a sampler: validates and applies
+/// the move on the sampler's internal manifold, applies the forced cocycle
+/// update when cocycle tracking is enabled, and invalidates the tracked
+/// objective (recomputed lazily, along with the n6-potential state). This is
+/// the bookkeeping-safe entry point for externally proposed compound moves
+/// (e.g. the knot slide) -- the bare ddg_manifold_* targeted moves applied to
+/// a sampler's manifold would silently detach the cocycle. Vertex-changing
+/// moves (1-4 / 4-1) are rejected: unusedVertices bookkeeping assumes
+/// run()-chosen labels. The opt-in geometry ledger / event logs do NOT see
+/// these moves.
+extern(C) int ddg_sampler_do_bistellar_move(void* sampler_handle,
+    const(int)* center, int center_len,
+    const(int)* cocenter, int cocenter_len) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null handle"); return -1; }
+        auto s = cast(SamplerState*) sampler_handle;
+        if (center_len == 1 || cocenter_len == 1)
+        {
+            setError("vertex-changing targeted moves (1-4/4-1) are not "
+                     ~ "supported through a sampler");
+            return -1;
+        }
+        auto rc = ddg_manifold_do_bistellar_move(s.manifoldHandle,
+            center, center_len, cocenter, cocenter_len);
+        if (rc != 0) return rc;   // validation failed; error already set
+        if (s.dim == 3 && s.cocycle.enabled)
+        {
+            import std.algorithm : sort;
+            // cocycleBistellar reads only edges that persist through the
+            // move, so running it just after doMove is valid. Sorted order
+            // is fine: cocSet's sorted-key sign convention absorbs it.
+            auto cen = center[0 .. center_len].dup;
+            cen.sort();
+            auto coc = cocenter[0 .. cocenter_len].dup;
+            coc.sort();
+            cocycleBistellar(s.cocycle, cen, coc);
+        }
+        s.currentObjective = real.nan;
+        return 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
 /// Configure the vertex 6-valence potential (Z-legality + chemical tilts +
 /// impurity valence; see sampler.VertexPot). dim=3 samplers only. tilt5 may be
 /// null (all-zero tilts). Passing all-zero coefficients disables the term.
