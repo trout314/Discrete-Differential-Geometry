@@ -27,6 +27,7 @@ import os
 import sys
 import time
 from collections import defaultdict
+from itertools import combinations
 from contextlib import contextmanager
 
 import numpy as np
@@ -172,9 +173,21 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("ref", nargs="?", default=None)
     ap.add_argument("--walks", type=int, default=2,
-                    help="max 4-4 walk steps per branch (default 2)")
+                    help="max 4-4 walk steps per branch (default 2); "
+                         "ignored if --moves is given")
+    ap.add_argument("--moves", type=int, default=None,
+                    help="INTERLEAVED grammar: total move budget; mid-path "
+                         "2-3 creations on worm-adjacent faces and mid-path "
+                         "3-2 closes allowed, capped by --budget")
+    ap.add_argument("--budget", type=int, default=6,
+                    help="max concurrent illegal edges (interleaved grammar)")
     ap.add_argument("--json", default=None)
     ap.add_argument("--profile", action="store_true")
+    ap.add_argument("--memo", action="store_true",
+                    help="prune re-exploration of states already visited "
+                         "with >= remaining walk budget (loses duplicate-path "
+                         "bookkeeping beyond first arrivals; keeps legal-"
+                         "endpoint completeness)")
     args = ap.parse_args()
     path = args.ref or best_refs(REF_GLOB)["r"]
     m = ddg.Manifold.load(path, 3)
@@ -182,7 +195,9 @@ def main():
     faces0, edeg0, vedges0 = wm.build_tables(F0)
     em0 = {tuple(sorted(e)): d for e, d in edeg0.items()}
     n6m0 = {v: wm.vertex_counters(v, edeg0, vedges0) for v in vedges0}
-    print(f"reference: {path}  N3={len(F0)}  walk budget {args.walks}")
+    mode = (f"moves<={args.moves} budget<={args.budget} (interleaved)"
+            if args.moves is not None else f"walks<={args.walks}")
+    print(f"reference: {path}  N3={len(F0)}  {mode}")
 
     buckets = defaultdict(list)
     for face, d, e, valid in wm.two_three_sites(F0, faces0, edeg0):
@@ -192,6 +207,7 @@ def main():
     print(f"{len(reps)} creation-class representatives\n")
 
     endpoints = defaultdict(list)
+    visited = {}                  # state hash -> best remaining budget seen
     legal_cycles = []
     ov = Overlay(em0)
     hints = {}
@@ -265,7 +281,12 @@ def main():
                                      dS=round(dS, 4), net6=net6, sig=sig))
 
     def explore(pathdesc, budget):
-        endpoints[state_hash()].append(tuple(pathdesc))
+        h = state_hash()
+        endpoints[h].append(tuple(pathdesc))
+        if args.memo:
+            if visited.get(h, -1) >= budget:
+                return
+            visited[h] = budget
         with tick("ill_overlay"):
             ill = [(k, v) for k, v in ov.cur.items()
                    if v is not None and v not in (5, 6)]
@@ -278,6 +299,8 @@ def main():
             return
         e3 = [k for k, v in ill if v == 3]
         e4 = [k for k, v in ill if v == 4]
+        if args.moves is not None and budget <= 0:
+            return
         for ea, eb in e3:
             cyc = link_cycle(m, ea, eb, hints)
             if cyc is None or len(cyc) != 3:
@@ -300,7 +323,7 @@ def main():
             hrec = set_hints(hints, newt)
             stats["n_seq"] += 1
             pathdesc.append(("3-2", (ea, eb)))
-            explore(pathdesc, budget)
+            explore(pathdesc, budget - 1 if args.moves is not None else budget)
             pathdesc.pop()
             with tick("d_move"):
                 m.do_bistellar_move(link, [ea, eb])
@@ -343,6 +366,53 @@ def main():
                 revert_hints(hints, hrec)
                 fdiff_revert(frec)
                 ov.revert(rec)
+        if args.moves is None:
+            return
+        # ---- interleaved grammar: mid-path 2-3 on worm-adjacent faces ----
+        illverts = {v for k, _ in ill for v in k}
+        n_ill_now = len(ill)
+        cand = set()
+        with tick("cand_faces"):
+            for t, c in fdiff.items():
+                if c <= 0 or not (set(t) & illverts):
+                    continue
+                for tri in combinations(t, 3):
+                    if set(tri) & illverts:
+                        cand.add(tri)
+        for tri in sorted(cand):
+            try:
+                d_, e_ = m.face_apexes(*tri)
+            except RuntimeError:
+                continue
+            with tick("d_hasmove"):
+                ok = m.has_bistellar_move(list(tri), [d_, e_])
+            if not ok:
+                continue
+            deltas = wm.delta_two_three(frozenset(tri), d_, e_, DV(ov))
+            n_after = n_ill_now
+            for _, (o, nw) in deltas.items():
+                n_after += (nw is not None and nw not in (5, 6))                     - (o is not None and o not in (5, 6))
+            if n_after > args.budget:
+                continue
+            fl2 = sorted(tri)
+            with tick("d_move"):
+                m.do_bistellar_move(fl2, [d_, e_])
+            rec = ov.apply(deltas)
+            newt = [tuple(sorted((fl2[0], fl2[1], d_, e_))),
+                    tuple(sorted((fl2[1], fl2[2], d_, e_))),
+                    tuple(sorted((fl2[2], fl2[0], d_, e_)))]
+            oldt = [tuple(sorted(fl2 + [d_])), tuple(sorted(fl2 + [e_]))]
+            frec = fdiff_apply(oldt, newt)
+            hrec = set_hints(hints, newt)
+            stats["n_seq"] += 1
+            pathdesc.append(("2-3", tuple(fl2), (d_, e_)))
+            explore(pathdesc, budget - 1)
+            pathdesc.pop()
+            with tick("d_move"):
+                m.do_bistellar_move([d_, e_], fl2)
+            revert_hints(hints, hrec)
+            fdiff_revert(frec)
+            ov.revert(rec)
 
     t0 = time.time()
     for face, d, e in reps:
@@ -359,7 +429,7 @@ def main():
         hrec = set_hints(hints, tets)
         stats["n_seq"] += 1
         pd = [("2-3", tuple(fl), (d, e))]
-        explore(pd, args.walks)
+        explore(pd, (args.moves - 1) if args.moves is not None else args.walks)
         with tick("d_move"):
             m.do_bistellar_move([d, e], fl)
         revert_hints(hints, hrec)
