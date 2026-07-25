@@ -221,10 +221,21 @@ class DefectState:
         out.discard(v)
         return out
 
-    def components(self):
-        """Connected components of defect vertices, as Complex objects."""
+    def components(self, broad=True):
+        """Connected components of defect vertices, as Complex objects.
+
+        broad=True  the current definition: illegal-edge incidence OR non-FK
+                    coordination.
+        broad=False the HISTORICAL definition, imp>0 only. Kept so producers
+                    can keep emitting `n_illegal` / `sizes` / `members` with
+                    exactly the meaning every previous run and published
+                    number used, while reporting the broadened counts
+                    alongside rather than silently redefining the columns.
+        """
+        pool = self.defect if broad else {v for v in self.defect
+                                          if self.imp[v] > 0}
         seen, out = set(), []
-        for s0 in self.defect:
+        for s0 in pool:
             if s0 in seen:
                 continue
             stack, comp = [s0], []
@@ -233,7 +244,7 @@ class DefectState:
                 u = stack.pop()
                 comp.append(u)
                 for w in self.neighbours(u):
-                    if w in self.defect and w not in seen:
+                    if w in pool and w not in seen:
                         seen.add(w)
                         stack.append(w)
             cv = set(comp)
@@ -374,18 +385,42 @@ class Worldlines:
         return out
 
 
-def census(state):
-    """Summary counters for a time series -- the replacement for the
-    per-chunk `vertex_classes` block copied across the producer scripts."""
-    comps = state.components()
+def census(state, members=False):
+    """Summary counters for a time series -- the single replacement for the
+    per-chunk `vertex_classes` block copied across the producer scripts.
+
+    Emits BOTH definitions. `n_illegal` / `sizes` / `members` are the
+    historical imp>0 quantities, unchanged, so existing time series stay
+    comparable; the `*_broad` keys and the non-FK counters are the new
+    information. Nothing is silently redefined."""
+    old = state.components(broad=False)
+    new = state.components(broad=True)
     anom = [v for v in state.defect if state.imp[v] == 0]
-    return {
-        "n_defect": len(state.defect),
-        "n_illedge_vertices": sum(1 for v in state.defect if state.imp[v]),
+    out = {
+        # --- historical (imp > 0 only): same meaning as every prior run
+        "n_illegal": sum(len(c.verts) for c in old),
+        "sizes": sorted((len(c.verts) for c in old), reverse=True),
+        "n_components": len(old),
+        # --- broadened: illegal-edge incidence OR non-FK coordination
+        "n_defect_broad": len(state.defect),
+        "sizes_broad": sorted((len(c.verts) for c in new), reverse=True),
+        "n_components_broad": len(new),
         "n_nonfk_all_legal": len(anom),
         "n_nonfk_n6_1": sum(1 for v in anom if state.n6[v] == 1),
         "n_nonfk_n6_ge5": sum(1 for v in anom if state.n6[v] >= 5),
-        "n_components": len(comps),
-        "sizes": sorted((len(c.verts) for c in comps), reverse=True),
-        "species": Counter(c.key for c in comps),
+        "species": Counter(c.key for c in new),
+        # --- host quality
+        "mean_edeg": (sum(state.edeg.values()) / len(state.edeg)
+                      if state.edeg else 0.0),
+        "legaledge": (sum(1 for d in state.edeg.values() if _legal(d))
+                      / len(state.edeg) if state.edeg else 1.0),
+        "legalvert": (sum(1 for v in state.v2t if state.imp[v] == 0)
+                      / len(state.v2t) if state.v2t else 1.0),
+        "legalvert_fk": (sum(1 for v in state.v2t if v not in state.defect)
+                         / len(state.v2t) if state.v2t else 1.0),
     }
+    if members:
+        out["members"] = [sorted(c.verts) for c in old]
+        out["members_broad"] = [sorted(c.verts) for c in new]
+        out["sigs"] = [list(c.sig) for c in new]
+    return out

@@ -27,6 +27,7 @@ from cocycle_check import reference_frac_positions
 from fk_skeleton import edges_from_facets, vertex_class_census
 from dopant_pairs import vertex_classes
 from defect_census import defect_cores
+import defect_state as ds
 
 a = sys.argv
 CELL, OUT = a[1], a[2]
@@ -63,11 +64,20 @@ def census():
     eu, edeg, V = edges_from_facets(fac)
     fz, _ = vertex_class_census(eu, edeg, V)
     n6, imp, adj = vertex_classes(fac)
+    # `nill` / `legalvert` keep their historical meaning (imp > 0); the
+    # broadened counters come from the shared census, which also sees the
+    # non-FK-coordination defects an imp>0 test is blind to -- relevant here
+    # because the FK n6 potential is exactly what this script quenches under.
+    c = ds.census(ds.DefectState(v))
     return dict(V=V, nfac=int(v.num_facets), edeg=float(edeg.mean()),
                 legaledge=float(np.mean((edeg == 5) | (edeg == 6))),
                 legalvert=float(1 - fz["impure"]),
                 nill=int((imp > 0).sum()),
-                edv=float(edeg.var()))
+                edv=float(edeg.var()),
+                n_defect_broad=c["n_defect_broad"],
+                n_nonfk_all_legal=c["n_nonfk_all_legal"],
+                n_nonfk_n6_ge5=c["n_nonfk_n6_ge5"],
+                legalvert_fk=c["legalvert_fk"])
 
 
 def logrow(phase, sweep, extra=None):

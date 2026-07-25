@@ -19,7 +19,7 @@ _R = "/Users/atrout/Desktop/Discrete-Differential-Geometry"
 for p in ("python", "scripts", "tools"):
     sys.path.insert(0, os.path.join(_R, p))
 import discrete_differential_geometry as ddg
-from dopant_pairs import vertex_classes
+import defect_state as ds
 from fk_skeleton import edges_from_facets
 
 START, OUT = sys.argv[1], sys.argv[2]
@@ -29,24 +29,17 @@ SAMPLE, SAVE_EVERY = 150, 2500
 ZLEG, CIMP, NHINGE, LAM = 0.6, 1.0, 6.0, 1.0
 
 
-def comps_of(fac):
-    n6, imp, adj = vertex_classes(fac)
-    V = len(n6)
-    lab = None                    # dense == report space is fine here
-    illv = [v for v in range(V) if imp[v] > 0]
-    seen, comps = set(), []
-    for s0 in illv:
-        if s0 in seen:
-            continue
-        st, comp = [s0], []
-        seen.add(s0)
-        while st:
-            u = st.pop(); comp.append(u)
-            for w in adj[u]:
-                if imp[w] > 0 and w not in seen:
-                    seen.add(w); st.append(w)
-        comps.append(sorted(int(x) for x in comp))   # py ints (json-safe)
-    return comps
+def comps_of(mfd):
+    """Illegal-vertex complexes, from the shared census (defect_state).
+
+    NOTE a deliberate change: members are now vertex LABELS, where this
+    previously reported dense indices into the vertex_classes arrays. Those
+    indices shift whenever a vertex is created or destroyed, so they are not
+    comparable between frames; labels are. Output of this script from before
+    that change is in index space and should not be mixed with output after.
+    """
+    return ds.census(ds.DefectState(mfd), members=True)["members"]
+
 
 
 ddg.set_random_seed(SEED)
@@ -63,8 +56,7 @@ s.set_n6_potential(ZLEG * LAM, CIMP * LAM, tilt=[0.0] * 5)
 v = s.manifold
 
 out = open(OUT + ".release.jsonl", "w")
-fac0 = np.asarray(v.facets())
-c0 = comps_of(fac0)
+c0 = comps_of(v)
 sizes0 = sorted((len(c) for c in c0), reverse=True)
 print(f"{os.path.basename(OUT)}: start n_illegal={sum(sizes0)} sizes={sizes0} "
       f"(target=native={native:.6f})", flush=True)
@@ -78,8 +70,7 @@ done = 0
 while done < SWEEPS:
     s.run(sweeps=SAMPLE)
     done += SAMPLE
-    fac = np.asarray(v.facets())
-    comps = comps_of(fac)
+    comps = comps_of(v)
     sizes = sorted((len(c) for c in comps), reverse=True)
     out.write(json.dumps({"sweep": done, "t": round(time.time() - t0, 1),
                           "n_illegal": sum(sizes), "sizes": sizes,

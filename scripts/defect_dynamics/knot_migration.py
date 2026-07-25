@@ -44,7 +44,7 @@ import discrete_differential_geometry as ddg
 from discrete_differential_geometry import cocycle as coc
 from cocycle_check import reference_frac_positions
 from fk_skeleton import edges_from_facets
-from dopant_pairs import vertex_classes
+import defect_state as ds
 import worm_moves as wm
 
 ESTAR_R = 5.104225352112676     # native mean edge degree of the R crystal
@@ -95,30 +95,6 @@ def implant_knots(m, n_want, min_sep, rng, verbose=True):
     if verbose:
         print(f"implanted {len(placed)}/{n_want} knots", flush=True)
     return placed
-
-
-def complexes(fac):
-    """Connected components of illegal-degree vertices, with their edge-degree
-    signature -- the object we call a knot/species."""
-    n6, imp, adj = vertex_classes(fac)
-    lab = np.unique(fac)
-    V = len(lab)
-    illv = [i for i in range(V) if imp[i] > 0]
-    seen, comps = set(), []
-    for s0 in illv:
-        if s0 in seen:
-            continue
-        st, comp = [s0], []
-        seen.add(s0)
-        while st:
-            u = st.pop()
-            comp.append(u)
-            for w in adj[u]:
-                if imp[w] > 0 and w not in seen:
-                    seen.add(w)
-                    st.append(w)
-        comps.append(sorted(int(lab[x]) for x in comp))
-    return comps, imp
 
 
 def main():
@@ -198,10 +174,12 @@ def main():
     while done - args.burn < args.span:
         s.run(sweeps=args.ts)
         done += args.ts
-        fac = np.asarray(v.facets())
-        eu, edeg, V = edges_from_facets(fac)
-        comps, imp = complexes(fac)
-        sizes = sorted((len(c) for c in comps), reverse=True)
+        # Shared incremental census (defect_state): historical imp>0 fields
+        # are reproduced exactly, broadened non-FK counts added alongside.
+        dstate = ds.DefectState(v)
+        c = ds.census(dstate, members=True)
+        comps = c["members"]
+        sizes = c["sizes"]
         # per-complex tree-lift centroids, min-imaged about each complex's
         # first member so a complex straddling a lift seam cannot split
         cents = []
@@ -210,30 +188,28 @@ def main():
             e1 = np.asarray(e1)
             pos = coc.tree_positions(e1, np.asarray(w1), int(e1.max()) + 1)[0]
             pbox = 1.0e6 * args.mcell
-            for c in comps:
-                p0 = pos[c[0]].astype(float)
-                rel = (pos[c].astype(float) - p0 + pbox / 2) % pbox - pbox / 2
+            for cc in comps:
+                p0 = pos[cc[0]].astype(float)
+                rel = (pos[cc].astype(float) - p0 + pbox / 2) % pbox - pbox / 2
                 cents.append([round(float(x), 1)
                               for x in (p0 + rel.mean(0)) % pbox])
-        # per-complex illegal edge-degree signature: a live (3,4,4) knot
-        edeg_of = {frozenset(int(x) for x in e): int(d)
-                   for e, d in zip(eu, edeg) if d not in (5, 6)}
-        sigs = []
-        for c in comps:
-            cs = set(c)
-            sig = sorted(d for e, d in edeg_of.items() if e <= cs)
-            sigs.append(sig)
-        n_knot = sum(1 for sg in sigs if sg == [3, 4, 4])
+        sigs = c["sigs"]
+        n_knot = sum(1 for k, n in c["species"].items()
+                     for _ in range(n) if k[0] == (3, 4, 4))
         tries, acc = s.slide_stats() if args.slide_prob else (0, 0)
         rec = {"sweep": done, "t": round(time.time() - t0, 1),
-               "n_illegal": int(sum(sizes)), "sizes": sizes,
+               "n_illegal": c["n_illegal"], "sizes": sizes,
                "members": comps, "cents": cents, "sigs": sigs,
                "n_knot344": n_knot,
+               "n_defect_broad": c["n_defect_broad"],
+               "n_nonfk_all_legal": c["n_nonfk_all_legal"],
+               "n_nonfk_n6_ge5": c["n_nonfk_n6_ge5"],
                "slide_tries": tries, "slide_accepts": acc,
                "slide_tries_blk": tries - prev_tries,
                "slide_accepts_blk": acc - prev_acc,
-               "mean_edeg": float(edeg.mean()),
-               "legalvert": float(np.mean(imp == 0))}
+               "mean_edeg": c["mean_edeg"],
+               "legalvert": c["legalvert"],
+               "legalvert_fk": c["legalvert_fk"]}
         prev_tries, prev_acc = tries, acc
         log.write(json.dumps(rec) + "\n")
         log.flush()
@@ -255,9 +231,9 @@ def main():
             if eset != cset:
                 drift += f" COCYCLE-DETACHED({len(eset ^ cset)} edges)"
             print(f"[{os.path.basename(args.out)}] sw{done} "
-                  f"({time.time()-t0:.0f}s): nill={sum(sizes)} "
-                  f"knots344={n_knot} ncomp={len(sizes)} "
-                  f"slides={acc}/{tries} <edeg>={edeg.mean():.9f}"
+                  f"({time.time()-t0:.0f}s): nill={c['n_illegal']} "
+                  f"knots344={n_knot} ncomp={len(sizes)} nonFK={c['n_nonfk_all_legal']} "
+                  f"slides={acc}/{tries} <edeg>={c['mean_edeg']:.9f}"
                   f" snap{nsnap}{drift}", flush=True)
     log.close()
     # The volume pin is soft (a quadratic penalty, not a constraint), and

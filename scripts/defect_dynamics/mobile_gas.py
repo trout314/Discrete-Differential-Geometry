@@ -35,7 +35,7 @@ import discrete_differential_geometry as ddg
 from discrete_differential_geometry import cocycle as coc
 from cocycle_check import reference_frac_positions
 from fk_skeleton import edges_from_facets
-from dopant_pairs import vertex_classes
+import defect_state as ds
 
 SLIDEPROB = next((float(x.split("=", 1)[1]) for x in sys.argv
                   if x.startswith("slideprob=")), 0.0)
@@ -80,24 +80,14 @@ nsnap = 0
 while done - BURN < SPAN:
     s.run(sweeps=TS)
     done += TS
-    fac = np.asarray(v.facets())
-    eu, edeg, V = edges_from_facets(fac)
-    n6, imp, adj = vertex_classes(fac)
-    lab = np.unique(fac)
-    illv = [i for i in range(V) if imp[i] > 0]
-    seen, comps = set(), []
-    for s0 in illv:
-        if s0 in seen:
-            continue
-        st, comp = [s0], []
-        seen.add(s0)
-        while st:
-            u = st.pop(); comp.append(u)
-            for w in adj[u]:
-                if imp[w] > 0 and w not in seen:
-                    seen.add(w); st.append(w)
-        comps.append(sorted(int(lab[x]) for x in comp))
-    sizes = sorted((len(c) for c in comps), reverse=True)
+    # Census via the shared incremental implementation (defect_state), which
+    # reproduces the historical imp>0 fields EXACTLY -- verified field for
+    # field against the block this replaced -- while adding the broadened
+    # counts (illegal-edge incidence OR non-FK coordination) alongside rather
+    # than redefining any existing column.
+    dstate = ds.DefectState(v)
+    c = ds.census(dstate, members=True)
+    comps = c["members"]
     # per-complex centroids from the raw cocycle tree lift (the validated
     # pass1 position protocol), min-imaged about each complex's first member
     # so a complex straddling a lift seam can't split; aligned with `members`.
@@ -107,18 +97,26 @@ while done - BURN < SPAN:
         e1 = np.asarray(e1)
         pos = coc.tree_positions(e1, np.asarray(w1), int(e1.max()) + 1)[0]
         pbox = 1.0e6 * MCELL         # raw units per box period (1e6/cell)
-        for c in comps:
-            p0 = pos[c[0]].astype(float)
-            rel = (pos[c].astype(float) - p0 + pbox / 2) % pbox - pbox / 2
+        for cc in comps:
+            p0 = pos[cc[0]].astype(float)
+            rel = (pos[cc].astype(float) - p0 + pbox / 2) % pbox - pbox / 2
             cents.append([round(float(x), 1)
                           for x in (p0 + rel.mean(0)) % pbox])
     rec = {
         "sweep": done, "t": round(time.time() - t0, 1),
-        "n_illegal": int(sum(sizes)), "sizes": sizes, "members": comps,
+        # --- historical columns, unchanged in meaning
+        "n_illegal": c["n_illegal"], "sizes": c["sizes"], "members": comps,
         "cents": cents,
-        "mean_edeg": float(edeg.mean()),
-        "legaledge": float(np.mean((edeg == 5) | (edeg == 6))),
-        "legalvert": float(np.mean(imp == 0))}
+        "mean_edeg": c["mean_edeg"],
+        "legaledge": c["legaledge"],
+        "legalvert": c["legalvert"],
+        # --- broadened defect definition (see defect_state)
+        "n_defect_broad": c["n_defect_broad"],
+        "sizes_broad": c["sizes_broad"],
+        "n_nonfk_all_legal": c["n_nonfk_all_legal"],
+        "n_nonfk_n6_1": c["n_nonfk_n6_1"],
+        "n_nonfk_n6_ge5": c["n_nonfk_n6_ge5"],
+        "legalvert_fk": c["legalvert_fk"]}
     if SLIDEPROB:
         st, sa = s.slide_stats()          # cumulative; difference per block
         rec["slide_tries"] = st
@@ -148,8 +146,9 @@ while done - BURN < SPAN:
         if eset != cset:
             drift += f" COCYCLE-DETACHED({len(eset ^ cset)} edges)"
         print(f"[{os.path.basename(OUT)}] sw{done} ({time.time()-t0:.0f}s): "
-              f"nill={sum(sizes)} ncomp={len(sizes)} "
-              f"<edeg>={edeg.mean():.6f} snap{nsnap}{drift}", flush=True)
+              f"nill={c['n_illegal']} ncomp={len(c['sizes'])} "
+              f"nonFK={c['n_nonfk_all_legal']} "
+              f"<edeg>={c['mean_edeg']:.6f} snap{nsnap}{drift}", flush=True)
 log.close()
 print(f"[{os.path.basename(OUT)}] DONE {done} sweeps, {nsnap} snapshots, "
       f"{time.time()-t0:.0f}s", flush=True)

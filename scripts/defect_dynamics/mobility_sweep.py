@@ -60,7 +60,15 @@ for lam in LAMS:
         fac = np.asarray(v.facets())
         eu, edeg, V = edges_from_facets(fac)
         n6, imp, adj = vertex_classes(fac)
-        ill = frozenset(int(x) for x in np.nonzero(imp > 0)[0])
+        # Compare LABELS, not dense indices. vertex_classes is indexed by
+        # position in np.unique(facets), so creating or destroying a vertex
+        # shifts every higher index and the Jaccard below would then compare
+        # different objects -- decaying for reasons unrelated to mobility.
+        # (Measured effect at these churn rates: <= 0.0004 in J, so no prior
+        # conclusion changes; fixed because a higher-churn regime would show
+        # it.)
+        lab = np.unique(fac)
+        ill = frozenset(int(lab[x]) for x in np.nonzero(imp > 0)[0])
         sets.append(ill)
         nill.append(len(ill))
         le.append(float(np.mean((edeg == 5) | (edeg == 6))))
