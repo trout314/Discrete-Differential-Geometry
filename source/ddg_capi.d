@@ -479,7 +479,7 @@ extern(C) long ddg_manifold_degree(void* handle, const(int)* simplex_data, int s
             default: setError("bad dimension"); return -1;
         }
     }
-    catch (Exception e) { setError(e.msg); return -1; }
+    catch (Throwable e) { setError(e.msg); return -1; }
 }
 
 /// Count the number of valid Pachner moves (including stellar subdivisions).
@@ -744,11 +744,21 @@ extern(C) int ddg_manifold_do_bistellar_move(void* handle,
 
         int doIt(int dim)(ManifoldWrapper!dim* mw)
         {
+            import std.algorithm : sort;
             auto cen = center[0 .. center_len];
             auto coc = cocenter[0 .. cocenter_len];
             auto err = checkBistellar!dim(mw, cen, coc);
             if (err !is null) { setError(err); return -1; }
-            auto bm = BistellarMove!(dim, int)(cen, coc);
+            // CANONICALIZE: the core's simplex invariant is ascending vertex
+            // order (assertValidSimplex), and doMove's productUnion is a
+            // sorted MERGE -- unsorted center/coCenter here would insert
+            // phantom out-of-order keys into the dimension maps (the
+            // worm_slide corruption bug, fixed 2026-07-25).
+            auto cenS = cen.dup;
+            cenS.sort();
+            auto cocS = coc.dup;
+            cocS.sort();
+            auto bm = BistellarMove!(dim, int)(cenS, cocS);
             mw.mfd.doMove(bm);
             return 0;
         }
@@ -888,7 +898,7 @@ extern(C) long ddg_manifold_illegal_edges(void* handle,
         }
         return n;
     }
-    catch (Exception e) { setError(e.msg); return -1; }
+    catch (Throwable e) { setError(e.msg); return -1; }
 }
 
 /// Link of an edge (dim=3): one UNORDERED vertex pair per tetrahedron in the
@@ -923,7 +933,7 @@ extern(C) long ddg_manifold_edge_link(void* handle, int a, int b,
         }
         return n;
     }
-    catch (Exception e) { setError(e.msg); return -1; }
+    catch (Throwable e) { setError(e.msg); return -1; }
 }
 
 /// Ordered link cycle of edge (a,b) via the O(degree) ridge walk, dim=3.
@@ -956,7 +966,7 @@ extern(C) long ddg_manifold_edge_link_cycle(void* handle, int a, int b,
         }
         return mw.mfd.writeEdgeLinkCycle(a, b, tet[], out_cycle);
     }
-    catch (Exception e) { setError(e.msg); return -1; }
+    catch (Throwable e) { setError(e.msg); return -1; }
 }
 
 /// The two apexes of interior triangle (a,b,c): O(1) ridge-link lookup.
@@ -974,7 +984,7 @@ extern(C) long ddg_manifold_face_apexes(void* handle, int a, int b, int c,
         if (n < 0) { setError("triangle not in manifold"); return -1; }
         return n;
     }
-    catch (Exception e) { setError(e.msg); return -1; }
+    catch (Throwable e) { setError(e.msg); return -1; }
 }
 
 /// Audit the manifold's internal hash maps; returns 0 healthy, -1 with an
@@ -997,7 +1007,7 @@ extern(C) int ddg_manifold_validate_maps(void* handle) nothrow
         if (err !is null) { setError(err); return -1; }
         return 0;
     }
-    catch (Exception e) { setError(e.msg); return -1; }
+    catch (Throwable e) { setError(e.msg); return -1; }
 }
 
 extern(C) int ddg_manifold_has_hinge_move(void* handle,

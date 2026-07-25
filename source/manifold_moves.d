@@ -27,6 +27,16 @@ public:
 
         assert(center_.walkLength > 0, "center must have at least one vertex");
         assert(coCenter_.walkLength > 0, "co-center must have at least one vertex");
+        version (assert)
+        {
+            import std.algorithm : isSorted;
+            import std.range : array;
+            assert(center_.array.isSorted,
+                "center vertices must be in increasing order (simplex "
+                ~ "invariant; doMove's productUnion is a sorted merge)");
+            assert(coCenter_.array.isSorted,
+                "co-center vertices must be in increasing order");
+        }
         assert(center_.walkLength + coCenter_.walkLength == dim + 2,
             "total number of vertices in center and co-center must be dim + 2");
         assert(setIntersection(center_, coCenter_).empty,
