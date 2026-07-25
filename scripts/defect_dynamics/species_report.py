@@ -87,7 +87,12 @@ def main():
                          "by the defect's vertices -- its bare shape. "
                          "decorated: edge degrees only, without n6.")
     ap.add_argument("--top", type=int, default=25)
-    ap.add_argument("--min-count", type=int, default=1)
+    ap.add_argument("--min-count", type=int, default=8,
+                    help="hide species seen fewer than this many times. The "
+                         "default suits a few hundred complexes; the tail is "
+                         "mostly one-off configurations. Whatever is hidden is "
+                         "always reported as a count, never dropped silently. "
+                         "Use 1 to see everything.")
     ap.add_argument("--out", default=None, help="write the table as JSON too")
     args = ap.parse_args()
 
@@ -221,7 +226,6 @@ def main():
                   f"{n:5d} {100*n/ncomp:5.1f}% {sz:6.1f} "
                   f"{np.mean(chg_of[k]):8.3f}+-{np.std(chg_of[k]):<7.2g} "
                   f"{np.mean(rel_of[k]):9.3f}")
-        # how well does shape determine the historical label, and vice versa?
         print()
         print("class -> illegal-edge signatures it contains "
               "(is it finer or coarser than the old label?)")
@@ -276,6 +280,18 @@ def main():
                   f"{np.mean(size_of[k]):6.1f}+-{np.std(size_of[k]):<5.1f} "
                   f"{np.mean(star_of[k]):7.0f} {w:6d} "
                   f"{np.mean(chg_of[k]):7.2f}+-{np.std(chg_of[k]):<6.2f}")
+
+    kept = [(k, n) for k, n in spec.items() if n >= args.min_count]
+    hid = [(k, n) for k, n in spec.items() if n < args.min_count]
+    if hid:
+        print()
+        print(f"below --min-count {args.min_count}: {len(hid)} species holding "
+              f"{sum(n for _, n in hid)} complexes "
+              f"({100 * sum(n for _, n in hid) / ncomp:.1f}% of the "
+              f"population) -- not shown, not dropped from the totals above")
+    if len(kept) > args.top:
+        print(f"beyond --top {args.top}: {len(kept) - args.top} further "
+              f"species above the count cut are not shown")
 
     # --- collapsed views
     by3 = Counter()
