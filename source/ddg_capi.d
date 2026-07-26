@@ -2809,6 +2809,18 @@ not a clean slide of this state, or -1 on error.
 extern(C) int ddg_sampler_slide_at(void* sampler_handle,
     int a, int b, int slot, int mode, double* out_dS) nothrow
 {
+    return ddg_sampler_slide_at2(sampler_handle, a, b, slot, mode, out_dS,
+                                 null, null);
+}
+
+/// slide_at with the slot's ARRIVAL chord (c4, c8) reported from the frame
+/// decode (valid whenever the frame derives, even if the slide itself is
+/// rejected later). Lets drivers identify the exact inverse of a slide
+/// without guessing (FPKMC walk-back).
+extern(C) int ddg_sampler_slide_at2(void* sampler_handle,
+    int a, int b, int slot, int mode, double* out_dS,
+    int* out_c4, int* out_c8) nothrow
+{
     clearError();
     try
     {
@@ -2844,6 +2856,22 @@ extern(C) int ddg_sampler_slide_at(void* sampler_handle,
 
         if (s.currentObjective != s.currentObjective) // NaN check
             recomputeObjective(s);
+
+        if (out_c4 !is null || out_c8 !is null)
+        {
+            SlideFrame!int fr;
+            int[3] lk;
+            if (slideDecode(mw.mfd, a, b, hint[], slot, fr, lk))
+            {
+                if (out_c4 !is null) *out_c4 = fr.c4;
+                if (out_c8 !is null) *out_c8 = fr.c8;
+            }
+            else
+            {
+                if (out_c4 !is null) *out_c4 = -1;
+                if (out_c8 !is null) *out_c8 = -1;
+            }
+        }
 
         struct Params { int numFacetsTarget; real hingeDegreeTarget;
             real numFacetsCoef; real numHingesCoef; real hingeDegreeVarianceCoef;

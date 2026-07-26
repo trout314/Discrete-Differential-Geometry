@@ -167,3 +167,169 @@ class CleanKnotGraph:
                 if b in self.S1 and abs((self.S1[b] - self.S1[a]) - dS) > tol:
                     bad += 1
         return bad
+
+
+# ---------------------------------------------------------------------------
+# HB: the Metropolized-ball heat-bath driver (design M2)
+# ---------------------------------------------------------------------------
+
+class HBDriver:
+    """Metropolized-ball independence sampler on the slide graph.
+
+    One step: scan the ball B(x) around the current state (dS_max window W,
+    depth D), draw y from pi restricted to B(x), move there by replaying the
+    slide path, scan B(y), and accept with
+
+        alpha = min(1, e^{d} * Z(x) / Z(y)),   d = dS_x(y)
+
+    (independence-sampler Hastings ratio; requires x identifiable in B(y),
+    else the proposal is rejected). On rejection the path is walked back
+    through the verified inverse slides. Exactness rests on the verified
+    edge antisymmetry and the per-edge dS being exact.
+
+    v1 scope: single-defect sector -- every path node must be single-chord
+    (asserted). A running-action audit (`audit_every`) recomputes the true
+    action change against the session start and errors on drift, so a
+    mis-identified inverse cannot corrupt silently.
+    """
+
+    def __init__(self, sampler, chord, dS_max=8.0, max_depth=5,
+                 rng=None, audit_every=50, oracle=None):
+        self.s = sampler
+        self.chord = tuple(sorted(int(c) for c in chord))
+        self.W = float(dS_max)
+        self.D = int(max_depth)
+        self.rng = rng or np.random.default_rng()
+        self.audit_every = audit_every
+        self.oracle = oracle          # callable() -> true action rel. start
+        self.S_rel = 0.0              # running action vs session start
+        self.nstep = self.naccept = self.nself = 0
+
+    # -- helpers ------------------------------------------------------------
+
+    def _scan(self):
+        return self.s.slide_graph_scan(self.chord, dS_max=self.W,
+                                       max_depth=self.D)
+
+    @staticmethod
+    def _parents(g):
+        par = {}
+        for i in range(len(g["edge_dS"])):
+            a, b = int(g["edge_src"][i]), int(g["edge_dst"][i])
+            if b not in par and b != 0:
+                par[b] = (a, i)
+        return par
+
+    @staticmethod
+    def _path(g, par, t):
+        """Edge indices root -> node t."""
+        out = []
+        while t != 0:
+            a, i = par[t]
+            out.append(i)
+            t = a
+        return out[::-1]
+
+    def _chord_deg3(self, ch):
+        import ctypes as _ct
+        from ._dlang import _lib as _l
+        arr = (_ct.c_int * 2)(int(ch[0]), int(ch[1]))
+        try:
+            return int(_l.ddg_sampler_degree(self.s._handle, arr, 2)) == 3
+        except RuntimeError:
+            return False
+
+    def _replay(self, g, path):
+        """Apply the slides along `path` (edge indices in g). Returns the
+        total committed dS."""
+        tot = 0.0
+        for i in path:
+            ch = (int(g["edge_chord"][i][0]), int(g["edge_chord"][i][1]))
+            dS = self.s.slide_at(ch[0], ch[1], int(g["edge_slot"][i]),
+                                 commit=True)
+            if dS is None:
+                raise RuntimeError("HB replay: recorded slide invalid")
+            tot += dS
+        return tot
+
+    def _walk_back(self, g, path):
+        """Invert the slides of `path` in reverse order. The exact inverse
+        at each step is identified BEFORE committing: it is the slot at the
+        arrival chord whose own arrival (from the frame decode, via
+        slide_at2) is the predecessor's chord and whose dS is the exact
+        negation. No guessing, no impostors."""
+        for i in reversed(path):
+            src = int(g["edge_src"][i])
+            dst = int(g["edge_dst"][i])
+            arr_ch = (int(g["chord"][dst][0]), int(g["chord"][dst][1]))
+            src_ch = tuple(sorted((int(g["chord"][src][0]),
+                                   int(g["chord"][src][1]))))
+            want = -float(g["edge_dS"][i])
+            done = False
+            for slot in range(SLIDE_SLOTS):
+                dS, arr = self.s.slide_at2(arr_ch[0], arr_ch[1], slot,
+                                           commit=False)
+                if dS is None or arr is None:
+                    continue
+                if tuple(sorted(arr)) != src_ch or abs(dS - want) > 1e-9:
+                    continue
+                self.s.slide_at(arr_ch[0], arr_ch[1], slot, commit=True)
+                done = True
+                break
+            if not done:
+                raise RuntimeError("HB walk-back: inverse not found")
+
+    # -- one HB step --------------------------------------------------------
+
+    def step(self):
+        gx = self._scan()
+        w = np.exp(-np.asarray(gx["dS"]))
+        Zx = float(w.sum())
+        i = int(self.rng.choice(len(w), p=w / Zx))
+        self.nstep += 1
+        if i == 0:
+            self.nself += 1
+            self.naccept += 1
+            return True
+        if int(gx["n_chords"][i]) != 1:
+            return False            # outside v1 scope: treat as reject
+        d = float(gx["dS"][i])
+        par = self._parents(gx)
+        path = self._path(gx, par, i)
+        if any(int(gx["n_chords"][int(gx["edge_dst"][j])]) != 1
+               for j in path):
+            return False
+        committed = self._replay(gx, path)
+        assert abs(committed - d) < 1e-6, "path dS != node dS"
+        y_chord = (int(gx["chord"][i][0]), int(gx["chord"][i][1]))
+        old_chord = self.chord
+        self.chord = tuple(sorted(y_chord))
+        gy = self._scan()
+        # identify x in B(y)
+        cand = [j for j in range(len(gy["dS"]))
+                if tuple(sorted((int(gy["chord"][j][0]),
+                                 int(gy["chord"][j][1])))) == old_chord
+                and abs(float(gy["dS"][j]) + d) < 1e-9]
+        if len(cand) > 1:
+            raise RuntimeError("HB: ambiguous x in B(y)")
+        if not cand:
+            alpha = 0.0
+        else:
+            Zy = float(np.exp(-np.asarray(gy["dS"])).sum())
+            alpha = min(1.0, np.exp(d) * Zx / Zy)
+        if self.rng.random() < alpha:
+            self.naccept += 1
+            self.S_rel += d
+            accepted = True
+        else:
+            self._walk_back(gx, path)
+            self.chord = old_chord
+            accepted = False
+        if self.audit_every and self.nstep % self.audit_every == 0 \
+                and self.oracle is not None:
+            true_rel = self.oracle()
+            if abs(true_rel - self.S_rel) > 1e-6:
+                raise RuntimeError(
+                    f"HB audit FAILED: running action {self.S_rel:.9f} vs "
+                    f"true {true_rel:.9f}")
+        return accepted

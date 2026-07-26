@@ -420,6 +420,21 @@ class ManifoldSampler:
             1 if commit else 0, ctypes.byref(ds))
         return float(ds.value) if rc == 1 else None
 
+    def slide_at2(self, a: int, b: int, slot: int, commit: bool = False):
+        """Like :meth:`slide_at`, also returning the slot's ARRIVAL chord
+        from the frame decode: (dS_or_None, (c4, c8) or None). The arrival
+        is reported whenever the frame derives, even for rejected slides --
+        drivers use it to identify exact inverses (FPKMC walk-back)."""
+        ds = ctypes.c_double()
+        c4 = ctypes.c_int(-1)
+        c8 = ctypes.c_int(-1)
+        rc = _lib.ddg_sampler_slide_at2(
+            self._handle, int(a), int(b), int(slot),
+            1 if commit else 0, ctypes.byref(ds),
+            ctypes.byref(c4), ctypes.byref(c8))
+        arr = (int(c4.value), int(c8.value)) if c4.value >= 0 else None
+        return (float(ds.value) if rc == 1 else None), arr
+
     def site_survey(self, chain) -> dict:
         """Washboard site survey along a BC chain (notes/FPKMC_DESIGN.md).
 

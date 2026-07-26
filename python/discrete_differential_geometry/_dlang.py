@@ -794,6 +794,14 @@ _lib.ddg_sampler_slide_at.argtypes = [
 _lib.ddg_sampler_slide_at.restype = ctypes.c_int
 _lib.ddg_sampler_slide_at.errcheck = _check_int
 
+_lib.ddg_sampler_slide_at2.argtypes = [
+    ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+    ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_int),
+    ctypes.POINTER(ctypes.c_int),
+]
+_lib.ddg_sampler_slide_at2.restype = ctypes.c_int
+_lib.ddg_sampler_slide_at2.errcheck = _check_int
+
 # ---------------------------------------------------------------------------
 # FPKMC infrastructure (notes/FPKMC_DESIGN.md, M1)
 # ---------------------------------------------------------------------------
