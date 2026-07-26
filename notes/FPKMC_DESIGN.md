@@ -339,6 +339,26 @@ the thermal/slide channels take over):
       Metropolis on trial dS), B's proposals frozen out per §5 v1.
   V5  contact round-trip: dock → explicit resolution products vs the
       collider S-matrix table.
+      PASS (2026-07-26, scripts/defect_dynamics/fpkmc_v5_contact.py,
+      seeds 41/42):
+      Part 1 (deterministic head-on march, sep 6 → 1): V(s) = 0 to
+      1e-9 at EVERY non-dock separation (the additivity license);
+      interaction onset and dock flag coincide at sep 1 — the boundary
+      is TIGHT there, not one-layer conservative, which is still exact
+      (interior additivity is the requirement; dock nodes carry exact
+      energies since the scan runs on the real two-defect manifold).
+      Head-on contact V = +1.76 = 0.40 × 4.4 — the knot_collider
+      phase-1 rung value reproduced exactly via an independent path
+      (tracked B-removal objective differences). March walked back
+      exactly.
+      Part 2 (12 FP episodes, 9 docked): |V(dock)| ≤ 1.1e-12 at every
+      ACTUAL dock geometry; all contact bursts bounced (repulsive,
+      reversible — matches the collider verdict; one burst surfaced a
+      state 0.48 BELOW dock, the sub-knot ground level); every episode
+      (FP slides + burst) restored exactly through inverse slides.
+      Fusion/association channels did not occur in these bursts (as the
+      collider predicts for chord-sharing contact at lam 0.4); V=0
+      angled-touch association remains to be exercised deliberately.
   V6  bookkeeping: sampler-integrated targeted moves vs dS_between on
       every audit interval (reuse the Ledger audit pattern).
 
@@ -416,6 +436,13 @@ the thermal/slide channels take over):
   M3  FP frozen driver (event loop, FPT sampling, contact resolution);
       V4 + V5. First kinetics: encounter-rate and dissociation-rate
       tables; compare against detailed-balance predictions from HB.
+      CORE DONE (2026-07-26): dock-aware scan (D), FPFlight/FPDriver
+      (protective-domain flights on the slide GRAPH — the V1 census
+      killed the 1D-chain version), V4 PASS (both configs), V5 PASS
+      (both parts). One flight collapses ~1e4–1e6 attempted moves into
+      ~tens of jump draws + one scan. REMAINING for M3 physics: the
+      encounter/dissociation-rate tables themselves (production runs on
+      the now-validated driver).
   M4  FP dressed (flicker clock, dressed acceptances); labeled
       approximation.
   M5  sweep rewrite on the M1 API (the exhaustive S-matrix resumes with

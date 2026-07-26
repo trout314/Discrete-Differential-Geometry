@@ -474,6 +474,8 @@ class FPDriver:
         self.S_rel = 0.0
         self.t = 0                  # attempted-move clock
         self.nflight = 0
+        self.recs = []              # (src chord, dst chord, dS) of every
+                                    # materialized slide, for walk-back
 
     def flight(self):
         """One flight. Returns (reason, exit node dict) where reason ''
@@ -487,10 +489,13 @@ class FPDriver:
         path = HBDriver._path(g, par, j)
         for i in path:
             ch = (int(g["edge_chord"][i][0]), int(g["edge_chord"][i][1]))
-            dS = self.s.slide_at(ch[0], ch[1], int(g["edge_slot"][i]),
-                                 commit=True)
-            if dS is None:
+            dS, arr = self.s.slide_at2(ch[0], ch[1],
+                                       int(g["edge_slot"][i]), commit=True)
+            if dS is None or arr is None:
                 raise RuntimeError("FP materialize: recorded slide invalid")
+            self.recs.append((tuple(sorted(ch)),
+                              tuple(sorted(int(x) for x in arr)),
+                              float(dS)))
         self.t += t
         self.S_rel += float(g["dS"][j])
         self.nflight += 1
