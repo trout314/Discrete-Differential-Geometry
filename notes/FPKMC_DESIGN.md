@@ -123,11 +123,30 @@ then the exit-right probability from start site s is
 
     P_R(s) = [ Σ_{k=0}^{s−1} φ_k n_k^{−1} ] / [ Σ_{k=0}^{n−1} φ_k n_k^{−1} ]
 
-with n_k = n(k, k+1). (Derive once more carefully in the implementation
-notebook — the φ form depends on the Metropolis min(1,·) convention; the
-generic correct statement is P_R(s) = Σ_{k<s} r_k / Σ_{k<n} r_k with
-r_k = Π_{i≤k} q(i→i−1)/q(i→i+1), and the φ expression is its
-simplification. TEST against direct simulation regardless.)
+with n_k = n(k, k+1) and φ_k = e^{+λ M_k}, M_k = max(S1(k), S1(k+1)).
+
+VERIFIED SYMBOLICALLY (M0 done, 2026-07-26 —
+scripts/defect_dynamics/fpkmc_m0_derivations.py, exact SymPy, all pass):
+  A  the Metropolis telescoping identity min(1, e^{−λ(a−b)}) =
+     e^{−λ(max(a,b)−b)}, whence q(i→i−1)/q(i→i+1) =
+     (n_{i−1}/n_i)·e^{λ(M_i − M_{i−1})} and r_k ∝ e^{λ M_k}/n_k;
+  B  detailed balance with π ∝ e^{−λ S1} — CONDITIONAL ON I1;
+  C  the Kolmogorov cycle condition on closed orbits (lone knot on a
+     cyclic chain has Boltzmann stationary law automatically);
+  D  the P_R closed form above against the exact harmonic solve (n=6,
+     fully symbolic rates in M-form);
+  E  DISCRETE-TIME invariance: arbitrary per-site scalings (holding
+     probabilities) leave splitting probabilities unchanged — but exit
+     TIMES do scale, so time bookkeeping must use true per-attempt
+     rates (this is where R2's ν enters and nowhere else);
+  F  conditional mean exit time: the w-equation (Q w = −h,
+     E[T|R] = w/h) against the fundamental matrix N²v on an exact
+     rational instance;
+  G  the phase-type tail P(T>t) = e_sᵀ P_intᵗ 1 against brute path
+     enumeration.
+Implementation consequence: the dynamics is DISCRETE-TIME per attempted
+move; use fundamental-matrix formulas (I − P_int)⁻¹ throughout, with the
+continuous-time forms as the small-rate limit only.
 
 ### 3.3 First-passage time
 
@@ -280,8 +299,9 @@ the thermal/slide channels take over):
 
 ## 10. Milestones
 
-  M0  this document reviewed; formulas §3.2/3.3 re-derived and checked
-      symbolically (SymPy) before coding.
+  M0  DONE (2026-07-26): document reviewed (three R3 revisions with the
+      user); formulas §3.2/3.3 derived and verified symbolically —
+      scripts/defect_dynamics/fpkmc_m0_derivations.py, all pass.
   M1  D: chain_walk + site_survey (+ tests co-located, D unittest).
       Python: washboard/site-class cache; I1 verification (V1); ν (V2).
   M2  D: segment_scan + sampler_do_bistellar. Python: HB channel driver;
