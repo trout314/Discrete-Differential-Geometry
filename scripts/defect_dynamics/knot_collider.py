@@ -67,11 +67,15 @@ def make_knot(m, chain, j):
     return tuple(sorted(want))
 
 
-def slide_along(m, chain, j, fwd):
+def slide_along(m, chain, j, fwd, recs_out=None):
     """One slide of the knot whose chord is (chain[j], chain[j+4]), in the
     chain direction `fwd`. Deterministic: the only accepted candidate is the
     one whose new chord matches the chain arithmetic. Returns
-    (new_j, n_template_valid, n_clean_chain) or (None, nv, nc)."""
+    (new_j, n_template_valid, n_clean_chain) or (None, nv, nc).
+
+    recs_out: optional list; the applied slide's undo records are appended,
+    so a caller can unwind with ws.undo_slide (memory-flat sweeps restore
+    state by inverse moves instead of reloading manifolds)."""
     L = len(chain)
     chord = tuple(sorted((chain[j % L], chain[(j + 4) % L])))
     jn = (j + 4) % L if fwd else (j - 4) % L
@@ -86,6 +90,8 @@ def slide_along(m, chain, j, fwd):
         if recs is None:
             continue
         nclean += 1
+        if recs_out is not None:
+            recs_out.append(recs)
         return jn, len(cands), nclean
     return None, len(cands), nclean
 

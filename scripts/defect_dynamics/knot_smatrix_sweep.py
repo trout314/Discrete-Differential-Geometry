@@ -98,6 +98,41 @@ def census(m):
     return out
 
 
+class Ledger:
+    """Undo ledger: every mutation is an invertible move, so state is
+    restored by unwinding instead of reloading (Manifold reloads leak ~70MB
+    each under the conservative D GC -- the original sweep died of OOM at
+    148 collisions)."""
+
+    def __init__(self, m):
+        self.m = m
+        self.ops = []
+
+    def knot(self, chain, j):
+        chord = make_knot(self.m, chain, j)
+        L = len(chain)
+        face = sorted([chain[(j + 1) % L], chain[(j + 2) % L],
+                      chain[(j + 3) % L]])
+        self.ops.append(("bis", chord, face))
+        return chord
+
+    def slide(self, chain, j, fwd):
+        recs = []
+        out = slide_along(self.m, chain, j, fwd, recs_out=recs)
+        if out[0] is not None:
+            self.ops.append(("slide", recs[0]))
+        return out
+
+    def unwind(self):
+        for kind, *pay in reversed(self.ops):
+            if kind == "slide":
+                ws.undo_slide(self.m, pay[0])
+            else:
+                chord, face = pay
+                self.m.do_bistellar_move(sorted(chord), face)
+        self.ops = []
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--ref",
@@ -122,7 +157,10 @@ def main():
                     help="0 = all A-window classes on the orbit")
     ap.add_argument("--start-class", type=int, default=0,
                     help="resume: skip A-classes before this index")
-    ap.add_argument("--max-collisions", type=int, default=4000)
+    ap.add_argument("--max-collisions", type=int, default=45000)
+    ap.add_argument("--audit-every", type=int, default=25,
+                    help="verify exact facet-set restoration every N "
+                         "collisions")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
@@ -155,6 +193,10 @@ def main():
     ncoll = 0
     out_rows = []
     capped = False
+    # two long-lived manifolds, restored by ledger unwind (never reloaded)
+    mW = ddg.Manifold.load(args.ref, 3)      # washboard passes
+    mC = ddg.Manifold.load(args.ref, 3)      # collision passes
+    fs0_n = mW.num_facets
     for ai, bA in enumerate(reps):
         midA = chord_mid(rp, chainA, bA, box)
         tanA = tangent(rp, chainA, bA, box)
@@ -196,36 +238,37 @@ def main():
                 break
             ncoll += 1
             j0 = jX - 4 * args.kmax
-            # pass 1: B washboard (clean crystal)
-            mm = ddg.Manifold.load(args.ref, 3)
+            # pass 1: B washboard (clean crystal), ledger-unwound
+            LW = Ledger(mW)
             try:
-                make_knot(mm, stx, j0)
+                LW.knot(stx, j0)
             except AssertionError:
-                del mm
+                LW.unwind()
                 continue
-            Ssb = {j0: ws.dS_between(em0, ws.edeg_dict(mm), estar=ESTAR)}
+            Ssb = {j0: ws.dS_between(em0, ws.edeg_dict(mW), estar=ESTAR)}
             jB, ok = j0, True
             while jB < jX:
-                jB2, nv, nc = slide_along(mm, stx, jB, fwd=True)
+                jB2, nv, nc = LW.slide(stx, jB, fwd=True)
                 if jB2 is None:
                     ok = False
                     break
                 jB = jB2
-                Ssb[jB] = ws.dS_between(em0, ws.edeg_dict(mm),
+                Ssb[jB] = ws.dS_between(em0, ws.edeg_dict(mW),
                                         estar=ESTAR)
-            del mm
+            LW.unwind()
             if not ok:
                 out_rows.append({"aclass": ai, "windowA": bA,
                                  "dmin": dmin, "outcome": "path-jams-clean"})
                 continue
-            # pass 2: collision
-            m = ddg.Manifold.load(args.ref, 3)
-            make_knot(m, chainA, bA)
+            # pass 2: collision, ledger-unwound
+            LC = Ledger(mC)
+            m = mC
+            LC.knot(chainA, bA)
             S1A = ws.dS_between(em0, ws.edeg_dict(m), estar=ESTAR)
             try:
-                make_knot(m, stx, j0)
+                LC.knot(stx, j0)
             except AssertionError:
-                del m
+                LC.unwind()
                 out_rows.append({"aclass": ai, "windowA": bA,
                                  "dmin": dmin,
                                  "outcome": "B-blocked-by-A"})
@@ -267,7 +310,7 @@ def main():
                     break
                 if not np.isnan(V):
                     vfar_max = max(vfar_max, abs(V))
-                jB2, nv, nc = slide_along(m, stx, jB, fwd=True)
+                jB2, nv, nc = LC.slide(stx, jB, fwd=True)
                 if jB2 is None:
                     res = {"outcome": "jammed", "V_at_jam": V,
                            "template_valid": nv}
@@ -283,18 +326,22 @@ def main():
                         if recs is None:
                             continue
                         c2 = census(m)
-                        if (len(c2) == 2 and all(
-                                list(x["sig"]).count(3) == 1
-                                for x in c2)):
+                        good = (len(c2) == 2 and all(
+                            list(x["sig"]).count(3) == 1 for x in c2))
+                        ws.undo_slide(m, recs)      # ALWAYS undo
+                        if good:
                             res["unfuses"] = True
                             break
-                        ws.undo_slide(m, recs)
                     if res["unfuses"]:
                         break
             res.update({"aclass": ai, "windowA": bA, "dmin": dmin,
                         "vfar_max": vfar_max})
             out_rows.append(res)
-            del m
+            LC.unwind()
+            if args.audit_every and ncoll % args.audit_every == 0:
+                assert mC.num_facets == fs0_n and mW.num_facets == fs0_n, \
+                    "unwind failed (facet count)"
+                assert ws.edeg_dict(mC) == em0, "unwind failed (edeg map)"
         # flush after every A class
         with open(args.out, "w") as fh:
             json.dump({"scope": {"ref": args.ref, "orbit_len": LA,
