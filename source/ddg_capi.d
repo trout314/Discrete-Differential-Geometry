@@ -3098,6 +3098,261 @@ extern(C) long ddg_sampler_site_survey(void* sampler_handle,
     catch (Exception e) { setError(e.msg); return -1; }
 }
 
+/******************************************************************************
+Slide-graph scan: bounded DFS over the defect states reachable by LEGAL
+slides (dirty included -- the physical channel) from the CURRENT state,
+with exact per-edge dS and exact rollback (notes/FPKMC_DESIGN.md M2).
+
+The mobile defect is identified by `root_a, root_b` (a degree-3 chord of
+the current state). Nodes are keyed EXACTLY by the overlay: the sorted
+list of (edge, degree) deviations from the scan-start state -- no hashing,
+no collisions. Expansion is pruned at cum_dS > dS_max (recorded as
+boundary, not traversed), depth > max_depth, or the node/edge caps.
+
+Outputs (caller-allocated):
+  node_dS[n]      cumulative action vs the root state
+  node_depth[n]   BFS depth (slides from root)
+  node_nchords[n] number of degree-3 chords (the state's slide handles)
+  node_sig[n]     packed illegal-degree histogram of the overlay
+                  (4 bits per degree 1..16 -- the species signature)
+  edge_src/dst, edge_dS, edge_chord_a/b, edge_slot   per directed edge
+Returns the node count, sets *n_edges_out; -1 on error. The scan restores
+the manifold and potential state exactly (audited; error on drift).
+*/
+extern(C) long ddg_sampler_slide_graph_scan(void* sampler_handle,
+    int root_a, int root_b, double dS_max, int max_depth, long max_nodes,
+    long max_edges,
+    double* node_dS, int* node_depth, int* node_nchords, long* node_sig,
+    int* edge_src, int* edge_dst, double* edge_dS,
+    int* edge_chord_a, int* edge_chord_b, int* edge_slot,
+    long* n_edges_out) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null handle"); return -1; }
+        auto s = cast(SamplerState*) sampler_handle;
+        if (s.dim != 3) { setError("graph scan is dim=3 only"); return -1; }
+        auto mw = cast(ManifoldWrapper!3*)(
+            cast(ManifoldHandle*) s.manifoldHandle).ptr;
+
+        if (s.currentObjective != s.currentObjective)
+            recomputeObjective(s);
+
+        struct Params { int numFacetsTarget; real hingeDegreeTarget;
+            real numFacetsCoef; real numHingesCoef;
+            real hingeDegreeVarianceCoef; real coDim3DegreeVarianceCoef;
+            real hingeDegreeTargetCoef; real coDim3DegreeTargetCoef;
+            real coDim3DegreeTarget; }
+        auto params = Params(s.numFacetsTarget,
+            cast(real) s.hingeDegreeTarget, cast(real) s.numFacetsCoef,
+            cast(real) s.numHingesCoef, cast(real) s.hingeDegreeVarianceCoef,
+            cast(real) s.coDim3DegreeVarianceCoef,
+            cast(real) s.hingeDegreeTargetCoef,
+            cast(real) s.coDim3DegreeTargetCoef,
+            cast(real) s.coDim3DegreeTarget);
+
+        auto potState = s.potEnabled ? &s.vertexPotState : null;
+        auto pot = s.potEnabled ? &s.vertexPot : null;
+        immutable real potBefore = s.potEnabled ? s.vertexPotState.total : 0.0L;
+
+        int[2] root = [min(root_a, root_b), max(root_a, root_b)];
+        if (mw.mfd.degreeOrZero!1(root[]) != 3)
+        { setError("root chord is not a degree-3 edge"); return -1; }
+
+        // lazily captured baseline degrees + tracked degree-3 set
+        size_t[int[2]] baseline;
+        bool[int[2]] deg3;
+        deg3[root] = true;
+
+        void captureBaseline(scope int[2][] pairs)
+        {
+            foreach (p; pairs)
+                if (p !in baseline)
+                    baseline[p] = mw.mfd.degreeOrZero!1(p[]);
+        }
+        void refreshDeg3(scope int[2][] pairs)
+        {
+            foreach (p; pairs)
+            {
+                if (mw.mfd.degreeOrZero!1(p[]) == 3) deg3[p] = true;
+                else deg3.remove(p);
+            }
+        }
+
+        immutable(int)[] overlayKey()
+        {
+            int[] flat;
+            int[2][] ks = baseline.keys;
+            ks.sort();
+            foreach (p; ks)
+            {
+                immutable cur = mw.mfd.degreeOrZero!1(p[]);
+                if (cur != baseline[p])
+                {
+                    flat ~= p[0]; flat ~= p[1]; flat ~= cast(int) cur;
+                }
+            }
+            return cast(immutable(int)[]) flat;
+        }
+
+        long sigOf()
+        {
+            long sig = 0;
+            foreach (p, base; baseline)
+            {
+                immutable cur = mw.mfd.degreeOrZero!1(p[]);
+                if (cur != 0 && cur != 5 && cur != 6 && cur >= 1 && cur <= 16)
+                {
+                    immutable shift = 4 * (cast(int) cur - 1);
+                    immutable cnt = (sig >> shift) & 0xF;
+                    if (cnt < 15) sig = (sig & ~(0xFL << shift))
+                                      | ((cnt + 1) << shift);
+                }
+            }
+            // root chord may predate baseline capture
+            return sig;
+        }
+
+        long nNodes = 0, nEdges = 0;
+        long[immutable(int)[]] seen;
+        bool capped = false;
+
+        long addNode(immutable(int)[] key, real cumDS, int depth)
+        {
+            if (nNodes >= max_nodes) { capped = true; return -1; }
+            immutable idx = nNodes++;
+            seen[key] = idx;
+            node_dS[cast(size_t) idx] = cast(double) cumDS;
+            node_depth[cast(size_t) idx] = depth;
+            int nc = 0;
+            foreach (p, _; deg3) nc++;
+            node_nchords[cast(size_t) idx] = nc;
+            node_sig[cast(size_t) idx] = sigOf();
+            return idx;
+        }
+
+        // support pairs of a decoded frame (mirrors trySlideMove)
+        int[2][] supportPairs(ref SlideFrame!int f, ref int[3] link)
+        {
+            int[9] sup = 0;
+            int ns = 0;
+            void add(int v)
+            {
+                foreach (i; 0 .. ns) if (sup[i] == v) return;
+                sup[ns++] = v;
+            }
+            add(f.c0); add(f.c2); add(f.c3); add(f.c4);
+            add(f.c5); add(f.c6); add(f.c7); add(f.c8);
+            foreach (v; link) add(v);
+            int[2][] pairs;
+            foreach (i; 0 .. ns)
+                foreach (j; i + 1 .. ns)
+                {
+                    int[2] e = [sup[i], sup[j]];
+                    e[].sort();
+                    pairs ~= e;
+                }
+            return pairs;
+        }
+
+        void dfs(long myIdx, real cumDS, int depth)
+        {
+            if (capped || depth >= max_depth) return;
+            // chord menu snapshot (deg3 mutates during expansion)
+            int[2][] menu = deg3.keys;
+            menu.sort();
+            foreach (chord; menu)
+            {
+                if (capped) break;
+                if (mw.mfd.degreeOrZero!1(chord[]) != 3) continue;
+                // hint tet: any facet on the chord
+                int[4] hint = 0;
+                {
+                    bool got = false;
+                    foreach (pr; mw.mfd.link(chord[]))
+                    {
+                        int i = 0;
+                        foreach (v; pr) hint[2 + i++] = v;
+                        got = true;
+                        break;
+                    }
+                    if (!got) continue;
+                    hint[0] = chord[0]; hint[1] = chord[1];
+                    hint[].sort();
+                }
+                foreach (slot; 0 .. SLIDE_SLOTS)
+                {
+                    if (capped) break;
+                    SlideFrame!int f;
+                    int[3] link;
+                    if (!slideDecode(mw.mfd, chord[0], chord[1],
+                                     hint[], slot, f, link))
+                        continue;
+                    auto pairs = supportPairs(f, link);
+                    captureBaseline(pairs);
+                    SlideRec!int[4] recs;
+                    real dS = real.nan;
+                    if (!slideApplyKeep(mw.mfd,
+                            s.currentObjective + cumDS,
+                            chord[0], chord[1], hint[], slot, params,
+                            potState, pot, recs, dS))
+                        continue;
+                    refreshDeg3(pairs);
+                    auto key = overlayKey();
+                    long child;
+                    bool fresh = false;
+                    if (auto p = key in seen)
+                        child = *p;
+                    else
+                    {
+                        child = addNode(key, cumDS + dS, depth + 1);
+                        fresh = child >= 0;
+                    }
+                    if (child >= 0 && nEdges < max_edges)
+                    {
+                        edge_src[cast(size_t) nEdges] = cast(int) myIdx;
+                        edge_dst[cast(size_t) nEdges] = cast(int) child;
+                        edge_dS[cast(size_t) nEdges] = cast(double) dS;
+                        edge_chord_a[cast(size_t) nEdges] = chord[0];
+                        edge_chord_b[cast(size_t) nEdges] = chord[1];
+                        edge_slot[cast(size_t) nEdges] = slot;
+                        nEdges++;
+                    }
+                    else if (nEdges >= max_edges)
+                        capped = true;
+                    if (fresh && cumDS + dS <= cast(real) dS_max)
+                        dfs(child, cumDS + dS, depth + 1);
+                    slideRollback(mw.mfd, recs, potState, pot);
+                    refreshDeg3(pairs);
+                }
+            }
+        }
+
+        auto rootKey = overlayKey();       // empty: no deviations yet
+        immutable rootIdx = addNode(rootKey, 0.0L, 0);
+        dfs(rootIdx, 0.0L, 0);
+
+        // restoration audit
+        foreach (p, base; baseline)
+            if (mw.mfd.degreeOrZero!1(p[]) != base)
+            { setError("graph scan: edge-degree drift after rollback (bug)");
+              return -1; }
+        if (s.potEnabled)
+        {
+            immutable real drift = s.vertexPotState.total - potBefore;
+            if (drift > 1e-6L || drift < -1e-6L)
+            { setError("graph scan: potState drift (bug)"); return -1; }
+        }
+        if (n_edges_out !is null) *n_edges_out = nEdges;
+        if (capped)
+            setError("graph scan CAPPED (node/edge limit) -- result is a "
+                     ~ "truncation, not the full component");
+        return nNodes;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
 /// Get sampler statistics. All output pointers are optional (may be null).
 extern(C) int ddg_sampler_get_stats(void* sampler_handle,
     long* out_total_tried, long* out_total_accepted,

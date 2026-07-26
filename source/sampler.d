@@ -1987,8 +1987,10 @@ enum SlideAccept
     force,        ///< always commit (crossval / scripted transport only)
 }
 
-/// One applied Pachner move of a slide, kept for rollback.
-private struct SlideRec(Vertex)
+/// One applied Pachner move of a slide, kept for rollback. Public: the
+/// FPKMC graph scan (ddg_capi) holds these across recursion for exact
+/// rollback via slideRollback.
+struct SlideRec(Vertex)
 {
     Vertex[3] center;
     Vertex[3] coCenter;
@@ -3179,4 +3181,149 @@ Vertex[] getUnusedVertices(int dim, Vertex)(const ref Manifold!(dim, Vertex) mfd
     auto verts = mfd.simplices(0).joiner.array.dup.sort.array;
     if (verts.length == 0) return [];
     return getUnusedVertices(mfd, verts);
+}
+
+// ---------------------------------------------------------------------------
+// FPKMC slide-graph scan (notes/FPKMC_DESIGN.md, M1/M2)
+// ---------------------------------------------------------------------------
+
+/// Decode a slide slot at chord (a,b): the sorted 3-vertex link, the
+/// (c2,c3) pick, and the derived frame. Shared by trySlideMove-style
+/// callers and the graph scan. Returns false if the chord is not a
+/// degree-3 edge or the frame does not derive.
+bool slideDecode(Vertex)(const ref Manifold!(3, Vertex) mfd,
+    Vertex a, Vertex b, const(Vertex)[] hintTet, int slot,
+    out SlideFrame!Vertex f, out Vertex[3] link)
+{
+    int[8] linkBuf = 0;
+    auto nl = mfd.writeEdgeLinkCycle(a, b, hintTet, linkBuf.ptr);
+    if (nl != 3) return false;
+    link = [cast(Vertex) linkBuf[0], cast(Vertex) linkBuf[1],
+            cast(Vertex) linkBuf[2]];
+    link[].sort();
+    immutable int orient = slot / 6;
+    immutable int pick = slot % 6;
+    immutable Vertex c0 = orient == 0 ? a : b;
+    immutable Vertex c4 = orient == 0 ? b : a;
+    static immutable int[2][6] picks =
+        [[0, 1], [0, 2], [1, 0], [1, 2], [2, 0], [2, 1]];
+    return deriveSlideFrame(mfd, c0, c4, link[picks[pick][0]],
+                            link[picks[pick][1]], f);
+}
+
+/// Apply the four Pachner moves of the slide at (a,b)/slot and KEEP them,
+/// exporting the per-move records for exact rollback with slideRollback.
+/// Uses the same speculative-delta path as trySlideMove; potState (if any)
+/// advances with the moves. Returns false (nothing applied) if the slot
+/// does not form a legal slide. dS receives the total action change.
+bool slideApplyKeep(Vertex, P)(
+    ref Manifold!(3, Vertex) mfd, real currentObjective,
+    Vertex a, Vertex b, const(Vertex)[] hintTet, int slot, P params,
+    VertexPotState!Vertex* potState, const(VertexPot)* pot,
+    out SlideRec!Vertex[4] recs, out real dS)
+{
+    alias BM = BistellarMove!(3, Vertex);
+    SlideFrame!Vertex f;
+    Vertex[3] link;
+    if (!slideDecode(mfd, a, b, hintTet, slot, f, link)) return false;
+
+    real baseRun = currentObjective
+        - (potState !is null ? potState.total : 0.0L);
+    real deltaTotal = 0.0L;
+    int nApplied = 0;
+
+    void rollback()
+    {
+        foreach_reverse (k; 0 .. nApplied)
+        {
+            auto inv = BM(recs[k].coCenter[0 .. recs[k].coCenterLen],
+                          recs[k].center[0 .. recs[k].centerLen]);
+            if (potState !is null)
+                mfd.potentialBistellarDelta(inv, *potState, *pot, true);
+            mfd.doMove(inv);
+        }
+    }
+
+    bool step(scope const(Vertex)[] center, scope const(Vertex)[] coCenter)
+    {
+        auto bm = BM(center, coCenter);
+        if (!mfd.hasValidMove(bm)) { rollback(); return false; }
+        real dBase = mfd.speculativeBistellarDelta(bm, baseRun, params);
+        real dPot = 0.0L;
+        if (potState !is null)
+            dPot = mfd.potentialBistellarDelta(bm, *potState, *pot, true);
+        mfd.doMove(bm);
+        baseRun += dBase;
+        deltaTotal += dBase + dPot;
+        recs[nApplied].centerLen = cast(int) center.length;
+        recs[nApplied].coCenterLen = cast(int) coCenter.length;
+        recs[nApplied].center[0 .. center.length] = center[];
+        recs[nApplied].coCenter[0 .. coCenter.length] = coCenter[];
+        nApplied++;
+        return true;
+    }
+
+    Vertex[9] supBuf = 0;
+    int nsup = 0;
+    void addSup(Vertex v)
+    {
+        foreach (i; 0 .. nsup) if (supBuf[i] == v) return;
+        supBuf[nsup++] = v;
+    }
+    addSup(f.c0); addSup(f.c2); addSup(f.c3); addSup(f.c4);
+    addSup(f.c5); addSup(f.c6); addSup(f.c7); addSup(f.c8);
+    foreach (v; link) addSup(v);
+    if (mfd.anyFrozen(supBuf[0 .. nsup])) return false;
+
+    Vertex[2] m1c = [f.c0, f.c4]; m1c[].sort();
+    if (!step(m1c[], link[])) return false;
+    Vertex[3] m2c = [f.c3, f.c4, f.c5]; m2c[].sort();
+    Vertex[2] m2cc = [f.c2, f.c6]; m2cc[].sort();
+    if (!step(m2c[], m2cc[])) return false;
+    Vertex[3] m3c = [f.c5, f.c6, f.c7]; m3c[].sort();
+    Vertex[2] m3cc = [f.c4, f.c8]; m3cc[].sort();
+    if (!step(m3c[], m3cc[])) return false;
+    Vertex[2] m4c = [f.c2, f.c6]; m4c[].sort();
+    {
+        if (mfd.degreeOrZero!1(m4c[]) != 3) { rollback(); return false; }
+        Vertex[4] hint = 0;
+        {
+            int[2] ap = 0;
+            if (mfd.writeFaceApexes(f.c2, f.c6, f.c3, ap.ptr) != 2)
+            { rollback(); return false; }
+            hint = [f.c2, f.c6, f.c3, cast(Vertex) ap[0]];
+            hint[].sort();
+        }
+        int[8] lb4 = 0;
+        auto n4 = mfd.writeEdgeLinkCycle(m4c[0], m4c[1], hint[], lb4.ptr);
+        if (n4 != 3) { rollback(); return false; }
+        Vertex[3] m4cc = [cast(Vertex) lb4[0], cast(Vertex) lb4[1],
+                          cast(Vertex) lb4[2]];
+        m4cc[].sort();
+        if (!step(m4c[], m4cc[])) return false;
+    }
+    {
+        Vertex[2] arrival = [f.c4, f.c8]; arrival[].sort();
+        if (mfd.degreeOrZero!1(arrival[]) != 3) { rollback(); return false; }
+    }
+    dS = deltaTotal;
+    return true;
+}
+
+/// Exact rollback of a kept slide (inverse moves in reverse order,
+/// potState advanced in lockstep).
+void slideRollback(Vertex)(ref Manifold!(3, Vertex) mfd,
+    ref SlideRec!Vertex[4] recs,
+    VertexPotState!Vertex* potState, const(VertexPot)* pot)
+{
+    alias BM = BistellarMove!(3, Vertex);
+    foreach_reverse (k; 0 .. 4)
+    {
+        auto inv = BM(recs[k].coCenter[0 .. recs[k].coCenterLen],
+                      recs[k].center[0 .. recs[k].centerLen]);
+        assert(mfd.hasValidMove(inv), "slideRollback: inverse invalid");
+        if (potState !is null)
+            mfd.potentialBistellarDelta(inv, *potState, *pot, true);
+        mfd.doMove(inv);
+    }
 }

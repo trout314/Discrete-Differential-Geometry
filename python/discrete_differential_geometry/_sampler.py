@@ -459,6 +459,55 @@ class ManifoldSampler:
                 "slot_dest": dest,
                 "slot_clean": slots[:, :, 3].copy()}
 
+    def slide_graph_scan(self, root_chord, dS_max: float = 20.0,
+                         max_depth: int = 6, max_nodes: int = 20000,
+                         max_edges: int = 200000) -> dict:
+        """Bounded DFS over defect states reachable by LEGAL slides (dirty
+        included) from the current state, rooted at the degree-3 chord
+        ``root_chord``. Exact per-edge dS; exact rollback (audited in D).
+        Nodes are keyed exactly by the edge-degree overlay vs the current
+        state. Expansion prunes at cum dS > dS_max; capped scans raise.
+
+        Returns dict: nodes (dS, depth, n_chords, sig) and edges
+        (src, dst, dS, chord, slot). See notes/FPKMC_DESIGN.md M2."""
+        a, b = int(root_chord[0]), int(root_chord[1])
+        nd = ctypes.POINTER(ctypes.c_double)
+        ni = ctypes.POINTER(ctypes.c_int)
+        node_dS = np.empty(max_nodes, np.float64)
+        node_depth = np.empty(max_nodes, np.intc)
+        node_nch = np.empty(max_nodes, np.intc)
+        node_sig = np.empty(max_nodes, np.int64)
+        e_src = np.empty(max_edges, np.intc)
+        e_dst = np.empty(max_edges, np.intc)
+        e_dS = np.empty(max_edges, np.float64)
+        e_ca = np.empty(max_edges, np.intc)
+        e_cb = np.empty(max_edges, np.intc)
+        e_slot = np.empty(max_edges, np.intc)
+        n_edges = ctypes.c_long()
+        n = _lib.ddg_sampler_slide_graph_scan(
+            self._handle, a, b, float(dS_max), int(max_depth),
+            int(max_nodes), int(max_edges),
+            node_dS.ctypes.data_as(nd), node_depth.ctypes.data_as(ni),
+            node_nch.ctypes.data_as(ni),
+            node_sig.ctypes.data_as(ctypes.POINTER(ctypes.c_long)),
+            e_src.ctypes.data_as(ni), e_dst.ctypes.data_as(ni),
+            e_dS.ctypes.data_as(nd), e_ca.ctypes.data_as(ni),
+            e_cb.ctypes.data_as(ni), e_slot.ctypes.data_as(ni),
+            ctypes.byref(n_edges))
+        if n < 0:
+            err = _lib.ddg_last_error()
+            raise RuntimeError(err.decode() if err else "graph scan failed")
+        err = _lib.ddg_last_error()
+        if err and b"CAPPED" in err:
+            raise RuntimeError(err.decode())
+        m = int(n_edges.value)
+        return {"dS": node_dS[:n].copy(), "depth": node_depth[:n].copy(),
+                "n_chords": node_nch[:n].copy(), "sig": node_sig[:n].copy(),
+                "edge_src": e_src[:m].copy(), "edge_dst": e_dst[:m].copy(),
+                "edge_dS": e_dS[:m].copy(),
+                "edge_chord": np.stack([e_ca[:m], e_cb[:m]], 1),
+                "edge_slot": e_slot[:m].copy()}
+
     # -- Parameter setters --
 
     def set_num_facets_target(self, target: int) -> None:

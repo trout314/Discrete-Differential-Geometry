@@ -324,10 +324,35 @@ the thermal/slide channels take over):
           the MAIN path, not insurance; "chain confinement" is false for
           the physical channel and the 1D tridiagonal case survives only
           as the clean-subclass special case.
-      REMAINING in M1: graph edge-symmetry check (every legal slide has a
-      legal inverse with dS' = −dS — inverse-closedness, numerically over
-      the survey), washboard/site-class cache, ν (V2), segment_scan
-      (now: graph-BFS segments).
+      M1 COMPLETE (2026-07-26, later):
+      - edge-symmetry VERIFIED: 24/24 committed slides have a legal
+        inverse with dS' = −dS restoring the exact edge map;
+      - python/discrete_differential_geometry/fpkmc.py: the REQUIRED
+        injectivity guard (holds on R m4), face<->apex maps,
+        nu_per_attempt = slide_prob·(3/N3)·(1/6)·(1/12) (read off
+        sampler.d), single-site surveys, CleanKnotGraph (BFS, exact
+        per-edge dS, blocked-set segment hook). Validated with two exact
+        zeros: edge antisymmetry AND S1-consistency (dS = S1(dest) −
+        S1(src) on every edge — the pure-knot graph is a potential
+        landscape, no path dependence).
+      - DISCOVERY: clean components are tiny CLOSED islands (seed's
+        closed at 24 nodes). Physical transport is inherently
+        species-changing; the rung ladder IS transport.
+      - D graph scan LANDED: sampler.d gains slideDecode /
+        slideApplyKeep / slideRollback (SlideRec made public);
+        ddg_sampler_slide_graph_scan = bounded DFS over the FULL
+        legal-slide graph (dirty included) from the current state, exact
+        overlay keying (no hashing), Boltzmann pruning at dS_max,
+        node/edge caps reported as CAPPED, restoration audited
+        in-function. Python: ManifoldSampler.slide_graph_scan.
+        First scans (rung-70 knot, R m4): 185 nodes/252 edges at
+        (dS_max 4, depth 3) in 0.33 s; 500 nodes at depth 4; 7 species
+        sigs in-window; every reached state single-chord; restoration
+        exact; 0 antisymmetry violations over 46 reciprocated pairs.
+        NOTE the scan found states 0.48 BELOW the rung-70 knot: the
+        single-defect ground state at lam=0.4 is not the bare knot.
+      REMAINING before M2 physics: ν measurement (V2) against brute
+      force; HB driver on the scan graph; V3.
   M2  D: segment_scan + sampler_do_bistellar. Python: HB channel driver;
       V3. First physics: equilibrium two-knot g(r), association constant
       of the compound family.
