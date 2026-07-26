@@ -290,6 +290,38 @@ the thermal/slide channels take over):
       site-occupancy histograms must agree (χ² on translation classes);
       two-knot: pair-separation histogram (the first true equilibrium
       g(r) measurement).
+      RESULT (2026-07-26): occupancy-based validation is STRUCTURALLY
+      VACUOUS for the single-knot sector — the slide landscape has flat
+      directions (degenerate translates), so the chain glides and never
+      recurs at ANY λ (682 states/1500 HB steps at λ=0.4; 757 at λ=1.0,
+      where the ball sampler tunnels straight through the washboard;
+      visits concentrate on 3 near-degenerate levels S∈{0,0.6,1.2}·λ⁻¹-
+      scaled). Without recurrence, per-microstate occupancy measures
+      translational entropy, not e^{-S}. Superseded by V3b. The runs
+      (data/fpkmc/v3_hb*.json, scripts/defect_dynamics/fpkmc_v3_hb.py)
+      remain useful as HB soak tests: 2×1500 steps, all running-action
+      audits pass.
+  V3b HB kernel certification by NUMERICAL DETAILED BALANCE — no
+      equilibration required (scripts/defect_dynamics/fpkmc_v3b_db.py).
+      Both sides of π(x)q_x(y)α(x→y) = π(y)q_y(x)α(y→x) reduce to
+      min(e^{-d}/Zx, 1/Zy), so DB holds iff four implementation facts
+      do; each is measured per pair (π-weighted and uniform-over-ball
+      draws, wandering x): A1 dS antisymmetry (x found in B(y) at −d);
+      A2 membership symmetry, with truncation asymmetries (x ∉ B(y))
+      killed by the driver's α=0 rejection (both fluxes vanish — DB
+      preserved by rejection); A3 restoration/scan determinism (equal
+      node count, sorted dS to 1e-9); A4 scan-TREE path-validity
+      symmetry (single-chord intermediates; the trees at x and y differ,
+      so fwd-valid/rev-invalid would be a REAL one-way-flux violation).
+      PASS 2026-07-26, 4 seeds × ~60 pairs (237 pairs, λ=0.4, m2):
+      path_asym 0/237; anti_max 5.9e-14; ln-flux residual ≤ 4.6e-14;
+      node-count mismatches 0; not-in-ball 22–32/60 (uniform draws at
+      the dS_max boundary, all safely rejected). Measured exactness
+      bound: scan dS values carry ~2e-14 path-dependent accumulation
+      noise (DFS order after restoration differs), so the implemented
+      kernel obeys DB to ~5e-14 per transition — unbiased, ~7 orders
+      below the smallest physical ΔS. M0 analytic DB + V3b numerical
+      certification together close M2's correctness claim.
   V4  FP kinetics (frozen): exit-site fractions and FPT distributions vs
       brute-force slide-only runs from identical starts (KS tests).
   V5  contact round-trip: dock → explicit resolution products vs the
@@ -435,3 +467,18 @@ the thermal/slide channels take over):
       observable) before claiming equilibrated pair correlations.
   R5  dressed-mode honesty: v2 is an approximation with measured inputs;
       keep it clearly labeled and validated against v1 limits.
+
+  R6  D GC leaks (measured 2026-07-26): the conservative GC never
+      reclaims the shared-library allocations in our embedding --
+      GC.collect measured ineffective for BOTH the Manifold-load leak
+      (~70 MB/load) and the graph-scan churn (~12 MB/scan, dominated by
+      overlayKey allocating the full baseline key array per node visit,
+      O(nodes x baseline)). The V3 run was OOM-killed at HB step ~800
+      (~20 GB on a 16 GB machine) with no system-log trace -- diagnose
+      by measuring rss growth, not by log archaeology. WORKAROUNDS in
+      use: ledger-unwind instead of reloads (sweeps); exec-restart
+      batching with exact state save/reload (fpkmc_v3_hb --hb-batch).
+      PROPER FIX (queued): allocation-free scratch buffers in
+      slide_graph_scan (incremental sorted baseline, reused key scratch,
+      reused support-pair buffers); allocate only the per-unique-node
+      immutable keys.
