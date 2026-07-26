@@ -98,6 +98,26 @@ def census(m):
     return out
 
 
+def walk_bidir(m, window, n):
+    """Stretch spliced from n steps BACKWARD and n steps forward of
+    `window`, so the seed sits at index ~n and a crossing found anywhere
+    along the chain leaves room for B to start 4*kmax upstream. Walking
+    forward only (the first version) silently dropped every chain whose
+    in-ball tets sit near its closest-approach point -- including the
+    same-chain channel, whose upstream seeds are always outside the search
+    ball (jX >= 4*kmax+4 needs seeds ~1.1+ cells away).
+
+    The backward walk uses the reversed window; its vertex sequence is
+    reversed and spliced so index arithmetic (window k = v[k..k+3]) is
+    preserved across the seam."""
+    fwd = walk_stretch(m, window, n)
+    bwd = walk_stretch(m, list(reversed(window)), n)
+    # bwd = [w3', w2', ...] walking the chain the other way; reversed(bwd)
+    # ends with the seed window's vertices, which fwd starts with -- drop
+    # the 4-vertex overlap.
+    return list(reversed(bwd))[:-4] + fwd
+
+
 class Ledger:
     """Undo ledger: every mutation is an invertible move, so state is
     restored by unwinding instead of reloading (Manifold reloads leak ~70MB
@@ -171,6 +191,11 @@ def main():
     chainA = bc_orbit(ref, [int(x) for x in F[args.seed_tet]])
     LA = len(chainA)
     em0 = ws.edeg_dict(ref)
+    # pristine adjacency, for the transparent-by-theorem prefilter
+    nbr = {}
+    for t in F:
+        for a in t:
+            nbr.setdefault(int(a), set()).update(int(x) for x in t)
 
     # ---- A-window translation classes over the whole orbit
     aclasses = {}
@@ -182,6 +207,11 @@ def main():
         if k not in aclasses:
             aclasses[k] = b
     reps = sorted(aclasses.values())
+    # randomized (seeded) order: a capped run is then a UNIFORM sample of
+    # A-classes, so the fingerprint-saturation curve speaks for the whole
+    # population, not for one end of the orbit
+    rng = np.random.default_rng(20260725)
+    rng.shuffle(reps)
     if args.limit_classes:
         reps = reps[:args.limit_classes]
     reps = reps[args.start_class:]
@@ -197,6 +227,7 @@ def main():
     mW = ddg.Manifold.load(args.ref, 3)      # washboard passes
     mC = ddg.Manifold.load(args.ref, 3)      # collision passes
     fs0_n = mW.num_facets
+    wb_cache = {}                            # segment relkey -> Ssb dict
     for ai, bA in enumerate(reps):
         midA = chord_mid(rp, chainA, bA, box)
         tanA = tangent(rp, chainA, bA, box)
@@ -211,7 +242,7 @@ def main():
             for drop in range(4):
                 w0 = [int(t[drop])] + [int(x) for x in t
                                        if int(x) != int(t[drop])]
-                stx = walk_stretch(ref, w0, 2 * need)
+                stx = walk_bidir(ref, w0, 2 * need)
                 best = None
                 for j in range(0, len(stx) - 8):
                     d = float(np.linalg.norm(minimg(
@@ -228,8 +259,56 @@ def main():
                     continue
                 seen.add(jk)
                 geoms.append((stx, jX, dmin))
+        # SAME-CHAIN channels, both head-on orientations, by pure chain
+        # arithmetic (the ball search cannot find these: their upstream
+        # seeds lie outside any local ball). B is created 4*kmax+8 chain
+        # steps from A's chord and slides to jX = the chord ONE step short
+        # of A's -- merges register during the approach exactly as in
+        # Phase 1 (contact at chord-sharing, s=4).
+        jXs = 4 * args.kmax + 8
+        for orient in (+1, -1):
+            if orient == +1:
+                s0 = bA - 4 - jXs          # seg[i] = chainA[s0 + i]
+                seg = [chainA[(s0 + i) % LA]
+                       for i in range(jXs + 4 * args.kmax + 25)]
+            else:
+                r0 = bA + 8 + jXs          # seg[i] = chainA[r0 - i]
+                seg = [chainA[(r0 - i) % LA]
+                       for i in range(jXs + 4 * args.kmax + 25)]
+            jk = relkey(rp, seg[max(0, jXs - 8):jXs + 12], midA, box)
+            if jk not in seen:
+                seen.add(jk)
+                geoms.append((seg, jXs, 0.0))
+        # TRANSPARENT BY THEOREM: if no slide frame along B's whole path
+        # (frames reach stx[j..j+8] for j in [j0, jX]) touches A's five
+        # vertices or their pristine neighbours, the configurations
+        # decompose at every step (no-halo additivity): V = 0 identically,
+        # no merge, no jam-by-A. Recorded without running.
+        A5 = [chainA[(bA + i) % LA] for i in range(5)]
+        reach = set(A5)
+        for a in A5:
+            reach |= nbr.get(a, set())
+        run_geoms = []
+        n_theorem = 0
+        for stx, jX, dmin in geoms:
+            j0 = jX - 4 * args.kmax
+            path = set(stx[max(0, j0):jX + 9])
+            if path & reach:
+                run_geoms.append((stx, jX, dmin))
+            else:
+                n_theorem += 1
+                out_rows.append({"aclass": ai, "windowA": bA,
+                                 "dmin": dmin,
+                                 "outcome": "transparent-by-theorem"})
+        run_geoms.sort(key=lambda g: g[2])
+        geoms = run_geoms
+        # knot A stays in place for the whole class (its own ledger)
+        LA_ledger = Ledger(mC)
+        LA_ledger.knot(chainA, bA)
+        S1A = ws.dS_between(em0, ws.edeg_dict(mC), estar=ESTAR)
         print(f"[A-class {ai}/{len(reps)}] window {bA}: "
-              f"{len(geoms)} joint classes", flush=True)
+              f"{len(geoms)} to run + {n_theorem} transparent by theorem "
+              f"(incl. same-chain)", flush=True)
 
         # washboard cache for this A class is per-geometry (B's chain)
         for stx, jX, dmin in geoms:
@@ -238,33 +317,49 @@ def main():
                 break
             ncoll += 1
             j0 = jX - 4 * args.kmax
-            # pass 1: B washboard (clean crystal), ledger-unwound
-            LW = Ledger(mW)
-            try:
-                LW.knot(stx, j0)
-            except AssertionError:
+            # pass 1: B washboard -- cached by the translation-invariant
+            # key of the path segment (the same chain geometry recurs
+            # across A-classes)
+            seg = stx[max(0, j0 - 1):jX + 9]
+            wkey = relkey(rp, seg, rp[stx[j0]], box)
+            if wkey in wb_cache:
+                Ssb = wb_cache[wkey]
+                if Ssb is None:
+                    out_rows.append({"aclass": ai, "windowA": bA,
+                                     "dmin": dmin,
+                                     "outcome": "path-jams-clean"})
+                    continue
+                Ssb = {j0 + k: v for k, v in Ssb.items()}
+            else:
+                LW = Ledger(mW)
+                try:
+                    LW.knot(stx, j0)
+                except AssertionError:
+                    LW.unwind()
+                    wb_cache[wkey] = None
+                    continue
+                Ssb = {j0: ws.dS_between(em0, ws.edeg_dict(mW),
+                                         estar=ESTAR)}
+                jB, ok = j0, True
+                while jB < jX:
+                    jB2, nv, nc = LW.slide(stx, jB, fwd=True)
+                    if jB2 is None:
+                        ok = False
+                        break
+                    jB = jB2
+                    Ssb[jB] = ws.dS_between(em0, ws.edeg_dict(mW),
+                                            estar=ESTAR)
                 LW.unwind()
-                continue
-            Ssb = {j0: ws.dS_between(em0, ws.edeg_dict(mW), estar=ESTAR)}
-            jB, ok = j0, True
-            while jB < jX:
-                jB2, nv, nc = LW.slide(stx, jB, fwd=True)
-                if jB2 is None:
-                    ok = False
-                    break
-                jB = jB2
-                Ssb[jB] = ws.dS_between(em0, ws.edeg_dict(mW),
-                                        estar=ESTAR)
-            LW.unwind()
-            if not ok:
-                out_rows.append({"aclass": ai, "windowA": bA,
-                                 "dmin": dmin, "outcome": "path-jams-clean"})
-                continue
-            # pass 2: collision, ledger-unwound
+                if not ok:
+                    wb_cache[wkey] = None
+                    out_rows.append({"aclass": ai, "windowA": bA,
+                                     "dmin": dmin,
+                                     "outcome": "path-jams-clean"})
+                    continue
+                wb_cache[wkey] = {k - j0: v for k, v in Ssb.items()}
+            # pass 2: collision (A already in place), ledger-unwound
             LC = Ledger(mC)
             m = mC
-            LC.knot(chainA, bA)
-            S1A = ws.dS_between(em0, ws.edeg_dict(m), estar=ESTAR)
             try:
                 LC.knot(stx, j0)
             except AssertionError:
@@ -339,9 +434,12 @@ def main():
             out_rows.append(res)
             LC.unwind()
             if args.audit_every and ncoll % args.audit_every == 0:
-                assert mC.num_facets == fs0_n and mW.num_facets == fs0_n, \
-                    "unwind failed (facet count)"
-                assert ws.edeg_dict(mC) == em0, "unwind failed (edeg map)"
+                assert mW.num_facets == fs0_n, "unwind failed (mW)"
+                assert mC.num_facets == fs0_n + 1, \
+                    "unwind failed (mC: A + crystal expected)"
+        LA_ledger.unwind()
+        if ws.edeg_dict(mC) != em0:
+            sys.exit("class-level unwind failed")
         # flush after every A class
         with open(args.out, "w") as fh:
             json.dump({"scope": {"ref": args.ref, "orbit_len": LA,
