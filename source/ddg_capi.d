@@ -2888,6 +2888,216 @@ extern(C) int ddg_sampler_slide_stats(void* sampler_handle,
     return 0;
 }
 
+// ---------------------------------------------------------------------------
+// FPKMC infrastructure (notes/FPKMC_DESIGN.md, M1)
+// ---------------------------------------------------------------------------
+
+/// Sliding-window BC-chain walk from `window` (4 vertices of a facet, in
+/// walk order), n steps. Writes n+4 vertices; window k is
+/// out_verts[k .. k+4]. Returns the number of vertices written, or -1 on
+/// error (window not a facet -- the walk itself cannot break on a closed
+/// 3-manifold).
+extern(C) long ddg_manifold_chain_walk(void* handle, const(int)* window,
+    long n, int* out_verts) nothrow
+{
+    clearError();
+    try
+    {
+        if (handle is null || window is null || out_verts is null)
+        { setError("null argument"); return -1; }
+        auto h = cast(ManifoldHandle*) handle;
+        if (h.dim != 3) { setError("chain_walk is dim=3 only"); return -1; }
+        auto mw = cast(ManifoldWrapper!3*) h.ptr;
+        int[4] w = [window[0], window[1], window[2], window[3]];
+        int[4] chk = w;
+        chk[].sort();
+        if (!mw.mfd.contains(chk[]))
+        { setError("window is not a facet"); return -1; }
+        foreach (i; 0 .. 4) out_verts[i] = w[i];
+        long len = 4;
+        foreach (k; 0 .. n)
+        {
+            if (!mw.mfd.nextChainWindow(w))
+            { setError("chain walk broke (window desynced?)"); return -1; }
+            out_verts[len++] = w[3];
+        }
+        return len;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Stride of one site_survey output row: dS_create + SLIDE_SLOTS x
+/// (dS, dest c4, dest c8, clean).
+enum int SURVEY_STRIDE = 1 + 4 * SLIDE_SLOTS;
+
+/******************************************************************************
+Washboard site survey along a BC chain (notes/FPKMC_DESIGN.md).
+
+For each window k (0 <= k <= chain_len-5): CREATE the knot by the 2->3 on
+the window face -- through the same speculative-delta path every sampler
+move uses, potential state updated -- measure all SLIDE_SLOTS slide slots
+in trial-only mode, then undo the creation. Manifold, potential state and
+sampler objective are restored exactly (audited; -1 on drift).
+
+Output, per window (SURVEY_STRIDE doubles):
+  [0]            dS_create, or NaN if the window is not a valid creation
+                 site (face missing, apexes disagree with the chain, move
+                 invalid, frozen vertex in support);
+  [1+4s .. ]     slot s: (dS trial, dest chord c4, dest chord c8, clean);
+                 dS NaN if the slot does not form a legal slide; clean is
+                 1.0 / 0.0 (species-preserving or not; NaN when illegal);
+                 destinations from the frame derivation whenever it
+                 succeeds. Comparing destinations against chain arithmetic
+                 classifies slots as chain / off-chain -- the slot census
+                 (design invariant I1 and R3(iii)). MEASURED on R m4: every
+                 site has exactly 1 clean chain-forward + 1 clean
+                 chain-backward slot (I1 exact) PLUS 2-3 clean OFF-CHAIN
+                 slots and ~7 dirty ones: the clean slide network is a
+                 branching graph, not a union of chains.
+
+Returns the number of windows surveyed, or -1 on error.
+*/
+extern(C) long ddg_sampler_site_survey(void* sampler_handle,
+    const(int)* chain, long chain_len, double* out_data) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null || chain is null || out_data is null)
+        { setError("null argument"); return -1; }
+        auto s = cast(SamplerState*) sampler_handle;
+        if (s.dim != 3) { setError("site_survey is dim=3 only"); return -1; }
+        if (chain_len < 5) { setError("chain too short"); return -1; }
+        auto mw = cast(ManifoldWrapper!3*)(
+            cast(ManifoldHandle*) s.manifoldHandle).ptr;
+
+        if (s.currentObjective != s.currentObjective)   // NaN
+            recomputeObjective(s);
+
+        struct Params { int numFacetsTarget; real hingeDegreeTarget;
+            real numFacetsCoef; real numHingesCoef;
+            real hingeDegreeVarianceCoef; real coDim3DegreeVarianceCoef;
+            real hingeDegreeTargetCoef; real coDim3DegreeTargetCoef;
+            real coDim3DegreeTarget; }
+        auto params = Params(s.numFacetsTarget,
+            cast(real) s.hingeDegreeTarget, cast(real) s.numFacetsCoef,
+            cast(real) s.numHingesCoef, cast(real) s.hingeDegreeVarianceCoef,
+            cast(real) s.coDim3DegreeVarianceCoef,
+            cast(real) s.hingeDegreeTargetCoef,
+            cast(real) s.coDim3DegreeTargetCoef,
+            cast(real) s.coDim3DegreeTarget);
+
+        alias BM = BistellarMove!(3, int);
+        immutable long nwin = chain_len - 4;
+        immutable real objBefore = s.currentObjective;
+        immutable real potBefore =
+            s.potEnabled ? s.vertexPotState.total : 0.0L;
+        static immutable int[2][6] picks =
+            [[0, 1], [0, 2], [1, 0], [1, 2], [2, 0], [2, 1]];
+
+        foreach (k; 0 .. nwin)
+        {
+            double* row = out_data + k * SURVEY_STRIDE;
+            foreach (i; 0 .. SURVEY_STRIDE) row[i] = double.nan;
+
+            int[3] face = [chain[k + 1], chain[k + 2], chain[k + 3]];
+            face[].sort();
+            int[2] apx = [chain[k], chain[k + 4]];
+            apx[].sort();
+            {
+                int[2] ap = 0;
+                if (mw.mfd.writeFaceApexes(face[0], face[1], face[2],
+                                           ap.ptr) != 2)
+                    continue;
+                if (!((ap[0] == apx[0] && ap[1] == apx[1])
+                      || (ap[0] == apx[1] && ap[1] == apx[0])))
+                    continue;
+            }
+            auto bm = BM(face[], apx[]);
+            if (!mw.mfd.hasValidMove(bm)) continue;
+            {
+                int[5] sup = [face[0], face[1], face[2], apx[0], apx[1]];
+                if (mw.mfd.anyFrozen(sup[])) continue;
+            }
+
+            immutable real potNow =
+                s.potEnabled ? s.vertexPotState.total : 0.0L;
+            immutable real baseRun = s.currentObjective - potNow;
+            immutable real dBase =
+                mw.mfd.speculativeBistellarDelta(bm, baseRun, params);
+            real dPot = 0.0L;
+            if (s.potEnabled)
+                dPot = mw.mfd.potentialBistellarDelta(bm, s.vertexPotState,
+                    s.vertexPot, true);
+            mw.mfd.doMove(bm);
+            immutable real dSc = dBase + dPot;
+            row[0] = cast(double) dSc;
+
+            // the chord's 3 post-creation tets are {chord, face_i, face_j}
+            int[4] hint = [apx[0], apx[1], face[0], face[1]];
+            hint[].sort();
+            real obj = s.currentObjective + dSc;
+            foreach (slot; 0 .. SLIDE_SLOTS)
+            {
+                immutable int orient = slot / 6;
+                immutable int pick = slot % 6;
+                immutable int c0 = orient == 0 ? apx[0] : apx[1];
+                immutable int c4 = orient == 0 ? apx[1] : apx[0];
+                immutable int c2 = face[picks[pick][0]];
+                immutable int c3 = face[picks[pick][1]];
+                SlideFrame!int fr;
+                if (deriveSlideFrame(mw.mfd, c0, c4, c2, c3, fr))
+                {
+                    row[1 + 4 * slot + 1] = cast(double) fr.c4;
+                    row[1 + 4 * slot + 2] = cast(double) fr.c8;
+                }
+                bool valid = false;
+                real dS = real.nan;
+                mw.mfd.trySlideMove(obj, apx[0], apx[1], hint[], slot,
+                    params, valid, null, null,
+                    s.potEnabled ? &s.vertexPotState : null,
+                    s.potEnabled ? &s.vertexPot : null,
+                    null, SlideAccept.trialOnly, &dS, false);
+                if (valid)
+                {
+                    row[1 + 4 * slot] = cast(double) dS;
+                    // cleanliness: re-trial under cleanOnly -- valid iff
+                    // the slide preserves the illegal-degree multiset
+                    bool vClean = false;
+                    real dS2 = real.nan;
+                    mw.mfd.trySlideMove(obj, apx[0], apx[1], hint[], slot,
+                        params, vClean, null, null,
+                        s.potEnabled ? &s.vertexPotState : null,
+                        s.potEnabled ? &s.vertexPot : null,
+                        null, SlideAccept.trialOnly, &dS2, true);
+                    row[1 + 4 * slot + 3] = vClean ? 1.0 : 0.0;
+                }
+            }
+
+            auto inv = BM(apx[], face[]);
+            if (!mw.mfd.hasValidMove(inv))
+            { setError("site_survey: creation undo invalid (bug)"); return -1; }
+            if (s.potEnabled)
+                mw.mfd.potentialBistellarDelta(inv, s.vertexPotState,
+                    s.vertexPot, true);
+            mw.mfd.doMove(inv);
+        }
+
+        // restoration audit
+        if (s.potEnabled)
+        {
+            immutable real drift = s.vertexPotState.total - potBefore;
+            if (drift > 1e-6L || drift < -1e-6L)
+            { setError("site_survey: potState drift after restore (bug)");
+              return -1; }
+        }
+        if (s.currentObjective != objBefore)
+        { setError("site_survey: objective touched (bug)"); return -1; }
+        return nwin;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
 /// Get sampler statistics. All output pointers are optional (may be null).
 extern(C) int ddg_sampler_get_stats(void* sampler_handle,
     long* out_total_tried, long* out_total_accepted,

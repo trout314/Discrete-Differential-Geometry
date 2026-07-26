@@ -420,6 +420,45 @@ class ManifoldSampler:
             1 if commit else 0, ctypes.byref(ds))
         return float(ds.value) if rc == 1 else None
 
+    def site_survey(self, chain) -> dict:
+        """Washboard site survey along a BC chain (notes/FPKMC_DESIGN.md).
+
+        For each window k (chain[k:k+5]) the D core creates the knot through
+        the ordinary speculative-delta path, measures every slide slot in
+        trial-only mode, undoes the creation, and audits exact restoration
+        of manifold, potential state and objective.
+
+        Returns dict of arrays over the ``n = len(chain) - 4`` windows:
+          ``dS_create``  (n,)      creation action delta; NaN = invalid site
+          ``slot_dS``    (n, 12)   per-slot trial dS; NaN = not a legal slide
+          ``slot_dest``  (n, 12, 2) per-slot destination chord (c4, c8);
+                                    -1 where the frame derivation failed
+          ``slot_clean`` (n, 12)   1.0 species-preserving, 0.0 dirty,
+                                    NaN illegal
+        Destinations vs chain arithmetic classify each slot as
+        chain-forward / chain-backward / off-chain (the slot census).
+        MEASURED on R m4: 1 clean chain slot each direction (I1 exact)
+        plus 2-3 clean OFF-CHAIN slots per site -- the clean slide network
+        is a branching graph (see notes/FPKMC_DESIGN.md R3)."""
+        ch = np.ascontiguousarray(np.asarray(chain, dtype=np.intc).ravel())
+        if ch.size < 5:
+            raise ValueError("chain must have at least 5 vertices")
+        stride = 1 + 4 * SLIDE_SLOTS
+        nwin = ch.size - 4
+        out = np.empty(nwin * stride, dtype=np.float64)
+        got = _lib.ddg_sampler_site_survey(
+            self._handle, ch.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
+            int(ch.size), out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
+        assert got == nwin, f"survey returned {got} windows, expected {nwin}"
+        rows = out.reshape(nwin, stride)
+        slots = rows[:, 1:].reshape(nwin, SLIDE_SLOTS, 4)
+        dest = slots[:, :, 1:3]
+        dest = np.where(np.isnan(dest), -1, dest).astype(int)
+        return {"dS_create": rows[:, 0].copy(),
+                "slot_dS": slots[:, :, 0].copy(),
+                "slot_dest": dest,
+                "slot_clean": slots[:, :, 3].copy()}
+
     # -- Parameter setters --
 
     def set_num_facets_target(self, target: int) -> None:

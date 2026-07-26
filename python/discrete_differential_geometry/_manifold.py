@@ -256,6 +256,21 @@ class Manifold:
         _lib.ddg_manifold_face_apexes(self._handle, int(a), int(b), int(c), buf)
         return int(buf[0]), int(buf[1])
 
+    def chain_walk(self, window, n: int) -> np.ndarray:
+        """Sliding-window BC-chain walk: n steps from ``window`` (4 vertices
+        of a facet, in walk order). Returns the n+4 chain vertices; window k
+        is ``out[k:k+4]``. The walk is deterministic and reversible (walk the
+        reversed window to go backward), so chains never merge or branch.
+        D-side loop -- one call per stretch (notes/FPKMC_DESIGN.md M1)."""
+        w = np.ascontiguousarray(np.asarray(window, dtype=np.intc).ravel())
+        if w.size != 4:
+            raise ValueError("window must be 4 vertices")
+        out = np.empty(int(n) + 4, dtype=np.intc)
+        got = _lib.ddg_manifold_chain_walk(
+            self._handle, w.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
+            int(n), out.ctypes.data_as(ctypes.POINTER(ctypes.c_int)))
+        return out[:got].astype(int)
+
     def freeze_vertices(self, vertices, frozen: bool = True) -> None:
         """Freeze (or unfreeze) vertices. The sampler rejects any move whose
         support contains a frozen vertex; since every facet a move adds or

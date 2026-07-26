@@ -795,6 +795,24 @@ _lib.ddg_sampler_slide_at.restype = ctypes.c_int
 _lib.ddg_sampler_slide_at.errcheck = _check_int
 
 # ---------------------------------------------------------------------------
+# FPKMC infrastructure (notes/FPKMC_DESIGN.md, M1)
+# ---------------------------------------------------------------------------
+
+_lib.ddg_manifold_chain_walk.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_int), ctypes.c_long,
+    ctypes.POINTER(ctypes.c_int),
+]
+_lib.ddg_manifold_chain_walk.restype = ctypes.c_long
+_lib.ddg_manifold_chain_walk.errcheck = _check_int
+
+_lib.ddg_sampler_site_survey.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_int), ctypes.c_long,
+    ctypes.POINTER(ctypes.c_double),
+]
+_lib.ddg_sampler_site_survey.restype = ctypes.c_long
+_lib.ddg_sampler_site_survey.errcheck = _check_int
+
+# ---------------------------------------------------------------------------
 # Degree variance
 # ---------------------------------------------------------------------------
 

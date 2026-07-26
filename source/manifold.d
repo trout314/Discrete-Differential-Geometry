@@ -680,6 +680,27 @@ public:
         return 2;
     }
 
+    /***************************************************************************
+    Advance a sliding BC-chain window one step: drop w[0], exit through the
+    face (w[1], w[2], w[3]), adopt the apex opposite w[0]. The rule is
+    deterministic and reversible (the reversed window walks the chain
+    backward), so the directed-window graph is a permutation: chains never
+    merge or branch. Returns false if the face is missing or w[0] is not one
+    of its apexes (broken window -- e.g. the window is not a facet).
+    */
+    bool nextChainWindow()(ref Vertex[4] w) const
+    {
+        static assert(dimension == 3, "BC chain windows are dim=3 only");
+        int[2] ap = 0;
+        if (writeFaceApexes(w[1], w[2], w[3], ap.ptr) != 2) return false;
+        Vertex nxt;
+        if (ap[0] == w[0]) nxt = cast(Vertex) ap[1];
+        else if (ap[1] == w[0]) nxt = cast(Vertex) ap[0];
+        else return false;
+        w = [w[1], w[2], w[3], nxt];
+        return true;
+    }
+
     /// buffer, avoiding all GC allocation. Returns the number of simplices.
     /// If buf is null, just returns the count. Each simplex is written as
     /// (dim+1) consecutive ints.
@@ -1020,6 +1041,35 @@ if (isIRof!(S, const(Vertex)))
 /// closedStar against its own definition, and checks the two are different
 /// objects: the induced subcomplex has exactly the given vertices, the closed
 /// star has more.
+// nextChainWindow: determinism, reversibility, and closure on the standard
+// 3-sphere (boundary of the 4-simplex), where the walk from any window is a
+// 5-cycle through all five facets.
+unittest
+{
+    auto m = standardSphere!3;
+    int[4] w = [0, 1, 2, 3];
+    // one forward step, then the reversed window walks straight back
+    int[4] f = w;
+    assert(m.nextChainWindow(f));
+    int[4] r = [f[3], f[2], f[1], f[0]];
+    assert(m.nextChainWindow(r));
+    assert(r == [w[3], w[2], w[1], w[0]]);
+    // the orbit closes after 5 steps, visiting 5 distinct windows
+    int[4] c = w;
+    int[4][5] seen;
+    foreach (k; 0 .. 5)
+    {
+        seen[k] = c;
+        foreach (j; 0 .. k)
+            assert(seen[j] != seen[k]);
+        assert(m.nextChainWindow(c));
+    }
+    assert(c == w);
+    // a non-facet window reports a broken walk instead of asserting
+    int[4] bad = [0, 1, 2, 100];
+    assert(!m.nextChainWindow(bad));
+}
+
 unittest
 {
     import std.random : rndGen, uniform;

@@ -302,8 +302,32 @@ the thermal/slide channels take over):
   M0  DONE (2026-07-26): document reviewed (three R3 revisions with the
       user); formulas §3.2/3.3 derived and verified symbolically —
       scripts/defect_dynamics/fpkmc_m0_derivations.py, all pass.
-  M1  D: chain_walk + site_survey (+ tests co-located, D unittest).
-      Python: washboard/site-class cache; I1 verification (V1); ν (V2).
+  M1  IN PROGRESS (2026-07-26). DONE: nextChainWindow (manifold.d +
+      unittest), ddg_manifold_chain_walk, ddg_sampler_site_survey with
+      per-slot clean flags (D, restoration-audited), Python bindings;
+      cross-validated against bc_orbit, the worm_slide dS oracle and
+      slide_at to 1e-9; full R-m4 orbit survey = 3.4 s (~1 ms/site vs
+      ~0.5 s/site in Python).
+      V1 CENSUS RESULTS (R m4 orbit, 3252 sites) — the census was
+      load-bearing exactly as feared:
+        - LEGAL slots: 12 per site everywhere. Exactly 1 chain-forward +
+          1 chain-backward (I1 exact for the legal chain slots, 0
+          violations); the other 10 are off-chain.
+        - CLEAN subclass: only 900/3252 chain slides are clean — most
+          chain transport is species-changing (the rung ladder of
+          knot-collider Phase 1: sliding between different-sig sites
+          changes the illegal multiset by definition). Clean off-chain
+          slots: 0-9 per site (median ~3), dS symmetric about 0.
+        - CONSEQUENCE: the physical slide channel (dirty-allowed — the
+          project default) lives on the full slide GRAPH, degree 12,
+          species changing along edges. The sparse-graph formulation is
+          the MAIN path, not insurance; "chain confinement" is false for
+          the physical channel and the 1D tridiagonal case survives only
+          as the clean-subclass special case.
+      REMAINING in M1: graph edge-symmetry check (every legal slide has a
+      legal inverse with dS' = −dS — inverse-closedness, numerically over
+      the survey), washboard/site-class cache, ν (V2), segment_scan
+      (now: graph-BFS segments).
   M2  D: segment_scan + sampler_do_bistellar. Python: HB channel driver;
       V3. First physics: equilibrium two-knot g(r), association constant
       of the compound family.
