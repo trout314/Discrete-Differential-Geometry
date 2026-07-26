@@ -3123,6 +3123,7 @@ extern(C) long ddg_sampler_slide_graph_scan(void* sampler_handle,
     int root_a, int root_b, double dS_max, int max_depth, long max_nodes,
     long max_edges,
     double* node_dS, int* node_depth, int* node_nchords, long* node_sig,
+    int* node_chord_a, int* node_chord_b,
     int* edge_src, int* edge_dst, double* edge_dS,
     int* edge_chord_a, int* edge_chord_b, int* edge_slot,
     long* n_edges_out) nothrow
@@ -3226,9 +3227,17 @@ extern(C) long ddg_sampler_slide_graph_scan(void* sampler_handle,
             node_dS[cast(size_t) idx] = cast(double) cumDS;
             node_depth[cast(size_t) idx] = depth;
             int nc = 0;
-            foreach (p, _; deg3) nc++;
+            int[2] rep = [int.max, int.max];
+            foreach (p, _; deg3)
+            {
+                nc++;
+                if (p[0] < rep[0] || (p[0] == rep[0] && p[1] < rep[1]))
+                    rep = p;
+            }
             node_nchords[cast(size_t) idx] = nc;
             node_sig[cast(size_t) idx] = sigOf();
+            node_chord_a[cast(size_t) idx] = nc ? rep[0] : -1;
+            node_chord_b[cast(size_t) idx] = nc ? rep[1] : -1;
             return idx;
         }
 

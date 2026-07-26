@@ -351,8 +351,20 @@ the thermal/slide channels take over):
         exact; 0 antisymmetry violations over 46 reciprocated pairs.
         NOTE the scan found states 0.48 BELOW the rung-70 knot: the
         single-defect ground state at lam=0.4 is not the bare knot.
-      REMAINING before M2 physics: ν measurement (V2) against brute
-      force; HB driver on the scan graph; V3.
+      V2 DONE (2026-07-26): ν VERIFIED. With slide_prob = 1.0 the slide
+      branch swallows every attempt (thermal never runs, knot immortal,
+      zero contamination): tries/attempt over 2e7 attempts = 0.974 ±
+      0.075 of slide_prob·(3/N3)·(1/6) with n_legal = 12/12 — any wrong
+      factor >= 2 excluded at ~13σ. (First two measurements read 3.87x:
+      NOT a ν error — in-thermal runs grow flicker chords, and even a
+      1.2-cell "frozen patch" holds ~1100 unfrozen vertices that brew
+      their own flicker beside the knot. fpkmc_v2_nu.py documents both
+      modes; the p=1 mode is the clean one.)
+      Graph scan gained per-node representative chords (node_chord_a/b)
+      for the HB driver's post-jump handle.
+      REMAINING before M2 physics: the HB driver on the scan graph
+      (Metropolized-ball independence sampler: propose y ~ π|ball(x),
+      accept min(1, e^{d} Z(x)/Z(y)) with x ∈ ball(y) required); V3.
   M2  D: segment_scan + sampler_do_bistellar. Python: HB channel driver;
       V3. First physics: equilibrium two-knot g(r), association constant
       of the compound family.

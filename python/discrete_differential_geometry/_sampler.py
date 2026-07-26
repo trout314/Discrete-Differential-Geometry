@@ -477,6 +477,8 @@ class ManifoldSampler:
         node_depth = np.empty(max_nodes, np.intc)
         node_nch = np.empty(max_nodes, np.intc)
         node_sig = np.empty(max_nodes, np.int64)
+        node_ca = np.empty(max_nodes, np.intc)
+        node_cb = np.empty(max_nodes, np.intc)
         e_src = np.empty(max_edges, np.intc)
         e_dst = np.empty(max_edges, np.intc)
         e_dS = np.empty(max_edges, np.float64)
@@ -490,6 +492,7 @@ class ManifoldSampler:
             node_dS.ctypes.data_as(nd), node_depth.ctypes.data_as(ni),
             node_nch.ctypes.data_as(ni),
             node_sig.ctypes.data_as(ctypes.POINTER(ctypes.c_long)),
+            node_ca.ctypes.data_as(ni), node_cb.ctypes.data_as(ni),
             e_src.ctypes.data_as(ni), e_dst.ctypes.data_as(ni),
             e_dS.ctypes.data_as(nd), e_ca.ctypes.data_as(ni),
             e_cb.ctypes.data_as(ni), e_slot.ctypes.data_as(ni),
@@ -503,6 +506,7 @@ class ManifoldSampler:
         m = int(n_edges.value)
         return {"dS": node_dS[:n].copy(), "depth": node_depth[:n].copy(),
                 "n_chords": node_nch[:n].copy(), "sig": node_sig[:n].copy(),
+                "chord": np.stack([node_ca[:n], node_cb[:n]], 1),
                 "edge_src": e_src[:m].copy(), "edge_dst": e_dst[:m].copy(),
                 "edge_dS": e_dS[:m].copy(),
                 "edge_chord": np.stack([e_ca[:m], e_cb[:m]], 1),

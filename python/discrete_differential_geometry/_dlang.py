@@ -818,6 +818,7 @@ _lib.ddg_sampler_slide_graph_scan.argtypes = [
     ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_int),
     ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_long),
     ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int),
+    ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int),
     ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_int),
     ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int),
     ctypes.POINTER(ctypes.c_long),
