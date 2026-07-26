@@ -324,6 +324,19 @@ the thermal/slide channels take over):
       certification together close M2's correctness claim.
   V4  FP kinetics (frozen): exit-site fractions and FPT distributions vs
       brute-force slide-only runs from identical starts (KS tests).
+      PASS (2026-07-26, scripts/defect_dynamics/fpkmc_v4_fp.py; two
+      knots on one R-m2 orbit, B frozen, 20000 FP flights vs 300 brute
+      runs, per-exit-node chi^2 + two-sample KS on FPT):
+        frontier config (sep 5 sites, depth 3; 38 interior nodes):
+          chi2 3.06/7 p 0.879; KS 0.040 p 0.703;
+          mean FPT exact 6.38e4 attempts, brute 7.76e4.
+        dock config (sep 3 sites, depth 4; 72 interior, 23 dock,
+          P(dock) = 0.0415): chi2 8.52/10 p 0.578; KS 0.048 p 0.492;
+          mean FPT exact 3.60e4, brute 3.25e4.
+      0/600 unmatched brute landings — the complete-interior guarantee
+      held exactly. Brute reference is the exact marginalized slide
+      channel (geometric attempts-to-hit 3/(6 N3), uniform slot,
+      Metropolis on trial dS), B's proposals frozen out per §5 v1.
   V5  contact round-trip: dock → explicit resolution products vs the
       collider S-matrix table.
   V6  bookkeeping: sampler-integrated targeted moves vs dS_between on

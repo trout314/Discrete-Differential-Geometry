@@ -333,3 +333,176 @@ class HBDriver:
                     f"HB audit FAILED: running action {self.S_rel:.9f} vs "
                     f"true {true_rel:.9f}")
         return accepted
+
+
+# ---------------------------------------------------------------------------
+# FP: first-passage flights on the slide graph (design M3, v1 FROZEN)
+# ---------------------------------------------------------------------------
+
+ABSORB_DOCK = "dock"
+ABSORB_DS = "dS_frontier"
+ABSORB_DEPTH = "depth_frontier"
+ABSORB_MULTI = "multichord"
+
+
+class FPFlight:
+    """One scanned FP domain: node classification + exact flight sampling.
+
+    Built from one blocked-aware graph scan. Interior nodes are exactly
+    the fully expanded ones (depth < max_depth, dS <= dS_max, single
+    chord, dock == 0) -- by the scan's complete-interior guarantee, every
+    legal slide out of an interior node appears in the edge list, so the
+    sampler's slide channel restricted to the domain is EXACTLY: per
+    attempted move, proposal edge e (a specific (chord, slot)) commits
+    with probability nu * min(1, e^{-dS_e}), mutually exclusively; all
+    other outcomes hold. A flight simulates the embedded jump chain with
+    geometric holding times (exact, attempted-move units) to absorption.
+    Every non-interior node is absorbing, labeled dock / dS_frontier /
+    depth_frontier / multichord.
+
+    Scan-tree paths to any node have interior-only intermediates (only
+    expanded nodes create edges), so absorbing states can always be
+    materialized by replaying tree slides.
+    """
+
+    def __init__(self, g, dS_max, max_depth, nu):
+        self.g = g
+        self.nu = float(nu)
+        n = len(g["dS"])
+        interior = ((g["depth"] < max_depth) & (g["dS"] <= dS_max)
+                    & (g["n_chords"] == 1) & (g["dock"] == 0))
+        self.interior = interior
+        reason = np.full(n, "", dtype=object)
+        single = g["n_chords"] == 1
+        reason[(g["dock"] == 1)] = ABSORB_DOCK
+        reason[(g["dock"] == 0) & ~single] = ABSORB_MULTI
+        reason[(g["dock"] == 0) & single & (g["dS"] > dS_max)] = ABSORB_DS
+        reason[(g["dock"] == 0) & single & (g["dS"] <= dS_max)
+               & (g["depth"] >= max_depth)] = ABSORB_DEPTH
+        reason[interior] = ""
+        self.reason = reason
+        acc = self.nu * np.minimum(1.0, np.exp(-np.asarray(g["edge_dS"])))
+        self.out = {int(i): [] for i in np.nonzero(interior)[0]}
+        for k in range(len(g["edge_src"])):
+            i = int(g["edge_src"][k])
+            if interior[i]:
+                self.out[i].append((int(g["edge_dst"][k]), float(acc[k])))
+        for i, es in self.out.items():
+            if not es:
+                raise RuntimeError(f"interior node {i} has no out-edges")
+        self.escape = {i: sum(r for _, r in es)
+                       for i, es in self.out.items()}
+
+    def sample(self, rng, start=0, max_jumps=1_000_000):
+        """One exact flight from `start` to absorption.
+        Returns (absorbing node, time in attempted moves, n jumps)."""
+        j, t, jumps = int(start), 0, 0
+        while self.interior[j]:
+            es = self.out[j]
+            t += int(rng.geometric(self.escape[j]))
+            u = rng.random() * self.escape[j]
+            c = 0.0
+            for dst, r in es:
+                c += r
+                if u <= c:
+                    j = dst
+                    break
+            jumps += 1
+            if jumps > max_jumps:
+                raise RuntimeError("FP flight: jump budget exceeded")
+        return j, t, jumps
+
+    def _jump_matrices(self):
+        idx = np.nonzero(self.interior)[0]
+        pos = {int(v): c for c, v in enumerate(idx)}
+        m = len(idx)
+        absorbing = [int(v) for v in np.nonzero(~self.interior)[0]]
+        apos = {v: c for c, v in enumerate(absorbing)}
+        P = np.zeros((m, m))
+        R = np.zeros((m, len(absorbing)))
+        for i in idx:
+            i = int(i)
+            esc = self.escape[i]
+            for dst, r in self.out[i]:
+                if dst in pos:
+                    P[pos[i], pos[dst]] += r / esc
+                else:
+                    R[pos[i], apos[dst]] += r / esc
+        return idx, pos, absorbing, P, R
+
+    def splitting_exact(self, start=0):
+        """Exact absorption law from `start` (dense solve on the jump
+        chain; holding probabilities drop out -- M0 proof E).
+        Returns {absorbing node: probability}."""
+        idx, pos, absorbing, P, R = self._jump_matrices()
+        B = np.linalg.solve(np.eye(len(idx)) - P, R)
+        row = B[pos[int(start)]]
+        return {a: float(p) for a, p in zip(absorbing, row) if p > 0}
+
+    def mean_time_exact(self, start=0):
+        """Exact mean absorption time from `start`, in attempted moves:
+        sum over interior visits of the geometric holding mean."""
+        idx, pos, absorbing, P, R = self._jump_matrices()
+        # expected visits to each interior node starting from `start`
+        v = np.linalg.solve((np.eye(len(idx)) - P).T,
+                            np.eye(len(idx))[pos[int(start)]])
+        return float(sum(v[c] / self.escape[int(i)]
+                         for c, i in enumerate(idx)))
+
+
+class FPDriver:
+    """v1 FROZEN first-passage driver (design M3): repeated FP flights
+    with the other defect's vertices blocked; between flights the exit
+    state is materialized by replaying its scan-tree path. Stops when a
+    flight absorbs anywhere that is not a clean single-chord state
+    (dock / multichord) -- contact resolution is the caller's job (§8).
+
+    nu must be the per-(chord,slot) proposal probability per attempted
+    move of the reference dynamics (fpkmc.nu_per_attempt).
+    """
+
+    def __init__(self, sampler, chord, blocked_verts, nu, dS_max=5.0,
+                 max_depth=3, rng=None, oracle=None):
+        self.s = sampler
+        self.chord = tuple(sorted(int(c) for c in chord))
+        self.blocked = [int(v) for v in blocked_verts]
+        self.nu = float(nu)
+        self.W = float(dS_max)
+        self.D = int(max_depth)
+        self.rng = rng or np.random.default_rng()
+        self.oracle = oracle
+        self.S_rel = 0.0
+        self.t = 0                  # attempted-move clock
+        self.nflight = 0
+
+    def flight(self):
+        """One flight. Returns (reason, exit node dict) where reason ''
+        never occurs (exits are absorbing) and dict carries chord/dS."""
+        g = self.s.slide_graph_scan(self.chord, dS_max=self.W,
+                                    max_depth=self.D,
+                                    blocked_verts=self.blocked)
+        fl = FPFlight(g, self.W, self.D, self.nu)
+        j, t, _ = fl.sample(self.rng)
+        par = HBDriver._parents(g)
+        path = HBDriver._path(g, par, j)
+        for i in path:
+            ch = (int(g["edge_chord"][i][0]), int(g["edge_chord"][i][1]))
+            dS = self.s.slide_at(ch[0], ch[1], int(g["edge_slot"][i]),
+                                 commit=True)
+            if dS is None:
+                raise RuntimeError("FP materialize: recorded slide invalid")
+        self.t += t
+        self.S_rel += float(g["dS"][j])
+        self.nflight += 1
+        reason = fl.reason[j]
+        if int(g["n_chords"][j]) == 1:
+            self.chord = tuple(sorted((int(g["chord"][j][0]),
+                                       int(g["chord"][j][1]))))
+        if self.oracle is not None:
+            true_rel = self.oracle()
+            if abs(true_rel - self.S_rel) > 1e-6:
+                raise RuntimeError(
+                    f"FP audit FAILED: running action {self.S_rel:.9f} vs "
+                    f"true {true_rel:.9f}")
+        return reason, {"node": int(j), "chord": self.chord,
+                        "dS": float(g["dS"][j]), "t": t}

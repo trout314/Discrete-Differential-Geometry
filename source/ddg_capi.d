@@ -3154,14 +3154,27 @@ extern(C) long ddg_sampler_slide_graph_scan(void* sampler_handle,
     int* node_chord_a, int* node_chord_b,
     int* edge_src, int* edge_dst, double* edge_dS,
     int* edge_chord_a, int* edge_chord_b, int* edge_slot,
-    long* n_edges_out) nothrow
+    long* n_edges_out,
+    const(int)* blocked_verts, long n_blocked, int* node_dock) nothrow
 {
+    // FP mode (blocked_verts non-null): node_dock[i] = 1 iff node i's
+    // knot complex (every current deg-3 chord + its link vertices)
+    // intersects the one-tet-layer neighborhood of the blocked vertex
+    // set, computed ONCE from the root state. Dock nodes are absorbing:
+    // enumerated with exact dS but never expanded. The static rule is a
+    // state-independent boundary (exactness needs only that FP and any
+    // reference dynamics absorb on the SAME rule) and is one tet-layer
+    // conservative: interior states cannot be tet-adjacent to the
+    // frozen defect, so their energies are additive (no-halo).
+    // blocked_verts null (HB path) => behavior identical to before.
     clearError();
     try
     {
         if (sampler_handle is null) { setError("null handle"); return -1; }
         auto s = cast(SamplerState*) sampler_handle;
         if (s.dim != 3) { setError("graph scan is dim=3 only"); return -1; }
+        if (blocked_verts !is null && n_blocked > 0 && node_dock is null)
+        { setError("blocked_verts given but node_dock is null"); return -1; }
         auto mw = cast(ManifoldWrapper!3*)(
             cast(ManifoldHandle*) s.manifoldHandle).ptr;
 
@@ -3188,6 +3201,26 @@ extern(C) long ddg_sampler_slide_graph_scan(void* sampler_handle,
         int[2] root = [min(root_a, root_b), max(root_a, root_b)];
         if (mw.mfd.degreeOrZero!1(root[]) != 3)
         { setError("root chord is not a degree-3 edge"); return -1; }
+
+        // one-tet-layer neighborhood of the blocked set (root state)
+        bool[int] blockedNbhd;
+        if (blocked_verts !is null && n_blocked > 0)
+        {
+            bool[int] blockedSet;
+            foreach (i; 0 .. n_blocked)
+                blockedSet[blocked_verts[cast(size_t) i]] = true;
+            auto nf = cast(size_t) mw.mfd.numFacets;
+            auto fbuf = new int[](4 * nf);
+            fbuf[] = 0;
+            mw.mfd.writeFacetsToBuffer(fbuf.ptr);
+            foreach (fi; 0 .. nf)
+            {
+                auto f = fbuf[4 * fi .. 4 * fi + 4];
+                bool hit = false;
+                foreach (v; f) if (v in blockedSet) { hit = true; break; }
+                if (hit) foreach (v; f) blockedNbhd[v] = true;
+            }
+        }
 
         // lazily captured baseline degrees + tracked degree-3 set
         size_t[int[2]] baseline;
@@ -3247,6 +3280,22 @@ extern(C) long ddg_sampler_slide_graph_scan(void* sampler_handle,
         long[immutable(int)[]] seen;
         bool capped = false;
 
+        // dock test against the CURRENT deg-3 chords (called at node
+        // creation, when deg3 reflects the node's state)
+        bool dockCheck()
+        {
+            if (blockedNbhd.length == 0) return false;
+            foreach (p, _; deg3)
+            {
+                if ((p[0] in blockedNbhd) || (p[1] in blockedNbhd))
+                    return true;
+                foreach (pr; mw.mfd.link(p[]))
+                    foreach (v; pr)
+                        if (v in blockedNbhd) return true;
+            }
+            return false;
+        }
+
         long addNode(immutable(int)[] key, real cumDS, int depth)
         {
             if (nNodes >= max_nodes) { capped = true; return -1; }
@@ -3266,6 +3315,8 @@ extern(C) long ddg_sampler_slide_graph_scan(void* sampler_handle,
             node_sig[cast(size_t) idx] = sigOf();
             node_chord_a[cast(size_t) idx] = nc ? rep[0] : -1;
             node_chord_b[cast(size_t) idx] = nc ? rep[1] : -1;
+            if (node_dock !is null)
+                node_dock[cast(size_t) idx] = dockCheck() ? 1 : 0;
             return idx;
         }
 
@@ -3358,7 +3409,9 @@ extern(C) long ddg_sampler_slide_graph_scan(void* sampler_handle,
                     }
                     else if (nEdges >= max_edges)
                         capped = true;
-                    if (fresh && cumDS + dS <= cast(real) dS_max)
+                    if (fresh && cumDS + dS <= cast(real) dS_max
+                        && !(node_dock !is null
+                             && node_dock[cast(size_t) child] == 1))
                         dfs(child, cumDS + dS, depth + 1);
                     slideRollback(mw.mfd, recs, potState, pot);
                     refreshDeg3(pairs);

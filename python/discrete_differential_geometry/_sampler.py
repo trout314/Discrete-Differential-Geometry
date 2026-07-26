@@ -476,15 +476,26 @@ class ManifoldSampler:
 
     def slide_graph_scan(self, root_chord, dS_max: float = 20.0,
                          max_depth: int = 6, max_nodes: int = 20000,
-                         max_edges: int = 200000) -> dict:
+                         max_edges: int = 200000, blocked_verts=None) -> dict:
         """Bounded DFS over defect states reachable by LEGAL slides (dirty
         included) from the current state, rooted at the degree-3 chord
         ``root_chord``. Exact per-edge dS; exact rollback (audited in D).
         Nodes are keyed exactly by the edge-degree overlay vs the current
         state. Expansion prunes at cum dS > dS_max; capped scans raise.
 
-        Returns dict: nodes (dS, depth, n_chords, sig) and edges
-        (src, dst, dS, chord, slot). See notes/FPKMC_DESIGN.md M2."""
+        FP mode: ``blocked_verts`` (another defect's vertex labels) adds a
+        per-node ``dock`` flag -- 1 iff the node's knot complex touches the
+        one-tet-layer neighborhood of the blocked set (computed once at
+        the root state). Dock nodes are enumerated but never expanded
+        (absorbing). Without blocked_verts the scan is unchanged and
+        ``dock`` is all zeros.
+
+        Complete-interior guarantee (FP): a node with depth < max_depth,
+        dS <= dS_max and dock == 0 was fully expanded -- every legal slide
+        out of it appears in the edge list. All other nodes are frontier.
+
+        Returns dict: nodes (dS, depth, n_chords, sig, chord, dock) and
+        edges (src, dst, dS, chord, slot). See notes/FPKMC_DESIGN.md M2."""
         a, b = int(root_chord[0]), int(root_chord[1])
         nd = ctypes.POINTER(ctypes.c_double)
         ni = ctypes.POINTER(ctypes.c_int)
@@ -494,6 +505,7 @@ class ManifoldSampler:
         node_sig = np.empty(max_nodes, np.int64)
         node_ca = np.empty(max_nodes, np.intc)
         node_cb = np.empty(max_nodes, np.intc)
+        node_dock = np.zeros(max_nodes, np.intc)
         e_src = np.empty(max_edges, np.intc)
         e_dst = np.empty(max_edges, np.intc)
         e_dS = np.empty(max_edges, np.float64)
@@ -501,6 +513,12 @@ class ManifoldSampler:
         e_cb = np.empty(max_edges, np.intc)
         e_slot = np.empty(max_edges, np.intc)
         n_edges = ctypes.c_long()
+        if blocked_verts is not None and len(blocked_verts):
+            bv = np.ascontiguousarray(
+                [int(v) for v in blocked_verts], dtype=np.intc)
+            bv_ptr, bv_n = bv.ctypes.data_as(ni), len(bv)
+        else:
+            bv_ptr, bv_n = None, 0
         n = _lib.ddg_sampler_slide_graph_scan(
             self._handle, a, b, float(dS_max), int(max_depth),
             int(max_nodes), int(max_edges),
@@ -511,7 +529,8 @@ class ManifoldSampler:
             e_src.ctypes.data_as(ni), e_dst.ctypes.data_as(ni),
             e_dS.ctypes.data_as(nd), e_ca.ctypes.data_as(ni),
             e_cb.ctypes.data_as(ni), e_slot.ctypes.data_as(ni),
-            ctypes.byref(n_edges))
+            ctypes.byref(n_edges),
+            bv_ptr, bv_n, node_dock.ctypes.data_as(ni))
         if n < 0:
             err = _lib.ddg_last_error()
             raise RuntimeError(err.decode() if err else "graph scan failed")
@@ -522,6 +541,7 @@ class ManifoldSampler:
         return {"dS": node_dS[:n].copy(), "depth": node_depth[:n].copy(),
                 "n_chords": node_nch[:n].copy(), "sig": node_sig[:n].copy(),
                 "chord": np.stack([node_ca[:n], node_cb[:n]], 1),
+                "dock": node_dock[:n].copy(),
                 "edge_src": e_src[:m].copy(), "edge_dst": e_dst[:m].copy(),
                 "edge_dS": e_dS[:m].copy(),
                 "edge_chord": np.stack([e_ca[:m], e_cb[:m]], 1),

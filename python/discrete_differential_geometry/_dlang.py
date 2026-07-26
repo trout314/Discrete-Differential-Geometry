@@ -830,6 +830,8 @@ _lib.ddg_sampler_slide_graph_scan.argtypes = [
     ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_int),
     ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int),
     ctypes.POINTER(ctypes.c_long),
+    ctypes.POINTER(ctypes.c_int), ctypes.c_long,   # blocked_verts, n
+    ctypes.POINTER(ctypes.c_int),                  # node_dock
 ]
 _lib.ddg_sampler_slide_graph_scan.restype = ctypes.c_long
 # no errcheck: a capped scan sets the error string but returns valid counts
