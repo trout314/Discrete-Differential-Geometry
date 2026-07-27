@@ -31,6 +31,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import sys
 from collections import Counter, defaultdict
 
@@ -90,16 +91,36 @@ def load_run(base):
                         pass
     d["_events"], d["_tracks"] = ev, tr
     d["_name"] = os.path.basename(base)
+
+    # CLEAN WINDOW. DefectState's incremental bookkeeping diverges from a
+    # from-scratch rebuild in long runs (first seen 2026-07-27; audits at
+    # sw 8k-65k depending on the run). Worldline components are built from
+    # that state, so every event after the divergence is suspect. The audit
+    # runs every --audit-every chunks, so the last VERIFIED-clean point is
+    # one audit interval before the first failure. Truncate there, always:
+    # a report must not be able to include post-divergence data by default.
+    d["_clean_to"] = d.get("sweeps", 0)
+    d["_truncated"] = False
+    logp = base + ".log"
+    if os.path.exists(logp):
+        with open(logp) as fh:
+            fails = [int(m.group(1)) for m in
+                     re.finditer(r"AUDIT FAILED sw(\d+)", fh.read())]
+        if fails:
+            d["_clean_to"] = max(0, min(fails) - 1000)
+            d["_truncated"] = True
     return d
 
 
 def analyse(d, skip, nblock):
     """Reduced rates for one run, over the post-burn-in window."""
-    ts = [r for r in d["ts"] if r["sw"] >= skip]
-    if not ts:
+    cap = d["_clean_to"]
+    ts = [r for r in d["ts"] if skip <= r["sw"] <= cap]
+    if len(ts) < 2:
         return None
     sw0, sw1 = ts[0]["sw"], ts[-1]["sw"]
-    ev = [e for e in d["_events"] if e.get("clock_sw", -1) >= skip]
+    ev = [e for e in d["_events"]
+          if skip <= e.get("clock_sw", -1) <= cap]
 
     # complex-number series, and the pair count that a bimolecular rate
     # should be proportional to
@@ -136,6 +157,8 @@ def analyse(d, skip, nblock):
         "k2": k2, "k2_e": k2e, "k1": k1, "k1_e": k1e,
         "K": km / ks if ks else float("nan"),
         "n_merge": sum(mcount), "n_split": sum(scount),
+        "clean_to": cap, "truncated": d["_truncated"],
+        "total_sweeps": d.get("sweeps", 0),
     }
 
 
@@ -157,7 +180,16 @@ def main():
     rows = [r for r in (analyse(d, args.skip_sweeps, args.nblock)
                         for d in runs) if r]
 
-    print(f"\n{len(rows)} runs, burn-in {args.skip_sweeps} sweeps dropped\n")
+    print(f"\n{len(rows)} runs, burn-in {args.skip_sweeps} sweeps dropped")
+    tr = [r for r in rows if r["truncated"]]
+    if tr:
+        print("TRUNCATED at the last verified-clean audit (DefectState\n"
+              "incremental divergence; events past it are discarded):")
+        for r in tr:
+            print(f"    {r['name']:6s} using {r['clean_to']:6d} of "
+                  f"{r['total_sweeps']:6d} sweeps "
+                  f"({100 * r['clean_to'] / max(r['total_sweeps'], 1):3.0f}%)")
+    print()
     print(f"{'run':6s} {'lam':>5s} {'slide':>6s} {'sweeps':>8s} {'<n>':>6s} "
           f"{'merges':>7s} {'splits':>7s} {'k_m/sw':>16s} {'k_s/sw':>16s}")
     for r in rows:
@@ -205,7 +237,8 @@ def main():
     # --- compound lifetimes -------------------------------------------
     print("\ncompound lifetimes (tracks that absorbed >=1 partner vs not)")
     for d in runs:
-        tr = d["_tracks"]
+        tr = [t for t in d["_tracks"]
+              if t.get("born_sw", 0) + t.get("life_sw", 0) <= d["_clean_to"]]
         if not tr:
             continue
         comp = [t["life_sw"] for t in tr if t.get("n_merge_in", 0) > 0]
@@ -221,12 +254,14 @@ def main():
     shape_of = {}
     for d in runs:
         for t in d["_tracks"]:
+            if t.get("born_sw", 0) > d["_clean_to"]:
+                continue
             if t.get("shape"):
                 shape_of[(d["_name"], t["tid"])] = tuple(t["shape"])
     chan = Counter()
     for d in runs:
         for e in d["_events"]:
-            if e["k"] != "merge":
+            if e["k"] != "merge" or e.get("clock_sw", 0) > d["_clean_to"]:
                 continue
             b = tuple(sorted(shape_of.get((d["_name"], f[0]))
                              for f in e["from"]
@@ -240,7 +275,8 @@ def main():
     fig, axs = plt.subplots(2, 2, figsize=(13, 8.5))
     ax = axs[0][0]
     for d in runs:
-        ts = [r for r in d["ts"] if r["sw"] >= args.skip_sweeps]
+        ts = [r for r in d["ts"]
+              if args.skip_sweeps <= r["sw"] <= d["_clean_to"]]
         ax.plot([r["sw"] for r in ts], [r["n_components"] for r in ts],
                 lw=0.8, label=d["_name"])
     ax.set_xlabel("sweep"); ax.set_ylabel("n complexes")
@@ -262,7 +298,8 @@ def main():
 
     ax = axs[1][0]
     for d in runs:
-        tr = d["_tracks"]
+        tr = [t for t in d["_tracks"]
+              if t.get("born_sw", 0) + t.get("life_sw", 0) <= d["_clean_to"]]
         life = sorted(t["life_sw"] for t in tr
                       if t.get("n_merge_in", 0) > 0)
         if len(life) > 5:
