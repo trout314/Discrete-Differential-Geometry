@@ -188,3 +188,266 @@ def cos2_between(u, v):
     """Exact cos^2 of the (undirected) angle between two rational
     directions in a COMMON developed frame."""
     return Fraction(_dot(u, v)) ** 2 / (_dot(u, u) * _dot(v, v))
+
+
+def _rotation_between(p, q):
+    """Exact rotation R (rows of Fractions) with R (p_i - p_0) =
+    (q_i - q_0), for two congruent 4-point placements."""
+    M = [_sub(p[i + 1], p[0]) for i in range(3)]
+    N = [_sub(q[i + 1], q[0]) for i in range(3)]
+    MT = [tuple(M[i][j] for i in range(3)) for j in range(3)]
+    R = []
+    for j in range(3):
+        rhs = tuple(N[i][j] for i in range(3))
+        R.append(_solve3(MT, rhs))
+    return R
+
+
+# ---------------------------------------------------------------------------
+# Exact rotations in the spinor representation: integer quaternions
+# ---------------------------------------------------------------------------
+
+from math import gcd as _gcd
+
+
+class Quat:
+    """Primitive integer quaternion (a, b, c, d) -- the exact spinor
+    avatar of a rational rotation (Euler-Rodrigues: R entries are
+    quadratic forms over the norm N = a^2+b^2+c^2+d^2). Composition is
+    the integer Hamilton product; R(q1 * q2) = R(q1) R(q2).
+
+    The SIGN is the SU(2) double-cover datum: +q and -q give the same
+    rotation but opposite spin lifts. Composition preserves signs, so a
+    loop composed from per-step lifts carries a well-defined Z2 spin
+    holonomy (per-step sign conventions are a Z2 gauge choice; use
+    canonical() only for gauge-fixed rotation LABELS, never mid-path).
+    """
+    __slots__ = ("a", "b", "c", "d")
+
+    def __init__(self, a, b, c, d):
+        g = _gcd(_gcd(abs(a), abs(b)), _gcd(abs(c), abs(d)))
+        if g == 0:
+            raise ValueError("zero quaternion")
+        if g > 1:
+            a, b, c, d = a // g, b // g, c // g, d // g
+        self.a, self.b, self.c, self.d = a, b, c, d
+
+    def __repr__(self):
+        return f"Quat({self.a},{self.b},{self.c},{self.d})"
+
+    def __eq__(self, other):
+        return (self.a, self.b, self.c, self.d) == \
+            (other.a, other.b, other.c, other.d)
+
+    def __hash__(self):
+        return hash((self.a, self.b, self.c, self.d))
+
+    @property
+    def norm(self):
+        return self.a ** 2 + self.b ** 2 + self.c ** 2 + self.d ** 2
+
+    def canonical(self):
+        """Gauge-fixed sign: first nonzero of (a, b, c, d) positive."""
+        for x in (self.a, self.b, self.c, self.d):
+            if x != 0:
+                return self if x > 0 else Quat(-self.a, -self.b,
+                                               -self.c, -self.d)
+        raise AssertionError
+
+    def same_rotation(self, other):
+        return self.canonical() == other.canonical()
+
+    def __mul__(self, o):
+        a1, b1, c1, d1 = self.a, self.b, self.c, self.d
+        a2, b2, c2, d2 = o.a, o.b, o.c, o.d
+        return Quat(a1 * a2 - b1 * b2 - c1 * c2 - d1 * d2,
+                    a1 * b2 + b1 * a2 + c1 * d2 - d1 * c2,
+                    a1 * c2 - b1 * d2 + c1 * a2 + d1 * b2,
+                    a1 * d2 + b1 * c2 - c1 * b2 + d1 * a2)
+
+    def conj(self):
+        return Quat(self.a, -self.b, -self.c, -self.d)
+
+    def __pow__(self, k):
+        if k < 0:
+            return self.conj() ** (-k)
+        r = Quat(1, 0, 0, 0)
+        base = self
+        while k:
+            if k & 1:
+                r = r * base
+            base = base * base
+            k >>= 1
+        return r
+
+    def cos_phi(self):
+        """Exact cos of the rotation angle."""
+        return Fraction(2 * self.a ** 2, self.norm) - 1
+
+    def axis(self):
+        """Integer rotation axis (b, c, d), gcd-reduced; None if
+        identity."""
+        b, c, d = self.b, self.c, self.d
+        g = _gcd(_gcd(abs(b), abs(c)), abs(d))
+        if g == 0:
+            return None
+        return (b // g, c // g, d // g)
+
+    def to_matrix(self):
+        """Rows of Fractions; exact, orthogonal, det +1."""
+        a, b, c, d = self.a, self.b, self.c, self.d
+        N = self.norm
+        return [(Fraction(a * a + b * b - c * c - d * d, N),
+                 Fraction(2 * (b * c - a * d), N),
+                 Fraction(2 * (b * d + a * c), N)),
+                (Fraction(2 * (b * c + a * d), N),
+                 Fraction(a * a - b * b + c * c - d * d, N),
+                 Fraction(2 * (c * d - a * b), N)),
+                (Fraction(2 * (b * d - a * c), N),
+                 Fraction(2 * (c * d + a * b), N),
+                 Fraction(a * a - b * b - c * c + d * d, N))]
+
+    @staticmethod
+    def lift(R):
+        """Exact lift of a rational rotation matrix (rows of Fractions)
+        to a primitive integer quaternion, canonical sign. The
+        roundtrip to_matrix(lift(R)) == R is asserted."""
+        tr = R[0][0] + R[1][1] + R[2][2]
+        cands = [
+            (1 + tr, R[2][1] - R[1][2], R[0][2] - R[2][0],
+             R[1][0] - R[0][1]),
+            (R[2][1] - R[1][2], 1 + 2 * R[0][0] - tr,
+             R[0][1] + R[1][0], R[0][2] + R[2][0]),
+            (R[0][2] - R[2][0], R[0][1] + R[1][0],
+             1 + 2 * R[1][1] - tr, R[1][2] + R[2][1]),
+            (R[1][0] - R[0][1], R[0][2] + R[2][0],
+             R[1][2] + R[2][1], 1 + 2 * R[2][2] - tr)]
+        for k, v in enumerate(cands):
+            if v[k] != 0:
+                den = 1
+                for x in v:
+                    den = den * Fraction(x).denominator // _gcd(
+                        den, Fraction(x).denominator)
+                q = Quat(*(int(x * den) for x in v)).canonical()
+                assert q.to_matrix() == [tuple(r) for r in R], \
+                    "quaternion lift roundtrip failed (R not in SO(3,Q)?)"
+                return q
+        raise AssertionError("all lift candidates vanish")
+
+
+# ---------------------------------------------------------------------------
+# Parallel transport: canonical frames + Wilson lines
+# ---------------------------------------------------------------------------
+
+class TransportContext:
+    """Exact parallel transport over one host triangulation.
+
+    Every tet gets a CANONICAL frame: its vertices in sorted order --
+    with the last two swapped where the global orientation demands it
+    (orientation parity is propagated once over the dual graph, so
+    frames are consistent manifold-wide and Wilson lines from separate
+    calls compose). A Wilson line along a face-adjacent tet path is the
+    rotation from the start tet's canonical frame to the end tet's,
+    computed through the rigid development; returned as a Quat (spinor
+    lift with the canonical per-line sign).
+
+    facets: iterable of 4-tuples/lists of vertex labels.
+    """
+
+    def __init__(self, facets):
+        self.tets = [tuple(sorted(int(v) for v in f)) for f in facets]
+        tset = {frozenset(t) for t in self.tets}
+        self.dual = {}
+        f2t = {}
+        for t in tset:
+            for v in t:
+                f2t.setdefault(t - {v}, []).append(t)
+        for fc, ts in f2t.items():
+            for t in ts:
+                for u in ts:
+                    if u != t:
+                        self.dual.setdefault(t, []).append(u)
+        self.dual = {t: sorted(ns, key=sorted)
+                     for t, ns in self.dual.items()}
+        self._orient(tset)
+
+    def _orient(self, tset):
+        """Propagate a global orientation: parity[tet] = 1 iff the
+        canonical order is sorted-with-last-two-swapped. Two adjacent
+        tets are consistent iff they induce OPPOSITE orientations on
+        the shared face; removing one vertex from a sorted tuple leaves
+        a sorted (identity-permutation) face order, so the induced sign
+        is just (-1)^(index of the omitted vertex)."""
+        from collections import deque
+        self.parity = {}
+        for start in sorted(tset, key=sorted):
+            if start in self.parity:
+                continue
+            self.parity[start] = 0
+            q = deque([start])
+            while q:
+                t = q.popleft()
+                st = sorted(t)
+                for u in self.dual.get(t, ()):
+                    it = st.index(next(v for v in t if v not in u))
+                    su = sorted(u)
+                    iu = su.index(next(v for v in u if v not in t))
+                    want = self.parity[t] ^ ((it ^ iu ^ 1) & 1)
+                    if u in self.parity:
+                        if self.parity[u] != want:
+                            raise ValueError("non-orientable complex")
+                    else:
+                        self.parity[u] = want
+                        q.append(u)
+
+    def canon_order(self, tet):
+        t = tuple(sorted(tet))
+        if self.parity[frozenset(t)]:
+            return (t[0], t[1], t[3], t[2])
+        return t
+
+    def canon_placement(self, tet):
+        order = self.canon_order(tet)
+        return {v: _SEED[i] for i, v in enumerate(order)}
+
+    def wilson_line(self, path):
+        """Exact transport along a face-adjacent tet path, start
+        canonical frame -> end canonical frame. Returns a Quat."""
+        path = [frozenset(t) for t in path]
+        start = tuple(self.canon_order(path[0]))
+        placements = develop_path(start, self.canon_placement(path[0]),
+                                  [tuple(sorted(t)) for t in path])
+        end_pos = placements[-1]
+        order = self.canon_order(path[-1])
+        placed = [end_pos[v] for v in order]
+        canonical = [_SEED[i] for i in range(4)]
+        # g_end: canonical -> placed; transport = g_end^{-1} (g_0 = id)
+        Rg = _rotation_between(canonical, placed)
+        RgT = [tuple(Rg[i][j] for i in range(3)) for j in range(3)]
+        return Quat.lift(RgT)
+
+    def holonomy(self, loop):
+        """Wilson line of a closed path (first == last tet): the exact
+        loop rotation in the base tet's canonical frame. Returns
+        (Quat, cos_phi, axis)."""
+        if frozenset(loop[0]) != frozenset(loop[-1]):
+            raise ValueError("loop must return to its base tet")
+        q = self.wilson_line(loop)
+        return q, q.cos_phi(), q.axis()
+
+
+def chain_step_quat(seq, pos):
+    """Spinor lift of the BC-chain step screw's rotation part. Verifies
+    the norm-6 signature (cos phi = -2/3, axis norm^2 = 5*a^2)."""
+    p = [pos[seq[i]] for i in range(4)]
+    q4 = [pos[seq[1 + i]] for i in range(4)]
+    R = _rotation_between(p, q4)
+    RT = [tuple(R[i][j] for i in range(3)) for j in range(3)]
+    q = Quat.lift(RT)
+    assert q.cos_phi() == Fraction(-2, 3), "not a BC chain step"
+    return q
+
+
+def chain_transport(seq, pos, k):
+    """Exact k-step transport along a developed chain: q_step ** k."""
+    return chain_step_quat(seq, pos) ** k
