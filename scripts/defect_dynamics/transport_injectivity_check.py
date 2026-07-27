@@ -65,7 +65,8 @@ def main():
 
     seen_R = {}          # (end, quat) -> path
     seen_Rt = {}         # (end, placement12) -> path
-    coll_R, coll_Rt = [], []
+    seen_pos = {}        # endpoint centroid alone -> path
+    coll_R, coll_Rt, coll_pos = [], [], []
     loops_checked = 0
     id_loops = []
     npaths = 0
@@ -78,6 +79,12 @@ def main():
             q, pl = wq(placement, cur)
             kR = (cur, q.canonical())
             kRt = (cur, pl)
+            cen = tuple(sum(placement[v][k] for v in cur) / 4
+                        for k in range(3))
+            if cen in seen_pos:
+                coll_pos.append((seen_pos[cen], list(path)))
+            else:
+                seen_pos[cen] = list(path)
             if kRt in seen_Rt:
                 coll_Rt.append((seen_Rt[kRt], list(path)))
             else:
@@ -111,6 +118,11 @@ def main():
     print(f"(R,t) collisions (flat loops): {len(coll_Rt)}")
     print(f"R-only collisions (rotation-identity loops with net "
           f"translation): {len(coll_R)}")
+    print(f"ENDPOINT-only collisions (same developed centroid, "
+          f"rotation forgotten): {len(coll_pos)}")
+    for a, b in coll_pos[:3]:
+        print(f"  POS-COLL: len {len(a)-1}: {[sorted(t)[:1] for t in a]}"
+              f" vs len {len(b)-1}")
     print(f"closed loops with identity rotation: {len(id_loops)}")
     for a, b in coll_Rt[:3]:
         print(f"  FLAT: {[sorted(t) for t in a]}  vs  "

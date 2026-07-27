@@ -410,9 +410,12 @@ class TransportContext:
         order = self.canon_order(tet)
         return {v: _SEED[i] for i, v in enumerate(order)}
 
-    def wilson_line(self, path):
-        """Exact transport along a face-adjacent tet path, start
-        canonical frame -> end canonical frame. Returns a Quat."""
+    def transport(self, path):
+        """Exact transport along a face-adjacent tet path. Returns
+        (Quat, endpoint): the Wilson rotation from the start tet's
+        canonical frame to the end tet's, and the exact R^3 endpoint --
+        the developed CENTROID of the end tet, a rational 3-vector in
+        the base tet's canonical frame."""
         path = [frozenset(t) for t in path]
         start = tuple(self.canon_order(path[0]))
         placements = develop_path(start, self.canon_placement(path[0]),
@@ -424,7 +427,12 @@ class TransportContext:
         # g_end: canonical -> placed; transport = g_end^{-1} (g_0 = id)
         Rg = _rotation_between(canonical, placed)
         RgT = [tuple(Rg[i][j] for i in range(3)) for j in range(3)]
-        return Quat.lift(RgT)
+        cen = tuple(sum(p[k] for p in placed) / 4 for k in range(3))
+        return Quat.lift(RgT), cen
+
+    def wilson_line(self, path):
+        """Exact transport rotation only (see transport())."""
+        return self.transport(path)[0]
 
     def holonomy(self, loop):
         """Wilson line of a closed path (first == last tet): the exact
