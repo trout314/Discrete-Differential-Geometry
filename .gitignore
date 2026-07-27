@@ -79,3 +79,4 @@ notes/*.log
 notes/*.out
 notes/*.synctex.gz
 notes/*.toc
+.DS_Store
