@@ -27,6 +27,7 @@ d_link_args = [
 # Core library sources (no main() functions)
 lib_sources = files(
   'source/algorithms.d',
+  'source/development.d',
   'source/factoring.d',
   'source/hashmap.d',
   'source/manifold.d',

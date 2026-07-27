@@ -272,6 +272,10 @@ def main():
         results.append({"crossing": ci, "angle": c["angle"],
                         "dmin": c["dmin"], "shared": c["shared"],
                         "hand": c.get("hand"),
+                        "chordA": [int(chainA[bA]),
+                                   int(chainA[(bA + 4) % LA])],
+                        "chordB": [int(stretch[jX]),
+                                   int(stretch[jX + 4])],
                         "rows": rows, "outcome": outcome, "reversal": rev})
         del m
 
