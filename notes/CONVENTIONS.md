@@ -187,7 +187,55 @@ Every report on a crystal-derived state includes:
   (illegal-edge signature, induced subcomplex, or decorated subcomplex) + Q_c
   **raw** with ΣZ. Never a mean over ladder rungs — see §1.1.
 
-## 6. Run-launch checklist
+## 6. Geometric frames — intrinsic vs extrinsic (2026-07-26)
+
+The triangulation's **intrinsic PL geometry** is the unit-edge-length metric:
+every tetrahedron regular with edge 1, curvature concentrated on edges
+(deficit angles). Scripts also use three **extrinsic frames**, which are
+embeddings carrying extra structure:
+
+| frame | what it is | edge lengths | legitimate uses |
+|---|---|---|---|
+| registry | vertex labels pinned to ideal reference-crystal fractional positions (`reference_frac_positions`) | ~25% spread | site identity, winding sectors, visualization, large-scale exponents |
+| registry lift | the cocycle/tree lift of the registry (cells) | inherits registry | same as registry; MSD/centroid bookkeeping |
+| harmonic | periodic Tutte embedding (`coc.torus_positions`) | uncontrolled | S(k) suite, large-scale exponents |
+
+**Rules:**
+
+1. **Local geometric claims** (contact angles, sub-cell distances, directors,
+   ball radii ≲ 2 cells) must be **intrinsic**: computed in the unit-edge
+   metric via *development* — the rigid unrolling of a simply-connected tet
+   complex into R³ (each tet placed congruently across shared faces; for unit
+   regular tets, one reflection per step). Local relative angles computed in
+   a common developed frame from a shared simplex are PL invariants.
+   Short-range distances use the Steiner–Dijkstra PL geodesic
+   (`distance_distribution.py`), not embedding norms.
+2. **Direction comparisons at a distance are gauge** unless the transport
+   path is stated: the unit-edge crystal is curved, parallel transport is
+   path-dependent (holonomy), and there is *no intrinsic global direction
+   field*. The registry silently supplies one — treat registry angles between
+   distant objects as gauge-frame labels, not geometry.
+3. **Large-scale scaling exponents** (HU class, MSD exponent, small-k power
+   laws) may be measured in any fixed embedding frame: for near-pristine
+   states the embedding is a quasi-isometry of the intrinsic metric and
+   exponents are bi-Lipschitz invariants. The **constants** (D, radii,
+   transparency lengths) are frame-dependent — label the frame. This defense
+   weakens in strongly deformed states (melts, glass) where the registry
+   itself degrades.
+4. **BC chains**: intrinsically, a face-glued tet stack develops rigidly to
+   the ideal Boerdijk–Coxeter tetrahelix — cylinder axis exactly straight,
+   twist arccos(−2/3) ≈ 131.81°/step, incommensurate. The R-crystal registry
+   strains it to close at **135°/step = 3 turns / 8 steps** (measured
+   134.6°): the "period-8 precession" of the registry chain direction is
+   embedding strain, not intrinsic bending. Chain "direction" claims must
+   say which frame; the intrinsic axis comes from the development (rational
+   in the edge-√2 rational embedding, so exact arithmetic is available).
+5. Known **registry-frame artifacts** to date: the nonzero P2 null in
+   defect_statics (chords along crystallographic axes); the smeared
+   quasi-continuous dock-angle census (intrinsic contact angles are expected
+   to quantize into discrete combinatorial classes).
+
+## 7. Run-launch checklist
 
 - SNAP ≡ 0 (mod TS) — otherwise snapshots silently skip.
 - Instrumentation stated at launch: cents (on by default), event log, flip log.
