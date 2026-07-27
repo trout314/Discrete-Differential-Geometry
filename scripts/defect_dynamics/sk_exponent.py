@@ -7,6 +7,10 @@ pattern). Sub-Bragg window k in [KMIN, KCUT] (charge Bragg peaks start ~k=5).
 Pool modes over all snapshots in a group; bin in log-k; the binned ensemble
 power <|A(k)|^2> is averaged then logged; weighted LS gives alpha; jackknife
 over independent chains gives the error bar.
+
+FRAME: harmonic (periodic Tutte) embedding -- a third frame,
+neither registry nor intrinsic (CONVENTIONS.md sec 6). Small-k
+exponents frame-robust; k-values and amplitudes gauge.
 """
 import glob
 import os

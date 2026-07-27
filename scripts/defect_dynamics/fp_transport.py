@@ -15,6 +15,12 @@ reference against defect_travel's thermal (flicker-dressed) caging.
 A multichord flight exit ends the trajectory (recorded; the lone-knot
 sector was left). One D scan per flight leaks MB-scale (R6): keep
 --flights per process modest; split across processes.
+
+FRAME: registry lift (extrinsic; CONVENTIONS.md sec 6). Scaling
+exponents are frame-robust for near-pristine states
+(quasi-isometry); lengths, displacements, D's and radii are
+frame-gauge. Gauge-free transport constants: Cartan-development
+MSD (fp_intrinsic_msd.py).
 """
 import argparse
 import json
@@ -45,6 +51,7 @@ def main():
     ap.add_argument("--seed", type=int, required=True)
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
+    print("[frame] registry lift -- exponents frame-robust, lengths/D gauge; see fp_intrinsic_msd.py")
 
     m, s, apx, window = build(args.ref, args.estar, args.lam,
                               window=args.window)

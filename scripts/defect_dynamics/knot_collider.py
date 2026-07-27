@@ -28,6 +28,10 @@ chords:
 Endgame at contact: classify the outcome (merge -> species f/sig/sumZ;
 jam -> closest approach), then test reversibility (slide A back out one
 step -- does it un-fuse into two clean knots?).
+
+FRAME NOTE: registry coordinates are used for TOPOLOGICAL
+WINDING only (integer-valued, frame-robust; CONVENTIONS.md
+sec 6).
 """
 import argparse
 import json

@@ -26,6 +26,16 @@ String := worldline alive with age > --age-min sweeps OR modal n_verts >=
 String-string pair separations are also recorded (every --ss-every sweeps)
 but the strings barely move, so a run contributes ~one independent
 configuration; those numbers are reported with that caveat attached.
+
+FRAME: registry lift (extrinsic; CONVENTIONS.md sec 6).
+Exponents/class verdicts frame-robust; lengths gauge. P2-type
+correlators compare DIRECTIONS AT SEPARATED POINTS: by sec 6
+there is no intrinsic global direction field (holonomy), so
+they are registry-gauge in an ESSENTIAL way, not merely in
+their axis labels (the nonzero P2 null along crystal axes is
+one symptom). Honest upgrade: transported-frame correlators
+(development.TransportContext), with the transport path
+stated.
 """
 import argparse
 import json
@@ -72,6 +82,7 @@ def main():
     ap.add_argument("--seed", type=int, default=4242)
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
+    print("[frame] registry lift -- P2 profile essentially gauge (sec 6)")
 
     ddg.set_random_seed(args.seed)
     ref = ddg.Manifold.load(args.cell, 3)

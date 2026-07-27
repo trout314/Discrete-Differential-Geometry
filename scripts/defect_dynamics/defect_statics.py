@@ -23,6 +23,16 @@ Positions are the cocycle lift (tree_positions on the saved cocycle), i.e.
 crystal-chart coordinates -- REAL Euclidean balls, which the graph-distance
 proxy is blind to (curvature length-scale lesson). Ball radii stop at half
 the box so shell/ball volumes are exact on the torus.
+
+FRAME: registry lift (extrinsic; CONVENTIONS.md sec 6).
+Exponents/class verdicts frame-robust; lengths gauge. P2-type
+correlators compare DIRECTIONS AT SEPARATED POINTS: by sec 6
+there is no intrinsic global direction field (holonomy), so
+they are registry-gauge in an ESSENTIAL way, not merely in
+their axis labels (the nonzero P2 null along crystal axes is
+one symptom). Honest upgrade: transported-frame correlators
+(development.TransportContext), with the transport path
+stated.
 """
 import argparse
 import glob as globmod
@@ -60,6 +70,7 @@ def main():
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
+    print("[frame] registry lift -- P2 correlators essentially gauge (sec 6)")
 
     files = sorted({f for g in args.glob for f in globmod.glob(g)})
     if not files:

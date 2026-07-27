@@ -23,6 +23,12 @@ Then it cross-tabulates: of the deaths the overlap rule reports, how many were
 the SAME OBJECT still alive according to exact identity? A high fraction means
 "blinking" and "94% frozen" are linkage artifacts, and the frame-based tracker
 should not be used for kinematics.
+
+FRAME: registry lift (extrinsic; CONVENTIONS.md sec 6). Scaling
+exponents are frame-robust for near-pristine states
+(quasi-isometry); lengths, displacements, D's and radii are
+frame-gauge. Gauge-free transport constants: Cartan-development
+MSD (fp_intrinsic_msd.py).
 """
 import argparse
 import json
@@ -82,6 +88,7 @@ def main():
     ap.add_argument("--seed", type=int, default=4242)
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
+    print("[frame] registry lift -- exponents frame-robust, lengths gauge")
 
     ddg.set_random_seed(args.seed)
     ref = ddg.Manifold.load(args.cell, 3)

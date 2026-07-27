@@ -21,6 +21,10 @@ SHAPE is compared -- which makes the comparison independent of the (constant)
 graph-vs-geodesic lattice factor and of the Steiner bin width. Prints a table and
 writes a CDF-overlay plot. Use the same ``--vdv``/``--ns``/``--ed`` for edge and
 steiner to see whether correcting the metric changes the roundness verdict.
+
+FRAME: intrinsic PL geodesic available via 'steiner' (the
+frame-honest length); 'edge'/'dual' are combinatorial hop
+metrics (CONVENTIONS.md sec 6).
 """
 
 import glob

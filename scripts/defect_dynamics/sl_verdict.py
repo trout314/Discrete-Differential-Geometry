@@ -6,6 +6,10 @@ harmonic centroids, monopoles (cell-mean ref); pooled per k-shell:
   S_Q(k) = <|sum_j Q_j e^{ik x_j}|^2>/sum Q^2  - charge-weighted
 Jackknife over chains for errors. Also the charge plateau / bare floor ratio
 per shell (medium screening), pooled.
+
+FRAME: harmonic (periodic Tutte) embedding -- a third frame,
+neither registry nor intrinsic (CONVENTIONS.md sec 6). Small-k
+exponents frame-robust; k-values and amplitudes gauge.
 """
 import glob
 import os

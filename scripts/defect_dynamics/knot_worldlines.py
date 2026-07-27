@@ -33,6 +33,12 @@ displacements need no glitch filtering.
 
 Time is the ledger clock (attempted moves) divided by N3 -- finer and more
 honest than chunk boundaries.
+
+FRAME: registry lift (extrinsic; CONVENTIONS.md sec 6). Scaling
+exponents are frame-robust for near-pristine states
+(quasi-isometry); lengths, displacements, D's and radii are
+frame-gauge. Gauge-free transport constants: Cartan-development
+MSD (fp_intrinsic_msd.py).
 """
 import argparse
 import json
@@ -117,6 +123,7 @@ def main():
     ap.add_argument("--seed", type=int, default=4242)
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
+    print("[frame] registry lift -- exponents frame-robust, lengths/D gauge")
 
     want = None if args.species == "all" else tuple(
         int(x) for x in args.species.split(","))

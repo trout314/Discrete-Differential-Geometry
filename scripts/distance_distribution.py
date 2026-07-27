@@ -30,6 +30,10 @@ Examples
     python scripts/distance_distribution.py seeds/S3_N1e4_1e-1_ED5p0043_1e-1_s000.mfd
     python scripts/distance_distribution.py 'seeds/S3_N1e4_1e-1_ED5p0043_1e-1_s0*.mfd' \
         --sources 800 --plot out/dist_N1e4.png --csv out/dist_N1e4.csv
+
+FRAME: intrinsic PL geodesic available via 'steiner' (the
+frame-honest length); 'edge'/'dual' are combinatorial hop
+metrics (CONVENTIONS.md sec 6).
 """
 
 import argparse

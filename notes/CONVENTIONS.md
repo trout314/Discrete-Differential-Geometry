@@ -173,6 +173,9 @@ Every report on a crystal-derived state includes:
 - Distances in **cells** with vertex-spacing equivalents (a_v = 0.185 cell)
   where displacement is the point; time axes in sweeps (or sweeps/1000,
   labeled).
+- State the **geometric frame** (§6: registry / harmonic / intrinsic PL)
+  on any figure whose axes carry lengths, angles, directions, or
+  wavevectors.
 - Print the **full file path** of every generated figure.
 
 ## 5. Claim standards

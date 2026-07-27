@@ -23,6 +23,12 @@ TWO CONFOUNDS, stated up front:
    a long life is robust against this (jitter averages, transport
    accumulates); per-step path length is NOT and is reported only as the
    jitter scale, never as "distance travelled".
+
+FRAME: registry lift (extrinsic; CONVENTIONS.md sec 6). Scaling
+exponents are frame-robust for near-pristine states
+(quasi-isometry); lengths, displacements, D's and radii are
+frame-gauge. Gauge-free transport constants: Cartan-development
+MSD (fp_intrinsic_msd.py).
 """
 import argparse
 import json
@@ -75,6 +81,7 @@ def main():
     ap.add_argument("--seed", type=int, default=4242)
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
+    print("[frame] registry lift -- exponents frame-robust, lengths/D gauge")
 
     ddg.set_random_seed(args.seed)
     ref = ddg.Manifold.load(args.cell, 3)

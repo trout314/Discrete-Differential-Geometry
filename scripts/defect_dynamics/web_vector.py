@@ -48,6 +48,19 @@ Null baseline: the UNPROJECTED random signs sigma0 (same web geometry, no
 constraint) -- its L/T is the no-Gauss-law reference, O(1).
 
 Usage: web_vector.py LABEL:snapshot.mfd [LABEL:...]  (needs sibling .cocycle.npz)
+
+FRAME: harmonic (periodic Tutte) embedding -- a third frame,
+neither registry nor intrinsic (CONVENTIONS.md sec 6). Small-k
+exponents frame-robust; k-values and amplitudes gauge.
+
+GAUGE WARNING beyond the sec-6 boilerplate: the tensor/vector
+decomposition contracts local edge directions n_e against a
+GLOBAL frame. By the measured holonomy there is no intrinsic
+global frame (parallel transport is path-dependent), so the
+TT/L/V split itself is a gauge choice, not just its units.
+Results are meaningful as harmonic-gauge statements; an
+intrinsic tensor formulation (transported multipoles /
+Wilson-line-dressed correlators) is an open design problem.
 """
 import os
 import sys

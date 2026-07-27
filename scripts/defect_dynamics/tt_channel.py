@@ -15,6 +15,19 @@ channels of a symmetric traceless 3x3 (5 dof = 2 TT + 2 vector + 1 longitudinal)
 Ratio S_c(k) = P_c^obs / P_c^shuffle (tensors permuted over fixed positions):
 <1 suppressed/rigid, ~1 free/Poisson. Scalar q_R channel computed alongside for
 reference. Shuffle split TT:V:L -> 2:2:1 is the built-in sanity check.
+
+FRAME: harmonic (periodic Tutte) embedding -- a third frame,
+neither registry nor intrinsic (CONVENTIONS.md sec 6). Small-k
+exponents frame-robust; k-values and amplitudes gauge.
+
+GAUGE WARNING beyond the sec-6 boilerplate: the tensor/vector
+decomposition contracts local edge directions n_e against a
+GLOBAL frame. By the measured holonomy there is no intrinsic
+global frame (parallel transport is path-dependent), so the
+TT/L/V split itself is a gauge choice, not just its units.
+Results are meaningful as harmonic-gauge statements; an
+intrinsic tensor formulation (transported multipoles /
+Wilson-line-dressed correlators) is an open design problem.
 """
 import glob
 import os

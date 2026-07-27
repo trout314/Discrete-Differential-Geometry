@@ -1,5 +1,25 @@
 #!/usr/bin/env python3
-"""Segregate the FP production docks by BC-chain crossing angle.
+"""DEPRECATED -- registry-gauge angles; superseded by
+fp_dock_census_intrinsic.py / fp_dock_local_census.py.
+
+The angles below are computed in the crystal REGISTRY frame
+(reference_frac_positions), which is an extrinsic gauge
+(CONVENTIONS.md section 6): its metric has ~25% edge-length spread and
+its chain direction winds at the commensurate 135 deg/step rather than
+the intrinsic Boerdijk-Coxeter 131.81 deg. The resulting spectrum is a
+sin(theta)-like quasi-continuum that SMEARS the exact intrinsic
+structure (local classes cos = k/5, 3-adically refined by transport --
+measured 340/340 in the intrinsic census). The registry "aligned-dock
+recombination excess" derived from these angles was retracted as a
+gauge artifact.
+
+Kept deliberately as the documented example of registry-gauge smearing
+(and for the BC-walk direction-autocorrelation diagnostic, which first
+revealed the period-8 precession). Do not use its angle labels in new
+analyses.
+
+Original description:
+Segregate the FP production docks by BC-chain crossing angle.
 
 A knot's chord spans one helix period, so the minimal-image displacement
 between its two vertex labels in reference crystal coordinates is the

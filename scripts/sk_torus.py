@@ -27,6 +27,10 @@ Ratio < 1 at small |n| = hyperuniform. Pools replicas by --group regex.
 Usage:
     python scripts/sk_torus.py data/replicas/flatpin_mu3_r*_final.mfd \
         --field curvature_charge --out out/sk_flatpin.csv --plot out/sk_flatpin.png
+
+FRAME: harmonic (periodic Tutte) embedding -- a third frame,
+neither registry nor intrinsic (CONVENTIONS.md sec 6). Small-k
+exponents frame-robust; k-values and amplitudes gauge.
 """
 import argparse
 import csv
@@ -68,6 +72,7 @@ def main():
     ap.add_argument("--out", default=None)
     ap.add_argument("--plot", default=None)
     args = ap.parse_args()
+    print("[frame] harmonic frame -- exponents robust, k/amplitudes gauge")
 
     pooled = defaultdict(list)
     for path in args.snapshots:

@@ -62,6 +62,12 @@ def main():
     ap.add_argument("--mcell", type=int, default=4)
     ap.add_argument("--match-tol", type=float, default=2.0,
                     help="raw units; exact match is 0-1 after rounding")
+    ap.add_argument("--steiner", type=int, default=0,
+                    help="also bin the GLOBAL recovery profile by the "
+                         "INTRINSIC PL geodesic distance (unit-edge "
+                         "metric, Steiner order N on the actual "
+                         "snapshot triangulation; CONVENTIONS.md sec "
+                         "6). 0 = registry-only (legacy)")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
@@ -88,6 +94,11 @@ def main():
 
     glob_mm = defaultdict(lambda: [0, 0])       # bin -> [mismatch, count]
     glob_dq = defaultdict(list)                 # bin -> dq values
+    # intrinsic (PL geodesic) global profile, unit-edge bins
+    pl_edges = np.linspace(0.0, 4.0, 17)
+    pl_mid = 0.5 * (pl_edges[1:] + pl_edges[:-1])
+    pl_mm = defaultdict(lambda: [0, 0])
+    pl_dq = defaultdict(list)
     tube = {}      # species-group -> bin -> dict(sums)
     cum = {}       # species-group -> list of (r_sorted dq arrays) per complex
     axis_prof = defaultdict(lambda: defaultdict(lambda: [0.0, 0, 0]))
@@ -158,6 +169,35 @@ def main():
                 glob_mm[b][0] += mm[v]
                 glob_mm[b][1] += 1
                 glob_dq[b].append(dq[v])
+
+        # ---- intrinsic global profile (PL geodesic, unit-edge metric)
+        if args.steiner:
+            import steiner_geodesic as sg
+            from scipy.sparse import coo_matrix
+            from scipy.sparse.csgraph import dijkstra
+            Fm = np.asarray(m.facets())
+            relab = vidx
+            Tarr = np.array([[relab[int(x)] for x in f4] for f4 in Fm],
+                            dtype=np.int64)
+            G, Ntot = sg.build_steiner_graph(Tarr, len(verts),
+                                             args.steiner)
+            # super-source at index Ntot linked to every defect vertex
+            Gc = G.tocoo()
+            eps = 1e-9
+            src = np.array([relab[v] for v in defect])
+            r = np.concatenate([Gc.row, np.full(len(src), Ntot), src])
+            c = np.concatenate([Gc.col, src, np.full(len(src), Ntot)])
+            w = np.concatenate([Gc.data, np.full(2 * len(src), eps)])
+            Ga = coo_matrix((w, (r, c)),
+                            shape=(Ntot + 1, Ntot + 1)).tocsr()
+            dall = dijkstra(Ga, directed=False, indices=Ntot)
+            for v in legal:
+                dn = float(dall[relab[v]])
+                b = np.searchsorted(pl_edges, dn) - 1
+                if 0 <= b < len(pl_mid):
+                    pl_mm[b][0] += mm[v]
+                    pl_mm[b][1] += 1
+                    pl_dq[b].append(dq[v])
 
         # ---- per-species tube profiles
         for cx in comps:
@@ -241,6 +281,26 @@ def main():
               f"{grows[-1]['mean_dq']:9.5f} {grows[-1]['sum_dq']:9.4f} "
               f"{mmc[1]:7d}")
 
+    pl_rows = []
+    if args.steiner:
+        print(f"\nGLOBAL RECOVERY, INTRINSIC: PL geodesic distance "
+              f"(unit-edge lengths; Steiner order {args.steiner}, "
+              f"actual triangulation)")
+        print(f"   {'d':>5} {'P(mismatch)':>12} {'<dq>':>9} "
+              f"{'sum dq':>9} {'n':>7}")
+        for b in range(len(pl_mid)):
+            mmc = pl_mm[b]
+            dqs = np.array(pl_dq[b]) if pl_dq[b] else np.array([0.0])
+            pl_rows.append({"d": float(pl_mid[b]),
+                            "p_mismatch": mmc[0] / max(mmc[1], 1),
+                            "mean_dq": float(dqs.mean()),
+                            "sum_dq": float(dqs.sum()) / max(nsnap, 1),
+                            "n": mmc[1]})
+            print(f"   {pl_mid[b]:5.2f} "
+                  f"{pl_rows[-1]['p_mismatch']:12.5f} "
+                  f"{pl_rows[-1]['mean_dq']:9.5f} "
+                  f"{pl_rows[-1]['sum_dq']:9.4f} {mmc[1]:7d}")
+
     trows = {}
     for gk, T in tube.items():
         trows[gk] = []
@@ -295,7 +355,8 @@ def main():
 
     with open(args.out, "w") as fh:
         json.dump({"snapshots": nsnap, "box": box,
-                   "global": grows, "tube": trows, "cumulative": crows,
+                   "global": grows, "global_pl": pl_rows,
+                   "tube": trows, "cumulative": crows,
                    "axis": arows,
                    "dQcx": {k: [float(x) for x in v]
                             for k, v in dQcx_of.items()}}, fh, indent=1)

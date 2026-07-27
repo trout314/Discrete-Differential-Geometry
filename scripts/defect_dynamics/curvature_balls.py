@@ -21,6 +21,11 @@ dq(v) = q_R(v) - qbar, on melt snapshots, with two controls:
              the Poisson-like ceiling (~ R^3 volume scaling).
 
 Between floor and ceiling: where the melt's fluctuation field actually sits.
+
+FRAME: registry lift (extrinsic; CONVENTIONS.md sec 6). Ball
+boundaries cut the ~25%-anisotropic registry lattice: the
+sigma^2(R) scaling CLASS is frame-robust, R-values and
+amplitudes are gauge.
 """
 import argparse
 import glob as globmod
@@ -77,6 +82,7 @@ def main():
     ap.add_argument("--seed", type=int, default=17)
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
+    print("[frame] registry lift -- HU class robust, R/amplitudes gauge")
 
     box = float(args.mcell)
     Rgrid = np.array([0.3, 0.4, 0.5, 0.7, 0.9, 1.1, 1.4, 1.7, 2.0])

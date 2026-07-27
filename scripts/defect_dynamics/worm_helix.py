@@ -26,6 +26,10 @@ Stages:
   4. attempt closure to legality; report the net transformation.
 
 Usage: worm_helix.py [REF.mfd] [--depth D] [--budget B] [--win W] [--json OUT]
+
+FRAME NOTE: registry coordinates are used for TOPOLOGICAL
+WINDING only (integer-valued, frame-robust; CONVENTIONS.md
+sec 6).
 """
 import argparse
 import json
