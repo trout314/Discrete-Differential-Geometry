@@ -654,6 +654,12 @@ class Worldlines:
     Merges and splits are recorded rather than silently becoming deaths and
     births: a component whose majority label is already claimed by another
     component this step is a split-off and gets a fresh id.
+
+    Every identity change is also appended to `self.events` as a dict --
+    birth / death / merge / split -- so a caller can census the reaction
+    chemistry rather than only its rate. `drain_events()` empties the
+    list, which is what long runs should use (the stream is unbounded:
+    the flicker vacuum births and kills complexes continuously).
     """
 
     def __init__(self, state):
@@ -661,9 +667,15 @@ class Worldlines:
         self.label = {}          # vertex -> track id
         self.born = {}           # track id -> clock
         self.died = {}           # track id -> clock
+        self.size = {}           # track id -> vertex count, current
         self.merges = 0
         self.splits = 0
+        self.events = []
         self._next = 0
+
+    def drain_events(self):
+        ev, self.events = self.events, []
+        return ev
 
     def step(self, clock):
         """Relabel after the state has advanced. Returns [(Complex, tid)]."""
@@ -672,24 +684,46 @@ class Worldlines:
         for c in comps:
             prev = Counter(self.label[x] for x in c.verts if x in self.label)
             t = None
+            parent = None
             if prev:
                 cand = prev.most_common(1)[0][0]
                 if cand in claimed:
                     self.splits += 1
+                    parent = cand
                 else:
                     t = cand
                     if len(prev) > 1:
                         self.merges += len(prev) - 1
+                        self.events.append({
+                            "k": "merge", "clock": clock, "into": t,
+                            "size": len(c.verts),
+                            # contributed vertex count per absorbed track,
+                            # and that track's size just before the merge
+                            "from": sorted(
+                                (int(o), int(n), int(self.size.get(o, 0)))
+                                for o, n in prev.items() if o != t)})
             if t is None:
                 t = self._next
                 self._next += 1
                 self.born[t] = clock
+                if parent is None:
+                    self.events.append({"k": "birth", "clock": clock,
+                                        "tid": t, "size": len(c.verts)})
+                else:
+                    self.events.append({
+                        "k": "split", "clock": clock, "parent": parent,
+                        "child": t, "size": len(c.verts),
+                        "parent_size_before": int(self.size.get(parent, 0))})
             claimed.add(t)
             for x in c.verts:
                 newlabel[x] = t
             out.append((c, t))
         for t in set(self.label.values()) - claimed:
-            self.died.setdefault(t, clock)
+            if t not in self.died:
+                self.died[t] = clock
+                self.events.append({"k": "death", "clock": clock, "tid": t,
+                                    "size": int(self.size.get(t, 0))})
+        self.size = {t: len(c.verts) for c, t in out}
         self.label = newlabel
         return out
 
