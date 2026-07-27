@@ -1,0 +1,7 @@
+# When true (default) the shared library is built -release: asserts and
+# array bounds checks are stripped for maximum production throughput.
+# Set false to keep asserts (and the always-on invariant guards) live in
+# the Python-loaded library -- an optimized, checked build for catching
+# invariant violations at production scale. See CLAUDE.md build notes.
+option('lib_ndebug', type : 'boolean', value : true,
+       description : 'Strip asserts/bounds-checks from ddg_dlang (-release)')

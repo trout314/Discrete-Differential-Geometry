@@ -52,12 +52,21 @@ d_import_dirs = include_directories('source')
 # Shared library for Python/FFI bindings
 # ---------------------------------------------------------------------------
 
+# -O3 always (the hot path is the same in every tier); -release (asserts +
+# bounds-checks OFF) only when lib_ndebug is true. A 'checked' build sets
+# lib_ndebug=false to keep asserts and the always-on invariant guards live
+# in the Python-loaded library at production scale.
+lib_dargs = ['-link-defaultlib-shared=false', '-O3']
+if get_option('lib_ndebug')
+  lib_dargs += '-release'
+endif
+
 shared_library('ddg_dlang',
   lib_sources + files(
     'source/ddg_capi.d',
   ),
   include_directories : d_import_dirs,
-  d_args : ['-link-defaultlib-shared=false', '-O3', '-release'],
+  d_args : lib_dargs,
   name_prefix : '',
   install : true,
 )

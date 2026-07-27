@@ -443,8 +443,34 @@ public:
                     else
                     {
                         ptr.degree++;
-                        assert(ptr.degree == 2);
                         auto oppVert = oppositeVertex(facet, key);
+                        // ALWAYS-ON invariant (survives -release, unlike the
+                        // assert this replaces). A ridge (triangle) in a
+                        // closed 3-manifold has degree exactly 2 with two
+                        // DISTINCT apexes. Degree 3 would overflow RidgeLink
+                        // (StackArray!(Vertex, 2)) -> silent memory
+                        // corruption; equal apexes are the "two triangles /
+                        // same link vertices" degeneracy. Fail loudly at the
+                        // source instead of corrupting bookkeeping.
+                        if (ptr.degree != 2 || ptr.link.length != 1
+                            || ptr.link[0] == oppVert)
+                        {
+                            () @trusted {
+                                import core.stdc.stdio : fprintf, stderr;
+                                import core.stdc.stdlib : abort;
+                                fprintf(stderr,
+                                    "FATAL manifold invariant (insertFacet): "
+                                    ~ "ridge degree=%u linkLen=%llu newApex=%d "
+                                    ~ "existingApex0=%d -- need degree 2 with "
+                                    ~ "distinct apexes.\n",
+                                    ptr.degree,
+                                    cast(ulong) ptr.link.length,
+                                    cast(int) oppVert,
+                                    ptr.link.length >= 1
+                                        ? cast(int) ptr.link[0] : -1);
+                                abort();
+                            }();
+                        }
                         ptr.link ~= oppVert;
                         ptr.link[].sort;
                     }
