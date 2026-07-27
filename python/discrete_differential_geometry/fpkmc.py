@@ -393,10 +393,18 @@ class FPFlight:
         self.escape = {i: sum(r for _, r in es)
                        for i, es in self.out.items()}
 
-    def sample(self, rng, start=0, max_jumps=1_000_000):
+    def sample(self, rng, start=0, max_jumps=1_000_000,
+               record_path=False):
         """One exact flight from `start` to absorption.
-        Returns (absorbing node, time in attempted moves, n jumps)."""
+        Returns (absorbing node, time in attempted moves, n jumps);
+        with record_path=True also the visited node sequence (incl.
+        start and the absorbing node) -- the flight's ACTUAL worldline,
+        needed for path-dependent observables (worldline holonomy).
+        NOTE: the driver's materialization replays the scan-TREE path,
+        which is exact for endpoint statistics but is NOT this
+        sequence."""
         j, t, jumps = int(start), 0, 0
+        nodes = [j] if record_path else None
         while self.interior[j]:
             es = self.out[j]
             t += int(rng.geometric(self.escape[j]))
@@ -407,9 +415,13 @@ class FPFlight:
                 if u <= c:
                     j = dst
                     break
+            if record_path:
+                nodes.append(j)
             jumps += 1
             if jumps > max_jumps:
                 raise RuntimeError("FP flight: jump budget exceeded")
+        if record_path:
+            return j, t, jumps, nodes
         return j, t, jumps
 
     def _jump_matrices(self):
