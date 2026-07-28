@@ -1619,6 +1619,12 @@ private struct SamplerState
     // once the unified proposal lands on a degree-3 edge, plus its counters.
     SlideConfig slideCfg;
 
+    // Non-local slide channel (dim=3 only): picks a degree-3 chord uniformly
+    // from `deg3Chords` (kept live only while nlSlideCfg.prob > 0), plus its
+    // config/counters. See sampler.NonlocalSlideConfig / tryNonlocalSlide.
+    NonlocalSlideConfig nlSlideCfg;
+    Deg3Set!int deg3Chords;
+
     // Per-vertex move-attribution counters (measured combinatorial lapse).
     // Opt-in (small per-proposal AA overhead); dim=3 only. See sampler.MoveCounters.
     bool trackMoveCounts = false;
@@ -1884,6 +1890,11 @@ private long runSamplerDim3(SamplerState* s, long numMoves,
         if (s.currentObjective != s.currentObjective) // NaN check
             recomputeObjective(s);
 
+        // Keep the degree-3 chord set live only while the non-local channel is
+        // on; rebuild it fresh at run start (O(E), once per run).
+        if (s.nlSlideCfg.prob > 0)
+            rebuildDeg3(mw.mfd, s.deg3Chords);
+
         long accepted = 0;
         long acceptedSinceWriteback = 0;
         // Narrow slices for mcmcStep ref params
@@ -1919,7 +1930,9 @@ private long runSamplerDim3(SamplerState* s, long numMoves,
                     s.potEnabled ? &s.vertexPotState : null,
                     s.potEnabled ? &s.vertexPot : null,
                     s.cocycle.enabled ? &s.cocycle : null,
-                    (s.dim == 3 && s.slideCfg.prob > 0) ? &s.slideCfg : null))
+                    (s.dim == 3 && s.slideCfg.prob > 0) ? &s.slideCfg : null,
+                    (s.dim == 3 && s.nlSlideCfg.prob > 0) ? &s.nlSlideCfg : null,
+                    (s.dim == 3 && s.nlSlideCfg.prob > 0) ? &s.deg3Chords : null))
             {
                 accepted++;
                 acceptedSinceWriteback++;
@@ -2885,6 +2898,54 @@ extern(C) int ddg_sampler_set_slide_prob(void* sampler_handle, double prob) noth
     { setError("knot slides are dim=3 only"); return -1; }
     s.slideCfg.prob = cast(real) prob;
     return 0;
+}
+
+/******************************************************************************
+Enable the non-local slide channel (dim = 3 only): each mcmcStep proposes it
+with probability `prob`, picking a degree-3 chord uniformly (1/n_3) and moving
+it up to `max_step` tets along its BC chain (annihilate + re-create, with the
+1/n_3 Hastings factor). max_step = 4 recovers the local slide's displacement.
+Set prob = 0 (default) to disable. See sampler.tryNonlocalSlide.
+*/
+extern(C) int ddg_sampler_set_nonlocal_slide_prob(void* sampler_handle,
+    double prob, int max_step) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto s = cast(SamplerState*) sampler_handle;
+    if (!(prob >= 0.0 && prob <= 1.0))
+    { setError("nonlocal slide probability must be in [0, 1]"); return -1; }
+    if (s.dim != 3 && prob > 0)
+    { setError("nonlocal slides are dim=3 only"); return -1; }
+    if (prob > 0 && max_step < 1)
+    { setError("nonlocal slide max_step must be >= 1"); return -1; }
+    s.nlSlideCfg.prob = cast(real) prob;
+    if (max_step >= 1) s.nlSlideCfg.maxStep = max_step;
+    return 0;
+}
+
+/// Non-local slide counters: proposals that formed a legal move (reached
+/// Metropolis), and how many were accepted. Both pointers optional.
+extern(C) int ddg_sampler_nonlocal_slide_stats(void* sampler_handle,
+    long* out_tries, long* out_accepts) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto s = cast(SamplerState*) sampler_handle;
+    if (out_tries !is null) *out_tries = cast(long) s.nlSlideCfg.tries;
+    if (out_accepts !is null) *out_accepts = cast(long) s.nlSlideCfg.accepts;
+    return 0;
+}
+
+/// Size of the live degree-3 chord set (the 1/n_3 denominator). Only populated
+/// while the non-local channel is enabled + a run has started; a diagnostic for
+/// checking the incremental maintenance against a full degree-3 recount.
+extern(C) long ddg_sampler_deg3_count(void* sampler_handle) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto s = cast(SamplerState*) sampler_handle;
+    return cast(long) s.deg3Chords.length;
 }
 
 /******************************************************************************

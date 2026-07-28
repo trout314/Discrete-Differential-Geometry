@@ -400,6 +400,39 @@ class ManifoldSampler:
             self._handle, ctypes.byref(t), ctypes.byref(a))
         return int(t.value), int(a.value)
 
+    def set_nonlocal_slide_prob(self, prob: float, max_step: int = 8) -> None:
+        """Enable the NON-LOCAL slide channel (dim = 3 only).
+
+        Each MCMC step proposes it with probability ``prob``: pick a degree-3
+        chord uniformly (1/n_3) from the live defect set, then annihilate it
+        (3->2) and re-create it a uniform 1..``max_step`` tets down its BC
+        chain (2->3). Direction is the slot orientation, so the step
+        distribution is symmetric about 0; acceptance is Metropolis on the
+        exact dS with the 1/n_3 Hastings factor n_3/(n_3 + dn_3).
+
+        This is an EQUILIBRIUM-sampling move -- it teleports the excitation
+        across same-rung sites, defeating the washboard caging. ``max_step`` =
+        4 recovers the local slide's displacement (the physical-kinetics
+        limit). 0 disables the channel (the default). While enabled, the D
+        sampler keeps a live degree-3 chord set (rebuilt at each run start,
+        maintained incrementally); it costs nothing when disabled."""
+        _lib.ddg_sampler_set_nonlocal_slide_prob(
+            self._handle, float(prob), int(max_step))
+
+    def nonlocal_slide_stats(self) -> tuple[int, int]:
+        """``(tries, accepts)`` for the non-local slide channel. ``tries``
+        counts proposals that formed a legal move (reached Metropolis)."""
+        t = ctypes.c_long()
+        a = ctypes.c_long()
+        _lib.ddg_sampler_nonlocal_slide_stats(
+            self._handle, ctypes.byref(t), ctypes.byref(a))
+        return int(t.value), int(a.value)
+
+    def deg3_count(self) -> int:
+        """Size of the live degree-3 chord set (diagnostic). Populated only
+        while the non-local channel is enabled and a run has started."""
+        return int(_lib.ddg_sampler_deg3_count(self._handle))
+
     def slide_at(self, a: int, b: int, slot: int,
                  commit: bool = False) -> "float | None":
         """Attempt the knot slide at chord ``(a, b)`` in slot ``slot``.

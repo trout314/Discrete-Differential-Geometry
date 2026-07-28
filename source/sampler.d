@@ -1979,6 +1979,84 @@ struct SlideConfig
     ulong accepts;
 }
 
+/// Non-local slide channel (dim=3): pick a degree-3 chord uniformly (1/n_3),
+/// annihilate it and re-create it a random number of tets down its BC chain.
+/// prob = probability of proposing this channel per mcmcStep; maxStep = the
+/// upper bound on |k| (drawn uniformly in 1..maxStep; direction is the slot's
+/// orientation, so the effective step distribution is symmetric about 0).
+struct NonlocalSlideConfig
+{
+    real prob = 0.0L;
+    int maxStep = 8;
+    ulong tries;
+    ulong accepts;
+}
+
+/// A live set of the degree-3 edges (defect chords), supporting O(1) uniform
+/// draw, add, and remove -- the machinery the 1/n_3 proposal needs. Maintained
+/// incrementally by reconcileDeg3 over each committed move's support; only
+/// touched when the non-local channel is enabled (else it stays empty and
+/// costs nothing). Populate once from a fresh manifold with rebuildDeg3.
+struct Deg3Set(Vertex)
+{
+    Vertex[2][] edges;
+    size_t[Vertex[2]] index;
+
+    size_t length() const @safe pure nothrow { return edges.length; }
+
+    void add(Vertex[2] e)
+    {
+        if (e in index) return;
+        index[e] = edges.length;
+        edges ~= e;
+    }
+    void remove(Vertex[2] e)
+    {
+        auto p = e in index;
+        if (p is null) return;
+        immutable i = *p;
+        immutable last = edges.length - 1;
+        if (i != last)
+        {
+            edges[i] = edges[last];
+            index[edges[i]] = i;
+        }
+        edges.length = last;
+        index.remove(e);
+    }
+    /// Set membership to match `isDeg3` (idempotent, needs only current state).
+    void reconcile(Vertex[2] e, bool isDeg3)
+    {
+        if (isDeg3) add(e); else remove(e);
+    }
+    void clear() { edges.length = 0; index.clear(); }
+}
+
+/// Reconcile the degree-3 set over every edge among `verts` (all edges a move
+/// could have changed lie within its support), using only the CURRENT degrees.
+void reconcileDeg3(Vertex)(ref Manifold!(3, Vertex) mfd,
+    ref Deg3Set!Vertex set, scope const(Vertex)[] verts)
+{
+    foreach (i; 0 .. verts.length)
+        foreach (j; i + 1 .. verts.length)
+        {
+            Vertex[2] e = [verts[i], verts[j]]; e[].sort();
+            set.reconcile(e, mfd.degreeOrZero!1(e[]) == 3);
+        }
+}
+
+/// Populate a degree-3 set from scratch (O(E)); call once when the non-local
+/// channel is enabled.
+void rebuildDeg3(Vertex)(ref Manifold!(3, Vertex) mfd, ref Deg3Set!Vertex set)
+{
+    set.clear();
+    foreach (e; mfd.simplices(1))
+    {
+        Vertex[2] ed = [e[0], e[1]]; ed[].sort();
+        if (mfd.degreeOrZero!1(ed[]) == 3) set.add(ed);
+    }
+}
+
 /// What trySlideMove does once it has a legal clean slide in hand.
 enum SlideAccept
 {
@@ -2097,7 +2175,8 @@ bool trySlideMove(Vertex, P)(
     CocycleState!Vertex* cocycle = null,
     SlideAccept policy = SlideAccept.metropolis,
     real* dSOut = null,
-    bool cleanOnly = false)
+    bool cleanOnly = false,
+    Deg3Set!Vertex* deg3Set = null)
 {
     alias BM = BistellarMove!(3, Vertex);
     valid = false;
@@ -2355,6 +2434,8 @@ bool trySlideMove(Vertex, P)(
     currentObjective += committed;
     if (counters !is null)
         addSupport(counters.acceptedBistellar, support);
+    if (deg3Set !is null)
+        reconcileDeg3(mfd, *deg3Set, support);
     return true;
 }
 
@@ -2396,7 +2477,8 @@ bool tryNonlocalSlide(Vertex, P)(
     SlideAccept policy = SlideAccept.metropolis,
     real* dSOut = null,
     long n3Before = -1, long* dn3Out = null,
-    Vertex* outTa = null, Vertex* outTb = null)
+    Vertex* outTa = null, Vertex* outTb = null,
+    Deg3Set!Vertex* deg3Set = null)
 {
     // `n3Before` (the current count of degree-3 edges) is used ONLY in
     // metropolis mode, where the acceptance carries the Hastings factor
@@ -2552,6 +2634,11 @@ bool tryNonlocalSlide(Vertex, P)(
 
     // --- accepted: leave the defect at the target ---
     currentObjective += dS;
+    if (deg3Set !is null)
+    {
+        reconcileDeg3(mfd, *deg3Set, annSup[]);    // source healed to pristine
+        reconcileDeg3(mfd, *deg3Set, redoSup[]);   // target now carries a chord
+    }
     return true;
 }
 
@@ -2705,7 +2792,9 @@ bool mcmcStep(Vertex, P)(
     VertexPotState!Vertex* potState = null,
     const(VertexPot)* pot = null,
     CocycleState!Vertex* cocycle = null,
-    SlideConfig* slide = null)
+    SlideConfig* slide = null,
+    NonlocalSlideConfig* nlSlide = null,
+    Deg3Set!Vertex* deg3Set = null)
 {
     enum dim = 3;
     enum nVerts = dim + 1;
@@ -2751,11 +2840,51 @@ bool mcmcStep(Vertex, P)(
         immutable ok = trySlideMove(mfd, currentObjective,
             chord[0], chord[1], facet, uniform(0, SLIDE_SLOTS), params,
             slideValid, counters, ledger, potState, pot, cocycle,
-            SlideAccept.metropolis, null, slide.cleanOnly);
+            SlideAccept.metropolis, null, slide.cleanOnly, deg3Set);
         if (slideValid)
         {
             slide.tries++;
             if (ok) slide.accepts++;
+        }
+        return ok;
+    }
+
+    // --- Non-local slide channel (dim=3) -----------------------------------
+    // Pick a degree-3 chord UNIFORMLY (1/n_3) from the live set, then
+    // annihilate + re-create it up to maxStep tets down its BC chain. The
+    // acceptance carries the 1/n_3 Hastings factor via n3Before = |deg3Set|;
+    // direction is the slot's orientation so the step distribution is
+    // symmetric about 0. deg3Set is maintained by reconcileDeg3 at every commit
+    // site, so the draw and n_3 are O(1).
+    if (nlSlide !is null && nlSlide.prob > 0 && deg3Set !is null
+        && deg3Set.length > 0 && uniform01 < nlSlide.prob)
+    {
+        immutable long n3 = cast(long) deg3Set.length;
+        Vertex[2] chord = deg3Set.edges[uniform(0, deg3Set.length)];
+        Vertex[4] hint = 0;
+        {
+            bool got = false;
+            foreach (pr; mfd.link(chord[]))
+            {
+                hint[0] = chord[0]; hint[1] = chord[1];
+                int i = 0;
+                foreach (v; pr) hint[2 + i++] = v;
+                got = true; break;
+            }
+            if (!got) return false;
+            hint[].sort();
+        }
+        immutable int slot = uniform(0, SLIDE_SLOTS);
+        immutable int steps = uniform(1, nlSlide.maxStep + 1);
+        bool nlValid = false;
+        immutable ok = tryNonlocalSlide(mfd, currentObjective,
+            chord[0], chord[1], hint[], slot, steps, params, nlValid,
+            potState, pot, SlideAccept.metropolis, null, n3, null, null, null,
+            deg3Set);
+        if (nlValid)
+        {
+            nlSlide.tries++;
+            if (ok) nlSlide.accepts++;
         }
         return ok;
     }
@@ -2830,6 +2959,8 @@ bool mcmcStep(Vertex, P)(
                 mfd.doHingeMove(hm);
                 currentObjective += deltaObj;
                 hingeAccepts++;
+                if (deg3Set !is null)
+                    reconcileDeg3(mfd, *deg3Set, hingeSupport[]);
                 if (counters !is null)
                     addSupport(counters.acceptedHinge, hingeSupport[]);
                 if (ledger !is null)
@@ -2913,6 +3044,8 @@ bool mcmcStep(Vertex, P)(
             if (cocycle !is null)
                 cocycleBistellar(*cocycle, bm.center, bm.coCenter);
             mfd.doMove(bm);
+            if (deg3Set !is null)
+                reconcileDeg3(mfd, *deg3Set, ball);
             if (counters !is null)
                 addSupport(counters.acceptedBistellar, ball);
             if (ledger !is null)
