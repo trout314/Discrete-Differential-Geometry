@@ -436,23 +436,32 @@ class ManifoldSampler:
         return (float(ds.value) if rc == 1 else None), arr
 
     def nonlocal_slide_at(self, a: int, b: int, slot: int, steps: int,
-                          commit: bool = False) -> "float | None":
+                          commit: bool = False):
         """Non-local slide: annihilate the degree-3 chord ``(a, b)`` with a
         3->2 and re-create it ``steps`` tets down the BC chain with a 2->3.
 
         ``slot`` (0..11) selects the walk (orientation x link order). Returns
-        the exact action change dS if the slot yields a legal move, else
-        ``None``. With ``commit=False`` the state is restored exactly; with
-        ``commit=True`` the move is applied unconditionally (bookkeeping
-        advances as for an accepted move). ``steps=4`` reproduces the local
+        ``(dS, dn3, arrival_chord)`` if the slot yields a legal move, else
+        ``None`` -- ``dS`` the exact action change, ``dn3`` the exact change in
+        the degree-3 edge count (for the 1/n_3 Metropolis factor
+        n3/(n3+dn3)), ``arrival_chord`` the (sorted) target chord. With
+        ``commit=False`` the state is restored exactly; with ``commit=True``
+        the move is applied unconditionally. ``steps=4`` reproduces the local
         slide's displacement; larger steps are the non-local sampling move.
-        See sampler.tryNonlocalSlide. Equilibrium-sampling move -- for
-        physical kinetics keep steps small (=4)."""
+        See sampler.tryNonlocalSlide. Equilibrium-sampling move -- for physical
+        kinetics keep steps small (=4)."""
         ds = ctypes.c_double()
+        dn3 = ctypes.c_long()
+        ta = ctypes.c_int(-1)
+        tb = ctypes.c_int(-1)
         rc = _lib.ddg_sampler_nonlocal_slide_at(
             self._handle, int(a), int(b), int(slot), int(steps),
-            1 if commit else 0, ctypes.byref(ds))
-        return float(ds.value) if rc == 1 else None
+            1 if commit else 0, ctypes.byref(ds), ctypes.byref(dn3),
+            ctypes.byref(ta), ctypes.byref(tb))
+        if rc != 1:
+            return None
+        return (float(ds.value), int(dn3.value),
+                tuple(sorted((int(ta.value), int(tb.value)))))
 
     def site_survey(self, chain) -> dict:
         """Washboard site survey along a BC chain (notes/FPKMC_DESIGN.md).

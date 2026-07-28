@@ -810,10 +810,11 @@ _lib.ddg_sampler_slide_at2.restype = ctypes.c_int
 _lib.ddg_sampler_slide_at2.errcheck = _check_int
 
 # Non-local slide: annihilate + re-create `steps` tets down the BC chain.
-# (handle, a, b, slot, steps, mode, out_dS)
+# (handle, a, b, slot, steps, mode, out_dS, out_dn3, out_ta, out_tb)
 _lib.ddg_sampler_nonlocal_slide_at.argtypes = [
     ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-    ctypes.c_int, ctypes.POINTER(ctypes.c_double),
+    ctypes.c_int, ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_long),
+    ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int),
 ]
 _lib.ddg_sampler_nonlocal_slide_at.restype = ctypes.c_int
 _lib.ddg_sampler_nonlocal_slide_at.errcheck = _check_int

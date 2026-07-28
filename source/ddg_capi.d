@@ -3015,13 +3015,17 @@ extern(C) int ddg_sampler_slide_stats(void* sampler_handle,
 /******************************************************************************
 Non-local slide (dim = 3): annihilate the degree-3 chord (a,b) with a 3->2 and
 re-create it `steps` tets down the BC chain with a 2->3. `slot` (0..11) selects
-the walk (orientation x link order). `mode`: 0 = trial (measure dS, restore),
-1 = force (commit). Writes the exact action change to *out_dS. Returns 1 if the
-slot yielded a legal move (and, for mode 1, committed), 0 if not a legal move,
--1 on error. See sampler.tryNonlocalSlide.
+the walk (orientation x link order). `mode`: 0 = trial (measure, restore),
+1 = force (commit). Writes the exact action change to *out_dS, the exact change
+in the degree-3 edge count to *out_dn3 (both optional), and the arrival chord to
+*out_ta,*out_tb. Returns 1 if the slot yielded a legal move (and, for mode 1,
+committed), 0 if not a legal move, -1 on error. The 1/n_3 Hastings factor for a
+Metropolis channel is applied by the caller using out_dn3. See
+sampler.tryNonlocalSlide.
 */
 extern(C) int ddg_sampler_nonlocal_slide_at(void* sampler_handle,
-    int a, int b, int slot, int steps, int mode, double* out_dS) nothrow
+    int a, int b, int slot, int steps, int mode, double* out_dS,
+    long* out_dn3, int* out_ta, int* out_tb) nothrow
 {
     clearError();
     try
@@ -3071,13 +3075,19 @@ extern(C) int ddg_sampler_nonlocal_slide_at(void* sampler_handle,
 
         bool valid = false;
         real dS = real.nan;
+        long dn3 = 0;
+        int ta = -1, tb = -1;
         mw.mfd.tryNonlocalSlide(s.currentObjective, eb[0], eb[1], hint[],
             slot, steps, params, valid,
             s.potEnabled ? &s.vertexPotState : null,
             s.potEnabled ? &s.vertexPot : null,
-            mode == 0 ? SlideAccept.trialOnly : SlideAccept.force, &dS);
+            mode == 0 ? SlideAccept.trialOnly : SlideAccept.force, &dS,
+            -1, &dn3, &ta, &tb);
         if (!valid) return 0;
         if (out_dS !is null) *out_dS = cast(double) dS;
+        if (out_dn3 !is null) *out_dn3 = dn3;
+        if (out_ta !is null) *out_ta = ta;
+        if (out_tb !is null) *out_tb = tb;
         return 1;
     }
     catch (Exception e) { setError(e.msg); return -1; }

@@ -2394,13 +2394,36 @@ bool tryNonlocalSlide(Vertex, P)(
     VertexPotState!Vertex* potState = null,
     const(VertexPot)* pot = null,
     SlideAccept policy = SlideAccept.metropolis,
-    real* dSOut = null)
+    real* dSOut = null,
+    long n3Before = -1, long* dn3Out = null,
+    Vertex* outTa = null, Vertex* outTb = null)
 {
-    import std.math : exp;
+    // `n3Before` (the current count of degree-3 edges) is used ONLY in
+    // metropolis mode, where the acceptance carries the Hastings factor
+    // n3Before/(n3Before + dn3) from the 1/n_3 proposal (pass -1 to omit it).
+    // `dn3Out` reports the exact change in the degree-3 edge count (counted
+    // over the two moves' O(1) supports); `outTa,outTb` report the arrival
+    // chord. Both moves are always applied (to count dn3 exactly) and rolled
+    // back on trial/reject.
+    import std.math : exp, log;
     alias BM = BistellarMove!(3, Vertex);
     valid = false;
     if (dSOut !is null) *dSOut = real.nan;
+    if (dn3Out !is null) *dn3Out = 0;
     if (steps <= 0 || slot < 0 || slot >= SLIDE_SLOTS) return false;
+
+    // count degree-3 edges among all pairs of a small vertex set
+    int countDeg3(scope const(Vertex)[] vs)
+    {
+        int c = 0;
+        foreach (i; 0 .. vs.length)
+            foreach (j; i + 1 .. vs.length)
+            {
+                Vertex[2] e = [vs[i], vs[j]]; e[].sort();
+                if (mfd.degreeOrZero!1(e[]) == 3) c++;
+            }
+        return c;
+    }
 
     // link of the degree-3 chord (a,b): 3 vertices in cycle order
     int[8] linkBuf = 0;
@@ -2429,6 +2452,8 @@ bool tryNonlocalSlide(Vertex, P)(
     // --- annihilate: 3->2 on (a,b), coCenter = its link ---
     BM annM = BM(chord[], linkS[]);
     if (!mfd.hasValidMove(annM)) return false;
+    Vertex[5] annSup = [chord[0], chord[1], link[0], link[1], link[2]];
+    immutable int cAnnBefore = countDeg3(annSup[]);
     real baseRun = currentObjective - (potState !is null ? potState.total : 0.0L);
     immutable real dAnnBase = mfd.speculativeBistellarDelta(annM, baseRun, params);
     real dAnnPot = 0.0L;
@@ -2436,6 +2461,7 @@ bool tryNonlocalSlide(Vertex, P)(
         dAnnPot = mfd.potentialBistellarDelta(annM, *potState, *pot, true);
     mfd.doMove(annM);                 // manifold now pristine locally
     baseRun += dAnnBase;
+    immutable int dn3Ann = countDeg3(annSup[]) - cAnnBefore;
 
     // undo the annihilation (recreate the source chord) and return false
     bool undoAnnAndFail()
@@ -2477,30 +2503,54 @@ bool tryNonlocalSlide(Vertex, P)(
     // --- re-do: 2->3 on the target face, coCenter = target chord ---
     BM redoM = BM(tFace[], tChord[]);
     if (!mfd.hasValidMove(redoM)) return undoAnnAndFail();
+    Vertex[5] redoSup = [tFace[0], tFace[1], tFace[2], w[0], nxt];
+    immutable int cRedoBefore = countDeg3(redoSup[]);
     immutable real dRedoBase = mfd.speculativeBistellarDelta(redoM, baseRun, params);
-    immutable real dRedoPot = (potState !is null)
-        ? mfd.potentialBistellarDelta(redoM, *potState, *pot, false) : 0.0L;
+    real dRedoPot = 0.0L;
+    if (potState !is null)
+        dRedoPot = mfd.potentialBistellarDelta(redoM, *potState, *pot, true);
+    mfd.doMove(redoM);                // defect now at the target
+    immutable int dn3Redo = countDeg3(redoSup[]) - cRedoBefore;
+
     immutable real dS = dAnnBase + dAnnPot + dRedoBase + dRedoPot;
+    immutable long dn3 = cast(long)(dn3Ann + dn3Redo);
     valid = true;
     if (dSOut !is null) *dSOut = dS;
+    if (dn3Out !is null) *dn3Out = dn3;
+    if (outTa !is null) *outTa = tChord[0];
+    if (outTb !is null) *outTb = tChord[1];
+
+    // undo BOTH moves (both are applied by now): 3->2 the target chord, then
+    // 2->3 recreate the source. Restores the state exactly.
+    bool undoBothAndFail()
+    {
+        BM invRedo = BM(tChord[], tFace[]);
+        if (potState !is null)
+            mfd.potentialBistellarDelta(invRedo, *potState, *pot, true);
+        mfd.doMove(invRedo);
+        BM invAnn = BM(linkS[], chord[]);
+        if (potState !is null)
+            mfd.potentialBistellarDelta(invAnn, *potState, *pot, true);
+        mfd.doMove(invAnn);
+        return false;
+    }
 
     final switch (policy)
     {
     case SlideAccept.trialOnly:
-        return undoAnnAndFail();
+        return undoBothAndFail();
     case SlideAccept.force:
         break;
     case SlideAccept.metropolis:
-        immutable real logAlpha = -dS;
+        real logAlpha = -dS;
+        if (n3Before > 0 && n3Before + dn3 > 0)   // 1/n_3 Hastings factor
+            logAlpha += log(cast(real) n3Before / cast(real)(n3Before + dn3));
         if (logAlpha < 0 && uniform01 > exp(logAlpha))
-            return undoAnnAndFail();
+            return undoBothAndFail();
         break;
     }
 
-    // --- commit: create the chord at the target ---
-    if (potState !is null)
-        mfd.potentialBistellarDelta(redoM, *potState, *pot, true);
-    mfd.doMove(redoM);
+    // --- accepted: leave the defect at the target ---
     currentObjective += dS;
     return true;
 }
