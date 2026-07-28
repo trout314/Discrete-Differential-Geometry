@@ -295,6 +295,13 @@ _lib.ddg_manifold_facets.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_in
 _lib.ddg_manifold_facets.restype = ctypes.c_long
 _lib.ddg_manifold_facets.errcheck = _check_int
 
+# Slide-frame census: out8 = [ok, degen, missing, n_deg3, n_deg4,
+#                             ok_near, degen_near, missing_near]
+_lib.ddg_slide_frame_census.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_long)]
+_lib.ddg_slide_frame_census.restype = ctypes.c_long
+_lib.ddg_slide_frame_census.errcheck = _check_int
+
 _lib.ddg_manifold_simplices.argtypes = [
     ctypes.c_void_p, ctypes.c_int, ctypes.POINTER(ctypes.c_int),
 ]
@@ -801,6 +808,15 @@ _lib.ddg_sampler_slide_at2.argtypes = [
 ]
 _lib.ddg_sampler_slide_at2.restype = ctypes.c_int
 _lib.ddg_sampler_slide_at2.errcheck = _check_int
+
+# Non-local slide: annihilate + re-create `steps` tets down the BC chain.
+# (handle, a, b, slot, steps, mode, out_dS)
+_lib.ddg_sampler_nonlocal_slide_at.argtypes = [
+    ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+    ctypes.c_int, ctypes.POINTER(ctypes.c_double),
+]
+_lib.ddg_sampler_nonlocal_slide_at.restype = ctypes.c_int
+_lib.ddg_sampler_nonlocal_slide_at.errcheck = _check_int
 
 # ---------------------------------------------------------------------------
 # FPKMC infrastructure (notes/FPKMC_DESIGN.md, M1)

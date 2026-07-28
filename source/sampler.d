@@ -2019,23 +2019,49 @@ struct SlideFrame(Vertex)
 /// Derive c5..c8 from the chord (c0,c4) and the ordered link pick (c2,c3) by
 /// the sliding-window rule. Returns false if any window face is missing, the
 /// frame assumption breaks, or the eight vertices are not distinct.
-bool deriveSlideFrame(Vertex)(const ref Manifold!(3, Vertex) mfd,
+/// Why a slide frame could not be derived. `degenerate` is the physically
+/// interesting one: the eight frame vertices are not distinct, i.e. the
+/// apex-walk folded back on itself. This happens exactly when the chain
+/// runs into a degree-4 edge (whose link 4-cycle makes two triangles share
+/// the same apex pair) -- the disclination lines of a defect complex. So a
+/// `degenerate` count is a count of slides blocked by nearby defect
+/// structure, not by a missing/broken window (`missingFace`).
+enum SlideFrameCause : int { ok = 0, missingFace = 1, degenerate = 2 }
+
+/// Frame derivation that reports WHY it failed (see SlideFrameCause). The
+/// bool `deriveSlideFrame` below is the unchanged behaviour, kept so every
+/// existing caller is untouched; this core exists for the slide-frame
+/// census (ddg_slide_frame_census).
+SlideFrameCause deriveSlideFrameCause(Vertex)(
+    const ref Manifold!(3, Vertex) mfd,
     Vertex c0, Vertex c4, Vertex c2, Vertex c3, out SlideFrame!Vertex f)
 {
     Vertex c5, c6, c7, c8;
-    if (!apexExcluding(mfd, c2, c3, c4, c0, c5)) return false;
-    if (!apexExcluding(mfd, c3, c4, c5, c2, c6)) return false;
-    if (!apexExcluding(mfd, c4, c5, c6, c3, c7)) return false;
-    if (!apexExcluding(mfd, c5, c6, c7, c4, c8)) return false;
+    if (!apexExcluding(mfd, c2, c3, c4, c0, c5))
+        return SlideFrameCause.missingFace;
+    if (!apexExcluding(mfd, c3, c4, c5, c2, c6))
+        return SlideFrameCause.missingFace;
+    if (!apexExcluding(mfd, c4, c5, c6, c3, c7))
+        return SlideFrameCause.missingFace;
+    if (!apexExcluding(mfd, c5, c6, c7, c4, c8))
+        return SlideFrameCause.missingFace;
 
     Vertex[8] all = [c0, c2, c3, c4, c5, c6, c7, c8];
     Vertex[8] sorted_ = all;
     sorted_[].sort();
     foreach (i; 0 .. 7)
-        if (sorted_[i] == sorted_[i + 1]) return false;   // degenerate frame
+        if (sorted_[i] == sorted_[i + 1])
+            return SlideFrameCause.degenerate;   // apex-walk folded
 
     f = SlideFrame!Vertex(c0, c2, c3, c4, c5, c6, c7, c8);
-    return true;
+    return SlideFrameCause.ok;
+}
+
+bool deriveSlideFrame(Vertex)(const ref Manifold!(3, Vertex) mfd,
+    Vertex c0, Vertex c4, Vertex c2, Vertex c3, out SlideFrame!Vertex f)
+{
+    return deriveSlideFrameCause(mfd, c0, c4, c2, c3, f)
+        == SlideFrameCause.ok;
 }
 
 /// Is this edge degree illegal (an FK/TCP defect)? Legal degrees are 5 and 6.
@@ -2329,6 +2355,153 @@ bool trySlideMove(Vertex, P)(
     currentObjective += committed;
     if (counters !is null)
         addSupport(counters.acceptedBistellar, support);
+    return true;
+}
+
+/******************************************************************************
+                    NON-LOCAL SLIDE (undo / re-do worm move)
+*******************************************************************************
+
+Move a degree-3 chord by ANNIHILATING it with a 3->2 (undoing its creating
+2->3) and RE-CREATING it `steps` tets down the Boerdijk-Coxeter chain with a
+fresh 2->3. Just two Pachner moves, passing through the pristine intermediate,
+so the exact action change is
+
+    dS = dS(3->2 at source) + dS(2->3 at target)
+
+with no frame derivation and no degree-4 collision (the local 4-move slide's
+machinery existed only to cross the endpoint OVERLAP; going through pristine
+sidesteps all of it). `steps` = 4 reproduces the local slide's displacement (a
+chord that shares one vertex with the original); larger `steps` are the
+non-local sampling move -- an excitation that hops directly to a distant
+same-rung site, defeating the washboard caging.
+
+USE FOR EQUILIBRIUM SAMPLING. It leaves pi ∝ exp(-objective) invariant, but the
+3->2 annihilates the defect to the vacuum, so a distant re-do is re-nucleation,
+not motion -- keep `steps` small (=4) for physical kinetics.
+
+`slot` (0 .. SLIDE_SLOTS-1) selects the walk: orient = slot/6 picks which apex
+leads the window, pick = slot%6 orders the chord's 3-vertex link. The walk is
+nextChainWindow, a reversible permutation, so a matching reverse slot walks
+back. Proposal-symmetry / detailed-balance wiring lives in the caller.
+*/
+bool tryNonlocalSlide(Vertex, P)(
+    ref Manifold!(3, Vertex) mfd,
+    ref real currentObjective,
+    Vertex a, Vertex b, const(Vertex)[] hintTet, int slot, int steps,
+    P params,
+    out bool valid,
+    VertexPotState!Vertex* potState = null,
+    const(VertexPot)* pot = null,
+    SlideAccept policy = SlideAccept.metropolis,
+    real* dSOut = null)
+{
+    import std.math : exp;
+    alias BM = BistellarMove!(3, Vertex);
+    valid = false;
+    if (dSOut !is null) *dSOut = real.nan;
+    if (steps <= 0 || slot < 0 || slot >= SLIDE_SLOTS) return false;
+
+    // link of the degree-3 chord (a,b): 3 vertices in cycle order
+    int[8] linkBuf = 0;
+    auto nl = mfd.writeEdgeLinkCycle(a, b, hintTet, linkBuf.ptr);
+    if (nl != 3) return false;
+    Vertex[3] link = [cast(Vertex) linkBuf[0], cast(Vertex) linkBuf[1],
+                      cast(Vertex) linkBuf[2]];
+
+    // decode slot: orientation (leading apex) x ordered link pick
+    immutable int orient = slot / 6;
+    immutable int pick = slot % 6;
+    static immutable int[2][6] picks =
+        [[0, 1], [0, 2], [1, 0], [1, 2], [2, 0], [2, 1]];
+    immutable int i0 = picks[pick][0], i1 = picks[pick][1], i2 = 3 - i0 - i1;
+    immutable Vertex w0 = orient == 0 ? a : b;
+    Vertex[4] window = [w0, link[i0], link[i1], link[i2]];
+
+    Vertex[2] chord = [a, b]; chord[].sort();
+    Vertex[3] linkS = link; linkS[].sort();
+
+    {
+        Vertex[5] sup = [chord[0], chord[1], link[0], link[1], link[2]];
+        if (mfd.anyFrozen(sup[])) return false;
+    }
+
+    // --- annihilate: 3->2 on (a,b), coCenter = its link ---
+    BM annM = BM(chord[], linkS[]);
+    if (!mfd.hasValidMove(annM)) return false;
+    real baseRun = currentObjective - (potState !is null ? potState.total : 0.0L);
+    immutable real dAnnBase = mfd.speculativeBistellarDelta(annM, baseRun, params);
+    real dAnnPot = 0.0L;
+    if (potState !is null)
+        dAnnPot = mfd.potentialBistellarDelta(annM, *potState, *pot, true);
+    mfd.doMove(annM);                 // manifold now pristine locally
+    baseRun += dAnnBase;
+
+    // undo the annihilation (recreate the source chord) and return false
+    bool undoAnnAndFail()
+    {
+        BM inv = BM(linkS[], chord[]);
+        if (potState !is null)
+            mfd.potentialBistellarDelta(inv, *potState, *pot, true);
+        mfd.doMove(inv);
+        return false;
+    }
+
+    // the start window is now a facet (tet_n or tet_{n+1})
+    {
+        Vertex[4] ws = window; ws[].sort();
+        if (!mfd.contains(ws[])) return undoAnnAndFail();
+    }
+
+    // --- walk `steps` tets down the chain ---
+    Vertex[4] w = window;
+    foreach (_; 0 .. steps)
+        if (!mfd.nextChainWindow(w)) return undoAnnAndFail();
+
+    // target chord = (w[0], apex of face (w1,w2,w3) opposite w[0])
+    int[2] ap = 0;
+    if (mfd.writeFaceApexes(w[1], w[2], w[3], ap.ptr) != 2)
+        return undoAnnAndFail();
+    Vertex nxt;
+    if (ap[0] == w[0]) nxt = cast(Vertex) ap[1];
+    else if (ap[1] == w[0]) nxt = cast(Vertex) ap[0];
+    else return undoAnnAndFail();
+    Vertex[3] tFace = [w[1], w[2], w[3]]; tFace[].sort();
+    Vertex[2] tChord = [w[0], nxt]; tChord[].sort();
+
+    {
+        Vertex[5] sup = [tFace[0], tFace[1], tFace[2], w[0], nxt];
+        if (mfd.anyFrozen(sup[])) return undoAnnAndFail();
+    }
+
+    // --- re-do: 2->3 on the target face, coCenter = target chord ---
+    BM redoM = BM(tFace[], tChord[]);
+    if (!mfd.hasValidMove(redoM)) return undoAnnAndFail();
+    immutable real dRedoBase = mfd.speculativeBistellarDelta(redoM, baseRun, params);
+    immutable real dRedoPot = (potState !is null)
+        ? mfd.potentialBistellarDelta(redoM, *potState, *pot, false) : 0.0L;
+    immutable real dS = dAnnBase + dAnnPot + dRedoBase + dRedoPot;
+    valid = true;
+    if (dSOut !is null) *dSOut = dS;
+
+    final switch (policy)
+    {
+    case SlideAccept.trialOnly:
+        return undoAnnAndFail();
+    case SlideAccept.force:
+        break;
+    case SlideAccept.metropolis:
+        immutable real logAlpha = -dS;
+        if (logAlpha < 0 && uniform01 > exp(logAlpha))
+            return undoAnnAndFail();
+        break;
+    }
+
+    // --- commit: create the chord at the target ---
+    if (potState !is null)
+        mfd.potentialBistellarDelta(redoM, *potState, *pot, true);
+    mfd.doMove(redoM);
+    currentObjective += dS;
     return true;
 }
 

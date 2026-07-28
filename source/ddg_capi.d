@@ -987,6 +987,102 @@ extern(C) long ddg_manifold_face_apexes(void* handle, int a, int b, int c,
     catch (Throwable e) { setError(e.msg); return -1; }
 }
 
+/// Census of slide-frame outcomes over all degree-3 chords x SLIDE_SLOTS
+/// slots (dim = 3 only). Writes 8 longs to out8:
+///   [0] ok   [1] degenerate-frame   [2] missing-face     (all chords)
+///   [3] number of degree-3 chords   [4] number of degree-4 edges
+///   [5] ok   [6] degenerate         [7] missing   (chords touching a deg-4 edge)
+/// A `degenerate` outcome is a slide blocked by a folded apex-walk -- i.e. by a
+/// nearby degree-4 disclination edge (a defect complex), NOT by a broken window
+/// (`missing`). The [5..7] split isolates that near the complexes. O(1) per
+/// frame; read-only. Returns 0 on success, -1 on error.
+extern(C) long ddg_slide_frame_census(void* handle, long* out8) nothrow
+{
+    clearError();
+    if (handle is null) { setError("null handle"); return -1; }
+    if (out8 is null) { setError("null out buffer"); return -1; }
+    auto h = cast(ManifoldHandle*) handle;
+    if (h.dim != 3) { setError("slide_frame_census is dim=3 only"); return -1; }
+    try
+    {
+        import std.algorithm : sort, map;
+        import std.array : array;
+        auto mfd = &(cast(ManifoldWrapper!3*) h.ptr).mfd;
+        foreach (i; 0 .. 8) out8[i] = 0;
+        static immutable int[2][6] picks =
+            [[0, 1], [0, 2], [1, 0], [1, 2], [2, 0], [2, 1]];
+
+        // vertices incident to a degree-4 edge (a defect disclination line)
+        bool[int] deg4vert;
+        foreach (e; mfd.simplices(1).map!(x => [x[0], x[1]]).array)
+            if (mfd.degree(e) == 4)
+            {
+                out8[4]++;
+                deg4vert[e[0]] = true;
+                deg4vert[e[1]] = true;
+            }
+
+        foreach (edge; mfd.simplices(1).map!(x => [x[0], x[1]]).array)
+        {
+            if (mfd.degree(edge) != 3) continue;
+            out8[3]++;
+            immutable bool near =
+                (edge[0] in deg4vert) !is null || (edge[1] in deg4vert) !is null;
+
+            // hint tet: any current facet containing the edge
+            int[4] hint = 0;
+            bool got = false;
+            foreach (f; mfd.facets)
+            {
+                bool a0 = false, a1 = false;
+                foreach (v; f)
+                {
+                    if (v == edge[0]) a0 = true;
+                    if (v == edge[1]) a1 = true;
+                }
+                if (a0 && a1)
+                {
+                    int j = 0;
+                    foreach (v; f) hint[j++] = v;
+                    got = true;
+                    break;
+                }
+            }
+            if (!got) continue;
+
+            int[8] lb = 0;
+            if (mfd.writeEdgeLinkCycle(edge[0], edge[1], hint[], lb.ptr) != 3)
+                continue;
+            int[3] lk = [lb[0], lb[1], lb[2]];
+            lk[].sort();
+
+            foreach (slot; 0 .. SLIDE_SLOTS)
+            {
+                immutable int orient = slot / 6;
+                immutable int pick = slot % 6;
+                immutable int c0 = orient == 0 ? edge[0] : edge[1];
+                immutable int c4 = orient == 0 ? edge[1] : edge[0];
+                immutable int c2 = lk[picks[pick][0]];
+                immutable int c3 = lk[picks[pick][1]];
+                SlideFrame!int fr;
+                immutable cause =
+                    deriveSlideFrameCause(*mfd, c0, c4, c2, c3, fr);
+                final switch (cause)
+                {
+                case SlideFrameCause.ok:
+                    out8[0]++; if (near) out8[5]++; break;
+                case SlideFrameCause.degenerate:
+                    out8[1]++; if (near) out8[6]++; break;
+                case SlideFrameCause.missingFace:
+                    out8[2]++; if (near) out8[7]++; break;
+                }
+            }
+        }
+        return 0;
+    }
+    catch (Throwable ex) { setError(ex.msg); return -1; }
+}
+
 /// Audit the manifold's internal hash maps; returns 0 healthy, -1 with an
 /// error message describing the first inconsistency.
 extern(C) int ddg_manifold_validate_maps(void* handle) nothrow
@@ -2914,6 +3010,77 @@ extern(C) int ddg_sampler_slide_stats(void* sampler_handle,
     if (out_tries !is null) *out_tries = cast(long) s.slideCfg.tries;
     if (out_accepts !is null) *out_accepts = cast(long) s.slideCfg.accepts;
     return 0;
+}
+
+/******************************************************************************
+Non-local slide (dim = 3): annihilate the degree-3 chord (a,b) with a 3->2 and
+re-create it `steps` tets down the BC chain with a 2->3. `slot` (0..11) selects
+the walk (orientation x link order). `mode`: 0 = trial (measure dS, restore),
+1 = force (commit). Writes the exact action change to *out_dS. Returns 1 if the
+slot yielded a legal move (and, for mode 1, committed), 0 if not a legal move,
+-1 on error. See sampler.tryNonlocalSlide.
+*/
+extern(C) int ddg_sampler_nonlocal_slide_at(void* sampler_handle,
+    int a, int b, int slot, int steps, int mode, double* out_dS) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null handle"); return -1; }
+        auto s = cast(SamplerState*) sampler_handle;
+        if (s.dim != 3) { setError("nonlocal slide is dim=3 only"); return -1; }
+        if (mode != 0 && mode != 1)
+        { setError("mode must be 0 (trial) or 1 (force)"); return -1; }
+
+        auto mw = cast(ManifoldWrapper!3*)(
+            cast(ManifoldHandle*) s.manifoldHandle).ptr;
+        import std.algorithm.comparison : max, min;
+        int[2] eb = [min(a, b), max(a, b)];
+        if (!mw.mfd.contains(eb[])) { setError("edge not in manifold"); return -1; }
+
+        // any facet on the edge serves as the link-walk hint
+        int[4] hint = 0;
+        {
+            bool got = false;
+            foreach (pr; mw.mfd.link(eb[]))
+            {
+                int i = 0;
+                foreach (v; pr) hint[2 + i++] = v;
+                got = true;
+                break;
+            }
+            if (!got) { setError("edge has empty link"); return -1; }
+            hint[0] = eb[0]; hint[1] = eb[1];
+            hint[].sort();
+        }
+
+        if (s.currentObjective != s.currentObjective)   // NaN
+            recomputeObjective(s);
+
+        struct Params { int numFacetsTarget; real hingeDegreeTarget;
+            real numFacetsCoef; real numHingesCoef; real hingeDegreeVarianceCoef;
+            real coDim3DegreeVarianceCoef; real hingeDegreeTargetCoef;
+            real coDim3DegreeTargetCoef; real coDim3DegreeTarget; }
+        auto params = Params(s.numFacetsTarget,
+            cast(real) s.hingeDegreeTarget, cast(real) s.numFacetsCoef,
+            cast(real) s.numHingesCoef, cast(real) s.hingeDegreeVarianceCoef,
+            cast(real) s.coDim3DegreeVarianceCoef,
+            cast(real) s.hingeDegreeTargetCoef,
+            cast(real) s.coDim3DegreeTargetCoef,
+            cast(real) s.coDim3DegreeTarget);
+
+        bool valid = false;
+        real dS = real.nan;
+        mw.mfd.tryNonlocalSlide(s.currentObjective, eb[0], eb[1], hint[],
+            slot, steps, params, valid,
+            s.potEnabled ? &s.vertexPotState : null,
+            s.potEnabled ? &s.vertexPot : null,
+            mode == 0 ? SlideAccept.trialOnly : SlideAccept.force, &dS);
+        if (!valid) return 0;
+        if (out_dS !is null) *out_dS = cast(double) dS;
+        return 1;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
 }
 
 // ---------------------------------------------------------------------------
