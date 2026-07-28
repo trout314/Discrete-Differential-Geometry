@@ -142,6 +142,32 @@ private:
         arr.assumeSafeAppend;
     }
 
+    /// Report a corrupt-manifold invariant and abort. Purity-laundered exactly
+    /// like reclaimCapacity above: fprintf/abort are impure, but this only ever
+    /// fires on an already-corrupt invariant and then never returns, so it has
+    /// no observable effect on any valid run. Laundering keeps insertFacet
+    /// pure/@safe (asserted by the `pure @safe` unittests) without weakening
+    /// the always-on guard.
+    static void _abortInvariant(uint degree, ulong linkLen, int newApex,
+                                int existingApex0) @trusted pure nothrow
+    {
+        (cast(void function(uint, ulong, int, int) @trusted pure nothrow)
+            &_abortInvariantImpl)(degree, linkLen, newApex, existingApex0);
+    }
+
+    static void _abortInvariantImpl(uint degree, ulong linkLen, int newApex,
+                                    int existingApex0) @trusted nothrow
+    {
+        import core.stdc.stdio : fprintf, stderr;
+        import core.stdc.stdlib : abort;
+        fprintf(stderr,
+            "FATAL manifold invariant (insertFacet): ridge degree=%u "
+            ~ "linkLen=%llu newApex=%d existingApex0=%d -- need degree 2 "
+            ~ "with distinct apexes.\n",
+            degree, linkLen, newApex, existingApex0);
+        abort();
+    }
+
 public:
     /// Dimension of the manifold
     static immutable dimension = dimension_;
@@ -455,21 +481,11 @@ public:
                         if (ptr.degree != 2 || ptr.link.length != 1
                             || ptr.link[0] == oppVert)
                         {
-                            () @trusted {
-                                import core.stdc.stdio : fprintf, stderr;
-                                import core.stdc.stdlib : abort;
-                                fprintf(stderr,
-                                    "FATAL manifold invariant (insertFacet): "
-                                    ~ "ridge degree=%u linkLen=%llu newApex=%d "
-                                    ~ "existingApex0=%d -- need degree 2 with "
-                                    ~ "distinct apexes.\n",
-                                    ptr.degree,
-                                    cast(ulong) ptr.link.length,
-                                    cast(int) oppVert,
-                                    ptr.link.length >= 1
-                                        ? cast(int) ptr.link[0] : -1);
-                                abort();
-                            }();
+                            _abortInvariant(cast(uint) ptr.degree,
+                                cast(ulong) ptr.link.length,
+                                cast(int) oppVert,
+                                ptr.link.length >= 1
+                                    ? cast(int) ptr.link[0] : -1);
                         }
                         ptr.link ~= oppVert;
                         ptr.link[].sort;
