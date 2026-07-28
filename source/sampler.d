@@ -1992,23 +1992,42 @@ struct NonlocalSlideConfig
     ulong accepts;
 }
 
-/// A live set of the degree-3 edges (defect chords), supporting O(1) uniform
-/// draw, add, and remove -- the machinery the 1/n_3 proposal needs. Maintained
-/// incrementally by reconcileDeg3 over each committed move's support; only
-/// touched when the non-local channel is enabled (else it stays empty and
-/// costs nothing). Populate once from a fresh manifold with rebuildDeg3.
+/// A live set of the degree-3 edges (defect chords) for the 1/n_3 proposal:
+/// O(1) uniform draw / add / remove, and -- crucially -- a WITNESS facet per
+/// chord (a tet containing it) so the channel gets its slide hint in O(1)
+/// instead of the O(N) `mfd.link` (which scans all facets via StarRange). A
+/// witness can go stale when its tet is destroyed; the draw validates it in
+/// O(1) with writeFaceApexes and only recomputes (once, then caches) on a miss.
+/// Only touched while the non-local channel is enabled. Sentinel witness =
+/// first component < 0 (vertex labels are non-negative).
 struct Deg3Set(Vertex)
 {
     Vertex[2][] edges;
+    Vertex[4][] wit;                 // wit[i] contains edges[i]; [<0,..] = unknown
     size_t[Vertex[2]] index;
 
     size_t length() const @safe pure nothrow { return edges.length; }
 
-    void add(Vertex[2] e)
+    static bool edgeInFacet(Vertex[2] e, Vertex[4] f)
     {
-        if (e in index) return;
+        bool a0 = false, a1 = false;
+        foreach (v; f) { if (v == e[0]) a0 = true; if (v == e[1]) a1 = true; }
+        return a0 && a1;
+    }
+
+    void add(Vertex[2] e, Vertex[4] w)
+    {
+        immutable hasW = (w[0] >= 0 && edgeInFacet(e, w));
+        auto p = e in index;
+        if (p !is null)
+        {
+            if (hasW && wit[*p][0] < 0) wit[*p] = w;   // upgrade a sentinel
+            return;
+        }
         index[e] = edges.length;
         edges ~= e;
+        if (hasW) wit ~= w;
+        else { Vertex[4] s = -1; wit ~= s; }
     }
     void remove(Vertex[2] e)
     {
@@ -2018,42 +2037,54 @@ struct Deg3Set(Vertex)
         immutable last = edges.length - 1;
         if (i != last)
         {
-            edges[i] = edges[last];
+            edges[i] = edges[last]; wit[i] = wit[last];
             index[edges[i]] = i;
         }
-        edges.length = last;
+        edges.length = last; wit.length = last;
         index.remove(e);
     }
-    /// Set membership to match `isDeg3` (idempotent, needs only current state).
-    void reconcile(Vertex[2] e, bool isDeg3)
+    void reconcile(Vertex[2] e, bool isDeg3, Vertex[4] w)
     {
-        if (isDeg3) add(e); else remove(e);
+        if (isDeg3) add(e, w); else remove(e);
     }
-    void clear() { edges.length = 0; index.clear(); }
+    void clear() { edges.length = 0; wit.length = 0; index.clear(); }
 }
 
 /// Reconcile the degree-3 set over every edge among `verts` (all edges a move
 /// could have changed lie within its support), using only the CURRENT degrees.
+/// `witnessFacet` (a length-4 tet, optional) supplies the witness for any
+/// newly-degree-3 edge it contains -- pass the facet the move just created so
+/// the moved chord starts with a valid O(1) hint.
 void reconcileDeg3(Vertex)(ref Manifold!(3, Vertex) mfd,
-    ref Deg3Set!Vertex set, scope const(Vertex)[] verts)
+    ref Deg3Set!Vertex set, scope const(Vertex)[] verts,
+    scope const(Vertex)[] witnessFacet = null)
 {
+    Vertex[4] w = -1;
+    if (witnessFacet.length == 4)
+        foreach (k; 0 .. 4) w[k] = witnessFacet[k];
     foreach (i; 0 .. verts.length)
         foreach (j; i + 1 .. verts.length)
         {
             Vertex[2] e = [verts[i], verts[j]]; e[].sort();
-            set.reconcile(e, mfd.degreeOrZero!1(e[]) == 3);
+            set.reconcile(e, mfd.degreeOrZero!1(e[]) == 3, w);
         }
 }
 
-/// Populate a degree-3 set from scratch (O(E)); call once when the non-local
-/// channel is enabled.
+/// Populate a degree-3 set from scratch (O(N)); call once when the non-local
+/// channel is enabled. Iterates FACETS (not edges) so every initial chord gets
+/// a valid witness facet.
 void rebuildDeg3(Vertex)(ref Manifold!(3, Vertex) mfd, ref Deg3Set!Vertex set)
 {
     set.clear();
-    foreach (e; mfd.simplices(1))
+    foreach (f; mfd.facets)
     {
-        Vertex[2] ed = [e[0], e[1]]; ed[].sort();
-        if (mfd.degreeOrZero!1(ed[]) == 3) set.add(ed);
+        Vertex[4] ft = [f[0], f[1], f[2], f[3]];
+        foreach (a; 0 .. 4)
+            foreach (b; a + 1 .. 4)
+            {
+                Vertex[2] e = [ft[a], ft[b]]; e[].sort();
+                if (mfd.degreeOrZero!1(e[]) == 3) set.add(e, ft);
+            }
     }
 }
 
@@ -2637,7 +2668,10 @@ bool tryNonlocalSlide(Vertex, P)(
     if (deg3Set !is null)
     {
         reconcileDeg3(mfd, *deg3Set, annSup[]);    // source healed to pristine
-        reconcileDeg3(mfd, *deg3Set, redoSup[]);   // target now carries a chord
+        // The 2->3 created three tets on the target chord; one of them is a
+        // valid O(1) witness for the freshly-placed chord.
+        Vertex[4] wt = [tChord[0], tChord[1], tFace[0], tFace[1]];
+        reconcileDeg3(mfd, *deg3Set, redoSup[], wt[]);
     }
     return true;
 }
@@ -2860,19 +2894,42 @@ bool mcmcStep(Vertex, P)(
         && deg3Set.length > 0 && uniform01 < nlSlide.prob)
     {
         immutable long n3 = cast(long) deg3Set.length;
-        Vertex[2] chord = deg3Set.edges[uniform(0, deg3Set.length)];
+        immutable size_t di = uniform(0, deg3Set.length);
+        Vertex[2] chord = deg3Set.edges[di];
+        // slide hint = a facet containing the chord. Use the cached witness
+        // (validated in O(1) via writeFaceApexes); only on a stale/unknown
+        // witness fall back to the O(N) mfd.link, then cache the result.
         Vertex[4] hint = 0;
         {
-            bool got = false;
-            foreach (pr; mfd.link(chord[]))
+            Vertex[4] w = deg3Set.wit[di];
+            bool valid = false;
+            if (w[0] >= 0 && Deg3Set!Vertex.edgeInFacet(chord, w))
             {
-                hint[0] = chord[0]; hint[1] = chord[1];
-                int i = 0;
-                foreach (v; pr) hint[2 + i++] = v;
-                got = true; break;
+                Vertex c = -1, d = -1;
+                foreach (v; w)
+                    if (v != chord[0] && v != chord[1])
+                    { if (c < 0) c = v; else d = v; }
+                int[2] ap = 0;
+                if (c >= 0 && d >= 0
+                    && mfd.writeFaceApexes(chord[0], chord[1], c, ap.ptr) == 2)
+                    valid = (ap[0] == d || ap[1] == d);
             }
-            if (!got) return false;
-            hint[].sort();
+            if (valid)
+                hint = w;
+            else
+            {
+                bool got = false;
+                foreach (pr; mfd.link(chord[]))
+                {
+                    hint[0] = chord[0]; hint[1] = chord[1];
+                    int i = 0;
+                    foreach (v; pr) hint[2 + i++] = v;
+                    got = true; break;
+                }
+                if (!got) return false;
+                hint[].sort();
+                deg3Set.wit[di] = hint;          // cache for next time
+            }
         }
         immutable int slot = uniform(0, SLIDE_SLOTS);
         immutable int steps = uniform(1, nlSlide.maxStep + 1);
