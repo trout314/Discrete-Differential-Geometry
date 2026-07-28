@@ -607,7 +607,15 @@ class DefectState:
                 problems.append(
                     f"tet set differs by {len(live ^ self.tets)}")
         eu, edg, V = edges_from_facets(fac)
-        ref_edeg = {tuple(int(x) for x in e): int(d) for e, d in zip(eu, edg)}
+        # edges_from_facets relabels vertices to dense 0..V-1; map the edge
+        # endpoints back to original labels (lab[idx]) so the keys match the
+        # incrementally-maintained self.edeg, which is keyed by REAL labels.
+        # Without this the audit false-positives the instant label recycling
+        # opens a gap in the numbering -- the state is correct, the comparison
+        # was not (it compared dense-index edges to real-label edges).
+        lab = np.unique(fac)
+        ref_edeg = {tuple(sorted((int(lab[a]), int(lab[b])))): int(d)
+                    for (a, b), d in zip(eu, edg)}
         ref_ill = {e for e, d in ref_edeg.items() if not _legal(d)}
         if ref_ill != self.ill_edges:
             problems.append(
@@ -617,7 +625,6 @@ class DefectState:
             diff = set(ref_edeg.items()) ^ set(mine.items())
             problems.append(f"edge degrees differ on {len(diff)} entries")
         n6r, impr, adj = vertex_classes(fac)
-        lab = np.unique(fac)
         for i, v in enumerate(lab):
             v = int(v)
             if self.n6.get(v, 0) != int(n6r[i]):
