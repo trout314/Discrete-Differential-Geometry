@@ -156,6 +156,28 @@ the lockstep total). Label bookkeeping caveat: vertex labels are
 recycled by the capi; the offline 1↔4 path must assign labels
 deterministically too, since labels are part of the chain's state.
 
+**MEASURED (Phase-1 lab, 2026-07-30,
+scratchpad/phase1_reversibility_lab.py):** naive independent mirror
+goals give reverse-check pass rates of **6/6 for the self-mirror
+sector** (d₀ = 3 edges: removal = inverse of creation structurally;
+dS exactly antisymmetric ±5.93) and **0/24 for everything deeper**
+(d₀ ≥ 4 edges: the mirror "creates e" the cheap way — one 2→3 at
+degree 3 in the mangled environment — never the original-degree
+rebuild; vertex tier: legalize gets stuck rebuilding Z = 4 → 10).
+Conclusion: deterministic + reverse-check survives as the CHEAP FAST
+PATH for structurally self-mirror sectors only. The general deep
+sector needs **scheme B — configurational-bias (Rosenbluth)
+constructors**: build the composite stepwise, sampling the (symmetric)
+alphabet with computable stagewise weights; the reverse probability of
+the recorded inverse path is computed by RETRACING it under the
+inverse goal's bias. Alphabet symmetry (every 2→3 has its 3→2)
+guarantees nonzero reverse support, eliminating the exact-match
+brittleness; the Hastings ratio carries the two Rosenbluth products.
+Forward-direction bonuses from the same lab: the canonical engine cut
+the vertex-removal barrier to +16.40 (net −22.82), and costs are
+CRYSTAL-ORBIT-QUANTIZED (two same-orbit vertices: bit-identical
+trajectories) — generator weight tables in ordered states are tiny.
+
 ## 3. The f-changing sector, and where it can actually be tested
 
 Pairs with joint Δf ≠ 0 collect the global-sector price/bonus at the
