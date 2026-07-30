@@ -84,6 +84,14 @@ def main():
                          "sweeps (shorter ones are pure flicker; they "
                          "still enter the lifetime histogram)")
     ap.add_argument("--seed", type=int, default=4242)
+    ap.add_argument("--hinges-coef", type=float, default=0.0,
+                    help="num_hinges pin coefficient: (f1 - 6 f3/e*)^2, the "
+                         "mean-edge-degree pin (0 = off, the historical "
+                         "default)")
+    ap.add_argument("--abs-couplings", action="store_true",
+                    help="treat --zleg/--cimp as ABSOLUTE potential "
+                         "couplings instead of multiples of --lam (for "
+                         "actions like the m^2-only gas where lam = 0)")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
     print("[frame] none -- graph identity only; no positions, no gauge")
@@ -96,11 +104,12 @@ def main():
     m = ddg.Manifold.load(args.start or args.cell, 3)
     params = ddg.SamplerParams(
         num_facets_target=ref.num_facets, num_facets_coef=0.1,
-        hinge_degree_target=et, num_hinges_coef=0.0,
+        hinge_degree_target=et, num_hinges_coef=args.hinges_coef,
         hinge_degree_variance_coef=0.0, codim3_degree_variance_coef=0.0,
         hinge_degree_target_coef=args.lam * et / 6.0)
     s = ddg.ManifoldSampler(m, params)
-    s.set_n6_potential(args.zleg * args.lam, args.cimp * args.lam,
+    scale = 1.0 if args.abs_couplings else args.lam
+    s.set_n6_potential(args.zleg * scale, args.cimp * scale,
                        tilt=[0.0] * 5)
     if args.slide_prob:
         s.set_slide_prob(args.slide_prob)
