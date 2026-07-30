@@ -2088,6 +2088,41 @@ void rebuildDeg3(Vertex)(ref Manifold!(3, Vertex) mfd, ref Deg3Set!Vertex set)
     }
 }
 
+/// Degree-parameterised twins of reconcileDeg3 / rebuildDeg3.  The Deg3Set
+/// struct is degree-agnostic (keyed edges + witness facets); the worm channel
+/// keeps a second instance holding the DEGREE-4 edges for its 1/n_4 proposal.
+void reconcileDegSet(Vertex)(ref Manifold!(3, Vertex) mfd,
+    ref Deg3Set!Vertex set, int wantDeg, scope const(Vertex)[] verts,
+    scope const(Vertex)[] witnessFacet = null)
+{
+    Vertex[4] w = -1;
+    if (witnessFacet.length == 4)
+        foreach (k; 0 .. 4) w[k] = witnessFacet[k];
+    foreach (i; 0 .. verts.length)
+        foreach (j; i + 1 .. verts.length)
+        {
+            Vertex[2] e = [verts[i], verts[j]]; e[].sort();
+            set.reconcile(e, mfd.degreeOrZero!1(e[]) == wantDeg, w);
+        }
+}
+
+/// ditto
+void rebuildDegSet(Vertex)(ref Manifold!(3, Vertex) mfd,
+    ref Deg3Set!Vertex set, int wantDeg)
+{
+    set.clear();
+    foreach (f; mfd.facets)
+    {
+        Vertex[4] ft = [f[0], f[1], f[2], f[3]];
+        foreach (a; 0 .. 4)
+            foreach (b; a + 1 .. 4)
+            {
+                Vertex[2] e = [ft[a], ft[b]]; e[].sort();
+                if (mfd.degreeOrZero!1(e[]) == wantDeg) set.add(e, ft);
+            }
+    }
+}
+
 /// What trySlideMove does once it has a legal clean slide in hand.
 enum SlideAccept
 {
@@ -2676,6 +2711,786 @@ bool tryNonlocalSlide(Vertex, P)(
     return true;
 }
 
+/*******************************************************************************
+                      DEG-4 WORM MOVE (catalysed transport step)
+*******************************************************************************
+
+One proposal = one 2->3 + one 3->2 (either order), f-vector neutral, moving
+DEG-4 content out of its hinge-flip cavity.  Ported from the validated Python
+oracle scripts/defect_dynamics/worm_deg4_slide.py (move class, inverse
+closure 69/69, MH integration exact to 1e-14).
+
+MOVE CLASS at an anchor deg-4 edge e:
+  * e's final degree is legal (5/6) or the edge is removed;
+  * k in {1,2} deg-4 edges lose deg-4 status and k gain it, everything
+    balanced; the anchor is among the losers;
+  * at most one deg-3 edge removed and one created (catalyst relocation);
+  * every OTHER edge's illegal status is exactly unchanged (degree map,
+    not set);
+  * some new deg-4 f ("landing") lies OUTSIDE e's octahedron (e + its
+    4-cycle) in the start state, with e outside f's octahedron in the end
+    state (escape symmetry: the reverse is in the class).
+
+PROPOSAL: anchor uniform over the live deg-4 set (1/n_4; the class preserves
+n_4 so this factor cancels), then uniform over the enumerated candidates.
+Because k = 2 transitions are proposable from either lost anchor, the
+Hastings weight is the anchor sum q = (1/n_4) sum_a k(a)/n(a), computed by
+enumeration at every lost (forward) / gained (reverse) anchor.  Acceptance:
+
+    alpha = min(1, exp(-dS) * q_r / q_f).
+
+dS comes from speculativeBistellarDelta + potentialBistellarDelta applied in
+lockstep on the chosen pair only (enumeration is manifold-only).  Cocycle
+tracking is NOT supported: the channel must be disabled when a cocycle is
+attached.
+*/
+
+/// Worm channel configuration + counters (see mcmcStep).
+struct WormConfig
+{
+    real prob = 0.0L;         ///< probability of proposing a worm per step
+    ulong tries;              ///< proposals with >= 1 candidate
+    ulong accepts;
+    ulong noCands;            ///< proposals rejected for lack of candidates
+}
+
+enum int WORM_MAX_CANDS = 512;
+private enum int WORM_MAX_NET = 10;
+
+/// One enumerated worm candidate.
+struct WormCand(Vertex)
+{
+    bool m1is23;              ///< m1 kind (m2 is the opposite kind)
+    Vertex[3] f1;             ///< m1 face (2->3 center / 3->2 coCenter)
+    Vertex[2] p1;             ///< m1 pair (2->3 coCenter / 3->2 center)
+    Vertex[3] f2;
+    Vertex[2] p2;
+    int nPair;                ///< 1 or 2
+    Vertex[2][2] gone4;       ///< deg-4 edges losing deg-4 status (anchor incl.)
+    Vertex[2][2] new4;        ///< deg-4 edges gaining it
+    Vertex[2] landing;        ///< the escaped new deg-4
+    int nNet;                 ///< canonical net facet diff (end-state key)
+    Vertex[4][WORM_MAX_NET] netT;
+    byte[WORM_MAX_NET] netSg;
+}
+
+/// Two candidates lead to the same end state iff their net diffs agree.
+private bool sameKey(Vertex)(ref const WormCand!Vertex a,
+                             ref const WormCand!Vertex b)
+{
+    if (a.nNet != b.nNet) return false;
+    foreach (i; 0 .. a.nNet)
+        if (a.netT[i] != b.netT[i] || a.netSg[i] != b.netSg[i]) return false;
+    return true;
+}
+
+/// Does candidate r's net diff equal the INVERSE of c's?
+private bool inverseKey(Vertex)(ref const WormCand!Vertex c,
+                                ref const WormCand!Vertex r)
+{
+    if (c.nNet != r.nNet) return false;
+    foreach (i; 0 .. c.nNet)
+    {
+        bool found = false;
+        foreach (j; 0 .. r.nNet)
+            if (c.netT[i] == r.netT[j] && c.netSg[i] == -r.netSg[j])
+            { found = true; break; }
+        if (!found) return false;
+    }
+    return true;
+}
+
+/// Accumulate one move's facet changes into a (tet, sign) list with
+/// cancellation; canonicalised by insertion (tets sorted internally).
+private void accNet(Vertex)(ref Vertex[4][WORM_MAX_NET] ts,
+    ref byte[WORM_MAX_NET] sg, ref int n, Vertex[4] t, byte s)
+{
+    t[].sort();
+    foreach (i; 0 .. n)
+        if (ts[i] == t)
+        {
+            sg[i] += s;
+            if (sg[i] == 0)          // cancelled: remove entry
+            {
+                foreach (j; i .. n - 1) { ts[j] = ts[j + 1]; sg[j] = sg[j + 1]; }
+                n--;
+            }
+            return;
+        }
+    ts[n] = t; sg[n] = s; n++;
+}
+
+/// Sort the net diff so equal end states compare equal structurally.
+private void sortNet(Vertex)(ref Vertex[4][WORM_MAX_NET] ts,
+    ref byte[WORM_MAX_NET] sg, int n)
+{
+    foreach (i; 0 .. n)
+        foreach (j; i + 1 .. n)
+            if (ts[j] < ts[i] || (ts[j] == ts[i] && sg[j] < sg[i]))
+            {
+                auto tt = ts[i]; ts[i] = ts[j]; ts[j] = tt;
+                auto ss = sg[i]; sg[i] = sg[j]; sg[j] = ss;
+            }
+}
+
+/// Find some facet containing edge (a,b): the O(N) fallback for hint
+/// derivation off the hot path (stale witnesses, partner/reverse anchors).
+bool findTetOfEdge(Vertex)(ref Manifold!(3, Vertex) mfd,
+    Vertex a, Vertex b, ref Vertex[4] outTet)
+{
+    foreach (f; mfd.facets)
+    {
+        bool ha = false, hb = false;
+        foreach (v; f) { if (v == a) ha = true; if (v == b) hb = true; }
+        if (ha && hb)
+        {
+            foreach (k; 0 .. 4) outTet[k] = f[k];
+            return true;
+        }
+    }
+    return false;
+}
+
+/// Append (dedup) every facet containing `v`, walking face-neighbours from
+/// `seed` (a facet containing v).  The star of a vertex is a ball, so the
+/// face-neighbour walk restricted to facets containing v covers it.  `arr`
+/// may already hold other vertices' stars: the walk uses its own per-call
+/// visited set (indices into arr), so shared facets do not block it.
+private int collectStar(Vertex)(ref Manifold!(3, Vertex) mfd, Vertex v,
+    Vertex[4] seed, Vertex[4][] arr, int n)
+{
+    int findOrAppend(Vertex[4] t)
+    {
+        foreach (i; 0 .. n) if (arr[i] == t) return i;
+        if (n < arr.length) { arr[n] = t; return n++; }
+        return -1;
+    }
+    seed[].sort();
+    immutable int s0 = findOrAppend(seed);
+    if (s0 < 0) return n;
+    int[512] queue = void;
+    int[512] visited = void;
+    int qh = 0, qt = 0, nv = 0;
+    bool seen(int idx)
+    {
+        foreach (i; 0 .. nv) if (visited[i] == idx) return true;
+        return false;
+    }
+    void visit(int idx)
+    {
+        if (idx < 0 || seen(idx) || nv >= visited.length
+            || qt >= queue.length) return;
+        visited[nv++] = idx;
+        queue[qt++] = idx;
+    }
+    visit(s0);
+    while (qh < qt)
+    {
+        auto T = arr[queue[qh++]];
+        // 3 faces of T containing v
+        Vertex[3] oth;
+        int no = 0;
+        foreach (x; T) if (x != v) oth[no++] = x;
+        if (no != 3) continue;                    // T does not contain v
+        foreach (skip; 0 .. 3)
+        {
+            Vertex[3] face;
+            int nf = 0;
+            face[nf++] = v;
+            foreach (k; 0 .. 3) if (k != skip) face[nf++] = oth[k];
+            int[2] ap = 0;
+            if (mfd.writeFaceApexes(face[0], face[1], face[2], ap.ptr) != 2)
+                continue;
+            Vertex fourth = -1;
+            foreach (x; T)
+            { if (x != face[0] && x != face[1] && x != face[2]) fourth = x; }
+            Vertex nb = (cast(Vertex) ap[0] == fourth) ? cast(Vertex) ap[1]
+                                                       : cast(Vertex) ap[0];
+            Vertex[4] N = [face[0], face[1], face[2], nb];
+            N[].sort();
+            visit(findOrAppend(N));
+        }
+    }
+    return n;
+}
+
+/// Enumerate every worm-class candidate at `anchor` (a deg-4 edge; `hintTet`
+/// = a facet containing it).  Trial moves are applied to the manifold and
+/// rolled back exactly; no objective/potential state is touched.  Returns
+/// the candidate count written into `out_`.
+int wormEnumerate(Vertex)(ref Manifold!(3, Vertex) mfd,
+    Vertex[2] anchor, const(Vertex)[] hintTet, WormCand!Vertex[] out_)
+{
+    alias BM = BistellarMove!(3, Vertex);
+    int nOut = 0;
+    if (mfd.degreeOrZero!1(anchor[]) != 4) return 0;
+
+    // anchor octahedron: the edge + its 4-cycle
+    int[8] cycBuf = 0;
+    if (mfd.writeEdgeLinkCycle(anchor[0], anchor[1], hintTet, cycBuf.ptr) != 4)
+        return 0;
+    Vertex[6] octaA = [anchor[0], anchor[1], cast(Vertex) cycBuf[0],
+        cast(Vertex) cycBuf[1], cast(Vertex) cycBuf[2], cast(Vertex) cycBuf[3]];
+    bool inOctaA(Vertex x)
+    {
+        foreach (v; octaA) if (v == x) return true;
+        return false;
+    }
+
+    // stage-1 star: tets around anchor[0] and anchor[1]
+    Vertex[4][160] star1 = void;
+    int n1 = 0;
+    foreach (i; 0 .. 4)
+    {
+        Vertex[4] seed = [anchor[0], anchor[1], cast(Vertex) cycBuf[i],
+                          cast(Vertex) cycBuf[(i + 1) % 4]];
+        n1 = collectStar(mfd, anchor[0], seed, star1[], n1);
+    }
+    {
+        Vertex[4] seed = [anchor[0], anchor[1], cast(Vertex) cycBuf[0],
+                          cast(Vertex) cycBuf[1]];
+        n1 = collectStar(mfd, anchor[1], seed, star1[], n1);
+    }
+
+    // ---- candidate first moves --------------------------------------------
+    static struct Mv
+    {
+        bool is23;
+        Vertex[3] f;      // face (2->3 center / 3->2 link)
+        Vertex[2] p;      // pair (2->3 apexes / 3->2 edge)
+    }
+    Mv[384] m1s = void;
+    int nM1 = 0;
+
+    void gatherMoves(scope Vertex[4][] tets, int nT,
+                     scope bool delegate(scope const(Vertex)[]) touches,
+                     ref Mv[384] outM, ref int nM)
+    {
+        // 2->3 on faces of the tets
+        Vertex[3][2048] seenF = void;
+        int nSF = 0;
+        foreach (ti; 0 .. nT)
+        {
+            auto T = tets[ti];
+            foreach (skip; 0 .. 4)
+            {
+                Vertex[3] face;
+                int k = 0;
+                foreach (i; 0 .. 4) if (i != skip) face[k++] = T[i];
+                bool dup = false;
+                foreach (i; 0 .. nSF) if (seenF[i] == face) { dup = true; break; }
+                if (dup) continue;
+                if (nSF < seenF.length) seenF[nSF++] = face;
+                int[2] ap = 0;
+                if (mfd.writeFaceApexes(face[0], face[1], face[2], ap.ptr) != 2)
+                    continue;
+                Vertex[2] axis = [cast(Vertex) ap[0], cast(Vertex) ap[1]];
+                axis[].sort();
+                Vertex[5] sup = [face[0], face[1], face[2], axis[0], axis[1]];
+                if (!touches(sup[])) continue;
+                if (mfd.degreeOrZero!1(axis[]) != 0) continue;
+                if (mfd.anyFrozen(sup[])) continue;
+                if (nM < outM.length)
+                {
+                    outM[nM].is23 = true;
+                    outM[nM].f = face;
+                    outM[nM].p = axis;
+                    nM++;
+                }
+            }
+        }
+        // 3->2 on degree-3 edges among the tets' pairs
+        Vertex[2][1024] seenE = void;
+        int nSE = 0;
+        foreach (ti; 0 .. nT)
+        {
+            auto T = tets[ti];
+            foreach (a; 0 .. 4)
+                foreach (b; a + 1 .. 4)
+                {
+                    Vertex[2] e = [T[a], T[b]]; e[].sort();
+                    bool dup = false;
+                    foreach (i; 0 .. nSE) if (seenE[i] == e) { dup = true; break; }
+                    if (dup) continue;
+                    if (nSE < seenE.length) seenE[nSE++] = e;
+                    if (mfd.degreeOrZero!1(e[]) != 3) continue;
+                    int[8] lk = 0;
+                    if (mfd.writeEdgeLinkCycle(e[0], e[1], T[], lk.ptr) != 3)
+                        continue;
+                    Vertex[3] link = [cast(Vertex) lk[0], cast(Vertex) lk[1],
+                                      cast(Vertex) lk[2]];
+                    link[].sort();
+                    Vertex[5] sup = [e[0], e[1], link[0], link[1], link[2]];
+                    if (!touches(sup[])) continue;
+                    if (mfd.anyFrozen(sup[])) continue;
+                    BM probe = BM(e[], link[]);
+                    if (!mfd.hasValidMove(probe)) continue;
+                    if (nM < outM.length)
+                    {
+                        outM[nM].is23 = false;
+                        outM[nM].f = link;
+                        outM[nM].p = e;
+                        nM++;
+                    }
+                }
+        }
+    }
+
+    bool touchesAnchor(scope const(Vertex)[] sup)
+    {
+        foreach (v; sup) if (v == anchor[0] || v == anchor[1]) return true;
+        return false;
+    }
+    gatherMoves(star1[], n1, &touchesAnchor, m1s, nM1);
+
+    // ---- try each (m1, m2) pair -------------------------------------------
+    foreach (i1; 0 .. nM1)
+    {
+        auto m1 = m1s[i1];
+        BM bm1 = m1.is23 ? BM(m1.f[], m1.p[]) : BM(m1.p[], m1.f[]);
+        if (!mfd.hasValidMove(bm1)) continue;
+
+        // snapshot original degrees over m1's support pairs
+        size_t[Vertex[2]] orig;
+        Vertex[5] sup1 = [m1.f[0], m1.f[1], m1.f[2], m1.p[0], m1.p[1]];
+        foreach (i; 0 .. 5)
+            foreach (j; i + 1 .. 5)
+            {
+                Vertex[2] e = [sup1[i], sup1[j]]; e[].sort();
+                if (e !in orig) orig[e] = mfd.degreeOrZero!1(e[]);
+            }
+        {
+            Vertex[2] e = anchor; e[].sort();
+            if (e !in orig) orig[e] = mfd.degreeOrZero!1(e[]);
+        }
+        mfd.doMove(bm1);
+
+        // disturbed vertices: anchor + endpoints of changed pairs
+        Vertex[16] dist = void;
+        int nD = 0;
+        void addD(Vertex v)
+        {
+            foreach (i; 0 .. nD) if (dist[i] == v) return;
+            if (nD < dist.length) dist[nD++] = v;
+        }
+        addD(anchor[0]); addD(anchor[1]);
+        foreach (e, d0; orig)
+            if (mfd.degreeOrZero!1(e[]) != d0) { addD(e[0]); addD(e[1]); }
+
+        // stage-2 stars around the disturbed vertices
+        Vertex[4][768] star2 = void;
+        int n2 = 0;
+        // seed tets: added tets of m1
+        Vertex[4][3] added1;
+        int nAdd1 = 0;
+        if (m1.is23)
+        {
+            added1[nAdd1++] = [m1.p[0], m1.p[1], m1.f[0], m1.f[1]];
+            added1[nAdd1++] = [m1.p[0], m1.p[1], m1.f[1], m1.f[2]];
+            added1[nAdd1++] = [m1.p[0], m1.p[1], m1.f[0], m1.f[2]];
+        }
+        else
+        {
+            added1[nAdd1++] = [m1.f[0], m1.f[1], m1.f[2], m1.p[0]];
+            added1[nAdd1++] = [m1.f[0], m1.f[1], m1.f[2], m1.p[1]];
+        }
+        foreach (di; 0 .. nD)
+        {
+            Vertex v = dist[di];
+            Vertex[4] seed = -1;
+            bool got = false;
+            foreach (k; 0 .. nAdd1)
+            {
+                foreach (x; added1[k]) if (x == v) { seed = added1[k]; got = true; }
+                if (got) break;
+            }
+            if (!got)
+            {
+                foreach (ti; 0 .. n1)
+                {
+                    bool hasV = false;
+                    foreach (x; star1[ti]) if (x == v) hasV = true;
+                    if (!hasV) continue;
+                    Vertex[4] c = star1[ti]; c[].sort();
+                    if (mfd.contains(c[])) { seed = star1[ti]; got = true; break; }
+                }
+            }
+            if (got)
+                n2 = collectStar(mfd, v, seed, star2[], n2);
+        }
+
+        bool touchesDist(scope const(Vertex)[] sup)
+        {
+            foreach (v; sup)
+                foreach (i; 0 .. nD) if (dist[i] == v) return true;
+            return false;
+        }
+        Mv[384] m2s = void;
+        int nM2 = 0;
+        gatherMoves(star2[], n2, &touchesDist, m2s, nM2);
+
+        foreach (i2; 0 .. nM2)
+        {
+            auto m2 = m2s[i2];
+            if (m2.is23 == m1.is23) continue;        // one 2->3 + one 3->2
+            BM bm2 = m2.is23 ? BM(m2.f[], m2.p[]) : BM(m2.p[], m2.f[]);
+            if (!mfd.hasValidMove(bm2)) continue;
+
+            // extend the snapshot with m2's support pairs (their current
+            // degree equals the original unless already recorded)
+            Vertex[2][10] newKeys = void;
+            int nNK = 0;
+            Vertex[5] sup2 = [m2.f[0], m2.f[1], m2.f[2], m2.p[0], m2.p[1]];
+            foreach (i; 0 .. 5)
+                foreach (j; i + 1 .. 5)
+                {
+                    Vertex[2] e = [sup2[i], sup2[j]]; e[].sort();
+                    if (e !in orig)
+                    {
+                        orig[e] = mfd.degreeOrZero!1(e[]);
+                        if (nNK < newKeys.length) newKeys[nNK++] = e;
+                    }
+                }
+            mfd.doMove(bm2);
+
+            // ---- class check ----------------------------------------------
+            Vertex[2][2] g4 = void, w4 = void;
+            int nG4 = 0, nW4 = 0;
+            Vertex[2] g3 = -1, w3 = -1;
+            int nG3 = 0, nW3 = 0;
+            bool ok = true;
+            foreach (e, d0; orig)
+            {
+                immutable dN = mfd.degreeOrZero!1(e[]);
+                if (dN == d0) continue;
+                immutable bool was4 = d0 == 4, is4 = dN == 4;
+                immutable bool was3 = d0 == 3, is3 = dN == 3;
+                if (was4 && !is4)
+                {
+                    if (nG4 >= 2) { ok = false; break; }
+                    g4[nG4++] = e;
+                    if (!(dN == 0 || dN == 5 || dN == 6) && !is3)
+                    { ok = false; break; }
+                    if (is3)                     // deg-4 dropping to 3 stays
+                    {                            // illegal: allowed only as
+                        if (nW3 >= 1) { ok = false; break; }   // the catalyst
+                        w3 = e; nW3++;           // birth (counts as new deg-3)
+                    }
+                }
+                else if (!was4 && is4)
+                {
+                    if (nW4 >= 2) { ok = false; break; }
+                    w4[nW4++] = e;
+                    if (was3)                    // deg-3 promoted to deg-4 =
+                    {                            // the catalyst was consumed
+                        if (nG3 >= 1) { ok = false; break; }
+                        g3 = e; nG3++;
+                    }
+                    else if (!(d0 == 0 || d0 == 5 || d0 == 6))
+                    { ok = false; break; }
+                }
+                else if (was3 && !is3)
+                {
+                    if (nG3 >= 1) { ok = false; break; }
+                    g3 = e; nG3++;
+                    if (!(dN == 0 || dN == 5 || dN == 6)) { ok = false; break; }
+                }
+                else if (!was3 && is3)
+                {
+                    if (nW3 >= 1) { ok = false; break; }
+                    w3 = e; nW3++;
+                    if (!(d0 == 0 || d0 == 5 || d0 == 6)) { ok = false; break; }
+                }
+                else
+                {
+                    // legal-to-legal shifts are free; anything else fails
+                    immutable bool leg0 = d0 == 5 || d0 == 6 || d0 == 0;
+                    immutable bool leg1 = dN == 5 || dN == 6 || dN == 0;
+                    if (!(leg0 && leg1)) { ok = false; break; }
+                }
+            }
+            if (ok)
+            {
+                // anchor must be among the losers, balances must hold
+                immutable aDeg = mfd.degreeOrZero!1(anchor[]);
+                bool anchorGone = false;
+                foreach (i; 0 .. nG4)
+                    if (g4[i] == anchor) anchorGone = true;
+                ok = anchorGone && (aDeg == 0 || aDeg == 5 || aDeg == 6)
+                    && nG4 == nW4 && nG4 >= 1 && nG3 == nW3;
+            }
+            Vertex[2] landing = -1;
+            if (ok)
+            {
+                ok = false;
+                foreach (i; 0 .. nW4)
+                {
+                    auto f = w4[i];
+                    if (inOctaA(f[0]) && inOctaA(f[1])) continue;   // in-cavity
+                    // anchor must be outside f's octahedron in the end state
+                    int inside = 0;
+                    foreach (av; anchor)
+                    {
+                        if (av == f[0] || av == f[1]) { inside++; continue; }
+                        Vertex[3] fc = [f[0], f[1], av]; fc[].sort();
+                        if (mfd.degreeOrZero!2(fc[]) > 0) inside++;
+                    }
+                    if (inside < 2) { landing = f; ok = true; break; }
+                }
+            }
+            if (ok && nOut < out_.length)
+            {
+                auto c = &out_[nOut];
+                c.m1is23 = m1.is23;
+                c.f1 = m1.f; c.p1 = m1.p;
+                c.f2 = m2.f; c.p2 = m2.p;
+                c.nPair = nG4;
+                foreach (i; 0 .. nG4) c.gone4[i] = g4[i];
+                foreach (i; 0 .. nW4) c.new4[i] = w4[i];
+                c.landing = landing;
+                c.nNet = 0;
+                void accMove(bool is23, Vertex[3] f, Vertex[2] p)
+                {
+                    if (is23)
+                    {
+                        accNet(c.netT, c.netSg, c.nNet,
+                               [f[0], f[1], f[2], p[0]], cast(byte) -1);
+                        accNet(c.netT, c.netSg, c.nNet,
+                               [f[0], f[1], f[2], p[1]], cast(byte) -1);
+                        accNet(c.netT, c.netSg, c.nNet,
+                               [p[0], p[1], f[0], f[1]], cast(byte) 1);
+                        accNet(c.netT, c.netSg, c.nNet,
+                               [p[0], p[1], f[1], f[2]], cast(byte) 1);
+                        accNet(c.netT, c.netSg, c.nNet,
+                               [p[0], p[1], f[0], f[2]], cast(byte) 1);
+                    }
+                    else
+                    {
+                        accNet(c.netT, c.netSg, c.nNet,
+                               [p[0], p[1], f[0], f[1]], cast(byte) -1);
+                        accNet(c.netT, c.netSg, c.nNet,
+                               [p[0], p[1], f[1], f[2]], cast(byte) -1);
+                        accNet(c.netT, c.netSg, c.nNet,
+                               [p[0], p[1], f[0], f[2]], cast(byte) -1);
+                        accNet(c.netT, c.netSg, c.nNet,
+                               [f[0], f[1], f[2], p[0]], cast(byte) 1);
+                        accNet(c.netT, c.netSg, c.nNet,
+                               [f[0], f[1], f[2], p[1]], cast(byte) 1);
+                    }
+                }
+                accMove(m1.is23, m1.f, m1.p);
+                accMove(m2.is23, m2.f, m2.p);
+                sortNet(c.netT, c.netSg, c.nNet);
+                nOut++;
+            }
+
+            // rollback m2 and forget its snapshot extensions
+            BM inv2 = m2.is23 ? BM(m2.p[], m2.f[]) : BM(m2.f[], m2.p[]);
+            mfd.doMove(inv2);
+            foreach (k; 0 .. nNK) orig.remove(newKeys[k]);
+        }
+        BM inv1 = m1.is23 ? BM(m1.p[], m1.f[]) : BM(m1.f[], m1.p[]);
+        mfd.doMove(inv1);
+    }
+    return nOut;
+}
+
+/*
+Attempt one deg-4 worm move at `anchor`.  Enumerates the class candidates,
+draws one uniformly (or `forceCand` for crossval), computes the anchor-sum
+Hastings weights by enumeration at every forward (gone4) and reverse (new4)
+anchor, applies the pair through the speculative + potential machinery for
+the exact dS, and Metropolis-accepts on exp(-dS) * q_r/q_f.  A proposal that
+does not commit restores the manifold exactly.
+
+`valid` = a candidate existed and the Hastings machinery completed (whether
+or not the move was accepted).  Cocycle tracking is not supported -- the
+caller must gate the channel off when a cocycle is attached.
+*/
+bool tryWormMove(Vertex, P)(
+    ref Manifold!(3, Vertex) mfd,
+    ref real currentObjective,
+    Vertex[2] anchor, const(Vertex)[] hintTet,
+    P params,
+    out bool valid,
+    VertexPotState!Vertex* potState = null,
+    const(VertexPot)* pot = null,
+    Deg3Set!Vertex* deg4Set = null,
+    Deg3Set!Vertex* deg3Set = null,
+    SlideAccept policy = SlideAccept.metropolis,
+    real* dSOut = null,
+    int forceCand = -1,
+    Vertex* outLa = null, Vertex* outLb = null)
+{
+    import std.math : exp, log;
+    alias BM = BistellarMove!(3, Vertex);
+    valid = false;
+    if (dSOut !is null) *dSOut = real.nan;
+
+    auto cands = new WormCand!Vertex[](WORM_MAX_CANDS);
+    immutable int nf = wormEnumerate(mfd, anchor, hintTet, cands);
+    if (nf == 0) return false;
+    immutable int ci = forceCand >= 0 ? forceCand : cast(int) uniform(0, nf);
+    if (ci >= nf) return false;
+    auto chosen = cands[ci];
+
+    // ---- forward proposal weight: sum over the gone4 anchors -------------
+    real qf = 0.0L;
+    {
+        int kf = 0;
+        foreach (i; 0 .. nf)
+            if (sameKey(chosen, cands[i])) kf++;
+        qf += cast(real) kf / cast(real) nf;
+    }
+    if (chosen.nPair == 2)
+    {
+        Vertex[2] partner = chosen.gone4[0] == anchor ? chosen.gone4[1]
+                                                      : chosen.gone4[0];
+        Vertex[4] pw = -1;
+        bool gotW = false;
+        if (deg4Set !is null)
+        {
+            auto p = partner in deg4Set.index;
+            if (p !is null)
+            {
+                pw = deg4Set.wit[*p];
+                if (pw[0] >= 0 && Deg3Set!Vertex.edgeInFacet(partner, pw))
+                {
+                    Vertex[4] ps = pw; ps[].sort();
+                    gotW = mfd.contains(ps[]);
+                }
+            }
+        }
+        if (!gotW)
+            gotW = findTetOfEdge(mfd, partner[0], partner[1], pw);
+        if (gotW)
+        {
+            auto pc = new WormCand!Vertex[](WORM_MAX_CANDS);
+            immutable int np = wormEnumerate(mfd, partner, pw[], pc);
+            int kp = 0;
+            foreach (i; 0 .. np)
+                if (sameKey(chosen, pc[i])) kp++;
+            if (np > 0)
+                qf += cast(real) kp / cast(real) np;
+        }
+    }
+
+    // ---- apply the chosen pair with objective/potential lockstep ---------
+    BM bm1 = chosen.m1is23 ? BM(chosen.f1[], chosen.p1[])
+                           : BM(chosen.p1[], chosen.f1[]);
+    BM bm2 = chosen.m1is23 ? BM(chosen.p2[], chosen.f2[])
+                           : BM(chosen.f2[], chosen.p2[]);
+    // (m2 has the opposite kind of m1: 2->3 center is a face, 3->2 an edge)
+    real baseRun = currentObjective - (potState !is null ? potState.total : 0.0L);
+    if (!mfd.hasValidMove(bm1)) return false;
+    immutable real dB1 = mfd.speculativeBistellarDelta(bm1, baseRun, params);
+    real dP1 = 0.0L;
+    if (potState !is null)
+        dP1 = mfd.potentialBistellarDelta(bm1, *potState, *pot, true);
+    mfd.doMove(bm1);
+    baseRun += dB1;
+    bool undo1AndFail()
+    {
+        BM inv = chosen.m1is23 ? BM(chosen.p1[], chosen.f1[])
+                               : BM(chosen.f1[], chosen.p1[]);
+        if (potState !is null)
+            mfd.potentialBistellarDelta(inv, *potState, *pot, true);
+        mfd.doMove(inv);
+        return false;
+    }
+    if (!mfd.hasValidMove(bm2)) return undo1AndFail();
+    immutable real dB2 = mfd.speculativeBistellarDelta(bm2, baseRun, params);
+    real dP2 = 0.0L;
+    if (potState !is null)
+        dP2 = mfd.potentialBistellarDelta(bm2, *potState, *pot, true);
+    mfd.doMove(bm2);
+    immutable real dS = dB1 + dP1 + dB2 + dP2;
+
+    bool undoBoth()
+    {
+        BM inv2 = chosen.m1is23 ? BM(chosen.f2[], chosen.p2[])
+                                : BM(chosen.p2[], chosen.f2[]);
+        if (potState !is null)
+            mfd.potentialBistellarDelta(inv2, *potState, *pot, true);
+        mfd.doMove(inv2);
+        BM inv1 = chosen.m1is23 ? BM(chosen.p1[], chosen.f1[])
+                                : BM(chosen.f1[], chosen.p1[]);
+        if (potState !is null)
+            mfd.potentialBistellarDelta(inv1, *potState, *pot, true);
+        mfd.doMove(inv1);
+        return false;
+    }
+
+    // ---- reverse proposal weight: sum over the new4 anchors --------------
+    real qr = 0.0L;
+    foreach (bi; 0 .. chosen.nPair)
+    {
+        Vertex[2] b = chosen.new4[bi];
+        Vertex[4] bw = -1;
+        bool gotW = false;
+        // an added tet of the composite containing b is a valid witness
+        foreach (i; 0 .. chosen.nNet)
+            if (chosen.netSg[i] > 0
+                && Deg3Set!Vertex.edgeInFacet(b, chosen.netT[i]))
+            { bw = chosen.netT[i]; gotW = true; break; }
+        if (!gotW)
+            gotW = findTetOfEdge(mfd, b[0], b[1], bw);
+        if (!gotW) continue;
+        auto rc = new WormCand!Vertex[](WORM_MAX_CANDS);
+        immutable int nr = wormEnumerate(mfd, b, bw[], rc);
+        int kr = 0;
+        foreach (i; 0 .. nr)
+            if (inverseKey(chosen, rc[i])) kr++;
+        if (nr > 0)
+            qr += cast(real) kr / cast(real) nr;
+    }
+    valid = true;
+    if (dSOut !is null) *dSOut = dS;
+    if (outLa !is null) *outLa = chosen.landing[0];
+    if (outLb !is null) *outLb = chosen.landing[1];
+
+    final switch (policy)
+    {
+    case SlideAccept.trialOnly:
+        return undoBoth();
+    case SlideAccept.force:
+        break;
+    case SlideAccept.metropolis:
+        if (qr <= 0)                         // closure says impossible; reject
+            return undoBoth();
+        real logAlpha = -dS + log(qr) - log(qf);
+        if (logAlpha < 0 && uniform01 > exp(logAlpha))
+            return undoBoth();
+        break;
+    }
+
+    // ---- accepted ---------------------------------------------------------
+    currentObjective += dS;
+    {
+        // reconcile the live degree sets over everything the pair touched
+        Vertex[12] sup = void;
+        int nS = 0;
+        void addS(Vertex v)
+        {
+            foreach (i; 0 .. nS) if (sup[i] == v) return;
+            if (nS < sup.length) sup[nS++] = v;
+        }
+        foreach (v; chosen.f1) addS(v);
+        foreach (v; chosen.p1) addS(v);
+        foreach (v; chosen.f2) addS(v);
+        foreach (v; chosen.p2) addS(v);
+        addS(anchor[0]); addS(anchor[1]);
+        Vertex[4] wt = -1;
+        foreach (i; 0 .. chosen.nNet)
+            if (chosen.netSg[i] > 0) { wt = chosen.netT[i]; break; }
+        if (deg3Set !is null)
+            reconcileDegSet(mfd, *deg3Set, 3, sup[0 .. nS], wt[]);
+        if (deg4Set !is null)
+            reconcileDegSet(mfd, *deg4Set, 4, sup[0 .. nS], wt[]);
+    }
+    return true;
+}
+
 /// Rollback exactness: a slide that does not commit must leave the manifold
 /// bitwise as it found it, whatever the reason it declined -- malformed
 /// frame, a mid-composite Pachner move that fails to validate, an unclean
@@ -2828,7 +3643,9 @@ bool mcmcStep(Vertex, P)(
     CocycleState!Vertex* cocycle = null,
     SlideConfig* slide = null,
     NonlocalSlideConfig* nlSlide = null,
-    Deg3Set!Vertex* deg3Set = null)
+    Deg3Set!Vertex* deg3Set = null,
+    WormConfig* worm = null,
+    Deg3Set!Vertex* deg4Set = null)
 {
     enum dim = 3;
     enum nVerts = dim + 1;
@@ -2880,6 +3697,8 @@ bool mcmcStep(Vertex, P)(
             slide.tries++;
             if (ok) slide.accepts++;
         }
+        if (ok && deg4Set !is null)
+            rebuildDegSet(mfd, *deg4Set, 4);   // O(N); slides commit rarely
         return ok;
     }
 
@@ -2943,6 +3762,45 @@ bool mcmcStep(Vertex, P)(
             nlSlide.tries++;
             if (ok) nlSlide.accepts++;
         }
+        if (ok && deg4Set !is null)
+            rebuildDegSet(mfd, *deg4Set, 4);   // O(N); commits are rare
+        return ok;
+    }
+
+    // --- Deg-4 worm channel (dim=3) -----------------------------------------
+    // Anchor uniform over the live deg-4 set (1/n_4 cancels: the move class
+    // preserves the deg-4 count), then the catalysed 2-move transport step
+    // with anchor-sum Hastings weights (see tryWormMove).  Not cocycle-safe:
+    // gated off whenever a cocycle is attached.
+    if (worm !is null && worm.prob > 0 && deg4Set !is null
+        && cocycle is null && deg4Set.length > 0 && uniform01 < worm.prob)
+    {
+        immutable size_t di = uniform(0, deg4Set.length);
+        Vertex[2] e4 = deg4Set.edges[di];
+        Vertex[4] hint = deg4Set.wit[di];
+        bool wOk = hint[0] >= 0 && Deg3Set!Vertex.edgeInFacet(e4, hint);
+        if (wOk)
+        {
+            Vertex[4] hs = hint; hs[].sort();
+            wOk = mfd.contains(hs[]);
+        }
+        if (!wOk)
+        {
+            if (!findTetOfEdge(mfd, e4[0], e4[1], hint)) return false;
+            hint[].sort();
+            deg4Set.wit[di] = hint;
+        }
+        bool wormValid = false;
+        immutable ok = tryWormMove(mfd, currentObjective, e4, hint[], params,
+            wormValid, potState, pot, deg4Set, deg3Set,
+            SlideAccept.metropolis);
+        if (wormValid)
+        {
+            worm.tries++;
+            if (ok) worm.accepts++;
+        }
+        else
+            worm.noCands++;
         return ok;
     }
 
@@ -3018,6 +3876,8 @@ bool mcmcStep(Vertex, P)(
                 hingeAccepts++;
                 if (deg3Set !is null)
                     reconcileDeg3(mfd, *deg3Set, hingeSupport[]);
+                if (deg4Set !is null)
+                    reconcileDegSet(mfd, *deg4Set, 4, hingeSupport[]);
                 if (counters !is null)
                     addSupport(counters.acceptedHinge, hingeSupport[]);
                 if (ledger !is null)
@@ -3103,6 +3963,8 @@ bool mcmcStep(Vertex, P)(
             mfd.doMove(bm);
             if (deg3Set !is null)
                 reconcileDeg3(mfd, *deg3Set, ball);
+            if (deg4Set !is null)
+                reconcileDegSet(mfd, *deg4Set, 4, ball);
             if (counters !is null)
                 addSupport(counters.acceptedBistellar, ball);
             if (ledger !is null)

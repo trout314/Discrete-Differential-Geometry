@@ -400,6 +400,45 @@ class ManifoldSampler:
             self._handle, ctypes.byref(t), ctypes.byref(a))
         return int(t.value), int(a.value)
 
+    def set_worm_prob(self, prob: float) -> None:
+        """Enable the deg-4 worm channel (dim=3): each step proposes the
+        catalysed 2-move transport move with this probability, anchored
+        uniformly on the live deg-4 edge set.  Inert while a cocycle is
+        attached.  0 disables (default)."""
+        _lib.ddg_sampler_set_worm_prob(self._handle, float(prob))
+
+    def worm_stats(self) -> tuple[int, int, int]:
+        """(tries, accepts, no_candidate_rejections) for the worm channel."""
+        t = ctypes.c_long()
+        a = ctypes.c_long()
+        n = ctypes.c_long()
+        _lib.ddg_sampler_worm_stats(self._handle, ctypes.byref(t),
+                                    ctypes.byref(a), ctypes.byref(n))
+        return t.value, a.value, n.value
+
+    def worm_enum(self, a: int, b: int, with_ds: bool = True):
+        """Enumerate worm candidates at deg-4 edge (a, b): returns
+        (landings[n,2], dS[n]) -- the crossval window into the D move."""
+        cap = 512
+        la = (ctypes.c_int * cap)()
+        lb = (ctypes.c_int * cap)()
+        ds = (ctypes.c_double * cap)() if with_ds else None
+        n = _lib.ddg_sampler_worm_at(
+            self._handle, int(a), int(b), 0, -1, la, lb, ds, cap)
+        land = np.array([[la[i], lb[i]] for i in range(n)], dtype=np.int64)
+        dsa = (np.array([ds[i] for i in range(n)]) if with_ds
+               else np.full(int(n), np.nan))
+        return land, dsa
+
+    def worm_at(self, a: int, b: int, cand: int, commit: bool = False):
+        """Trial (or commit) worm candidate `cand` at anchor (a, b);
+        returns its exact dS, or None if the candidate is invalid."""
+        ds = (ctypes.c_double * 1)()
+        r = _lib.ddg_sampler_worm_at(
+            self._handle, int(a), int(b), 2 if commit else 1, int(cand),
+            None, None, ds, 1)
+        return float(ds[0]) if r != 0 or not commit else None
+
     def set_nonlocal_slide_prob(self, prob: float, max_step: int = 8) -> None:
         """Enable the NON-LOCAL slide channel (dim = 3 only).
 

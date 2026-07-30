@@ -69,6 +69,9 @@ def main():
     ap.add_argument("--zleg", type=float, default=0.6)
     ap.add_argument("--cimp", type=float, default=1.0)
     ap.add_argument("--slide-prob", type=float, default=0.0)
+    ap.add_argument("--worm-prob", type=float, default=0.0,
+                    help="deg-4 worm channel probability per step (D-side "
+                         "catalysed transport move; 0 = off)")
     ap.add_argument("--sweeps", type=int, default=10 ** 9)
     ap.add_argument("--max-seconds", type=float, default=1e9,
                     help="wall-clock deadline; runs stop cleanly at it")
@@ -101,6 +104,8 @@ def main():
                        tilt=[0.0] * 5)
     if args.slide_prob:
         s.set_slide_prob(args.slide_prob)
+    if args.worm_prob:
+        s.set_worm_prob(args.worm_prob)
     v = s.manifold
     n3 = v.num_facets
 
@@ -232,7 +237,8 @@ def main():
     summary = {
         "cell": args.cell, "start": args.start, "lam": args.lam,
         "zleg": args.zleg, "cimp": args.cimp,
-        "slide_prob": args.slide_prob, "etarget": et, "n3": n3,
+        "slide_prob": args.slide_prob, "worm_prob": args.worm_prob,
+        "worm_stats": list(s.worm_stats()), "etarget": et, "n3": n3,
         "seed": args.seed, "sweeps": done,
         "wall_s": time.time() - t_start,
         "counters": dict(counters),

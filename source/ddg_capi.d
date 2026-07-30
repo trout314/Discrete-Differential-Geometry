@@ -1625,6 +1625,12 @@ private struct SamplerState
     NonlocalSlideConfig nlSlideCfg;
     Deg3Set!int deg3Chords;
 
+    // Deg-4 worm channel (dim=3 only): catalysed 2-move transport step, anchor
+    // uniform over `deg4Edges` (kept live only while wormCfg.prob > 0).  See
+    // sampler.tryWormMove.  Not cocycle-safe (gated off in mcmcStep).
+    WormConfig wormCfg;
+    Deg3Set!int deg4Edges;
+
     // Per-vertex move-attribution counters (measured combinatorial lapse).
     // Opt-in (small per-proposal AA overhead); dim=3 only. See sampler.MoveCounters.
     bool trackMoveCounts = false;
@@ -1894,6 +1900,8 @@ private long runSamplerDim3(SamplerState* s, long numMoves,
         // on; rebuild it fresh at run start (O(E), once per run).
         if (s.nlSlideCfg.prob > 0)
             rebuildDeg3(mw.mfd, s.deg3Chords);
+        if (s.wormCfg.prob > 0)
+            rebuildDegSet(mw.mfd, s.deg4Edges, 4);
 
         long accepted = 0;
         long acceptedSinceWriteback = 0;
@@ -1932,7 +1940,9 @@ private long runSamplerDim3(SamplerState* s, long numMoves,
                     s.cocycle.enabled ? &s.cocycle : null,
                     (s.dim == 3 && s.slideCfg.prob > 0) ? &s.slideCfg : null,
                     (s.dim == 3 && s.nlSlideCfg.prob > 0) ? &s.nlSlideCfg : null,
-                    (s.dim == 3 && s.nlSlideCfg.prob > 0) ? &s.deg3Chords : null))
+                    (s.dim == 3 && s.nlSlideCfg.prob > 0) ? &s.deg3Chords : null,
+                    (s.dim == 3 && s.wormCfg.prob > 0) ? &s.wormCfg : null,
+                    (s.dim == 3 && s.wormCfg.prob > 0) ? &s.deg4Edges : null))
             {
                 accepted++;
                 acceptedSinceWriteback++;
@@ -2946,6 +2956,132 @@ extern(C) long ddg_sampler_deg3_count(void* sampler_handle) nothrow
     if (sampler_handle is null) { setError("null handle"); return -1; }
     auto s = cast(SamplerState*) sampler_handle;
     return cast(long) s.deg3Chords.length;
+}
+
+/******************************************************************************
+Enable the deg-4 worm channel (dim = 3 only): each mcmcStep proposes it with
+probability `prob`, drawing an anchor uniformly from the live deg-4 edge set
+and attempting the catalysed 2-move transport step (one 2->3 + one 3->2,
+content-neutral, escaped landing) with anchor-sum Hastings weights.  The
+channel is automatically inert while a cocycle is attached.  Set prob = 0
+(default) to disable.  See sampler.tryWormMove.
+*/
+extern(C) int ddg_sampler_set_worm_prob(void* sampler_handle,
+    double prob) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto s = cast(SamplerState*) sampler_handle;
+    if (!(prob >= 0.0 && prob <= 1.0))
+    { setError("worm probability must be in [0, 1]"); return -1; }
+    if (s.dim != 3 && prob > 0)
+    { setError("the worm channel is dim=3 only"); return -1; }
+    s.wormCfg.prob = cast(real) prob;
+    return 0;
+}
+
+/// Worm counters: proposals with >= 1 candidate (reached Metropolis),
+/// accepts, and proposals rejected for lack of candidates.
+extern(C) int ddg_sampler_worm_stats(void* sampler_handle,
+    long* out_tries, long* out_accepts, long* out_nocands) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto s = cast(SamplerState*) sampler_handle;
+    if (out_tries !is null) *out_tries = cast(long) s.wormCfg.tries;
+    if (out_accepts !is null) *out_accepts = cast(long) s.wormCfg.accepts;
+    if (out_nocands !is null) *out_nocands = cast(long) s.wormCfg.noCands;
+    return 0;
+}
+
+/******************************************************************************
+Crossval / scripted entry into the worm move at anchor (a, b) (dim = 3).
+
+mode 0 = enumerate only: returns the candidate count; if the out arrays are
+non-null (capacity `cap`), writes per-candidate landing edges and exact dS
+values (dS computed via a trial application of that candidate).
+mode 1 = trial of candidate `cand`: dS written to out_ds[0]; state restored.
+mode 2 = commit candidate `cand` unconditionally (SlideAccept.force).
+Returns the candidate count (mode 0) or 0/1 = rejected/committed, -1 error.
+*/
+extern(C) long ddg_sampler_worm_at(void* sampler_handle, int a, int b,
+    int mode, int cand, int* out_la, int* out_lb, double* out_ds,
+    long cap) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null handle"); return -1; }
+        auto s = cast(SamplerState*) sampler_handle;
+        if (s.dim != 3) { setError("worm is dim=3 only"); return -1; }
+        auto mw = cast(ManifoldWrapper!3*)(
+            cast(ManifoldHandle*) s.manifoldHandle).ptr;
+        import std.algorithm.comparison : max, min;
+        int[2] anchor = [min(a, b), max(a, b)];
+        if (!mw.mfd.contains(anchor[]))
+        { setError("edge not in manifold"); return -1; }
+        int[4] hint = -1;
+        if (!findTetOfEdge(mw.mfd, anchor[0], anchor[1], hint))
+        { setError("no facet on the edge"); return -1; }
+        hint[].sort();
+        if (s.currentObjective != s.currentObjective)   // NaN
+            recomputeObjective(s);
+
+        struct Params { int numFacetsTarget; real hingeDegreeTarget;
+            real numFacetsCoef; real numHingesCoef; real hingeDegreeVarianceCoef;
+            real coDim3DegreeVarianceCoef; real hingeDegreeTargetCoef;
+            real coDim3DegreeTargetCoef; real coDim3DegreeTarget; }
+        auto params = Params(s.numFacetsTarget,
+            cast(real) s.hingeDegreeTarget, cast(real) s.numFacetsCoef,
+            cast(real) s.numHingesCoef, cast(real) s.hingeDegreeVarianceCoef,
+            cast(real) s.coDim3DegreeVarianceCoef,
+            cast(real) s.hingeDegreeTargetCoef,
+            cast(real) s.coDim3DegreeTargetCoef,
+            cast(real) s.coDim3DegreeTarget);
+
+        if (mode == 0)
+        {
+            auto cands = new WormCand!int[](WORM_MAX_CANDS);
+            immutable long n = mw.mfd.wormEnumerate(anchor, hint[], cands);
+            foreach (i; 0 .. n)
+            {
+                if (out_la !is null && i < cap) out_la[i] = cands[i].landing[0];
+                if (out_lb !is null && i < cap) out_lb[i] = cands[i].landing[1];
+                if (out_ds !is null && i < cap)
+                {
+                    bool v = false;
+                    real ds = real.nan;
+                    mw.mfd.tryWormMove(s.currentObjective, anchor, hint[],
+                        params, v,
+                        s.potEnabled ? &s.vertexPotState : null,
+                        s.potEnabled ? &s.vertexPot : null,
+                        null, null, SlideAccept.trialOnly, &ds, cast(int) i);
+                    out_ds[i] = v ? cast(double) ds : double.nan;
+                }
+            }
+            return n;
+        }
+        if (mode != 1 && mode != 2)
+        { setError("mode must be 0 (enum), 1 (trial) or 2 (commit)"); return -1; }
+        bool valid = false;
+        real ds = real.nan;
+        immutable ok = mw.mfd.tryWormMove(s.currentObjective, anchor, hint[],
+            params, valid,
+            s.potEnabled ? &s.vertexPotState : null,
+            s.potEnabled ? &s.vertexPot : null,
+            (s.wormCfg.prob > 0) ? &s.deg4Edges : null,
+            (s.nlSlideCfg.prob > 0) ? &s.deg3Chords : null,
+            mode == 1 ? SlideAccept.trialOnly : SlideAccept.force,
+            &ds, cand);
+        if (!valid) { setError("candidate invalid"); return 0; }
+        if (out_ds !is null) out_ds[0] = cast(double) ds;
+        return ok ? 1 : 0;
+    }
+    catch (Exception e)
+    {
+        setError(e.msg);
+        return -1;
+    }
 }
 
 /******************************************************************************

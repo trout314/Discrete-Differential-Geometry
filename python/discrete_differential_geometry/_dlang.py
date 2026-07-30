@@ -759,6 +759,23 @@ _lib.ddg_sampler_set_slide_prob.argtypes = [ctypes.c_void_p, ctypes.c_double]
 _lib.ddg_sampler_set_slide_prob.restype = ctypes.c_int
 _lib.ddg_sampler_set_slide_prob.errcheck = _check_int
 
+_lib.ddg_sampler_set_worm_prob.argtypes = [ctypes.c_void_p, ctypes.c_double]
+_lib.ddg_sampler_set_worm_prob.restype = ctypes.c_int
+_lib.ddg_sampler_set_worm_prob.errcheck = _check_int
+
+_lib.ddg_sampler_worm_stats.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_long),
+    ctypes.POINTER(ctypes.c_long), ctypes.POINTER(ctypes.c_long)]
+_lib.ddg_sampler_worm_stats.restype = ctypes.c_int
+_lib.ddg_sampler_worm_stats.errcheck = _check_int
+
+_lib.ddg_sampler_worm_at.argtypes = [
+    ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+    ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int),
+    ctypes.POINTER(ctypes.c_double), ctypes.c_long]
+_lib.ddg_sampler_worm_at.restype = ctypes.c_long
+_lib.ddg_sampler_worm_at.errcheck = _check_int
+
 # Non-local slide channel: (handle, prob, max_step)
 _lib.ddg_sampler_set_nonlocal_slide_prob.argtypes = [
     ctypes.c_void_p, ctypes.c_double, ctypes.c_int]
