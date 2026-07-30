@@ -45,6 +45,14 @@ absorptions) is exactly the currency that pairs across distance.
   validation: transport events == accept counter exactly, 44% of
   apparent births were relabeling artifacts, median transport |dS| = 0.
   Any new bilocal channel MUST emit these brackets from day one.
+- **Dressed generators exist and can be favorable.** Targeted edge
+  removal: 32/32 across d₀ = 3..6 on the quenched gas (2–4 s each,
+  crystallographically quantized costs; deg-3 removal DOWNHILL at
+  −5.9). First effective VERTEX removal: Z = 10 collapsed to 4 in 12
+  moves (+23.4 = the whole barrier), 4→1 refund −35.0, NET dS = −11.6 —
+  a composite channel would accept it outright. The f₀-frozen direction
+  is crossable in one dressed proposal. Machinery:
+  `dressed_generators.py` (deterministic engine, commit a8a1162).
 
 ## 2. The general class
 
@@ -99,11 +107,91 @@ half's inverse is a half at the same site, so inverse-closure is
 structural; reverse enumeration runs at the post-state ends (the worm's
 anchor-sum pattern, generalized).
 
+### 2.4 Reversibility ledger for DEEP (dressed) generators
+
+Shallow composites (the worm) use enumerate-then-draw: the constructor
+factor is 1/n(x) and multiplicity is the anchor-sum. At depth ~13,
+enumeration is impossible and a randomized search has an intractable
+path-sum. The exact scheme for deep generators counts FOUR factors and
+adds one check:
+
+1. **Menu factor** p_g — and the inverse generator p_ḡ must be in the
+   menu (a removal channel without its insertion partner is
+   irreversible by construction).
+2. **Seed factor** 1/|C_g(x)| forward, 1/|C_ḡ(x′)| reverse. These do
+   NOT cancel for f-changing moves (the move changes the counts). Any
+   state-computable seed set is valid — failed seeds are rejected
+   proposals; C's definition is a rate knob, never a correctness knob.
+3. **Constructor factor** — probability the search emits THIS composite
+   given (x, seed). The determinism contract (canonical orderings and
+   tie-breaks; never dict iteration order, which is
+   insertion-history-dependent and breaks balance invisibly) collapses
+   this to an indicator: 1 for the unique output, else 0. Bit-identical
+   rerun tests are the certificate.
+4. **Multiplicity** k_f = #{seeds in C_g(x) whose output is exactly this
+   transition}, k_r likewise at x′. Vertex removal: k = 1 structurally
+   (different seeds delete different labels ⇒ different end states).
+   Edge removal: collateral collisions possible; defense is bounded —
+   only seeds inside the realized support can collide, so run the
+   constructor for each (tens) and count.
+
+**The reverse-check** (support symmetry): forward and reverse
+constructors are independent searches, so nothing guarantees the
+inverse constructor at x′ reproduces x. Run it as part of the FORWARD
+proposal; if it does not return the exact inverse composite, reject
+unconditionally. This prunes the kernel to a symmetric support (one
+extra construction per proposal), resolves the insertion-goal ambiguity
+(balance only credits mutual-inverse pairs — the check IS the usable
+class), and creates healthy design pressure toward mirror-image
+constructors. Acceptance:
+
+    alpha = min(1, exp(-dS) * [p_ḡ k_r / |C_ḡ(x′)|]
+                            / [p_g  k_f / |C_g(x)|])   given check passes.
+
+NOT counted: search effort (deterministic constructor ⇒ irrelevant);
+other generators reaching the same x′ (each generator pair is its own
+channel; fixed mixtures of balanced channels are balanced);
+intermediate states (scaffolding — their dS cancels telescopically in
+the lockstep total). Label bookkeeping caveat: vertex labels are
+recycled by the capi; the offline 1↔4 path must assign labels
+deterministically too, since labels are part of the chain's state.
+
 ## 3. The f-changing sector, and where it can actually be tested
 
 Pairs with joint Δf ≠ 0 collect the global-sector price/bonus at the
 pair level while placing each ledger where it is locally cheapest —
 manufacturing the coincidences that sequential dynamics must wait for.
+
+### 3.0 Menu completeness (do not curate by ensemble)
+
+Elementary Pachner moves have HARD availability preconditions (3→2
+needs a deg-3 edge; 4→1 needs a Z=4 vertex), so ensembles can be
+**proposal-starved** in some f-directions — categorically different
+from Metropolis suppression and invisible in acceptance statistics.
+Our usual conditions starve exactly the Δf₀ directions ("zero volume
+moves ever" is a property of the gating, not the physics), which made
+**f₀ a hidden ensemble parameter of every run to date** — all sampling
+has been implicitly microcanonical in vertex count.
+
+Design rule: the move menu must contain an *unconditionally available*
+dressed generator for each simple Δf consistent with χ = 0, regardless
+of what fires under any particular ensemble. On T³ (f₁ = f₀ + f₃,
+f₂ = 2f₃) the lattice is ℤ² in (Δf₀, Δf₃); the thermal bath supplies
+(0, ±1) abundantly, so ONLY Δf₀ ≠ 0 needs engineering — one dressed
+generator per sign, composition with thermal moves reaches the rest.
+
+Taxonomy: (1) **dressed generators** — single-region deep composites,
+the unconditional f-movers (and the building blocks generally);
+(2) **bilocal pairings** — complementary halves give the f-NEUTRAL
+transport sector; the pairing's role for f-movers is cost-sharing
+(finance an uphill half with a downhill half elsewhere, e.g. deg-3
+removals at −5.9 in quenched states); (3) elementary moves — the fast
+bath, gating accepted since (1) covers what it starves.
+
+WARNING: enabling f₀ generators makes ensembles grand-canonical in
+vertices — new physics, not a speedup; previously certified states
+were implicitly fixed-f₀ and must be re-examined under the completed
+menu.
 
 **Testbed requirement (learned the hard way):** before crediting any
 mover with accelerating a global mode, MEASURE that the mode is
@@ -185,5 +273,7 @@ drift is the other known kinetically-limited mode).
 | atomic tracking + transport events | EVT_CHANNEL_* brackets (1467b24) |
 | half-move vocabulary priors | `deg4_pair_census.py` |
 | ground truth special cases | nonlocal slide; deg-4 worm |
+| dressed constructors + goals | `dressed_generators.py` (a8a1162) |
+| edge surgery + cost survey | `edge_removal.py` (de7cc4b) |
 | convergence gate | `convergence.py` R̂_q / ESS |
 | f₀ benchmark states | quench_* recorder streams (scratchpad) |
