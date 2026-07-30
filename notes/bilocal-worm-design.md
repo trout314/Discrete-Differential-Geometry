@@ -209,6 +209,47 @@ Pairs with joint Δf ≠ 0 collect the global-sector price/bonus at the
 pair level while placing each ledger where it is locally cheapest —
 manufacturing the coincidences that sequential dynamics must wait for.
 
+### 3.-1 The link/collar calculus for deep generators (2026-07-30)
+
+Moves supported at vertex v act on the 2-sphere lk(v) as 2D bistellar
+moves: v-in-base 2→3 = link edge flip; v-in-axis 3→2 = link vertex
+deletion; v-as-apex 2→3 = link vertex insertion; final 4→1 once
+lk(v) = ∂Δ³. Vertex removal = Steinitz-style reduction of the link
+sphere (233 types at 10 vertices; always reducible in 2D), lifted to 3D
+under AMBIENT constraints. Refinements (user-prompted):
+
+- **Every link flip has TWO 3D flavors** with opposite volume ledgers:
+  the 2→3 flavor (needs the chord (x,y) ABSENT; Δf₃ = +1; expels a tet
+  from the ball) and the 3→2 flavor (needs link edge (a,b) at ambient
+  degree exactly 3, i.e. the outside tet present; Δf₃ = −1; absorbs
+  it). Surface dynamics is volume-mediated: each flip trades one tet
+  across ∂star(v).
+- **Chords** (ambient edges between link vertices that are not link
+  edges) are the blockers; chord creation/deletion moves (2→3/3→2 with
+  v outside the support) leave lk(v) unchanged and form the principled
+  "cage" sub-alphabet: they arm/disarm specific flips.
+- **The planning state is (link, collar)**: link type + chord set +
+  link-edge outside-degrees. Costs and reachable plans are functions of
+  the decorated pair — the precise content of the observed
+  orbit-quantization.
+- **Terminal menu / docking states** (small sphere types): ∂Δ³ =
+  annihilate (Δf₀ = −1); octahedron = the deg-4 edge's cavity coned.
+  **VALIDATED: the 4-move octa-vertex ↔ deg-4-edge transmutation**
+  (transmute_lab.py): closed-form, frame-parameterized, E→V valid at
+  EVERY deg-4 edge with no preconditions; 6/6 exact round trips, dS
+  antisymmetric to machine precision (+48.062/−48.062 in the m² gas,
+  orbit-identical) — the first validated Tier-1 deep composite. Also
+  gives cavity rotation through the vertex phase (E→V→E′ onto another
+  diagonal, net dS +2.8..+5.6). Architecture: collapse only to the
+  octahedron, transmute, and hand the deg-4 quantum to the fast gas
+  dynamics.
+
+Planner (next build): 2D flip/deletion plan on (link, collar) — A* with
+exact dS from decorations — then a flavor-assignment pass choosing each
+flip's 3D realization against the collar (this sets the composite's f₃
+ledger), then lift with per-step validity and scheduled chord
+management.
+
 ### 3.0 Menu completeness (do not curate by ensemble)
 
 Elementary Pachner moves have HARD availability preconditions (3→2

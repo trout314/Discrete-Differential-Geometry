@@ -282,3 +282,84 @@ def net_effect(moves):
             for t in ((a, b, c, u), (a, b, c, w)):
                 net[tuple(sorted(t))] += 1
     return df3, frozenset((t, k) for t, k in net.items() if k != 0)
+
+
+# ---------------------------------------------------------------------------
+# closed-form (Tier-1) constructors: octahedron-vertex <-> deg-4-edge
+# ---------------------------------------------------------------------------
+# The 4-move transmutation between a deg-4 edge (its cavity's diagonal
+# triangulation) and a Z=6 vertex with octahedral link (the cavity coned).
+# Frame-parameterized, no search; E->V is valid at EVERY deg-4 edge with no
+# ambient preconditions; the matching-slot reverse is the exact inverse
+# (validated 6/6 with machine-precision dS antisymmetry, transmute_lab.py).
+# The 1<->4 boundary op cannot run through a sampler driver (capi); callers
+# execute it at the Manifold level on a dup and reprice with a fresh
+# sampler -- pass a `sampler_factory(manifold) -> (sampler, Live)` for that.
+
+def cycle_of(L, e):
+    """Link 4-cycle of a deg-4 edge, in cyclic order (canonical start)."""
+    tets = [t for t in L.v2t[e[0]] if e[1] in t]
+    assert len(tets) == 4, "not a deg-4 edge"
+    pairs = [tuple(sorted(set(t) - set(e))) for t in tets]
+    adj = {}
+    for a, b in pairs:
+        adj.setdefault(a, []).append(b)
+        adj.setdefault(b, []).append(a)
+    start = min(adj)
+    cyc = [start, sorted(adj[start])[0]]
+    while len(cyc) < 4:
+        nxt = [x for x in adj[cyc[-1]] if x != cyc[-2]]
+        cyc.append(nxt[0])
+    return cyc
+
+
+def link3_of(L, e):
+    """The 3 link vertices of a deg-3 edge, read live."""
+    tets = [t for t in L.v2t[e[0]] if e[1] in t]
+    assert len(tets) == 3
+    lk = sorted({x for t in tets for x in t} - set(e))
+    assert len(lk) == 3
+    return lk
+
+
+def edge_to_vertex(m0, e, label, sampler_factory, slot=0):
+    """E->V transmutation on a copy of m0. Returns (sampler, Live, v,
+    frame) with v = the new octahedral-link vertex.
+
+    slot in 0..3 picks which adjacent cycle pair survives to the final
+    3->2 co-face (the Hastings slot count of the constructor)."""
+    import worm_deg4_slide as _W
+    L0 = _W.Live(m0)
+    u, w = tuple(sorted(e))
+    cyc = cycle_of(L0, (u, w))
+    a, b = cyc[slot % 4], cyc[(slot + 1) % 4]
+    c, d = cyc[(slot + 2) % 4], cyc[(slot + 3) % 4]
+    m2 = m0.dup() if hasattr(m0, "dup") else m0.copy()
+    m2.do_bistellar_move(sorted([u, w, c, d]), [label])   # offline 1->4
+    s2, L2 = sampler_factory(m2)
+    L2.do(tuple(sorted((u, w, c))), (label, b))
+    L2.do(tuple(sorted((u, w, d))), (label, a))
+    L2.do(tuple(sorted((u, w))), (label, a, b))
+    return s2, L2, label, {"e": (u, w), "cyc": cyc, "slot": slot}
+
+
+def vertex_to_edge(view, v, diag_pair, keep_pair, sampler_factory):
+    """V->E transmutation on a copy: diagonal = diag_pair (3 choices per
+    octahedral vertex), final-face pair = keep_pair (adjacent link pair
+    whose two link faces have the diagonal as apexes). Co-centers read
+    live. Returns (sampler, Live, new_edge)."""
+    m3 = view.dup()
+    s3, L3 = sampler_factory(m3)
+    u, w = diag_pair
+    p2, p3 = keep_pair
+    L3.do(tuple(sorted((v, p2, p3))), (u, w))            # link flip
+    L3.do(tuple(sorted((v, p2))),
+          tuple(link3_of(L3, tuple(sorted((v, p2))))))
+    L3.do(tuple(sorted((v, p3))),
+          tuple(link3_of(L3, tuple(sorted((v, p3))))))
+    nb = sorted({x for t in L3.v2t[v] for x in t} - {v})
+    assert len(nb) == 4
+    m4 = s3.manifold.dup()
+    m4.do_bistellar_move([v], nb)                        # offline 4->1
+    s4, L4 = sampler_factory(m4)
+    return s4, L4, (u, w)
