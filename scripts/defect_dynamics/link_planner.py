@@ -173,14 +173,21 @@ class CollarState:
 
 
 def plan_collapse(L, v, cimp, pin_coef, e_target, f30, f10, f3_target,
-                  target_z=4, nodecap=20000):
+                  target_z=4, nodecap=20000, optimize="z"):
+    """optimize='z': fast Z-first (first valid plan). optimize='cost':
+    cost-first best-first (priority dS, then Z) -- returns the cheapest
+    plan found before nodecap; exact-optimal when step costs are
+    nonnegative along the frontier (deletion refunds make this a strong
+    heuristic rather than a guarantee)."""
     """Best-first plan reducing |lk(v)| to target_z. Returns
     (ops, planned_dS) with ops = [('flip', ab, xy, flavor) |
     ('delete', u)], or (None, None)."""
     s0 = CollarState(L, v, cimp, pin_coef, e_target, f30, f10, f3_target)
     Z0 = len({x for f in s0.faces for x in f})
     cnt = 0
-    heap = [((Z0, 0.0, 0), cnt, s0, [])]
+    def prio(z, ds, ln):
+        return ((ds, z, ln) if optimize == "cost" else (z, ds, ln))
+    heap = [(prio(Z0, 0.0, 0), cnt, s0, [])]
     seen = set()
     while heap and cnt < nodecap:
         (_, _, _), _, st, ops = heapq.heappop(heap)
@@ -201,8 +208,8 @@ def plan_collapse(L, v, cimp, pin_coef, e_target, f30, f10, f3_target,
                 nx.delete(u)
                 cnt += 1
                 heapq.heappush(heap, (
-                    (len({x for fc in nx.faces for x in fc}),
-                     round(nx.dS, 9), len(ops) + 1),
+                    prio(len({x for fc in nx.faces for x in fc}),
+                         round(nx.dS, 9), len(ops) + 1),
                     cnt, nx, ops + [("delete", u)]))
         for ab, xy in st.flip_candidates():
             for flavor in ("23", "32"):
@@ -214,8 +221,8 @@ def plan_collapse(L, v, cimp, pin_coef, e_target, f30, f10, f3_target,
                 nx.flip(ab, xy, flavor)
                 cnt += 1
                 heapq.heappush(heap, (
-                    (len({x for fc in nx.faces for x in fc}),
-                     round(nx.dS, 9), len(ops) + 1),
+                    prio(len({x for fc in nx.faces for x in fc}),
+                         round(nx.dS, 9), len(ops) + 1),
                     cnt, nx, ops + [("flip", ab, xy, flavor)]))
     return None, None
 
