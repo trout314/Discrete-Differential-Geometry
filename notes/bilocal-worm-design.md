@@ -188,10 +188,20 @@ transport sector; the pairing's role for f-movers is cost-sharing
 removals at −5.9 in quenched states); (3) elementary moves — the fast
 bath, gating accepted since (1) covers what it starves.
 
-WARNING: enabling f₀ generators makes ensembles grand-canonical in
-vertices — new physics, not a speedup; previously certified states
-were implicitly fixed-f₀ and must be re-examined under the completed
-menu.
+NOTE (corrected 2026-07-30, user): enabling f₀ generators does NOT
+change the ensemble. The full Pachner alphabet is ergodic across f₀
+(1→4 is always proposable at finite dS, and the pins already legislate
+f₀ = f₁ − f₃ softly), so π has always been the action's distribution
+with its f₀ marginal included — the sequential chain just cannot reach
+it (spontaneous realization of the 13-move collapse path costs
+~e^(−barrier) ≈ e^(−23) per attempt; the dressed proposal converts
+that rare fluctuation into one O(1)-acceptance move). Generators are
+pure equilibration technology: mixing changes, the measure does not.
+The operational caveat that survives: previously certified states were
+certified as stationary CONDITIONAL on their kinetically frozen f₀
+slice — correct metastable-state measurements that may relax to a
+different f₀ (and different observable values) once the menu is
+completed.
 
 **Testbed requirement (learned the hard way):** before crediting any
 mover with accelerating a global mode, MEASURE that the mode is
