@@ -1735,6 +1735,36 @@ void recordHinge(Vertex)(ref GeometryLedger!Vertex g,
 }
 
 /// Append one fixed-size event record (see eventRecordBytes layout).
+/// Event-log ANNOTATION records (state-neutral -- consumers that mirror
+/// geometry must skip type >= EVT_CHANNEL_BEGIN). Composite move channels
+/// (worm / slide / nonlocal slide) bracket their elementary move records:
+///   BEGIN labels: [channel, k, anchor0, anchor1, landing0, landing1]
+///   EDGE  labels: [role, u, v, -1, -1, -1]   (identity sets, see ROLE_*)
+///   END   labels: [channel, nMoves, dS * 1e6 (int-clamped), -1, -1, -1]
+/// so trackers can treat the enclosed moves as one atomic transaction and
+/// carry worldline identity across discontinuous hops instead of recording
+/// spurious death + birth pairs.
+enum int EVT_CHANNEL_BEGIN = 5;
+enum int EVT_CHANNEL_END = 6;
+enum int EVT_CHANNEL_EDGE = 7;
+enum int CHANNEL_WORM = 1;
+enum int CHANNEL_SLIDE = 2;
+enum int CHANNEL_NONLOCAL = 3;
+enum int ROLE_GONE4 = 0;
+enum int ROLE_NEW4 = 1;
+enum int ROLE_GONE3 = 2;
+enum int ROLE_NEW3 = 3;
+
+/// dS packed into an int label slot (units of 1e-6, clamped).
+private int dSQuantized(real dS) nothrow @nogc
+{
+    import std.math : lround;
+    immutable real q = dS * 1e6L;
+    if (q >= cast(real) int.max) return int.max;
+    if (q <= cast(real) int.min) return int.min;
+    return cast(int) lround(q);
+}
+
 void logEvent(Vertex)(ref GeometryLedger!Vertex g, int typeCode,
     scope const(Vertex)[] labelsA, scope const(Vertex)[] labelsB)
 {
@@ -2467,6 +2497,11 @@ bool trySlideMove(Vertex, P)(
 
     // --- COMMIT PASS: replay the recorded moves with full instrumentation,
     // exactly as four ordinary accepted bistellar moves.
+    if (ledger !is null && ledger.logEvents)
+    {
+        Vertex[4] lb = [cast(Vertex) CHANNEL_SLIDE, cast(Vertex) 1, a, b];
+        logEvent(*ledger, EVT_CHANNEL_BEGIN, lb[], null);
+    }
     real committed = 0.0L;
     real baseCommit = currentObjective
         - (potState !is null ? potState.total : 0.0L);
@@ -2496,6 +2531,12 @@ bool trySlideMove(Vertex, P)(
     }
     assert(abs(committed - deltaTotal) < 1e-9L,
         "slide commit delta disagrees with trial delta");
+    if (ledger !is null && ledger.logEvents)
+    {
+        Vertex[3] le = [cast(Vertex) CHANNEL_SLIDE, cast(Vertex) nApplied,
+                        cast(Vertex) dSQuantized(committed)];
+        logEvent(*ledger, EVT_CHANNEL_END, le[], null);
+    }
 
     currentObjective += committed;
     if (counters !is null)
@@ -2544,7 +2585,8 @@ bool tryNonlocalSlide(Vertex, P)(
     real* dSOut = null,
     long n3Before = -1, long* dn3Out = null,
     Vertex* outTa = null, Vertex* outTb = null,
-    Deg3Set!Vertex* deg3Set = null)
+    Deg3Set!Vertex* deg3Set = null,
+    GeometryLedger!Vertex* ledger = null)
 {
     // `n3Before` (the current count of degree-3 edges) is used ONLY in
     // metropolis mode, where the acceptance carries the Hastings factor
@@ -2700,6 +2742,42 @@ bool tryNonlocalSlide(Vertex, P)(
 
     // --- accepted: leave the defect at the target ---
     currentObjective += dS;
+    // Mirror both Pachner moves into the ledger (post-move-safe records
+    // only, in applied order), bracketed as one composite so trackers keep
+    // worldline identity across the hop. sixFlipsBistellar needs pre-move
+    // state this apply-then-decide structure cannot provide, so the channel
+    // is gated off under logSixFlips in mcmcStep (as for the worm).
+    if (ledger !is null)
+    {
+        if (ledger.logEvents)
+        {
+            Vertex[6] lb = [cast(Vertex) CHANNEL_NONLOCAL, cast(Vertex) 1,
+                            a, b, tChord[0], tChord[1]];
+            logEvent(*ledger, EVT_CHANNEL_BEGIN, lb[0 .. 4], lb[4 .. 6]);
+        }
+        BM annRec = BM(chord[], linkS[]);
+        BM redoRec = BM(tFace[], tChord[]);
+        void mirror(ref BM bm)
+        {
+            if (ledger.trackRoles)
+                recordBistellar(*ledger, bm.center, bm.coCenter);
+            if (ledger.logEvents)
+                logEvent(*ledger, cast(int) bm.coCenter.length - 1,
+                         bm.center, bm.coCenter);
+        }
+        mirror(annRec);
+        mirror(redoRec);
+        if (ledger.logEvents)
+        {
+            Vertex[3] ge = [cast(Vertex) ROLE_GONE3, chord[0], chord[1]];
+            logEvent(*ledger, EVT_CHANNEL_EDGE, ge[], null);
+            Vertex[3] ne = [cast(Vertex) ROLE_NEW3, tChord[0], tChord[1]];
+            logEvent(*ledger, EVT_CHANNEL_EDGE, ne[], null);
+            Vertex[3] le = [cast(Vertex) CHANNEL_NONLOCAL, cast(Vertex) 2,
+                            cast(Vertex) dSQuantized(dS)];
+            logEvent(*ledger, EVT_CHANNEL_END, le[], null);
+        }
+    }
     if (deg3Set !is null)
     {
         reconcileDeg3(mfd, *deg3Set, annSup[]);    // source healed to pristine
@@ -3502,6 +3580,14 @@ bool tryWormMove(Vertex, P)(
     // see the channel gate in mcmcStep.
     if (ledger !is null)
     {
+        if (ledger.logEvents)
+        {
+            Vertex[6] lb = [cast(Vertex) CHANNEL_WORM,
+                            cast(Vertex) chosen.nPair,
+                            anchor[0], anchor[1],
+                            chosen.landing[0], chosen.landing[1]];
+            logEvent(*ledger, EVT_CHANNEL_BEGIN, lb[0 .. 4], lb[4 .. 6]);
+        }
         void mirror(ref BM bm)
         {
             if (ledger.trackRoles)
@@ -3512,6 +3598,21 @@ bool tryWormMove(Vertex, P)(
         }
         mirror(bm1);
         mirror(bm2);
+        if (ledger.logEvents)
+        {
+            foreach (i; 0 .. chosen.nPair)
+            {
+                Vertex[3] g = [cast(Vertex) ROLE_GONE4,
+                               chosen.gone4[i][0], chosen.gone4[i][1]];
+                logEvent(*ledger, EVT_CHANNEL_EDGE, g[], null);
+                Vertex[3] w = [cast(Vertex) ROLE_NEW4,
+                               chosen.new4[i][0], chosen.new4[i][1]];
+                logEvent(*ledger, EVT_CHANNEL_EDGE, w[], null);
+            }
+            Vertex[3] le = [cast(Vertex) CHANNEL_WORM, cast(Vertex) 2,
+                            cast(Vertex) dSQuantized(dS)];
+            logEvent(*ledger, EVT_CHANNEL_END, le[], null);
+        }
     }
     {
         // reconcile the live degree sets over everything the pair touched
@@ -3756,7 +3857,11 @@ bool mcmcStep(Vertex, P)(
     // direction is the slot's orientation so the step distribution is
     // symmetric about 0. deg3Set is maintained by reconcileDeg3 at every commit
     // site, so the draw and n_3 are O(1).
+    // Not cocycle-safe (tryNonlocalSlide has no cocycle lockstep) and not
+    // six-flip-safe (apply-then-decide: pre-move state unavailable at
+    // commit) -- gated off under both, like the worm channel.
     if (nlSlide !is null && nlSlide.prob > 0 && deg3Set !is null
+        && cocycle is null && !(ledger !is null && ledger.logSixFlips)
         && deg3Set.length > 0 && uniform01 < nlSlide.prob)
     {
         immutable long n3 = cast(long) deg3Set.length;
@@ -3803,7 +3908,7 @@ bool mcmcStep(Vertex, P)(
         immutable ok = tryNonlocalSlide(mfd, currentObjective,
             chord[0], chord[1], hint[], slot, steps, params, nlValid,
             potState, pot, SlideAccept.metropolis, null, n3, null, null, null,
-            deg3Set);
+            deg3Set, ledger);
         if (nlValid)
         {
             nlSlide.tries++;

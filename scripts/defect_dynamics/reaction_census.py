@@ -214,6 +214,12 @@ def main():
                     ch[3] = True
             elif k == "death":
                 finalize(e["tid"], e["clock"])
+            elif k == "transport":
+                # composite-channel hop (worm / nonlocal slide): identity
+                # carried by Worldlines.transport_hint, streamed here as a
+                # first-class observable (the realized transport rate).
+                e["clock_sw"] = e["clock"] / n3
+                ev_fh.write(json.dumps(e) + "\n")
 
     record(0)
     done = 0
@@ -227,9 +233,48 @@ def main():
         if s.event_log_overflowed():
             counters["event_log_overflow"] += 1
             print("  WARN event-log overflow", flush=True)
+        # Bracket-aware replay: EVT_CHANNEL_BEGIN/EDGE/END (types 5/6/7) are
+        # state-neutral annotations marking a composite channel move (worm /
+        # slide / nonlocal). The enclosed elementary moves are applied to
+        # the mirror WITHOUT intermediate worldline steps; at END the
+        # identity sets are handed to Worldlines.transport_hint and ONE
+        # worldline step runs -- so a discontinuous hop is one transported
+        # worldline, not a spurious death + birth.
+        bracket = None
         for e in ev:
+            t = int(e["type"])
+            if t == 5:                                 # CHANNEL_BEGIN
+                L = [int(x) for x in e["labels"]]
+                bracket = {"ch": L[0], "k": L[1],
+                           "anchor": (L[2], L[3]), "landing": (L[4], L[5]),
+                           "gone": [], "new": []}
+                continue
+            if t == 7:                                 # CHANNEL_EDGE
+                if bracket is not None:
+                    L = [int(x) for x in e["labels"]]
+                    side = "gone" if L[0] in (0, 2) else "new"
+                    bracket[side].append((L[1], L[2]))
+                continue
+            if t == 6:                                 # CHANNEL_END
+                if bracket is not None:
+                    L = [int(x) for x in e["labels"]]
+                    old_vs = ({v for ed in bracket["gone"] for v in ed}
+                              or set(bracket["anchor"]))
+                    new_vs = ({v for ed in bracket["new"] for v in ed}
+                              or set(bracket["landing"]))
+                    tid = wl.transport_hint(old_vs, new_vs)
+                    wl.events.append({
+                        "k": "transport", "clock": int(e["clock"]),
+                        "tid": tid, "channel": bracket["ch"],
+                        "anchor": list(bracket["anchor"]),
+                        "landing": list(bracket["landing"]),
+                        "dS": L[2] / 1e6})
+                    record(int(e["clock"]))
+                    bracket = None
+                continue
             st.apply(e)
-            record(int(e["clock"]))
+            if bracket is None:
+                record(int(e["clock"]))
         c = ds.census(st)
         ts.append({"sw": done, "n_illegal": c["n_illegal"],
                    "n_components": c["n_components"],

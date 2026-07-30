@@ -684,6 +684,25 @@ class Worldlines:
         ev, self.events = self.events, []
         return ev
 
+    def transport_hint(self, old_verts, new_verts):
+        """Carry track identity across a discontinuous composite-move hop.
+
+        Called between a bracketed composite's state update and the next
+        step() (see the EVT_CHANNEL_* records in sampler.d): seeds the
+        landing vertices with the majority label of the departed ones, so
+        the landing component votes as the same worldline instead of
+        surfacing as a spurious death + birth. Vertices that already carry
+        a label are left alone -- a hop INTO an existing complex is a
+        genuine merge and is recorded as one. Returns the tid, or None if
+        the departed vertices carried no label."""
+        prev = Counter(self.label[x] for x in old_verts if x in self.label)
+        if not prev:
+            return None
+        t = prev.most_common(1)[0][0]
+        for v in new_verts:
+            self.label.setdefault(v, t)
+        return t
+
     def step(self, clock):
         """Relabel after the state has advanced. Returns [(Complex, tid)]."""
         comps = self.state.components()
