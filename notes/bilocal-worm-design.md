@@ -178,6 +178,31 @@ the vertex-removal barrier to +16.40 (net −22.82), and costs are
 CRYSTAL-ORBIT-QUANTIZED (two same-orbit vertices: bit-identical
 trajectories) — generator weight tables in ordered states are tiny.
 
+### 2.5 Two-tier synthesis (user, post-lab): symmetric frames + two
+constructor classes
+
+Push ALL randomness into a **symmetric frame** — for bilocal moves a
+(chain, seed-pair-at-separation) draw whose probability is computable
+from either endpoint state (the move leaves the frame's interior
+untouched) — and demand the constructor be one of exactly two kinds:
+
+- **Tier 1 (self-mirror alphabet, deterministic).** Halves whose
+  construction is structurally its own inverse: create/absorb a
+  flicker (1 move), the worm's 2-move composites, deg-3 edge surgery
+  (measured 6/6 with exact dS antisymmetry). Frame-driven and
+  closed-form-ish — the knot slide is the existence proof (frame =
+  chord + slot; reverse = same kernel, mirrored slot; never needed a
+  reverse-check). This is the PRIMARY bilocal transport
+  implementation.
+- **Tier 2 (deep/dressed halves, CBMC).** Goal-seeking searches are
+  deterministic per side but not involutive across sides (measured
+  0/24) — no frame fixes that, so deep halves carry Rosenbluth path
+  weights with retraced reverse paths.
+
+Principle: determinism per side was never the right invariant;
+frame-symmetry plus (canonical involution | tracked path probability)
+is.
+
 ## 3. The f-changing sector, and where it can actually be tested
 
 Pairs with joint Δf ≠ 0 collect the global-sector price/bonus at the
