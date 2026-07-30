@@ -59,8 +59,9 @@ class Live:
     set, vertex->tets index, edge degrees.  Lets candidate enumeration
     build local patches in O(ball) instead of O(N)."""
 
-    def __init__(self, m):
+    def __init__(self, m, driver=None):
         self.m = m
+        self.driver = driver          # callable(cen, coc); default: manifold
         self.v2t = defaultdict(set)
         self.edeg = Counter()
         for t in (tuple(sorted(int(x) for x in f)) for f in
@@ -83,7 +84,10 @@ class Live:
 
     def do(self, cen, coc):
         """Apply a bistellar move through the manifold AND the index."""
-        self.m.do_bistellar_move(list(cen), list(coc))
+        if self.driver is not None:
+            self.driver(list(cen), list(coc))
+        else:
+            self.m.do_bistellar_move(list(cen), list(coc))
         if len(cen) == 3:                       # 2->3
             a, b, c = cen
             x, y = coc
@@ -365,11 +369,120 @@ def walk(args):
     print(f"undo: composition restored: {comp2 == comp0}")
 
 
+def mh_step(L, rng):
+    """One Metropolis-Hastings worm proposal on live state L (whose driver
+    routes moves through a sampler when attached).
+
+    Proposal: anchor uniform over deg-4 edges, candidate uniform at the
+    anchor.  q(x->x') = (1/n4) sum_{a in gone4} k_f(a)/n_f(a); the class
+    preserves n4 so that factor cancels.  Returns a diagnostics dict."""
+    d4 = L.deg4()
+    e = d4[int(rng.integers(len(d4)))]
+    cands = candidates(L, e)
+    if not cands:
+        return {"status": "no-candidates", "anchor": e}
+    ci = int(rng.integers(len(cands)))
+    m1, m2, ds, f, key, gone4, new4 = cands[ci]
+    qf = 0.0
+    for a in gone4:
+        ca = cands if a == e else candidates(L, a)
+        k = sum(1 for c in ca if c[4] == key)
+        if ca:
+            qf += k / len(ca)
+    apply_pair(L, m1, m2)
+    inv = frozenset((t, -c) for t, c in key)
+    qr = 0.0
+    for b in new4:
+        cb = candidates(L, b)
+        k = sum(1 for c in cb if c[4] == inv)
+        if cb:
+            qr += k / len(cb)
+    out = {"status": "rejected", "anchor": e, "landing": f, "dS": ds,
+           "qf": qf, "qr": qr}
+    if qr == 0:
+        undo_pair(L, m1, m2)
+        out["warn"] = "no reverse candidate"      # closure says impossible
+        return out
+    alpha = float(np.exp(-ds)) * qr / qf
+    out["alpha"] = min(1.0, alpha)
+    if rng.random() < alpha:
+        out["status"] = "accepted"
+    else:
+        undo_pair(L, m1, m2)
+    return out
+
+
+def mh_test(args):
+    """Integration: worm proposals through a LIVE sampler -- the tracked
+    objective must move by exactly dS on accepts, the cocycle must stay
+    attached, and the composite kernel (worms + thermal sweeps) must leave
+    no objective drift vs a from-scratch rebuild."""
+    from discrete_differential_geometry import cocycle as coc
+    lam, et = T.LAM, T.ESTAR
+    ddg.set_random_seed(args.seed)
+    m = ddg.Manifold.load(args.snap, 3)
+    p = ddg.SamplerParams(
+        num_facets_target=m.num_facets, hinge_degree_target=et,
+        num_facets_coef=0.1, num_hinges_coef=0.0,
+        hinge_degree_variance_coef=0.0, codim3_degree_variance_coef=0.0,
+        hinge_degree_target_coef=lam * et / 6.0)
+    s = ddg.ManifoldSampler(m, p)
+    s.set_n6_potential(T.ZLEG * lam, T.CIMP * lam, tilt=[0.0] * 5)
+    cocpath = args.snap.replace(".mfd", ".cocycle.npz")
+    have_coc = os.path.exists(cocpath)
+    if have_coc:
+        e0, w0, _ = coc.load_cocycle(cocpath)
+        s.enable_cocycle(np.asarray(e0), np.asarray(w0))
+        s.check_cocycle()
+    v = s.manifold
+    L = Live(v, driver=s.do_bistellar_move)
+    rng = np.random.default_rng(args.seed)
+    stats = Counter()
+    worst = 0.0
+    print(f"state: {os.path.basename(args.snap)}  N3={v.num_facets}  "
+          f"n4={len(L.deg4())}  cocycle={'on' if have_coc else 'off'}")
+    for k in range(args.props):
+        obj0 = s.current_objective
+        r = mh_step(L, rng)
+        stats[r["status"]] += 1
+        if r.get("warn"):
+            stats["warn"] += 1
+            print(f"  prop {k:3d}: WARN {r['warn']} at {r['anchor']}")
+        if r["status"] != "accepted":
+            continue
+        err = abs((s.current_objective - obj0) - r["dS"])
+        worst = max(worst, err)
+        assert err < 1e-9, (f"objective moved by {s.current_objective-obj0} "
+                            f"!= dS {r['dS']}")
+        if have_coc:
+            s.check_cocycle()
+        print(f"  prop {k:3d}: ACCEPT {r['anchor']} -> {r['landing']}  "
+              f"dS={r['dS']:+.3f} alpha={r['alpha']:.3f} "
+              f"(qf={r['qf']:.3f} qr={r['qr']:.3f})  obj-err {err:.1e}"
+              + ("  cocycle OK" if have_coc else ""))
+    print(f"\n{args.props} proposals: {dict(stats)}  "
+          f"worst |dObj - dS| = {worst:.2e}")
+    # composite kernel: thermal sweeps after worms, then rebuild check
+    s.run(sweeps=2)
+    if have_coc:
+        s.check_cocycle()
+    m2 = v.dup()
+    s2 = ddg.ManifoldSampler(m2, p)
+    s2.set_n6_potential(T.ZLEG * lam, T.CIMP * lam, tilt=[0.0] * 5)
+    drift = abs(s.current_objective - s2.current_objective)
+    print(f"composite kernel (worms + 2 sweeps): objective drift {drift:.2e}"
+          + (", cocycle OK" if have_coc else ""))
+    assert drift < 1e-6
+    print("PASS")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--snap", default=os.path.join(
         _ROOT, "data/mgas/lam35r_snap15000.mfd"))
     ap.add_argument("--closure-test", action="store_true")
+    ap.add_argument("--mh-test", action="store_true")
+    ap.add_argument("--props", type=int, default=40)
     ap.add_argument("--walk", action="store_true")
     ap.add_argument("--head", type=int, nargs=2, default=[3282, 3318])
     ap.add_argument("--steps", type=int, default=6)
@@ -380,6 +493,8 @@ def main():
     print("[frame] none -- graph identity only")
     if args.closure_test:
         closure_test(args)
+    elif args.mh_test:
+        mh_test(args)
     elif args.walk:
         walk(args)
     else:
