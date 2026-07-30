@@ -3050,18 +3050,37 @@ int wormEnumerate(Vertex)(ref Manifold!(3, Vertex) mfd,
         BM bm1 = m1.is23 ? BM(m1.f[], m1.p[]) : BM(m1.p[], m1.f[]);
         if (!mfd.hasValidMove(bm1)) continue;
 
-        // snapshot original degrees over m1's support pairs
-        size_t[Vertex[2]] orig;
+        // snapshot original degrees over m1's support pairs.  Fixed-size
+        // parallel arrays, NOT an AA: this loop runs ~70x per enumeration
+        // and per-iteration AA allocation churn was leaking the heap out
+        // from under long campaigns.  Capacity bound is exact: 10 m1 pairs
+        // + anchor + 10 m2 extension pairs = 21.
+        Vertex[2][21] origE;
+        size_t[21] origD;
+        int nOrig = 0;
+        int origFind(ref const Vertex[2] e)
+        {
+            foreach (i; 0 .. nOrig) if (origE[i] == e) return i;
+            return -1;
+        }
+        void origAdd(Vertex[2] e)
+        {
+            if (origFind(e) >= 0) return;
+            assert(nOrig < origE.length);
+            origE[nOrig] = e;
+            origD[nOrig] = mfd.degreeOrZero!1(e[]);
+            nOrig++;
+        }
         Vertex[5] sup1 = [m1.f[0], m1.f[1], m1.f[2], m1.p[0], m1.p[1]];
         foreach (i; 0 .. 5)
             foreach (j; i + 1 .. 5)
             {
                 Vertex[2] e = [sup1[i], sup1[j]]; e[].sort();
-                if (e !in orig) orig[e] = mfd.degreeOrZero!1(e[]);
+                origAdd(e);
             }
         {
             Vertex[2] e = anchor; e[].sort();
-            if (e !in orig) orig[e] = mfd.degreeOrZero!1(e[]);
+            origAdd(e);
         }
         mfd.doMove(bm1);
 
@@ -3074,8 +3093,9 @@ int wormEnumerate(Vertex)(ref Manifold!(3, Vertex) mfd,
             if (nD < dist.length) dist[nD++] = v;
         }
         addD(anchor[0]); addD(anchor[1]);
-        foreach (e, d0; orig)
-            if (mfd.degreeOrZero!1(e[]) != d0) { addD(e[0]); addD(e[1]); }
+        foreach (oi; 0 .. nOrig)
+            if (mfd.degreeOrZero!1(origE[oi][]) != origD[oi])
+            { addD(origE[oi][0]); addD(origE[oi][1]); }
 
         // stage-2 stars around the disturbed vertices
         Vertex[4][768] star2 = void;
@@ -3138,18 +3158,13 @@ int wormEnumerate(Vertex)(ref Manifold!(3, Vertex) mfd,
 
             // extend the snapshot with m2's support pairs (their current
             // degree equals the original unless already recorded)
-            Vertex[2][10] newKeys = void;
-            int nNK = 0;
+            immutable int nOrig1 = nOrig;
             Vertex[5] sup2 = [m2.f[0], m2.f[1], m2.f[2], m2.p[0], m2.p[1]];
             foreach (i; 0 .. 5)
                 foreach (j; i + 1 .. 5)
                 {
                     Vertex[2] e = [sup2[i], sup2[j]]; e[].sort();
-                    if (e !in orig)
-                    {
-                        orig[e] = mfd.degreeOrZero!1(e[]);
-                        if (nNK < newKeys.length) newKeys[nNK++] = e;
-                    }
+                    origAdd(e);
                 }
             mfd.doMove(bm2);
 
@@ -3159,8 +3174,10 @@ int wormEnumerate(Vertex)(ref Manifold!(3, Vertex) mfd,
             Vertex[2] g3 = -1, w3 = -1;
             int nG3 = 0, nW3 = 0;
             bool ok = true;
-            foreach (e, d0; orig)
+            foreach (oi; 0 .. nOrig)
             {
+                Vertex[2] e = origE[oi];
+                immutable size_t d0 = origD[oi];
                 immutable dN = mfd.degreeOrZero!1(e[]);
                 if (dN == d0) continue;
                 immutable bool was4 = d0 == 4, is4 = dN == 4;
@@ -3287,7 +3304,7 @@ int wormEnumerate(Vertex)(ref Manifold!(3, Vertex) mfd,
             // rollback m2 and forget its snapshot extensions
             BM inv2 = m2.is23 ? BM(m2.p[], m2.f[]) : BM(m2.f[], m2.p[]);
             mfd.doMove(inv2);
-            foreach (k; 0 .. nNK) orig.remove(newKeys[k]);
+            nOrig = nOrig1;
         }
         BM inv1 = m1.is23 ? BM(m1.p[], m1.f[]) : BM(m1.f[], m1.p[]);
         mfd.doMove(inv1);
@@ -3320,14 +3337,25 @@ bool tryWormMove(Vertex, P)(
     SlideAccept policy = SlideAccept.metropolis,
     real* dSOut = null,
     int forceCand = -1,
-    Vertex* outLa = null, Vertex* outLb = null)
+    Vertex* outLa = null, Vertex* outLb = null,
+    GeometryLedger!Vertex* ledger = null)
 {
     import std.math : exp, log;
     alias BM = BistellarMove!(3, Vertex);
     valid = false;
     if (dSOut !is null) *dSOut = real.nan;
 
-    auto cands = new WormCand!Vertex[](WORM_MAX_CANDS);
+    // Scratch candidate buffers: allocated once per thread and reused, so a
+    // long campaign's proposal stream produces no per-call GC garbage (the
+    // ~150 KB/call churn here was leaking the heap over multi-hour runs).
+    static WormCand!Vertex[] candsBuf, pcBuf, rcBuf;
+    if (candsBuf.length == 0)
+    {
+        candsBuf = new WormCand!Vertex[](WORM_MAX_CANDS);
+        pcBuf = new WormCand!Vertex[](WORM_MAX_CANDS);
+        rcBuf = new WormCand!Vertex[](WORM_MAX_CANDS);
+    }
+    auto cands = candsBuf;
     immutable int nf = wormEnumerate(mfd, anchor, hintTet, cands);
     if (nf == 0) return false;
     immutable int ci = forceCand >= 0 ? forceCand : cast(int) uniform(0, nf);
@@ -3365,7 +3393,7 @@ bool tryWormMove(Vertex, P)(
             gotW = findTetOfEdge(mfd, partner[0], partner[1], pw);
         if (gotW)
         {
-            auto pc = new WormCand!Vertex[](WORM_MAX_CANDS);
+            auto pc = pcBuf;
             immutable int np = wormEnumerate(mfd, partner, pw[], pc);
             int kp = 0;
             foreach (i; 0 .. np)
@@ -3436,7 +3464,7 @@ bool tryWormMove(Vertex, P)(
         if (!gotW)
             gotW = findTetOfEdge(mfd, b[0], b[1], bw);
         if (!gotW) continue;
-        auto rc = new WormCand!Vertex[](WORM_MAX_CANDS);
+        auto rc = rcBuf;
         immutable int nr = wormEnumerate(mfd, b, bw[], rc);
         int kr = 0;
         foreach (i; 0 .. nr)
@@ -3466,6 +3494,25 @@ bool tryWormMove(Vertex, P)(
 
     // ---- accepted ---------------------------------------------------------
     currentObjective += dS;
+    // Mirror the two Pachner moves into the ledger so event-log consumers
+    // (e.g. reaction_census's incremental state tracker) stay in sync.
+    // recordBistellar/logEvent are post-move-safe (the unified commit calls
+    // them after doMove too); sixFlipsBistellar is NOT (it reads pre-move
+    // state), so the worm channel is gated off when logSixFlips is on --
+    // see the channel gate in mcmcStep.
+    if (ledger !is null)
+    {
+        void mirror(ref BM bm)
+        {
+            if (ledger.trackRoles)
+                recordBistellar(*ledger, bm.center, bm.coCenter);
+            if (ledger.logEvents)
+                logEvent(*ledger, cast(int) bm.coCenter.length - 1,
+                         bm.center, bm.coCenter);
+        }
+        mirror(bm1);
+        mirror(bm2);
+    }
     {
         // reconcile the live degree sets over everything the pair touched
         Vertex[12] sup = void;
@@ -3771,9 +3818,13 @@ bool mcmcStep(Vertex, P)(
     // Anchor uniform over the live deg-4 set (1/n_4 cancels: the move class
     // preserves the deg-4 count), then the catalysed 2-move transport step
     // with anchor-sum Hastings weights (see tryWormMove).  Not cocycle-safe:
-    // gated off whenever a cocycle is attached.
+    // gated off whenever a cocycle is attached.  Also gated off under
+    // logSixFlips: six-flip records need PRE-move state, and the worm's
+    // trial applies its moves before the accept decision (recordBistellar /
+    // logEvent are post-move-safe and ARE emitted -- see tryWormMove).
     if (worm !is null && worm.prob > 0 && deg4Set !is null
-        && cocycle is null && deg4Set.length > 0 && uniform01 < worm.prob)
+        && cocycle is null && !(ledger !is null && ledger.logSixFlips)
+        && deg4Set.length > 0 && uniform01 < worm.prob)
     {
         immutable size_t di = uniform(0, deg4Set.length);
         Vertex[2] e4 = deg4Set.edges[di];
@@ -3793,7 +3844,7 @@ bool mcmcStep(Vertex, P)(
         bool wormValid = false;
         immutable ok = tryWormMove(mfd, currentObjective, e4, hint[], params,
             wormValid, potState, pot, deg4Set, deg3Set,
-            SlideAccept.metropolis);
+            SlideAccept.metropolis, null, -1, null, null, ledger);
         if (wormValid)
         {
             worm.tries++;

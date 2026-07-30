@@ -210,6 +210,21 @@ public:
         _facetArrayIdx = _facetArrayIdx.dup;
     }
 
+    /// One-line summary of internal container sizes/capacities, for hunting
+    /// memory growth (a capacity that ratchets up under move churn is a bug).
+    string memoryDiag()() const
+    {
+        import std.format : format;
+        string s = format!"facets %s/%s; fidx %s/%s"(
+            _facetArray.length, _facetArray.capacity,
+            _facetArrayIdx.length, _facetArrayIdx.capacity);
+        static foreach (d; 1 .. dimension_)
+            s ~= format!"; dim%s %s/%s"(d,
+                mixin("_dimMap" ~ to!string(d)).length,
+                mixin("_dimMap" ~ to!string(d)).capacity);
+        return s;
+    }
+
     /***************************************************************************
     Mark or unmark a vertex as frozen. The MCMC sampler rejects any move whose
     support contains a frozen vertex, which preserves the frozen set's entire

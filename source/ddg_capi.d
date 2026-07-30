@@ -65,11 +65,38 @@ private void unpinForC(void* ptr) nothrow
 }
 
 // ---------------------------------------------------------------------------
+// Runtime initialization
+// ---------------------------------------------------------------------------
+
+/// Initialize the D runtime. The Python loader MUST call this once right
+/// after dlopen, before any other ddg_* call.
+///
+/// A dlopen'd D shared library does not get rt_init() the way a D executable
+/// does from its main() -- and without it the calling thread is never
+/// registered with the runtime, so the stop-the-world collector silently
+/// bails: GC.collect() frees NOTHING, ever, and every GC allocation grows
+/// the heap permanently. This stayed invisible for years because the hot
+/// paths are allocation-free by design; the worm channel's enumeration
+/// garbage turned it into a multi-GB-per-hour leak (2026-07-30).
+///
+/// Returns 1 on success, 0 on failure. Safe to call more than once
+/// (druntime refcounts rt_init). There is deliberately no matching
+/// terminate: tearing down druntime under a live Python interpreter at
+/// exit is riskier than letting the OS reclaim the process.
+extern(C) int ddg_runtime_init() nothrow
+{
+    import core.runtime : Runtime;
+    try { return Runtime.initialize() ? 1 : 0; }
+    catch (Throwable) { return 0; }
+}
+
+// ---------------------------------------------------------------------------
 // GC control
 // ---------------------------------------------------------------------------
 
 /// Trigger a D garbage collection cycle. Call this periodically from Python
 /// to reclaim temporaries created by chooseRandomMove, coCenter, etc.
+/// Only effective after ddg_runtime_init (see above).
 extern(C) void ddg_gc_collect() nothrow
 {
     try { GC.collect(); } catch (Exception) {}
@@ -3072,7 +3099,9 @@ extern(C) long ddg_sampler_worm_at(void* sampler_handle, int a, int b,
             (s.wormCfg.prob > 0) ? &s.deg4Edges : null,
             (s.nlSlideCfg.prob > 0) ? &s.deg3Chords : null,
             mode == 1 ? SlideAccept.trialOnly : SlideAccept.force,
-            &ds, cand);
+            &ds, cand, null, null,
+            (s.geoLedger.trackRoles || s.geoLedger.logEvents)
+                ? &s.geoLedger : null);
         if (!valid) { setError("candidate invalid"); return 0; }
         if (out_ds !is null) out_ds[0] = cast(double) ds;
         return ok ? 1 : 0;

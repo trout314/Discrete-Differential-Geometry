@@ -132,6 +132,14 @@ def _find_library() -> ctypes.CDLL:
 
 _lib = _find_library()
 
+# Initialize the D runtime FIRST. A dlopen'd D library never runs rt_init on
+# its own, and without it GC.collect() is a silent no-op: every D-side
+# allocation leaks permanently (multi-GB over a long worm-channel run).
+_lib.ddg_runtime_init.argtypes = []
+_lib.ddg_runtime_init.restype = ctypes.c_int
+if _lib.ddg_runtime_init() != 1:
+    raise OSError("ddg_runtime_init failed: D runtime could not initialize")
+
 # ---------------------------------------------------------------------------
 # Error helper
 # ---------------------------------------------------------------------------
