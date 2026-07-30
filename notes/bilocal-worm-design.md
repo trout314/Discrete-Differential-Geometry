@@ -313,6 +313,34 @@ criterion: close the +10 gap, f₀ 1536 → 1522, in a state where we KNOW
 the target configurations exist. This is the first concrete target for
 the f-sector.
 
+**Benchmark RESULT (2026-07-30, force mode —
+`scripts/defect_dynamics/harvest_f0.py`).** 14/14 planner-built
+removals (cost-optimal (link, collar) plans, lift through the sampler,
+offline 4→1 + fresh-sampler repricing, 10-sweep relax between rounds):
+gap +10.12 → +0.49, f₀ 1536 → 1522 — exactly the predicted count — in
+20 s, zero lift failures, planned dS == executed dS to machine
+precision every round. Two findings beyond the pass:
+
+1. **Pricing self-regulates.** Net dS per removal decays −22.8 → −0.4
+   as the gap closes (quadratic pin ⇒ marginal value ∝ gap); a 15th
+   removal would price uphill. The instantaneous composite price
+   already carries the correct acceptance signal for an MH channel —
+   the harvest stops itself at gap ≈ 0.
+2. **The gap-closed sector is defect-financed**
+   (`harvest_f0_verdict.py`, 3000-sweep continuations, both branches
+   stationary): quenched f₀=1536 holds ⟨S⟩ ≈ 262 ± 12, gap +10.2,
+   n_ill ≈ 63; harvested f₀=1522 holds ⟨S⟩ ≈ 357 ± 20, gap −0.01,
+   n_ill ≈ 189. The 14 vacancies (fewer vertices at pinned volume)
+   each dress with ~9 illegal edges, and at c_imp = 0.7 that m² price
+   exceeds the pin savings in ⟨S⟩ terms — every removal was
+   instantaneously downhill, but thermal re-dressing raises the
+   sector's baseline. ⟨S⟩ does not decide equilibrium (free energy
+   does; 14 mobile vacancies in ~8700 tets carry large placement
+   entropy). Which f₀ the ensemble actually prefers is now the first
+   question for the reversible MH channel: with removal + insertion
+   both proposable at correct Hastings weights, the sampled f₀
+   trajectory IS the free-energy measurement.
+
 ## 4. Pairing kernels (unchanged from v1, one addition)
 
 - **P1 chain-paired** (primary): seed + slot → deterministic
