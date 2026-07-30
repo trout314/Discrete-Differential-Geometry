@@ -50,6 +50,23 @@ class ManifoldView:
         n = _lib.ddg_manifold_f_vector(self._handle, buf, 10)
         return np.array(buf[:n], dtype=np.int64)
 
+    def illegal_edges(self) -> tuple[np.ndarray, np.ndarray]:
+        """FK-illegal edge set (degree not in {5, 6}; dim 3 only).
+
+        Returns (edges (n, 2) int array, degrees (n,) int array). One O(E)
+        scan in D -- cheap enough for per-chunk instrumentation."""
+        n = _lib.ddg_manifold_illegal_edges(self._handle, None, None)
+        if n == 0:
+            return (np.empty((0, 2), dtype=np.intc),
+                    np.empty(0, dtype=np.intc))
+        pairs = np.empty((n, 2), dtype=np.intc)
+        degs = np.empty(n, dtype=np.intc)
+        _lib.ddg_manifold_illegal_edges(
+            self._handle,
+            pairs.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
+            degs.ctypes.data_as(ctypes.POINTER(ctypes.c_int)))
+        return pairs, degs
+
     @property
     def euler_characteristic(self) -> int:
         return _lib.ddg_manifold_euler_characteristic(self._handle)

@@ -906,24 +906,11 @@ extern(C) long ddg_manifold_illegal_edges(void* handle,
         auto h = cast(ManifoldHandle*) handle;
         if (h.dim != 3) { setError("illegal_edges is dim=3 only"); return -1; }
         auto mw = cast(ManifoldWrapper!3*) h.ptr;
-        auto nEdges = mw.mfd.writeSimplicesToBuffer(1, null);
-        auto buf = new int[](2 * nEdges);
-        mw.mfd.writeSimplicesToBuffer(1, buf.ptr);
-        long n = 0;
-        foreach (i; 0 .. nEdges)
-        {
-            int[2] key = [buf[2 * i], buf[2 * i + 1]];
-            auto deg = mw.mfd.degree(key[]);
-            if (deg == 5 || deg == 6) continue;
-            if (out_pairs !is null)
-            {
-                out_pairs[2 * n] = key[0];
-                out_pairs[2 * n + 1] = key[1];
-                if (out_degs !is null) out_degs[n] = cast(int) deg;
-            }
-            n++;
-        }
-        return n;
+        // One allocation-free scan of the edge map (degrees read in place);
+        // callers size buffers with a first null-buffer call, so pass an
+        // unbounded cap on the write pass.
+        return mw.mfd.writeIllegalEdges(out_pairs, out_degs,
+            out_pairs is null ? 0 : long.max);
     }
     catch (Throwable e) { setError(e.msg); return -1; }
 }

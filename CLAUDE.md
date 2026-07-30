@@ -135,6 +135,12 @@ Archived, superseded scripts kept for reference/reproducibility; nothing active 
 
 ## Key Patterns
 
+- **Maximalist recording**: research scripts drive the sampler through
+  `discrete_differential_geometry.recording.record_run` (or `Recorder.step`
+  for custom loops), never bare `ManifoldSampler.run()`. Recording is
+  unconditional and cheap (O(1) counters + D-side defect census per chunk,
+  mid+final snapshots); equilibrium gating/certification is post-processing
+  on the recorded `.rec.jsonl` series, deliberately decoupled.
 - Tests are co-located with source code using D's built-in `unittest` blocks. Test assertions use helpers in `utility.d`: `shouldBeSameSetAs`, `shouldEqual`, `shouldBeEmpty`, `throwsWithMsg`.
 - Template-heavy D code: most types are parameterized on dimension and/or vertex type.
 - The C API in `ddg_capi.d` uses opaque handles and dimension-dispatch (`switch (h.dim)`) to bridge D templates to C.

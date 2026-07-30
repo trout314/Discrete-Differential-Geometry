@@ -19,7 +19,12 @@ from .cocycle import torus_positions
 from ._dlang import _lib as _lib
 
 
+_last_random_seed = None
+
+
 def set_random_seed(seed: int) -> None:
+    global _last_random_seed
+    _last_random_seed = seed
     """Seed the D-side RNG driving move proposals and Metropolis accepts.
 
     Chains are reproducible given (initial state, params, seed). Record the

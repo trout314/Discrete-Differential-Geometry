@@ -368,6 +368,7 @@ class ManifoldSampler:
         attempt, not a conditional probability at a degree-3 edge: the slide
         is an independent channel, so a value near 1 starves the thermal
         channel entirely."""
+        self._recorded_slide_prob = prob
         _lib.ddg_sampler_set_slide_prob(self._handle, float(prob))
 
     def set_slide_clean_only(self, clean_only: bool) -> None:
@@ -405,6 +406,7 @@ class ManifoldSampler:
         catalysed 2-move transport move with this probability, anchored
         uniformly on the live deg-4 edge set.  Inert while a cocycle is
         attached.  0 disables (default)."""
+        self._recorded_worm_prob = prob
         _lib.ddg_sampler_set_worm_prob(self._handle, float(prob))
 
     def worm_stats(self) -> tuple[int, int, int]:
@@ -455,6 +457,7 @@ class ManifoldSampler:
         limit). 0 disables the channel (the default). While enabled, the D
         sampler keeps a live degree-3 chord set (rebuilt at each run start,
         maintained incrementally); it costs nothing when disabled."""
+        self._recorded_nonlocal_slide = (prob, max_step)
         _lib.ddg_sampler_set_nonlocal_slide_prob(
             self._handle, float(prob), int(max_step))
 
@@ -717,6 +720,9 @@ class ManifoldSampler:
             if len(vals) != 5:
                 raise ValueError("tilt must have length 5")
             tilt_ptr = (ctypes.c_double * 5)(*vals)
+        self._recorded_n6_potential = {
+            "zleg_coef": float(zleg_coef), "imp_coef": float(imp_coef),
+            "tilt": [float(x) for x in (tilt if tilt is not None else [0.0] * 5)]}
         _lib.ddg_sampler_set_n6_potential(
             self._handle, zleg_coef, imp_coef, tilt_ptr)
 

@@ -109,6 +109,16 @@ def main():
     v = s.manifold
     n3 = v.num_facets
 
+    # maximalist flight recorder: unconditional per-chunk instrumentation
+    # (f-vector, <e>, acceptance, channel stats, GC heap, defect census)
+    # alongside this script's own event pipeline; also saves mid + final
+    # .mfd states. See discrete_differential_geometry.recording.
+    from discrete_differential_geometry.recording import Recorder
+    rec = Recorder(s, args.out, chunk=args.chunk,
+                   extra_meta={"cell": args.cell, "start": args.start,
+                               "lam": args.lam, "zleg": args.zleg,
+                               "cimp": args.cimp, "seed": args.seed})
+
     st = ds.DefectState(v)
     wl = ds.Worldlines(st)
     s.enable_event_log(args.logmb)
@@ -201,7 +211,7 @@ def main():
     nchunk = 0
     audit_fail = []
     while done < args.sweeps and time.time() - t_start < args.max_seconds:
-        s.run(sweeps=args.chunk)
+        rec.step(args.chunk)
         done += args.chunk
         nchunk += 1
         ev = s.drain_event_log()
@@ -232,6 +242,7 @@ def main():
         finalize(tid, done * n3)
     ev_fh.close()
     tr_fh.close()
+    rec.finish()                    # final .mfd snapshot + closing record
 
     nc = np.array([r["n_components"] for r in ts], float)
     summary = {

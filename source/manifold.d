@@ -689,6 +689,31 @@ public:
         return null;
     }
 
+    /// Write every edge whose degree is not in {5, 6} (dim = 3: the
+    /// FK-illegal set) to caller-provided buffers -- pairs as (u, v) int
+    /// pairs, degrees alongside. Returns the total illegal count regardless
+    /// of capacity (call with cap = 0 to size buffers). One O(E) scan of the
+    /// edge map, no allocation: cheap enough for per-chunk instrumentation
+    /// (the maximalist flight recorder).
+    static if (dimension_ == 3)
+    long writeIllegalEdges()(int* pairs, int* degs, long cap) const
+    {
+        long n = 0;
+        foreach (kv; dimMap!1.byKeyValue())
+        {
+            immutable dg = kv.value;
+            if (dg == 5 || dg == 6) continue;
+            if (pairs !is null && n < cap)
+            {
+                pairs[2 * n] = cast(int) kv.key[0];
+                pairs[2 * n + 1] = cast(int) kv.key[1];
+                if (degs !is null) degs[n] = cast(int) dg;
+            }
+            n++;
+        }
+        return n;
+    }
+
     /// Ordered link cycle of edge (a, b) via the ridge-link walk (dim = 3
     /// only): starting from a KNOWN containing facet hintTet, walk around the
     /// edge through dimMap!2 ridge links. Writes the link vertices in cyclic
