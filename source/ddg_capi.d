@@ -4068,6 +4068,64 @@ extern(C) int ddg_sampler_worm_pair_episode(void* sampler_handle,
     catch (Exception e) { setError(e.msg); return -1; }
 }
 
+/// Run one CHORD (2<->3) bilocal episode -- the flicker carrier. A chord
+/// is created at one ball and annihilated at the other, so the net
+/// f-change is (0,+1,+2,+1)+(0,-1,-2,-1) = 0 and the pins cost nothing.
+/// No umbrella is used (a chord's closure condition is what a 2->3
+/// creates, so there is no barrier to flatten); zeta2 is read as a LOG
+/// chemical potential here. out12 as for the other episodes;
+/// closedHow = 5 means the chord pair closed.
+extern(C) int ddg_sampler_worm_chord_episode(void* sampler_handle,
+    double* out12) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null handle"); return -1; }
+        auto s = cast(SamplerState*) sampler_handle;
+        if (!s.wormF0On) { setError("worm not configured"); return -1; }
+        if (s.dim != 3) { setError("chord worm requires dim=3"); return -1; }
+        if (s.cocycle.enabled)
+        { setError("chord worm is not cocycle-safe"); return -1; }
+        if (s.geoLedger.trackRoles || s.geoLedger.logEvents
+            || s.geoLedger.logSixFlips)
+        { setError("chord worm does not mirror the geometry ledger yet");
+          return -1; }
+        auto mh = cast(ManifoldHandle*) s.manifoldHandle;
+        auto mw = cast(ManifoldWrapper!3*) mh.ptr;
+        if (s.currentObjective != s.currentObjective)
+            recomputeObjective(s);
+        struct Params { int numFacetsTarget; real hingeDegreeTarget;
+            real numFacetsCoef; real numHingesCoef; real hingeDegreeVarianceCoef;
+            real coDim3DegreeVarianceCoef; real hingeDegreeTargetCoef;
+            real coDim3DegreeTargetCoef; real coDim3DegreeTarget; }
+        auto params = Params(s.numFacetsTarget,
+            cast(real) s.hingeDegreeTarget, cast(real) s.numFacetsCoef,
+            cast(real) s.numHingesCoef, cast(real) s.hingeDegreeVarianceCoef,
+            cast(real) s.coDim3DegreeVarianceCoef,
+            cast(real) s.hingeDegreeTargetCoef,
+            cast(real) s.coDim3DegreeTargetCoef,
+            cast(real) s.coDim3DegreeTarget);
+        WormF0Result res;
+        immutable changed = mw.mfd.wormChordPairEpisode(s.currentObjective,
+            params, s.wormF0,
+            s.potEnabled ? &s.vertexPotState : null,
+            s.potEnabled ? &s.vertexPot : null,
+            s.wormF0Undo, res);
+        if (out12 !is null)
+        {
+            out12[0] = res.opened;   out12[1] = res.head;
+            out12[2] = res.steps;    out12[3] = res.closedHow;
+            out12[4] = res.dS;       out12[5] = res.umax;
+            out12[6] = res.nH;       out12[7] = res.accH;
+            out12[8] = res.nG;       out12[9] = res.accG;
+            out12[10] = res.zmin;    out12[11] = res.nZ4;
+        }
+        return changed ? 1 : 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
 /// Set the PAIR sector knobs (zeta2 = pair fugacity, bcp = close-pair
 /// share of open steps). Everything else comes from the f0 config.
 extern(C) int ddg_sampler_worm_pair_config(void* sampler_handle,

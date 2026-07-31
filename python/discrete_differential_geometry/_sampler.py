@@ -554,6 +554,28 @@ class ManifoldSampler:
                 "nG": int(out[8]), "accG": int(out[9]),
                 "zmin": int(out[10]), "nZ4": int(out[11])}
 
+    def worm_chord_episode(self) -> dict:
+        """Run one CHORD (2<->3) bilocal episode -- the flicker carrier.
+
+        A chord is created at one ball and annihilated at the other, so
+        the net f-change vanishes and the pins cost nothing. Told apart
+        by the closure: ``closed == "chord"`` is a committed transport
+        (the flicker relocated); an episode that does work and then
+        annihilates the chord it made is catalysis. No umbrella is used
+        -- a chord's closure condition (degree exactly 3) is what a 2->3
+        creates, so there is no barrier to flatten. ``set_worm_pair``'s
+        ``zeta2`` acts as the LOG chemical potential for this carrier."""
+        out = np.zeros(12, dtype=np.float64)
+        changed = _lib.ddg_sampler_worm_chord_episode(
+            self._handle,
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
+        return {"changed": bool(changed), "opened": int(out[0]),
+                "head": int(out[1]), "steps": int(out[2]),
+                "closed": {0: None, 3: "undone", 5: "chord"}.get(
+                    int(out[3])),
+                "dS": float(out[4]), "nG": int(out[8]),
+                "accG": int(out[9])}
+
     def set_nonlocal_slide_prob(self, prob: float, max_step: int = 8) -> None:
         """Enable the NON-LOCAL slide channel (dim = 3 only).
 

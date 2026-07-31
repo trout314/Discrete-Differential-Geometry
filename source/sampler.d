@@ -5657,6 +5657,295 @@ bool wormPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
     assert(0);
 }
 
+/*
+CHORD (2<->3) bilocal channel -- the flicker carrier.
+=====================================================
+
+A single 2->3 on pristine crystal IS the elementary (3,4,4) knot
+(f = (5,10,9,3) always, ~95% of thermal births at lam=0.40), so the
+"create" mode here is literally the flicker. The channel gives two
+physical readings from one kernel, told apart only by which closure
+fires:
+
+  create -> annihilate at the SAME ball, with work in between
+      the flicker appears, enables moves that were not available, and
+      vanishes: CATALYSIS (it does not appear in the net reaction);
+  create -> drop at ball 0 + adopt -> annihilate at ball 1
+      the flicker relocates: TRANSPORT of a disclination quantum.
+
+Net f-change of the transport pairing is (0,+1,+2,+1) + (0,-1,-2,-1) = 0
+exactly, so it is pin-free at ANY separation, like the vertex pairing.
+
+Unlike the vertex carrier there is NO umbrella: a chord's closure
+condition (degree exactly 3) is what a 2->3 creates, so it holds the
+instant the flicker is born -- nothing to flatten. Hence U == 0 here,
+dU == 0 for EVERY move, and the walk is plain Metropolis. The only
+moves excluded are those that would annihilate a head chord outside the
+close (i.e. centered on it), which would destroy the head.
+
+Proposal densities. A face is drawn as (uniform tet, uniform face index):
+each face lies in exactly two tets, so it is hit with probability
+2/(4 f3) = 1/f2 -- uniform over faces, using f2 = 2 f3 exactly. The
+adopted chord is drawn uniformly from the degree-3 edges (count n3). The
+reverse of the close is an open that CREATES at ball 1's site and ADOPTS
+ball 0's chord, so the close carries the post-move f2' and n3'.
+*/
+
+/// Link vertices of an edge (its degree, and the link cycle's vertices).
+/// Returns the count, or -1 on overflow.
+private int wf0EdgeLink(Vertex)(ref Manifold!(3, Vertex) mfd,
+    Vertex a, Vertex b, Vertex[] outv)
+{
+    Vertex[2] e = a < b ? [a, b] : [b, a];
+    int n = 0;
+    foreach (f; mfd.star(e[]))
+        foreach (x; f)
+        {
+            if (x == a || x == b) continue;
+            bool seen = false;
+            foreach (i; 0 .. n) if (outv[i] == x) { seen = true; break; }
+            if (seen) continue;
+            if (n >= outv.length) return -1;
+            outv[n++] = x;
+        }
+    return n;
+}
+
+/// Count degree-3 edges; if pick >= 0, also return the pick-th one.
+private long wf0Deg3Scan(Vertex)(ref Manifold!(3, Vertex) mfd,
+    long pick, Vertex* outA, Vertex* outB)
+{
+    long n = 0;
+    foreach (ed; mfd.simplices(1))
+    {
+        Vertex[2] e;
+        int i = 0;
+        foreach (x; ed) { if (i < 2) e[i] = x; i++; }
+        if (i != 2) continue;
+        if (mfd.degreeOrZero!1(e[]) != 3) continue;
+        if (pick >= 0 && n == pick && outA !is null)
+        { *outA = e[0]; *outB = e[1]; }
+        n++;
+    }
+    return n;
+}
+
+/// One CHORD bilocal episode (see the note above). Returns true if the
+/// closed state changed. currentObjective stays exact; a capped walk is
+/// unwound exactly.
+bool wormChordPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
+    ref real currentObjective, P params, const ref WormF0Params cfg,
+    VertexPotState!Vertex* potState, VertexPot* pot,
+    scope WF0Applied!Vertex[] undoBuf, out WormF0Result res)
+{
+    import std.math : log, exp;
+    import std.random : uniform, uniform01;
+    alias BM = BistellarMove!(3, Vertex);
+
+    real baseRun = currentObjective
+        - (potState !is null ? potState.total : 0.0L);
+    real deltaTotal = 0.0L;
+    int nApplied = 0;
+
+    real applyMove(scope const(Vertex)[] cen, scope const(Vertex)[] coc)
+    {
+        auto bm = BM(cen, coc);
+        immutable real dBase =
+            mfd.speculativeBistellarDelta(bm, baseRun, params);
+        real dPot = 0.0L;
+        if (potState !is null)
+            dPot = mfd.potentialBistellarDelta(bm, *potState, *pot, true);
+        mfd.doMove(bm);
+        baseRun += dBase;
+        deltaTotal += dBase + dPot;
+        return dBase + dPot;
+    }
+
+    void record(scope const(Vertex)[] cen, scope const(Vertex)[] coc)
+    {
+        assert(nApplied < undoBuf.length, "chord undo buffer overflow");
+        undoBuf[nApplied].cl = cast(int) cen.length;
+        undoBuf[nApplied].ccl = cast(int) coc.length;
+        undoBuf[nApplied].cen[0 .. cen.length] = cen[];
+        undoBuf[nApplied].coc[0 .. coc.length] = coc[];
+        nApplied++;
+    }
+
+    void unwindAll()
+    {
+        foreach_reverse (k; 0 .. nApplied)
+            applyMove(undoBuf[k].coc[0 .. undoBuf[k].ccl],
+                      undoBuf[k].cen[0 .. undoBuf[k].cl]);
+        nApplied = 0;
+    }
+
+    immutable double pcl = 1.0 - cfg.pg;
+    if (!(pcl > 0.0 && pcl < 1.0)) return false;
+
+    // -- OPEN --------------------------------------------------------------
+    // ball 0: CREATE a chord (2->3) on a uniformly drawn face
+    auto facet = mfd.randomFacetOfDim(3);
+    Vertex[4] tet;
+    {
+        int i = 0;
+        foreach (x; facet) tet[i++] = x;
+    }
+    tet[].sort();
+    immutable int skip = uniform(0, 4);
+    Vertex[3] face;
+    {
+        int k = 0;
+        foreach (i; 0 .. 4) if (i != skip) face[k++] = tet[i];
+    }
+    int[2] ap = 0;
+    if (mfd.writeFaceApexes(face[0], face[1], face[2], ap.ptr) != 2)
+        return false;
+    Vertex[2] axis = ap[0] < ap[1]
+        ? [cast(Vertex) ap[0], cast(Vertex) ap[1]]
+        : [cast(Vertex) ap[1], cast(Vertex) ap[0]];
+    if (mfd.degreeOrZero!1(axis[]) != 0) return false;   // edge exists
+    if (mfd.anyFrozen(face[])) return false;
+
+    // ball 1: ADOPT a degree-3 chord, uniform over the n3 of them
+    immutable long n3 = wf0Deg3Scan(mfd, -1, null, null);
+    if (n3 <= 0) return false;
+    Vertex bA, bB;
+    wf0Deg3Scan(mfd, uniform(0, n3), &bA, &bB);
+    Vertex[2] chordB = bA < bB ? [bA, bB] : [bB, bA];
+    Vertex[16] lkB = void;
+    immutable int nlkB = wf0EdgeLink(mfd, chordB[0], chordB[1], lkB[]);
+    if (nlkB != 3) return false;
+
+    // supports must be disjoint (the factorization condition)
+    {
+        Vertex[5] supA = [face[0], face[1], face[2], axis[0], axis[1]];
+        Vertex[5] supB = [chordB[0], chordB[1], lkB[0], lkB[1], lkB[2]];
+        foreach (x; supA) foreach (y; supB) if (x == y) return false;
+    }
+
+    auto bm23 = BM(face[], axis[]);
+    if (!mfd.hasValidMove(bm23)) return false;
+    immutable real dB23 = mfd.speculativeBistellarDelta(bm23, baseRun,
+                                                        params);
+    real dP23 = 0.0L;
+    if (potState !is null)
+        dP23 = mfd.potentialBistellarDelta(bm23, *potState, *pot, false);
+    immutable long f2 = cast(long) mfd.fVector[2];
+    immutable double laOpen = cfg.zeta2 - cast(double)(dB23 + dP23)
+        + log(cast(double) f2) + log(cast(double) n3) + log(pcl);
+    if (!(laOpen >= 0 || uniform01 <= exp(laOpen))) return false;
+
+    applyMove(face[], axis[]);
+    record(face[], axis[]);
+    res.opened = 3;                      // chord-pair open
+    res.head = cast(int) chordB[0];
+    Vertex[2] chordA = axis;
+
+    // -- walk: plain Metropolis (U == 0, so dU == 0 for every move) -------
+    while (true)
+    {
+        if (res.steps >= cfg.maxstep)
+        {
+            unwindAll();
+            res.closedHow = 3;
+            res.dS = cast(double) deltaTotal;
+            currentObjective += deltaTotal;
+            return false;
+        }
+        res.steps++;
+        if (uniform01 < cfg.pg)
+        {
+            res.nG++;
+            Vertex fresh = cast(Vertex) mfd.fVector[0];
+            auto bm = mfd.chooseRandomMove(fresh, params);
+            if (bm.center.length == 1 || bm.coCenter.length == 1) continue;
+            // never annihilate a head chord outside the close
+            if (bm.center.length == 2)
+            {
+                Vertex[2] c = [bm.center[0], bm.center[1]];
+                c[].sort();
+                if ((c[0] == chordA[0] && c[1] == chordA[1])
+                    || (c[0] == chordB[0] && c[1] == chordB[1])) continue;
+            }
+            immutable real dB = mfd.speculativeBistellarDelta(bm, baseRun,
+                                                              params);
+            real dP = 0.0L;
+            if (potState !is null)
+                dP = mfd.potentialBistellarDelta(bm, *potState, *pot,
+                                                 false);
+            immutable double la = -cast(double)(dB + dP);
+            if (la >= 0 || uniform01 <= exp(la))
+            {
+                res.accG++;
+                applyMove(bm.center, bm.coCenter);
+                record(bm.center, bm.coCenter);
+            }
+            continue;
+        }
+
+        // -- CLOSE: annihilate ball 1's chord (3->2), drop ball 0's -------
+        // both heads must be back at the state a 2->3 creates: degree 3
+        if (mfd.degreeOrZero!1(chordA[]) != 3) continue;
+        if (mfd.degreeOrZero!1(chordB[]) != 3) continue;
+        Vertex[16] lk = void;
+        immutable int nlk = wf0EdgeLink(mfd, chordB[0], chordB[1], lk[]);
+        if (nlk != 3) continue;
+        Vertex[3] tri = [lk[0], lk[1], lk[2]];
+        tri[].sort();
+        auto bm32 = BM(chordB[], tri[]);
+        if (!mfd.hasValidMove(bm32)) continue;
+        immutable real dB = mfd.speculativeBistellarDelta(bm32, baseRun,
+                                                          params);
+        real dP = 0.0L;
+        if (potState !is null)
+            dP = mfd.potentialBistellarDelta(bm32, *potState, *pot, false);
+        // reverse-open counts are POST-close
+        immutable long f2after = cast(long) mfd.fVector[2] - 2;
+        immutable long n3after = wf0Deg3Scan(mfd, -1, null, null)
+            + wf0Deg3Delta(mfd, chordB, tri);
+        if (n3after <= 0) continue;
+        immutable double la = -cast(double)(dB + dP) - cfg.zeta2
+            - log(cast(double) f2after) - log(cast(double) n3after)
+            - log(pcl);
+        if (la >= 0 || uniform01 <= exp(la))
+        {
+            applyMove(chordB[], tri[]);
+            res.closedHow = 5;           // chord pair closed
+            res.dS = cast(double) deltaTotal;
+            currentObjective += deltaTotal;
+            return true;
+        }
+    }
+    assert(0);
+}
+
+/// Change in the degree-3 edge count caused by the 3->2 on (chord, tri).
+/// The three tets round the chord become two, so: the chord itself
+/// leaves the set; each LINK-triangle edge gains a tet (it was in one of
+/// the three, it is in both survivors), so one at degree 3 leaves; each
+/// of the six SPOKE edges (chord endpoint, link vertex) loses a tet, so
+/// one at degree 4 arrives at 3. Edge degrees are >= 3 in a closed
+/// manifold, so nothing can enter the set from below.
+private long wf0Deg3Delta(Vertex)(ref Manifold!(3, Vertex) mfd,
+    Vertex[2] chord, Vertex[3] tri)
+{
+    long d = -1;                          // the chord goes away
+    foreach (i; 0 .. 3)
+        foreach (j; i + 1 .. 3)
+        {
+            Vertex[2] e = tri[i] < tri[j] ? [tri[i], tri[j]]
+                                          : [tri[j], tri[i]];
+            if (mfd.degreeOrZero!1(e[]) == 3) d--;   // 3 -> 4, leaves
+        }
+    foreach (c; chord)
+        foreach (t; tri)
+        {
+            Vertex[2] e = c < t ? [c, t] : [t, c];
+            if (mfd.degreeOrZero!1(e[]) == 4) d++;   // 4 -> 3, joins
+        }
+    return d;
+}
+
 // ---------------------------------------------------------------------------
 // Move selection
 // ---------------------------------------------------------------------------
