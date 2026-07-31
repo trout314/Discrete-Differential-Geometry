@@ -203,6 +203,76 @@ Principle: determinism per side was never the right invariant;
 frame-symmetry plus (canonical involution | tracked path probability)
 is.
 
+### 2.6 Label-epoch semantics: identity under f₀-changing channels
+
+Once a channel commits 1→4 / 4→1 on the recorded trajectory, vertex
+labels stop being durable identities: the sampler's label pool is a
+stack, so a 4→1 pushes the freed label and the very next 1→4 pops the
+SAME integer — immediate reuse is the *common* case, not a corner. The
+design below keeps every existing consumer contract intact with one
+new concept.
+
+**What already works (verified in-tree).** The event encoding covers
+1↔4 (elementary type = |coCenter|−1 ∈ {0: 1→4, 3: 4→1}; the 6-slot
+label layout fits 4+1); `event_replay.event_changes` decodes both and
+the shadow-tet replay is verified; `DefectState.apply` is type-free
+(tet add/remove sets) and already deletes a vertex's counters when its
+last tet disappears; `recordBistellar`'s role switch handles all four
+types. Run()-accepted volume moves would already stream correctly —
+no campaign ever accepts one, so the path is untested on production
+data, nothing more.
+
+**The one real hazard.** `Worldlines.label` maps vertex → track id and
+is rebuilt from live components at each `step()`; a majority vote reads
+stale entries between steps. If a label dies (4→1) and is reborn (1→4)
+*between two tracker steps* — one bracketed composite is exactly that
+window — the reborn vertex inherits the dead vertex's track id in the
+vote, splicing two causally unrelated worldlines. Small complexes flip
+identity on a single leaked vote.
+
+**Design: vertex identity = (label, epoch).**
+
+1. **Epoch counter, inferred not declared.** `DefectState` owns
+   `epoch[v]` (default 0 at series start). In `apply()`, any touched
+   vertex that transitions absent → present (no tets before the event,
+   tets after) gets `epoch[v] += 1`. Type-free — no move decoding —
+   and covers every vertex-creating move, present and future. 4→1
+   needs no action: the increment on rebirth is what invalidates.
+2. **Tracker purge on rebirth.** `DefectState.apply` appends reborn
+   vertices to a drain list; `Worldlines` purges `label[v]` for
+   drained vertices before any majority vote or transport hint. Order
+   within a bracketed transaction: state update → purge → hints →
+   step(). Death needs no purge (a dead vertex sits in no component;
+   its stale entry is only reachable through rebirth, which purges).
+3. **Identity policy per channel op.** Vertex removal = genuine DEATH
+   of that identity (its complex, if any, continues via surviving
+   members through the ordinary vote — no hint). Vertex insertion =
+   genuine BIRTH (fresh identity; epoch bump suffices). Only a future
+   PAIRED transport composite (remove here + insert there as one
+   bracket) seeds identity across the hop via `transport_hint`, which
+   then targets the landing vertex's *new* epoch (purge runs first).
+4. **No new record types yet.** The elementary 0/3 events inside the
+   channel bracket are authoritative; epoch inference needs nothing
+   else. Explicit ROLE_VERT_DEAD/BORN bracket records only become
+   worth adding with paired transport.
+5. **Producer TODO-checks when the channel lands.** (a)
+   `sixFlipsBistellar` must emit the 6→5/5→6 crossings a 1↔4 induces
+   on the six side edges among the co-center four (each shifts by
+   ±1); verify it dispatches on all four types. (b) Event-buffer
+   headroom: an open-sector epoch may bracket hundreds of elementary
+   moves — consumers must not assume small transactions, and
+   `eventOverflow` sizing needs review.
+6. **Consumer audit list (fixed-N assumptions).** Anything keying a
+   time series by bare vertex label — cocycle `pos[v]` trajectories,
+   per-vertex charge series, centroid protocols — must qualify by
+   epoch or restrict to within-epoch windows. Census normalizations
+   (per-N rates, defect fractions) must read the recorded per-chunk
+   f-vector rather than a constant N; the Recorder already stores it.
+
+Cross-series note: epochs are stream-local (initialized 0 at the
+loaded snapshot), matching the existing convention that track ids are
+per-run.
+
 ## 3. The f-changing sector, and where it can actually be tested
 
 Pairs with joint Δf ≠ 0 collect the global-sector price/bonus at the
