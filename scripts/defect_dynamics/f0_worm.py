@@ -90,6 +90,7 @@ UCAP_HI = float(os.environ.get("UCAP_HI", "45.0"))
 UCAP_LO = float(os.environ.get("UCAP_LO", "-15.0"))
 LMAX = int(os.environ.get("LMAX", "4096"))
 RETUBE_EVERY = int(os.environ.get("RETUBE_EVERY", "10"))  # commits/rebuild
+AUTOZETA = bool(int(os.environ.get("AUTOZETA", "1")))  # calibrate zeta
 
 
 def _e(a, b):
@@ -469,6 +470,66 @@ def build_orbit_tube(s, L, ntry=8, nodecap=200000):
     return tab, (fv[1], fv[3])
 
 
+def pin_part(f1, f3):
+    """The action terms NONLINEAR in the f-vector (volume + edge pins) --
+    the f-dependent half of every tube value (see sampler.wf0PinPart)."""
+    return 0.1 * (f3 - F3T) ** 2 + (f1 - 6.0 * f3 / ETARGET) ** 2
+
+
+def tube_u(tube, fref, f1, f3, ms):
+    """Tube value at multiset ``ms``, compiled at the live f-vector
+    exactly as the D engine does; off-tube states get the flat OFFPEN."""
+    if ms not in tube:
+        return OFFPEN
+    cum, d1, d3 = tube[ms]
+    return (cum + (pin_part(f1 + d1, f3 + d3) - pin_part(f1, f3))
+            - (pin_part(fref[0] + d1, fref[1] + d3) - pin_part(*fref)))
+
+
+def calib_zeta(s, L, tube, fref, ntet=24):
+    """Auto-calibrate the open-sector fugacity zeta.
+
+    From sampler.d (close-41 / open-insert, exact inverses):
+      log a_c4 = -dS41 - U - log z + log(aoi/bc4) - log f3 - log lmax
+      log a_oi = +log z - dS14 + U + log f3 + log lmax + log(bc4/aoi)
+    so both legs are O(1) -- the condition for the insert/remove sector
+    to actually TURN OVER -- iff
+      log z* = dS14 - U([3,3,3,3]) - log f3 - log lmax - log(bc4/aoi).
+    dS14 (the 1->4 insert cost at a uniformly random tet, which is what
+    the engine proposes) is strongly state-dependent: it is dominated by
+    the pins, so it falls steeply as the gap closes (~+40 at gap +10,
+    ~+19 at gap 0). A fixed zeta therefore prices the sector correctly
+    over a narrow band only -- outside it one leg saturates at alpha ~ 1
+    and the other dies (measured: alpha_c4 ~ 1e-6 at gap 0 with
+    zeta = 50, giving 207/207 abandoned insert episodes and ZERO
+    committed f0 moves). zeta is a free ensemble parameter -- the
+    closed-sector marginal is zeta-independent, the same theorem that
+    licenses retubing -- so recalibrating it between episodes is exactly
+    unbiased. Returns (zeta*, mean dS14, U[3,3,3,3])."""
+    fv = [int(x) for x in s.manifold.f_vector]
+    tets = [t for ts in L.v2t.values() for t in ts]
+    top = max(x for t in tets for x in t)
+    rng = random.Random(0xC0FFEE ^ fv[3])
+    ds = []
+    for i in range(ntet):
+        t = rng.choice(tets)
+        S0 = s.current_objective
+        try:
+            s.do_bistellar_move(list(t), [top + 1 + i])
+        except Exception:
+            continue
+        ds.append(s.current_objective - S0)
+        s.do_bistellar_move([top + 1 + i], sorted(t))
+        assert abs(s.current_objective - S0) < 1e-6
+    if not ds:
+        return ZETA_D, float("nan"), float("nan")
+    dS14 = sum(ds) / len(ds)
+    u4 = tube_u(tube, fref, fv[1], fv[3], (3, 3, 3, 3))
+    logz = (dS14 - u4 - math.log(fv[3]) - math.log(LMAX)
+            - math.log(BC4_D / (1.0 - AOF)))
+    return math.exp(max(min(logz, 30.0), -30.0)), dS14, u4
+
+
 def anchor_utab(L, sample):
     """Uniform-shift the umbrella so U(typical closed star) ~ 0. A
     global shift is a gauge choice (trades against zeta only)."""
@@ -535,20 +596,37 @@ def main():
     if DSIDE:
         pg = 1.0 - PHD - BCF_D - BC4_D
 
+        state = {"tube": None, "fref": None, "zeta": ZETA_D,
+                 "dS14": float("nan"), "u4": float("nan")}
+
+        def reconfig():
+            """Push the current tube at a freshly calibrated zeta. The
+            insert cost drifts with the state, so zeta is recalibrated
+            here as well as at every rebuild (both are exactly
+            unbiased: the closed measure is U- and zeta-independent)."""
+            if AUTOZETA:
+                z, d14, u4 = calib_zeta(s, L, state["tube"],
+                                        state["fref"])
+                state.update(zeta=z, dS14=d14, u4=u4)
+            s.set_worm_f0(state["tube"], [0.0] * 6, OFFPEN, Z0,
+                          lmax=LMAX, zeta=state["zeta"], aof=AOF,
+                          ph=PHD, pg=pg, bcf=BCF_D, bc4=BC4_D,
+                          maxstep=MAXSTEP, ucap_hi=UCAP_HI,
+                          ucap_lo=UCAP_LO, mu=MU,
+                          f0_ref=state["fref"])
+
         def retube():
             r = build_orbit_tube(s, L)
             if r is None:
                 return 0
-            tube, f0ref = r
-            s.set_worm_f0(tube, [0.0] * 6, OFFPEN, Z0, lmax=LMAX,
-                          zeta=ZETA_D, aof=AOF, ph=PHD, pg=pg,
-                          bcf=BCF_D, bc4=BC4_D, maxstep=MAXSTEP,
-                          ucap_hi=UCAP_HI, ucap_lo=UCAP_LO, mu=MU,
-                          f0_ref=f0ref)
-            return len(tube)
+            state["tube"], state["fref"] = r
+            reconfig()
+            return len(state["tube"])
         nt = retube()
         print(f"D-side episodes: single-orbit tube ({nt} states), "
-              f"zeta={ZETA_D} ph={PHD} pg={pg:.4f} bcf={BCF_D} "
+              f"zeta={state['zeta']:.3e} (auto={int(AUTOZETA)}, "
+              f"dS14={state['dS14']:+.2f} U4={state['u4']:+.2f}) "
+              f"ph={PHD} pg={pg:.4f} bcf={BCF_D} "
               f"bc4={BC4_D} mu={MU} maxstep={MAXSTEP}", flush=True)
         acc = {"of": [0, 0], "oi": [0, 0], "re": [0, 0], "cf": [0, 0],
                "c4": [0, 0]}
@@ -571,13 +649,18 @@ def main():
                     # skeleton, recompiled at each episode open), so a
                     # commit no longer forces a rebuild -- retube only
                     # every RETUBE_EVERY commits to refresh the local
-                    # m^2 content (each episode is balanced under its
-                    # own frozen compiled U; the closed-sector measure
-                    # is U-independent, so any cadence is unbiased)
+                    # m^2 content. zeta IS recalibrated every commit
+                    # (cheap: 24 insert/undo probes) -- the insert cost
+                    # drifts continuously with the pin gap, and a stale
+                    # zeta silently kills one leg of the insert/remove
+                    # sector. Both are exactly unbiased: the closed
+                    # measure is U- and zeta-independent.
                     L = W.Live(s.manifold, driver=s.do_bistellar_move)
                     commits += 1
                     if commits % RETUBE_EVERY == 0:
                         retube()
+                    elif AUTOZETA:
+                        reconfig()
                 acc["re"][0] += r["nH"] + r["nG"]
                 acc["re"][1] += r["accH"] + r["accG"]
                 if r["opened"]:
@@ -597,15 +680,17 @@ def main():
             gap = fv[1] - 6.0 * fv[3] / ETARGET
             log.write(json.dumps({
                 "cyc": cyc, "f": fv, "gap": round(gap, 3),
-                "S": round(s.current_objective, 3), "ep": eps}) + "\n")
+                "S": round(s.current_objective, 3),
+                "zeta": state["zeta"], "dS14": state["dS14"],
+                "u4": state["u4"], "ep": eps}) + "\n")
             log.flush()
             if cyc % 10 == 0 or cyc == cycles - 1:
                 print(f"cyc {cyc:4d} f0={fv[0]} gap={gap:+6.2f} "
                       f"S={s.current_objective:8.2f} | "
                       + " ".join(f"{k}:{x[1]}/{x[0]}"
                                  for k, x in acc.items())
-                      + f" undone={undone} ({time.time() - t0:.0f}s)",
-                      flush=True)
+                      + f" undone={undone} z={state['zeta']:.1e}"
+                      + f" ({time.time() - t0:.0f}s)", flush=True)
         s.manifold.save(outbase + ".final.mfd")
         log.close()
         print(f"done: {outbase}.final.mfd (+ .chan.jsonl) "
