@@ -91,6 +91,7 @@ UCAP_LO = float(os.environ.get("UCAP_LO", "-15.0"))
 LMAX = int(os.environ.get("LMAX", "4096"))
 RETUBE_EVERY = int(os.environ.get("RETUBE_EVERY", "10"))  # commits/rebuild
 AUTOZETA = bool(int(os.environ.get("AUTOZETA", "1")))  # calibrate zeta
+ANCHOR_U = float(os.environ.get("ANCHOR_U", "20.6"))   # canonical U[3^4]
 
 
 def _e(a, b):
@@ -467,7 +468,22 @@ def build_orbit_tube(s, L, ntry=8, nodecap=200000):
     for cen, coc in reversed(applied):
         L.do(coc, cen)
     assert abs(s.current_objective - S0) < 1e-6
-    return tab, (fv[1], fv[3])
+    # ANCHOR: pin U([3,3,3,3]) to a canonical value. A uniform shift of U
+    # is a pure gauge choice -- it trades exactly against zeta -- but
+    # leaving it free let U([3,3,3,3]) wander up to 10 units between
+    # rebuilt corridors (each retube may find a different seed/orbit),
+    # and log zeta* = dS14 - U4 - const inherited every bit of it:
+    # measured log10 zeta spreads of 1.4 (quenched) and 2.2 (harvested),
+    # i.e. acceptances swinging e^+-3 around 1 and alternating between
+    # insert- and remove-favouring regimes. Anchored, zeta* tracks only
+    # dS14 (sd 1.7). Returns the shift so the caller moves OFFPEN with
+    # it and the tube's RELATIVE structure is untouched.
+    shift = 0.0
+    if (3, 3, 3, 3) in tab:
+        shift = ANCHOR_U - tab[(3, 3, 3, 3)][0]
+        tab = {ms: (cum + shift, d1, d3)
+               for ms, (cum, d1, d3) in tab.items()}
+    return tab, (fv[1], fv[3]), shift
 
 
 def pin_part(f1, f3):
@@ -476,17 +492,17 @@ def pin_part(f1, f3):
     return 0.1 * (f3 - F3T) ** 2 + (f1 - 6.0 * f3 / ETARGET) ** 2
 
 
-def tube_u(tube, fref, f1, f3, ms):
+def tube_u(tube, fref, f1, f3, ms, offpen=OFFPEN):
     """Tube value at multiset ``ms``, compiled at the live f-vector
     exactly as the D engine does; off-tube states get the flat OFFPEN."""
     if ms not in tube:
-        return OFFPEN
+        return offpen
     cum, d1, d3 = tube[ms]
     return (cum + (pin_part(f1 + d1, f3 + d3) - pin_part(f1, f3))
             - (pin_part(fref[0] + d1, fref[1] + d3) - pin_part(*fref)))
 
 
-def calib_zeta(s, L, tube, fref, ntet=24):
+def calib_zeta(s, L, tube, fref, offpen=OFFPEN, ntet=24):
     """Auto-calibrate the open-sector fugacity zeta.
 
     From sampler.d (close-41 / open-insert, exact inverses):
@@ -524,7 +540,7 @@ def calib_zeta(s, L, tube, fref, ntet=24):
     if not ds:
         return ZETA_D, float("nan"), float("nan")
     dS14 = sum(ds) / len(ds)
-    u4 = tube_u(tube, fref, fv[1], fv[3], (3, 3, 3, 3))
+    u4 = tube_u(tube, fref, fv[1], fv[3], (3, 3, 3, 3), offpen)
     logz = (dS14 - u4 - math.log(fv[3]) - math.log(LMAX)
             - math.log(BC4_D / (1.0 - AOF)))
     return math.exp(max(min(logz, 30.0), -30.0)), dS14, u4
@@ -597,7 +613,8 @@ def main():
         pg = 1.0 - PHD - BCF_D - BC4_D
 
         state = {"tube": None, "fref": None, "zeta": ZETA_D,
-                 "dS14": float("nan"), "u4": float("nan")}
+                 "dS14": float("nan"), "u4": float("nan"),
+                 "offpen": OFFPEN}
 
         def reconfig():
             """Push the current tube at a freshly calibrated zeta. The
@@ -606,9 +623,10 @@ def main():
             unbiased: the closed measure is U- and zeta-independent)."""
             if AUTOZETA:
                 z, d14, u4 = calib_zeta(s, L, state["tube"],
-                                        state["fref"])
+                                        state["fref"],
+                                        state["offpen"])
                 state.update(zeta=z, dS14=d14, u4=u4)
-            s.set_worm_f0(state["tube"], [0.0] * 6, OFFPEN, Z0,
+            s.set_worm_f0(state["tube"], [0.0] * 6, state["offpen"], Z0,
                           lmax=LMAX, zeta=state["zeta"], aof=AOF,
                           ph=PHD, pg=pg, bcf=BCF_D, bc4=BC4_D,
                           maxstep=MAXSTEP, ucap_hi=UCAP_HI,
@@ -619,7 +637,11 @@ def main():
             r = build_orbit_tube(s, L)
             if r is None:
                 return 0
-            state["tube"], state["fref"] = r
+            state["tube"], state["fref"], sh = r
+            # move the off-tube flat value with the anchor shift so the
+            # tube's relative structure is untouched (uniform U shifts
+            # are gauge; only the tube-vs-off-tube gap is physical)
+            state["offpen"] = OFFPEN + sh
             reconfig()
             return len(state["tube"])
         nt = retube()
