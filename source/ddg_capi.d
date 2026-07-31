@@ -4126,6 +4126,22 @@ extern(C) int ddg_sampler_worm_chord_episode(void* sampler_handle,
     catch (Exception e) { setError(e.msg); return -1; }
 }
 
+/// Debug probe: count chain-targeted 2->3 creation sites (isolation
+/// harness for wf0ChainSites; no state change).
+extern(C) long ddg_sampler_chain_sites(void* sampler_handle,
+    int kmax) nothrow
+{
+    clearError();
+    try
+    {
+        auto s = cast(SamplerState*) sampler_handle;
+        auto mh = cast(ManifoldHandle*) s.manifoldHandle;
+        auto mw = cast(ManifoldWrapper!3*) mh.ptr;
+        return wf0ChainSitesProbe(mw.mfd, kmax);
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
 /// Set the PAIR sector knobs (zeta2 = pair fugacity, bcp = close-pair
 /// share of open steps). Everything else comes from the f0 config.
 extern(C) int ddg_sampler_worm_pair_config(void* sampler_handle,

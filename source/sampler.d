@@ -4569,6 +4569,8 @@ struct WormF0Params
     double ucapLo = -20.0;   ///< table choice; stops fallback runaway)
     double mu = 1.5;         ///< open-flag seed bias: p(v) ~ e^{-mu Z(v)}
     double zeta2 = 1.0;      ///< PAIR fugacity (two-ball episodes)
+    int chainK = 20;         ///< chord channel: chain windows searched
+                             ///< around each defect for creation sites
     double bcp = 0.05;       ///< close-pair share of open steps
     double[ulong] utab;      ///< packed spoke multiset -> U (compiled)
     WF0Skel[ulong] skel;     ///< f-independent skeleton (see wf0Compile)
@@ -5745,6 +5747,99 @@ private long wf0Deg3Scan(Vertex)(ref Manifold!(3, Vertex) mfd,
     return n;
 }
 
+/// Enumerate valid 2->3 sites lying within `kmax` chain windows of SOME
+/// degree-3 chord, and return the count; with pick >= 0 also return the
+/// pick-th site. This is the chord channel's creation-site proposal.
+///
+/// A flicker born in pristine crystal has nothing to act on -- the
+/// crystal is a local minimum, so it simply relocates (measured: 42 of
+/// 44 commits were pure transport). Born next to a defect it can react.
+/// The creation-site distribution therefore SELECTS WHICH PHYSICS the
+/// channel samples: pristine -> transport, defect-adjacent -> catalysis.
+///
+/// The set is deliberately keyed on "near ANY defect", not on the chord
+/// this episode adopted: that makes it a pure STATE FUNCTION, so the
+/// count is recomputable identically after the move and the Hastings
+/// ratio |C|/|C'| is exact. Walking outward from the adopted chord would
+/// make the set proposal-dependent, and its reverse would depend on the
+/// chain still connecting the two sites after both ends were modified.
+///
+/// Sites reachable from several chords are enumerated once per route;
+/// that multiplicity is a proposal weight, identical on both legs, so it
+/// cancels. Cost is n3 * 3 * kmax windows, each O(1).
+private long wf0ChainSites(Vertex)(ref Manifold!(3, Vertex) mfd,
+    int kmax, long pick, Vertex[3]* outFace, Vertex[2]* outAx)
+{
+    long n = 0;
+    // Two phases. Phase 1 sweeps facets and COLLECTS the start windows
+    // (a tet qualifies iff one of its six edges has degree 3); phase 2
+    // walks them. They must not interleave: writeFaceApexes performs a
+    // ridge-link lookup, and doing that inside a simplices(3) traversal
+    // corrupts the traversal. mfd.star() is avoided entirely -- it
+    // allocates, and this runs twice per episode.
+    static Vertex[4][4096] starts;   // zero-init, never = void
+    int nStart = 0;
+    foreach (f; mfd.simplices(3))
+    {
+        Vertex[4] w;
+        {
+            int k = 0;
+            foreach (x; f) { if (k < 4) w[k] = x; k++; }
+            if (k != 4) continue;
+        }
+        w[].sort();                           // canonical start window
+        bool near = false;
+        foreach (i2; 0 .. 4)
+            foreach (j2; i2 + 1 .. 4)
+            {
+                Vertex[2] e = [w[i2], w[j2]];
+                if (mfd.degreeOrZero!1(e[]) == 3) near = true;
+            }
+        if (!near) continue;
+        if (nStart >= starts.length) break;
+        starts[nStart++] = w;
+    }
+    foreach (si; 0 .. nStart)
+    {
+        Vertex[4] w = starts[si];
+        {
+            foreach (step; 0 .. kmax)
+            {
+                int[2] ap = 0;
+                if (mfd.writeFaceApexes(w[1], w[2], w[3], ap.ptr) != 2)
+                    break;
+                Vertex[2] axis = ap[0] < ap[1]
+                    ? [cast(Vertex) ap[0], cast(Vertex) ap[1]]
+                    : [cast(Vertex) ap[1], cast(Vertex) ap[0]];
+                // CANONICALIZE: the window is in chain-walk order, but
+                // moves require sorted center/coCenter -- an unsorted
+                // face corrupts the ridge bookkeeping downstream.
+                Vertex[3] face = [w[1], w[2], w[3]];
+                face[].sort();
+                if (mfd.degreeOrZero!1(axis[]) == 0
+                    && !mfd.anyFrozen(face[]))
+                {
+                    if (pick >= 0 && n == pick && outFace !is null)
+                    { *outFace = face; *outAx = axis; }
+                    n++;
+                }
+                // advance: drop w[0], adopt the apex opposite it
+                Vertex nxt = (ap[0] == w[0]) ? cast(Vertex) ap[1]
+                                             : cast(Vertex) ap[0];
+                if (ap[0] != w[0] && ap[1] != w[0]) break;
+                w = [w[1], w[2], w[3], nxt];
+            }
+        }
+    }
+    return n;
+}
+
+/// Isolation wrapper for the site enumerator (see ddg_sampler_chain_sites).
+long wf0ChainSitesProbe(Vertex)(ref Manifold!(3, Vertex) mfd, int kmax)
+{
+    return wf0ChainSites!Vertex(mfd, kmax, -1, null, null);
+}
+
 /// One CHORD bilocal episode (see the note above). Returns true if the
 /// closed state changed. currentObjective stays exact; a capped walk is
 /// unwound exactly.
@@ -5798,28 +5893,21 @@ bool wormChordPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
     if (!(pcl > 0.0 && pcl < 1.0)) return false;
 
     // -- OPEN --------------------------------------------------------------
-    // ball 0: CREATE a chord (2->3) on a uniformly drawn face
-    auto facet = mfd.randomFacetOfDim(3);
-    Vertex[4] tet;
-    {
-        int i = 0;
-        foreach (x; facet) tet[i++] = x;
-    }
-    tet[].sort();
-    immutable int skip = uniform(0, 4);
-    Vertex[3] face;
-    {
-        int k = 0;
-        foreach (i; 0 .. 4) if (i != skip) face[k++] = tet[i];
-    }
-    int[2] ap = 0;
-    if (mfd.writeFaceApexes(face[0], face[1], face[2], ap.ptr) != 2)
-        return false;
-    Vertex[2] axis = ap[0] < ap[1]
-        ? [cast(Vertex) ap[0], cast(Vertex) ap[1]]
-        : [cast(Vertex) ap[1], cast(Vertex) ap[0]];
-    if (mfd.degreeOrZero!1(axis[]) != 0) return false;   // edge exists
-    if (mfd.anyFrozen(face[])) return false;
+    // ball 0: CREATE a chord (2->3) at a site drawn uniformly from the
+    // chain-targeted candidate set -- valid 2->3 sites within chainK
+    // windows of some defect, so the flicker is born where it has
+    // something to act on (see wf0ChainSites).
+    immutable long nSite = wf0ChainSites!Vertex(mfd, cfg.chainK, -1,
+                                                null, null);
+    if (nSite <= 0) return false;
+    Vertex[3] face = -1;
+    Vertex[2] axis = -1;
+    wf0ChainSites!Vertex(mfd, cfg.chainK, uniform(0, nSite),
+                         &face, &axis);
+    // the pick MUST have been written: the count pass and the pick pass
+    // enumerate the same state in the same order. Guard anyway -- a
+    // silent miss would hand BM() a degenerate simplex.
+    if (face[0] < 0 || axis[0] < 0) return false;
 
     // ball 1: ADOPT a degree-3 chord, uniform over the n3 of them
     immutable long n3 = wf0Deg3Scan(mfd, -1, null, null);
@@ -5845,9 +5933,8 @@ bool wormChordPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
     real dP23 = 0.0L;
     if (potState !is null)
         dP23 = mfd.potentialBistellarDelta(bm23, *potState, *pot, false);
-    immutable long f2 = cast(long) mfd.fVector[2];
     immutable double laOpen = cfg.zeta2 - cast(double)(dB23 + dP23)
-        + log(cast(double) f2) + log(cast(double) n3) + log(pcl);
+        + log(cast(double) nSite) + log(cast(double) n3) + log(pcl);
     if (!(laOpen >= 0 || uniform01 <= exp(laOpen))) return false;
 
     applyMove(face[], axis[]);
@@ -5914,13 +6001,25 @@ bool wormChordPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
         real dP = 0.0L;
         if (potState !is null)
             dP = mfd.potentialBistellarDelta(bm32, *potState, *pot, false);
-        // reverse-open counts are POST-close
-        immutable long f2after = cast(long) mfd.fVector[2] - 2;
+        // The reverse open draws ball 1's site from the POST-close
+        // candidate set and adopts ball 0's chord from the post-close
+        // degree-3 set, so both counts are taken after the move. The
+        // site set has no cheap local delta (a 3->2 can move defects in
+        // and out of chain range), so it is recomputed on the applied
+        // state and the move is rolled back if the draw rejects.
         immutable long n3after = wf0Deg3Scan(mfd, -1, null, null)
             + wf0Deg3Delta(mfd, chordB, tri);
         if (n3after <= 0) continue;
+        // measure the post-close candidate count on the applied state,
+        // then restore so the decision is taken in a clean state and the
+        // move is re-applied only on acceptance
+        applyMove(chordB[], tri[]);
+        immutable long nSiteAfter = wf0ChainSites!Vertex(mfd, cfg.chainK,
+                                                         -1, null, null);
+        applyMove(tri[], chordB[]);
+        if (nSiteAfter <= 0) continue;
         immutable double la = -cast(double)(dB + dP) - cfg.zeta2
-            - log(cast(double) f2after) - log(cast(double) n3after)
+            - log(cast(double) nSiteAfter) - log(cast(double) n3after)
             - log(pcl);
         if (la >= 0 || uniform01 <= exp(la))
         {
