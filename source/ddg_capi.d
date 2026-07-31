@@ -1645,6 +1645,13 @@ private struct SamplerState
     WormConfig wormCfg;
     Deg3Set!int deg4Edges;
 
+    // f0 worm channel (scheme C; dim=3 only): extended-ensemble vertex
+    // removal/insertion with a frozen umbrella table. See sampler.wormF0Episode.
+    // Not cocycle- or ledger-safe (gated in the episode entry point).
+    WormF0Params wormF0;
+    bool wormF0On = false;
+    WF0Applied!int[] wormF0Undo;
+
     // Per-vertex move-attribution counters (measured combinatorial lapse).
     // Opt-in (small per-proposal AA overhead); dim=3 only. See sampler.MoveCounters.
     bool trackMoveCounts = false;
@@ -3929,6 +3936,133 @@ extern(C) int ddg_sampler_do_bistellar_move(void* sampler_handle,
         }
         s.currentObjective = real.nan;
         return 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Configure the f0 worm channel (scheme C; dim=3 samplers only). keys/vals
+/// are the frozen umbrella table (packed spoke-multiset bucket counts ->
+/// U value; see sampler.wf0Key); ufb6 the 6 linear-fallback coefficients
+/// (n3,n4,n5,n6,n7plus,Zdeficit), ufbc its constant, z0 the Z reference.
+/// Mixture weights: aof (open-flag share of openings), ph/pg/bcf/bc4 the
+/// open-state kernel shares (must sum to 1). maxstep sizes the exact-undo
+/// buffer. Pass n = 0 to reconfigure weights while keeping the table.
+extern(C) int ddg_sampler_worm_f0_config(void* sampler_handle,
+    const(ulong)* keys, const(double)* vals, long n,
+    const(double)* ufb6, double ufbc, double z0, int lmax,
+    double zeta, double aof, double ph, double pg, double bcf,
+    double bc4, int maxstep, double ucap_hi, double ucap_lo,
+    double mu) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null handle"); return -1; }
+        auto s = cast(SamplerState*) sampler_handle;
+        if (s.dim != 3) { setError("f0 worm requires dim=3"); return -1; }
+        if (ph + pg + bcf + bc4 > 1.0 + 1e-9 || ph < 0 || pg < 0
+            || bcf <= 0 || bc4 <= 0)
+        { setError("bad kernel mixture"); return -1; }
+        if (n > 0)
+        {
+            s.wormF0.utab = null;
+            foreach (i; 0 .. n)
+                s.wormF0.utab[keys[i]] = vals[i];
+        }
+        if (ufb6 !is null)
+            s.wormF0.ufb[] = ufb6[0 .. 6][];
+        s.wormF0.ufbc = ufbc;
+        s.wormF0.z0 = z0;
+        s.wormF0.lmax = lmax;
+        s.wormF0.zeta = zeta;
+        s.wormF0.aof = aof;
+        s.wormF0.ph = ph;
+        s.wormF0.pg = pg;
+        s.wormF0.bcf = bcf;
+        s.wormF0.bc4 = bc4;
+        s.wormF0.maxstep = maxstep;
+        s.wormF0.ucapHi = ucap_hi;
+        s.wormF0.ucapLo = ucap_lo;
+        s.wormF0.mu = mu;
+        if (s.wormF0Undo.length < maxstep + 4)
+            s.wormF0Undo = new WF0Applied!int[](maxstep + 4);
+        s.wormF0On = true;
+        return 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Debug probe: D-side umbrella value at a vertex's current star.
+extern(C) double ddg_sampler_worm_f0_u(void* sampler_handle, int v) nothrow
+{
+    clearError();
+    try
+    {
+        auto s = cast(SamplerState*) sampler_handle;
+        auto mh = cast(ManifoldHandle*) s.manifoldHandle;
+        auto mw = cast(ManifoldWrapper!3*) mh.ptr;
+        return mw.mfd.wormF0DebugU(s.wormF0, v);
+    }
+    catch (Exception e) { setError(e.msg); return double.nan; }
+}
+
+/// Run one f0-worm episode. out12 receives [opened, head, steps,
+/// closedHow, dS, umax, nH, accH, nG, accG, zmin, nZ4]. Returns 1 if the closed
+/// state changed, 0 otherwise, -1 on error. Gated: no cocycle, no
+/// geometry ledger (v2 adds CHANNEL_F0 brackets).
+extern(C) int ddg_sampler_worm_f0_episode(void* sampler_handle,
+    double* out10) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null handle"); return -1; }
+        auto s = cast(SamplerState*) sampler_handle;
+        if (!s.wormF0On) { setError("f0 worm not configured"); return -1; }
+        if (s.dim != 3) { setError("f0 worm requires dim=3"); return -1; }
+        if (s.cocycle.enabled)
+        { setError("f0 worm is not cocycle-safe"); return -1; }
+        if (s.geoLedger.trackRoles || s.geoLedger.logEvents
+            || s.geoLedger.logSixFlips)
+        { setError("f0 worm does not mirror the geometry ledger yet");
+          return -1; }
+        auto mh = cast(ManifoldHandle*) s.manifoldHandle;
+        auto mw = cast(ManifoldWrapper!3*) mh.ptr;
+        if (s.currentObjective != s.currentObjective)
+            recomputeObjective(s);
+        struct Params { int numFacetsTarget; real hingeDegreeTarget;
+            real numFacetsCoef; real numHingesCoef; real hingeDegreeVarianceCoef;
+            real coDim3DegreeVarianceCoef; real hingeDegreeTargetCoef;
+            real coDim3DegreeTargetCoef; real coDim3DegreeTarget; }
+        auto params = Params(s.numFacetsTarget,
+            cast(real) s.hingeDegreeTarget, cast(real) s.numFacetsCoef,
+            cast(real) s.numHingesCoef, cast(real) s.hingeDegreeVarianceCoef,
+            cast(real) s.coDim3DegreeVarianceCoef,
+            cast(real) s.hingeDegreeTargetCoef,
+            cast(real) s.coDim3DegreeTargetCoef,
+            cast(real) s.coDim3DegreeTarget);
+        WormF0Result res;
+        immutable changed = mw.mfd.wormF0Episode(s.currentObjective,
+            s.unusedVertices, params, s.wormF0,
+            s.potEnabled ? &s.vertexPotState : null,
+            s.potEnabled ? &s.vertexPot : null,
+            s.wormF0Undo, res);
+        if (out10 !is null)
+        {
+            out10[0] = res.opened;
+            out10[1] = res.head;
+            out10[2] = res.steps;
+            out10[3] = res.closedHow;
+            out10[4] = res.dS;
+            out10[5] = res.umax;
+            out10[6] = res.nH;
+            out10[7] = res.accH;
+            out10[8] = res.nG;
+            out10[9] = res.accG;
+            out10[10] = res.zmin;
+            out10[11] = res.nZ4;
+        }
+        return changed ? 1 : 0;
     }
     catch (Exception e) { setError(e.msg); return -1; }
 }

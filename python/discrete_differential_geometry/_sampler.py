@@ -445,6 +445,65 @@ class ManifoldSampler:
             None, None, ds, 1)
         return float(ds[0]) if r != 0 or not commit else None
 
+    def set_worm_f0(self, utab: dict, ufb, ufbc: float, z0: float,
+                    lmax: int = 4096, zeta: float = 0.05,
+                    aof: float = 0.5, ph: float = 0.45,
+                    pg: float = 0.49, bcf: float = 0.01,
+                    bc4: float = 0.05, maxstep: int = 100000,
+                    ucap_hi: float = 35.0,
+                    ucap_lo: float = -20.0, mu: float = 1.5) -> None:
+        """Configure the f0 worm channel (scheme C, design doc 3.2).
+
+        ``utab`` maps spoke-degree multisets (tuples) to umbrella
+        values; keys are packed into degree-bucket counts (3..9+, 8
+        bits each) -- distinct multisets with any degree above 9 may
+        collide, resolved by min. ``ufb`` is the 6-coefficient linear
+        fallback (n3, n4, n5, n6, n7plus, Zdeficit) with constant
+        ``ufbc`` and Z reference ``z0``. Mixture weights: ``aof`` =
+        open-flag share of openings; ``ph``/``pg``/``bcf``/``bc4`` =
+        head / global-repair / close-flag / close-41 shares of open
+        steps. ``maxstep`` caps episodes (capped walks are exactly
+        undone in the D core)."""
+        packed = {}
+        for ms, u in utab.items():
+            k = 0
+            for d in ms:
+                k += 1 << (8 * min(max(int(d) - 3, 0), 6))
+            if k in packed:
+                packed[k] = min(packed[k], float(u))
+            else:
+                packed[k] = float(u)
+        keys = np.array(sorted(packed), dtype=np.uint64)
+        vals = np.array([packed[k] for k in sorted(packed)],
+                        dtype=np.float64)
+        fb = np.asarray(ufb, dtype=np.float64)
+        assert fb.shape == (6,)
+        _lib.ddg_sampler_worm_f0_config(
+            self._handle,
+            keys.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+            vals.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+            len(keys),
+            fb.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+            float(ufbc), float(z0), int(lmax), float(zeta),
+            float(aof), float(ph), float(pg), float(bcf), float(bc4),
+            int(maxstep), float(ucap_hi), float(ucap_lo), float(mu))
+
+    def worm_f0_episode(self) -> dict:
+        """Run one f0-worm episode; returns a diagnostics dict. The
+        tracked objective stays exact across episodes."""
+        out = np.zeros(12, dtype=np.float64)
+        changed = _lib.ddg_sampler_worm_f0_episode(
+            self._handle,
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
+        return {"changed": bool(changed), "opened": int(out[0]),
+                "head": int(out[1]), "steps": int(out[2]),
+                "closed": {0: None, 1: "cf", 2: "c4", 3: "undone"}[
+                    int(out[3])],
+                "dS": float(out[4]), "umax": float(out[5]),
+                "nH": int(out[6]), "accH": int(out[7]),
+                "nG": int(out[8]), "accG": int(out[9]),
+                "zmin": int(out[10]), "nZ4": int(out[11])}
+
     def set_nonlocal_slide_prob(self, prob: float, max_step: int = 8) -> None:
         """Enable the NON-LOCAL slide channel (dim = 3 only).
 

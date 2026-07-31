@@ -4515,6 +4515,669 @@ unittest
     assert(mfd.findProblems.length == 0);
 }
 
+
+// ---------------------------------------------------------------------------
+// f0 worm channel (scheme C, notes/bilocal-worm-design.md 3.2)
+// ---------------------------------------------------------------------------
+/*
+Extended-ensemble vertex removal / insertion. Closed states T carry
+weight e^-S; open states (T, head) carry zeta * e^{-S + U(star(head))}.
+U (a frozen table over spoke-degree multisets + linear fallback) and
+zeta shape only the auxiliary open sector: the closed-sector
+conditional is e^-S exactly for ANY choice, so measurements gated on
+closed states are unbiased. One episode = open -> local walk -> close;
+a walk that hits the step cap is EXACTLY UNDONE (never committed).
+
+Open-state kernel mixture (fixed weights; invalid draws auto-reject):
+  ph   HEAD kernel: uniform over the enumerated class H of moves whose
+       support CONTAINS the head. Only these can change a spoke degree
+       (an edge (head,u) changes degree only when head is in the move
+       support), so dU != 0 exactly on H.
+         alpha = e^{-(dS - dU)} * |H| / |H'|
+  pg   GLOBAL repair kernel: chooseRandomMove, auto-rejected when the
+       head is in the support or the move is vertex-changing; plain
+       Metropolis e^{-dS} (dU = 0 identically off the head; the same
+       exact=false proposal treatment as run()).
+  bcf  close-flag:  alpha = e^{-U} / (zeta f0) * aof/bcf
+  bc4  close-41 (Z=4 only):
+       alpha = e^{-dS41 - U} / zeta * aoi / (bc4 * f3' * pool')
+Openings (one attempt per episode call, from closed):
+  aof  open-flag:   alpha = zeta e^{U} f0 * bcf/aof
+  aoi  open-insert: alpha = zeta e^{-dS14 + U(3,3,3,3)} f3 * pool
+                            * bc4/aoi
+The 1<->4 sector crossings maintain the caller's unusedVertices pool
+exactly like the targeted-move capi path. Gates (enforced by the capi
+wrapper): dim = 3, no cocycle, no geometry ledger (v2 adds CHANNEL_F0
+brackets + label epochs per design doc 2.6).
+*/
+
+/// Frozen umbrella + kernel mixture for the f0 worm.
+struct WormF0Params
+{
+    double zeta = 0.05;
+    double aof = 0.5;        ///< open-flag share of opening attempts
+    double ph = 0.45;        ///< head-kernel share of open steps
+    double pg = 0.49;        ///< global-repair share
+    double bcf = 0.01;       ///< close-flag share
+    double bc4 = 0.05;       ///< close-41 share
+    int maxstep = 100000;
+    int lmax = 4096;
+    double z0 = 12.0;
+    double[6] ufb = 0.0;     ///< (n3,n4,n5,n6,n7plus,Zdef) fallback
+    double ufbc = 0.0;
+    double ucapHi = 35.0;    ///< U ceiling: soft confinement (a valid
+    double ucapLo = -20.0;   ///< table choice; stops fallback runaway)
+    double mu = 1.5;         ///< open-flag seed bias: p(v) ~ e^{-mu Z(v)}
+    double[ulong] utab;      ///< packed spoke multiset -> U
+}
+
+struct WormF0Result
+{
+    int opened;              ///< 0 rejected, 1 flag, 2 insert
+    int head = -1;
+    int steps;
+    int closedHow;           ///< 0 none, 1 cf, 2 c4, 3 cap-undone
+    double dS = 0.0;         ///< committed S change (undone => ~0)
+    double umax = 0.0;
+    long nH, accH, nG, accG;
+    int zmin = 999;          ///< deepest link size reached
+    long nZ4;                ///< steps spent at Z == 4
+}
+
+/// One committed move (for exact cap-undo).
+struct WF0Applied(Vertex)
+{
+    Vertex[4] cen;
+    Vertex[4] coc;
+    int cl, ccl;
+}
+
+/// Spoke multiset -> packed bucket counts (degrees 3..9+, 8 bits each).
+private ulong wf0Key(scope const(size_t)[] degs) @nogc nothrow
+{
+    ulong k = 0;
+    foreach (d; degs)
+    {
+        long b = cast(long) d - 3;
+        if (b < 0) b = 0;
+        if (b > 6) b = 6;
+        k += 1UL << (8 * cast(int) b);
+    }
+    return k;
+}
+
+private double wf0U(const ref WormF0Params cfg,
+                    scope const(size_t)[] degs) nothrow
+{
+    immutable k = wf0Key(degs);
+    if (auto p = k in cfg.utab)
+    {
+        double u = *p;
+        if (u > cfg.ucapHi) u = cfg.ucapHi;
+        if (u < cfg.ucapLo) u = cfg.ucapLo;
+        return u;
+    }
+    double[5] n = 0.0;
+    foreach (d; degs)
+    {
+        long b = cast(long) d - 3;
+        if (b < 0) b = 0;
+        if (b > 4) b = 4;
+        n[cast(int) b] += 1.0;
+    }
+    double u = cfg.ufbc + cfg.ufb[5] * (cfg.z0 - cast(double) degs.length);
+    foreach (i; 0 .. 5) u += cfg.ufb[i] * n[i];
+    if (u > cfg.ucapHi) u = cfg.ucapHi;
+    if (u < cfg.ucapLo) u = cfg.ucapLo;
+    return u;
+}
+
+/// Head-class candidate (support contains the head).
+private struct WF0Cand(Vertex)
+{
+    bool is23;
+    Vertex[3] f;             ///< 2->3 center face | 3->2 link triangle
+    Vertex[2] p;             ///< 2->3 apex pair   | 3->2 center edge
+}
+
+/// Star of the head from a known seed tet: fills tets, link vertices
+/// and spoke degrees. Returns Z, or -1 on buffer overflow.
+private int wf0Star(Vertex)(ref Manifold!(3, Vertex) mfd, Vertex v,
+    Vertex[4] seed, Vertex[4][] tets, ref int nT,
+    Vertex[] lk, size_t[] degs)
+{
+    nT = collectStar(mfd, v, seed, tets, 0);
+    int z = 0;
+    foreach (i; 0 .. nT)
+        foreach (u; tets[i])
+        {
+            if (u == v) continue;
+            bool seen = false;
+            foreach (j; 0 .. z) if (lk[j] == u) { seen = true; break; }
+            if (seen) continue;
+            if (z >= lk.length) return -1;
+            lk[z] = u;
+            Vertex[2] e = v < u ? [v, u] : [u, v];
+            degs[z] = mfd.degreeOrZero!1(e[]);
+            z++;
+        }
+    return z;
+}
+
+/// Enumerate H at the head (optimistic validity: cheap static checks;
+/// the apply step re-validates and a failed draw is a null step, the
+/// same rule on both sides of any transition).
+private int wf0EnumH(Vertex)(ref Manifold!(3, Vertex) mfd, Vertex v,
+    scope Vertex[4][] tets, int nT, WF0Cand!Vertex[] outC)
+{
+    int n = 0;
+    Vertex[3][160] seenF = void;
+    int nSF = 0;
+    Vertex[2][160] seenE = void;
+    int nSE = 0;
+    foreach (ti; 0 .. nT)
+    {
+        auto T = tets[ti];
+        foreach (skip; 0 .. 4)
+        {
+            Vertex[3] face;
+            int k = 0;
+            foreach (i; 0 .. 4) if (i != skip) face[k++] = T[i];
+            bool dup = false;
+            foreach (i; 0 .. nSF) if (seenF[i] == face) { dup = true; break; }
+            if (dup) continue;
+            if (nSF < seenF.length) seenF[nSF++] = face;
+            int[2] ap = 0;
+            if (mfd.writeFaceApexes(face[0], face[1], face[2], ap.ptr) != 2)
+                continue;
+            Vertex[2] axis = ap[0] < ap[1]
+                ? [cast(Vertex) ap[0], cast(Vertex) ap[1]]
+                : [cast(Vertex) ap[1], cast(Vertex) ap[0]];
+            bool hasV = false;
+            foreach (x; face) if (x == v) hasV = true;
+            foreach (x; axis) if (x == v) hasV = true;
+            if (!hasV) continue;
+            if (mfd.degreeOrZero!1(axis[]) != 0) continue;
+            if (mfd.anyFrozen(face[])) continue;
+            if (n < outC.length)
+            {
+                outC[n].is23 = true;
+                outC[n].f = face;
+                outC[n].p = axis;
+                n++;
+            }
+        }
+        foreach (a; 0 .. 4)
+            foreach (b; a + 1 .. 4)
+            {
+                Vertex[2] e = T[a] < T[b] ? [T[a], T[b]] : [T[b], T[a]];
+                bool dup = false;
+                foreach (i; 0 .. nSE) if (seenE[i] == e) { dup = true; break; }
+                if (dup) continue;
+                if (nSE < seenE.length) seenE[nSE++] = e;
+                if (mfd.degreeOrZero!1(e[]) != 3) continue;
+                int[8] lkB = 0;
+                if (mfd.writeEdgeLinkCycle(e[0], e[1], T[], lkB.ptr) != 3)
+                    continue;
+                Vertex[3] link = [cast(Vertex) lkB[0], cast(Vertex) lkB[1],
+                                  cast(Vertex) lkB[2]];
+                link[].sort();
+                bool hasV = (e[0] == v || e[1] == v);
+                foreach (x; link) if (x == v) hasV = true;
+                if (!hasV) continue;
+                if (n < outC.length)
+                {
+                    outC[n].is23 = false;
+                    outC[n].f = link;
+                    outC[n].p = e;
+                    n++;
+                }
+            }
+    }
+    return n;
+}
+
+/// Debug: umbrella value at v's current star (capi probe).
+double wormF0DebugU(Vertex)(ref Manifold!(3, Vertex) mfd,
+    const ref WormF0Params cfg, Vertex v)
+{
+    Vertex[4] seed;
+    bool ok = false;
+    foreach (f; mfd.star(v.only))
+    {
+        int i = 0;
+        foreach (x; f) seed[i++] = x;
+        ok = (i == 4);
+        break;
+    }
+    if (!ok) return double.nan;
+    Vertex[4][96] tets = void;
+    int nT = 0;
+    Vertex[48] lk = void;
+    size_t[48] degs = void;
+    immutable z = wf0Star(mfd, v, seed, tets[], nT, lk[], degs[]);
+    if (z < 0) return double.nan;
+    return wf0U(cfg, degs[0 .. z]);
+}
+
+/// One full f0-worm episode. Returns true if the episode CHANGED the
+/// closed state (an f0-changing closure committed); the result struct
+/// carries diagnostics either way. currentObjective is kept exact.
+bool wormF0Episode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
+    ref real currentObjective, ref Vertex[] unusedVertices,
+    P params, const ref WormF0Params cfg,
+    VertexPotState!Vertex* potState, VertexPot* pot,
+    scope WF0Applied!Vertex[] undoBuf, out WormF0Result res)
+{
+    import std.math : log, exp;
+    import std.random : uniform, uniform01;
+    alias BM = BistellarMove!(3, Vertex);
+
+    real baseRun = currentObjective
+        - (potState !is null ? potState.total : 0.0L);
+    real deltaTotal = 0.0L;
+    int nApplied = 0;
+
+    // -- shared apply/undo through the run() commit pipeline ------------
+    real applyMove(scope const(Vertex)[] cen, scope const(Vertex)[] coc)
+    {
+        auto bm = BM(cen, coc);
+        immutable real dBase =
+            mfd.speculativeBistellarDelta(bm, baseRun, params);
+        real dPot = 0.0L;
+        if (potState !is null)
+            dPot = mfd.potentialBistellarDelta(bm, *potState, *pot, true);
+        mfd.doMove(bm);
+        baseRun += dBase;
+        deltaTotal += dBase + dPot;
+        return dBase + dPot;
+    }
+
+    void record(scope const(Vertex)[] cen, scope const(Vertex)[] coc)
+    {
+        assert(nApplied < undoBuf.length, "wormF0 undo buffer overflow");
+        undoBuf[nApplied].cl = cast(int) cen.length;
+        undoBuf[nApplied].ccl = cast(int) coc.length;
+        undoBuf[nApplied].cen[0 .. cen.length] = cen[];
+        undoBuf[nApplied].coc[0 .. coc.length] = coc[];
+        nApplied++;
+    }
+
+    void unwindAll()
+    {
+        foreach_reverse (k; 0 .. nApplied)
+        {
+            auto cen = undoBuf[k].coc[0 .. undoBuf[k].ccl];
+            auto coc = undoBuf[k].cen[0 .. undoBuf[k].cl];
+            if (undoBuf[k].cl == 4 && undoBuf[k].ccl == 1)
+            {
+                // undoing an opening 1->4: give the label back
+                unusedVertices ~= undoBuf[k].coc[0];
+            }
+            applyMove(cen, coc);
+        }
+        nApplied = 0;
+    }
+
+    // -- head star / H-class cache --------------------------------------
+    Vertex[4][96] starT = void;
+    int nStar = 0;
+    Vertex[48] lk = void;
+    size_t[48] degs = void;
+    int z = 0;
+    double uCur = 0.0;
+    static WF0Cand!Vertex[512] hBuf;
+    int nH = 0;
+    Vertex head;
+    Vertex[4] headSeed;
+    // vertices whose state the H cache depends on ({v} u lk u apexes):
+    // a move whose support misses this set cannot invalidate the cache
+    Vertex[160] hDep = void;
+    int nDep = 0;
+
+    bool refreshHead()
+    {
+        z = wf0Star(mfd, head, headSeed, starT[], nStar, lk[], degs[]);
+        if (z < 0) return false;
+        uCur = wf0U(cfg, degs[0 .. z]);
+        nH = wf0EnumH(mfd, head, starT[], nStar, hBuf[]);
+        nDep = 0;
+        void dep(Vertex x)
+        {
+            foreach (i; 0 .. nDep) if (hDep[i] == x) return;
+            if (nDep < hDep.length) hDep[nDep++] = x;
+        }
+        dep(head);
+        foreach (i; 0 .. z) dep(lk[i]);
+        foreach (i; 0 .. nH)
+        {
+            foreach (x; hBuf[i].f) dep(x);
+            foreach (x; hBuf[i].p) dep(x);
+        }
+        return true;
+    }
+
+    // exact-restore snapshot of the head cache (rejected H proposals
+    // restore the state bit-for-bit, so the cache is restored too)
+    Vertex[4][96] snapT = void;
+    int snapNStar, snapZ, snapNH, snapNDep;
+    Vertex[48] snapLk = void;
+    size_t[48] snapDegs = void;
+    double snapU;
+    static WF0Cand!Vertex[512] snapH;
+    Vertex[160] snapDep = void;
+    Vertex[4] snapSeed;
+
+    void saveCache()
+    {
+        snapT[0 .. nStar] = starT[0 .. nStar];
+        snapNStar = nStar;
+        snapLk[0 .. z] = lk[0 .. z];
+        snapDegs[0 .. z] = degs[0 .. z];
+        snapZ = z;
+        snapU = uCur;
+        snapH[0 .. nH] = hBuf[0 .. nH];
+        snapNH = nH;
+        snapDep[0 .. nDep] = hDep[0 .. nDep];
+        snapNDep = nDep;
+        snapSeed = headSeed;
+    }
+
+    void restoreCache()
+    {
+        starT[0 .. snapNStar] = snapT[0 .. snapNStar];
+        nStar = snapNStar;
+        lk[0 .. snapZ] = snapLk[0 .. snapZ];
+        degs[0 .. snapZ] = snapDegs[0 .. snapZ];
+        z = snapZ;
+        uCur = snapU;
+        hBuf[0 .. snapNH] = snapH[0 .. snapNH];
+        nH = snapNH;
+        hDep[0 .. snapNDep] = snapDep[0 .. snapNDep];
+        nDep = snapNDep;
+        headSeed = snapSeed;
+    }
+
+    // -- opening attempt -------------------------------------------------
+    immutable long f0 = cast(long) mfd.fVector[0];
+    immutable long f3 = cast(long) mfd.fVector[3];
+    immutable double aoi = 1.0 - cfg.aof;
+
+    if (uniform01 < cfg.aof)
+    {
+        // open-flag: seed biased toward low-Z vertices, p(v) = w/W with
+        // w = e^{-mu Z(v)}. Z is O(1) from the tet-degree (link-sphere
+        // Euler: Z = 2 + D/2). The W/w Hastings factor replaces f0; the
+        // close-flag reverse uses the SAME W (T unchanged by flag moves).
+        res.opened = 0;
+        double W = 0.0;
+        foreach (sv; mfd.simplices(0))
+        {
+            immutable zz = 2.0
+                + 0.5 * cast(double) mfd.degreeOrZero!0(sv);
+            W += exp(-cfg.mu * zz);
+        }
+        immutable double rPick = uniform01 * W;
+        double acc = 0.0;
+        Vertex v = Vertex.init;
+        double wv = 0.0;
+        bool got = false;
+        foreach (sv; mfd.simplices(0))
+        {
+            immutable zz = 2.0
+                + 0.5 * cast(double) mfd.degreeOrZero!0(sv);
+            immutable w = exp(-cfg.mu * zz);
+            acc += w;
+            if (acc >= rPick) { v = sv.front; wv = w; got = true; break; }
+        }
+        if (!got) return false;
+        // seed tet: any facet containing v (O(N), once per episode)
+        bool seedOk = false;
+        foreach (f; mfd.star(v.only))
+        {
+            int i = 0;
+            foreach (x; f) headSeed[i++] = x;
+            seedOk = (i == 4);
+            break;
+        }
+        if (!seedOk) return false;
+        head = v;
+        if (!refreshHead()) return false;
+        immutable double la = log(cfg.zeta) + uCur + log(W / wv)
+            + log(cfg.bcf / cfg.aof);
+        if (!(la >= 0 || uniform01 <= exp(la))) return false;
+        res.opened = 1;
+    }
+    else
+    {
+        // open-insert: uniform tet, uniform pool label, 1->4
+        res.opened = 0;
+        auto facet = mfd.randomFacetOfDim(3);
+        Vertex[4] tet;
+        int i = 0;
+        foreach (x; facet) tet[i++] = x;
+        tet[].sort();
+        // label ~ uniform over [0, lmax); an occupied draw is a null
+        // attempt (the same rule prices the reverse side, so the
+        // proposal factor is 1/lmax on both legs -- no pool counting)
+        auto vn = cast(Vertex) uniform(0, cfg.lmax);
+        auto bm14 = BM(tet[], vn.only);
+        if (!mfd.hasValidMove(bm14)) return false;
+        immutable real dB = mfd.speculativeBistellarDelta(bm14, baseRun,
+                                                          params);
+        real dP = 0.0L;
+        if (potState !is null)
+            dP = mfd.potentialBistellarDelta(bm14, *potState, *pot, false);
+        size_t[4] freshDegs = [3, 3, 3, 3];
+        immutable double u14 = wf0U(cfg, freshDegs[]);
+        immutable double la = log(cfg.zeta) - cast(double)(dB + dP) + u14
+            + log(cast(double) f3) + log(cast(double) cfg.lmax)
+            + log(cfg.bc4 / aoi);
+        if (!(la >= 0 || uniform01 <= exp(la))) return false;
+        Vertex[1] vnA = [vn];
+        applyMove(tet[], vnA[]);
+        record(tet[], vnA[]);
+        // consume the label from the tracked pool if present
+        foreach (j; 0 .. unusedVertices.length)
+            if (unusedVertices[j] == vn)
+            {
+                unusedVertices[j] = unusedVertices[$ - 1];
+                unusedVertices = unusedVertices[0 .. $ - 1];
+                unusedVertices.assumeSafeAppend;
+                break;
+            }
+        head = vn;
+        headSeed = [tet[0], tet[1], tet[2], vn];
+        headSeed[].sort();
+        if (!refreshHead()) { unwindAll(); return false; }
+        res.opened = 2;
+    }
+    res.head = cast(int) head;
+    res.umax = uCur;
+
+    // -- open-sector walk ------------------------------------------------
+    immutable double pcum1 = cfg.ph;
+    immutable double pcum2 = cfg.ph + cfg.pg;
+    immutable double pcum3 = cfg.ph + cfg.pg + cfg.bcf;
+
+    while (true)
+    {
+        if (res.steps >= cfg.maxstep)
+        {
+            unwindAll();
+            res.closedHow = 3;
+            res.dS = cast(double) deltaTotal;   // must be ~0
+            currentObjective += deltaTotal;
+            return false;
+        }
+        res.steps++;
+        if (z < res.zmin) res.zmin = z;
+        if (z == 4) res.nZ4++;
+        immutable double r = uniform01;
+        if (r < pcum1)
+        {
+            // HEAD kernel
+            res.nH++;
+            if (nH == 0) continue;
+            auto c = hBuf[uniform(0, nH)];
+            BM bm = c.is23 ? BM(c.f[], c.p[]) : BM(c.p[], c.f[]);
+            if (!mfd.hasValidMove(bm)) continue;
+            immutable int nH0 = nH;
+            immutable double u0 = uCur;
+            saveCache();
+            immutable real d = applyMove(c.is23 ? c.f[] : c.p[],
+                                         c.is23 ? c.p[] : c.f[]);
+            // head seed survives iff it still exists; recompute from
+            // the move: pick any post-move tet containing the head
+            Vertex[4] newSeed = headSeed;
+            {
+                // post tets of the move that contain the head
+                Vertex[5] sup = void;
+                int nsup = 0;
+                foreach (x; c.f) sup[nsup++] = x;
+                foreach (x; c.p) sup[nsup++] = x;
+                bool inSup = false;
+                foreach (x; sup[0 .. nsup]) if (x == head) inSup = true;
+                if (inSup)
+                {
+                    if (c.is23)
+                    {
+                        // new tets: (f_i, f_j, p0, p1)
+                        outer23: foreach (a; 0 .. 3) foreach (b; a + 1 .. 3)
+                        {
+                            Vertex[4] t = [c.f[a], c.f[b], c.p[0], c.p[1]];
+                            bool has = false;
+                            foreach (x; t) if (x == head) has = true;
+                            if (has) { t[].sort(); newSeed = t; break outer23; }
+                        }
+                    }
+                    else
+                    {
+                        // new tets: (link tri, e0) and (link tri, e1)
+                        foreach (bb; 0 .. 2)
+                        {
+                            Vertex[4] t = [c.f[0], c.f[1], c.f[2], c.p[bb]];
+                            bool has = false;
+                            foreach (x; t) if (x == head) has = true;
+                            if (has) { t[].sort(); newSeed = t; break; }
+                        }
+                    }
+                }
+                headSeed = newSeed;
+            }
+            if (!refreshHead())
+            {
+                // pathological: reject and restore
+                applyMove(bm.coCenter, bm.center);
+                restoreCache();
+                continue;
+            }
+            immutable double la = -cast(double) d + (uCur - u0)
+                + log(cast(double) nH0) - log(cast(double)(nH == 0 ? 1 : nH));
+            if (nH != 0 && (la >= 0 || uniform01 <= exp(la)))
+            {
+                res.accH++;
+                record(c.is23 ? c.f[] : c.p[], c.is23 ? c.p[] : c.f[]);
+            }
+            else
+            {
+                applyMove(bm.coCenter, bm.center);
+                restoreCache();   // state restored exactly => cache too
+            }
+            if (uCur > res.umax) res.umax = uCur;
+        }
+        else if (r < pcum2)
+        {
+            // GLOBAL repair kernel (plain Metropolis; dU = 0 off-head)
+            res.nG++;
+            Vertex fresh = unusedVertices.length > 0
+                ? unusedVertices[$ - 1]
+                : cast(Vertex) mfd.fVector[0];
+            auto bm = mfd.chooseRandomMove(fresh, params);
+            if (bm.center.length == 1 || bm.coCenter.length == 1)
+                continue;                    // no 1<->4 inside episodes
+            bool touches = false;
+            foreach (x; bm.center) if (x == head) touches = true;
+            foreach (x; bm.coCenter) if (x == head) touches = true;
+            if (touches) continue;           // head moves belong to H
+            immutable real dB = mfd.speculativeBistellarDelta(bm, baseRun,
+                                                              params);
+            real dP = 0.0L;
+            if (potState !is null)
+                dP = mfd.potentialBistellarDelta(bm, *potState, *pot,
+                                                 false);
+            immutable double la = -cast(double)(dB + dP);
+            if (la >= 0 || uniform01 <= exp(la))
+            {
+                res.accG++;
+                applyMove(bm.center, bm.coCenter);
+                record(bm.center, bm.coCenter);
+                // refresh only if the move can see the H cache's deps
+                bool hit = false;
+                foreach (x; bm.center)
+                    foreach (i; 0 .. nDep) if (hDep[i] == x) hit = true;
+                foreach (x; bm.coCenter)
+                    foreach (i; 0 .. nDep) if (hDep[i] == x) hit = true;
+                if (hit) refreshHead();
+            }
+        }
+        else if (r < pcum3)
+        {
+            // close-flag: reverse of the biased open-flag draw
+            double W = 0.0;
+            foreach (sv; mfd.simplices(0))
+            {
+                immutable zz = 2.0
+                    + 0.5 * cast(double) mfd.degreeOrZero!0(sv);
+                W += exp(-cfg.mu * zz);
+            }
+            immutable double zh = 2.0
+                + 0.5 * cast(double) mfd.degreeOrZero!0(head.only);
+            immutable double wv = exp(-cfg.mu * zh);
+            immutable double la = -uCur - log(cfg.zeta)
+                - log(W / wv) + log(cfg.aof / cfg.bcf);
+            if (la >= 0 || uniform01 <= exp(la))
+            {
+                res.closedHow = 1;
+                res.dS = cast(double) deltaTotal;
+                currentObjective += deltaTotal;
+                return nApplied > 0;
+            }
+        }
+        else
+        {
+            // close-41
+            if (z != 4) continue;
+            Vertex[4] nb = [lk[0], lk[1], lk[2], lk[3]];
+            nb[].sort();
+            auto bm41 = BM(head.only, nb[]);
+            if (!mfd.hasValidMove(bm41)) continue;
+            immutable real dB = mfd.speculativeBistellarDelta(bm41, baseRun,
+                                                              params);
+            real dP = 0.0L;
+            if (potState !is null)
+                dP = mfd.potentialBistellarDelta(bm41, *potState, *pot,
+                                                 false);
+            immutable long f3after = cast(long) mfd.fVector[3] - 3;
+            immutable double la = -cast(double)(dB + dP) - uCur
+                - log(cfg.zeta) + log(aoi / cfg.bc4)
+                - log(cast(double) f3after)
+                - log(cast(double) cfg.lmax);
+            if (la >= 0 || uniform01 <= exp(la))
+            {
+                Vertex[1] hA = [head];
+                applyMove(hA[], nb[]);
+                unusedVertices ~= head;
+                res.closedHow = 2;
+                res.dS = cast(double) deltaTotal;
+                currentObjective += deltaTotal;
+                return true;
+            }
+        }
+    }
+    assert(0);
+}
+
 // ---------------------------------------------------------------------------
 // Move selection
 // ---------------------------------------------------------------------------

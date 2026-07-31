@@ -40,7 +40,7 @@ else uniform over the rest; Hastings uses the drawn class's counts on
 both sides (PH cancels). Episodes that hit MAXSTEP are EXACTLY UNDONE
 (full accepted-move unwind, recorded dS must be 0) -- never committed.
 
-Env: UNSEEDS UNC WLCYC WLD0 UTAB_LOAD ZETA AOF BR BCF BC4 PH
+Env: DSIDE PHD UNSEEDS UNC WLCYC WLD0 UTAB_LOAD ZETA AOF BR BCF BC4 PH
      CYCLES RELAX EPISODES MAXSTEP SEED LMAX  (AOI = 1-AOF)
 
 WLCYC > 0 runs a Wang-Landau calibration phase first (visited
@@ -79,6 +79,15 @@ BCF = float(os.environ.get("BCF", "0.01"))         # close-flag | open
 BC4 = 1.0 - BR - BCF                               # close-41 | open
 PH = float(os.environ.get("PH", "0.5"))           # head-class proposal prob
 MAXSTEP = int(os.environ.get("MAXSTEP", "3000"))
+DSIDE = bool(int(os.environ.get("DSIDE", "0")))   # D-core episode engine
+PHD = float(os.environ.get("PHD", "0.45"))        # D: head-kernel share
+MU = float(os.environ.get("MU", "3.0"))           # D: seed bias e^-mu*Z
+ZETA_D = float(os.environ.get("ZETA_D", "50.0"))
+BCF_D = float(os.environ.get("BCF_D", "1e-4"))
+BC4_D = float(os.environ.get("BC4_D", "0.1"))
+OFFPEN = float(os.environ.get("OFFPEN", "-3.0"))  # off-tube U
+UCAP_HI = float(os.environ.get("UCAP_HI", "31.0"))
+UCAP_LO = float(os.environ.get("UCAP_LO", "-15.0"))
 LMAX = int(os.environ.get("LMAX", "4096"))
 
 
@@ -147,12 +156,14 @@ def build_umbrella(s, L, nseeds, nodecap):
     S0 = s.current_objective
     data = {}                      # ms -> [cum values]
     for v in seeds:
-        data.setdefault(spoke_ms(L, v), []).append(0.0)
         ops, c = LP.plan_collapse(L, v, CIMP, 1.0, ETARGET, fv[3],
                                   fv[1], F3T, nodecap=nodecap,
                                   optimize="cost")
         if ops is None:
             continue
+        # only PLANNED corridors enter the tube (an unplanned start
+        # state would be a dead-end entrance at U = 0)
+        data.setdefault(spoke_ms(L, v), []).append(0.0)
         applied = []
         try:
             for op in ops:
@@ -404,6 +415,52 @@ class Worm:
                 "umax": round(umax, 2), "t": round(time.time() - t0, 2)}
 
 
+def build_orbit_tube(s, L, ntry=8, nodecap=200000):
+    """Single-orbit tube umbrella: the cost-optimal collapse corridor
+    of the cheapest low-Z seed, replayed exactly (planner cost model ==
+    executed dS to machine precision). Multiset values from ONE
+    coherent context -- no cross-orbit min-agg traps. Returns
+    {multiset: cum dS} including the start state at 0."""
+    import link_planner as LP
+    fv = [int(x) for x in s.manifold.f_vector]
+    S0 = s.current_objective
+    vs = sorted({x for e in L.edeg for x in e},
+                key=lambda u: (len(nb_of(L, u)), u))
+    best = None
+    for v in vs[:ntry]:
+        ops, c = LP.plan_collapse(L, v, CIMP, 1.0, ETARGET, fv[3],
+                                  fv[1], F3T, nodecap=nodecap,
+                                  optimize="cost")
+        if ops and (best is None or c < best[2]):
+            best = (v, ops, c)
+    if best is None:
+        return None
+    v, ops, c = best
+    tab = {spoke_ms(L, v): 0.0}
+    applied = []
+    try:
+        for op in ops:
+            if op[0] == "delete":
+                u = op[1]
+                tets = [t for t in L.v2t[v] if u in t]
+                lk = sorted({x for t in tets for x in t} - {v, u})
+                cen, coc = _e(v, u), tuple(lk)
+            else:
+                _, ab, xy, flavor = op
+                cen, coc = ((tuple(sorted((v,) + ab)), xy)
+                            if flavor == "23"
+                            else (ab, tuple(sorted((v,) + xy))))
+            L.do(cen, coc)
+            applied.append((cen, coc))
+            tab[spoke_ms(L, v)] = round(s.current_objective - S0, 6)
+    except Exception:
+        pass
+    for cen, coc in reversed(applied):
+        L.do(coc, cen)
+    assert abs(s.current_objective - S0) < 1e-6
+    return tab
+
+
 def anchor_utab(L, sample):
     """Uniform-shift the umbrella so U(typical closed star) ~ 0. A
     global shift is a gauge choice (trades against zeta only)."""
@@ -466,6 +523,77 @@ def main():
         "utab": len(UTAB), "aof": AOF, "br": BR, "bcf": BCF,
         "bc4": BC4, "cycles": cycles, "relax": relax,
         "episodes": episodes, "maxstep": MAXSTEP, "seed": seed}) + "\n")
+
+    if DSIDE:
+        pg = 1.0 - PHD - BCF_D - BC4_D
+
+        def retube():
+            tube = build_orbit_tube(s, L)
+            if tube is None:
+                return 0
+            s.set_worm_f0(tube, [0.0] * 6, OFFPEN, Z0, lmax=LMAX,
+                          zeta=ZETA_D, aof=AOF, ph=PHD, pg=pg,
+                          bcf=BCF_D, bc4=BC4_D, maxstep=MAXSTEP,
+                          ucap_hi=UCAP_HI, ucap_lo=UCAP_LO, mu=MU)
+            return len(tube)
+        nt = retube()
+        print(f"D-side episodes: single-orbit tube ({nt} states), "
+              f"zeta={ZETA_D} ph={PHD} pg={pg:.4f} bcf={BCF_D} "
+              f"bc4={BC4_D} mu={MU} maxstep={MAXSTEP}", flush=True)
+        acc = {"of": [0, 0], "oi": [0, 0], "re": [0, 0], "cf": [0, 0],
+               "c4": [0, 0]}
+        undone = 0
+        t0 = time.time()
+        for cyc in range(cycles):
+            if relax > 0:
+                s.run(sweeps=relax)
+            if relax > 0:
+                worm_L = W.Live(s.manifold,
+                                driver=s.do_bistellar_move)
+                globals()  # (Live rebuilt for tube builds below)
+                L = worm_L
+            eps = []
+            for _ in range(episodes):
+                r = s.worm_f0_episode()
+                if r["changed"]:
+                    # the f-vector moved: rebuild the tube (each
+                    # episode is balanced under its own frozen U --
+                    # the closed-sector measure is U-independent)
+                    L = W.Live(s.manifold, driver=s.do_bistellar_move)
+                    retube()
+                acc["re"][0] += r["nH"] + r["nG"]
+                acc["re"][1] += r["accH"] + r["accG"]
+                if r["opened"]:
+                    kind = "of" if r["opened"] == 1 else "oi"
+                    acc[kind][0] += 1
+                    acc[kind][1] += 1
+                    if r["closed"] in ("cf", "c4"):
+                        acc[r["closed"]][1] += 1
+                        acc[r["closed"]][0] += 1
+                    elif r["closed"] == "undone":
+                        undone += 1
+                eps.append({k: r[k] for k in
+                            ("opened", "head", "steps", "closed", "dS",
+                             "umax", "accH", "nH", "accG", "nG",
+                             "zmin", "nZ4", "changed")})
+            fv = [int(x) for x in s.manifold.f_vector]
+            gap = fv[1] - 6.0 * fv[3] / ETARGET
+            log.write(json.dumps({
+                "cyc": cyc, "f": fv, "gap": round(gap, 3),
+                "S": round(s.current_objective, 3), "ep": eps}) + "\n")
+            log.flush()
+            if cyc % 10 == 0 or cyc == cycles - 1:
+                print(f"cyc {cyc:4d} f0={fv[0]} gap={gap:+6.2f} "
+                      f"S={s.current_objective:8.2f} | "
+                      + " ".join(f"{k}:{x[1]}/{x[0]}"
+                                 for k, x in acc.items())
+                      + f" undone={undone} ({time.time() - t0:.0f}s)",
+                      flush=True)
+        s.manifold.save(outbase + ".final.mfd")
+        log.close()
+        print(f"done: {outbase}.final.mfd (+ .chan.jsonl) "
+              f"undone={undone}", flush=True)
+        return
 
     worm = Worm(s, L, rng)
     t0 = time.time()

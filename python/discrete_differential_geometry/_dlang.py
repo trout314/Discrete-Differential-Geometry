@@ -784,6 +784,21 @@ _lib.ddg_sampler_worm_at.argtypes = [
 _lib.ddg_sampler_worm_at.restype = ctypes.c_long
 _lib.ddg_sampler_worm_at.errcheck = _check_int
 
+# f0 worm channel (scheme C): frozen umbrella table + episode driver
+_lib.ddg_sampler_worm_f0_config.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint64),
+    ctypes.POINTER(ctypes.c_double), ctypes.c_long,
+    ctypes.POINTER(ctypes.c_double), ctypes.c_double, ctypes.c_double,
+    ctypes.c_int, ctypes.c_double, ctypes.c_double, ctypes.c_double,
+    ctypes.c_double, ctypes.c_double, ctypes.c_double, ctypes.c_int,
+    ctypes.c_double, ctypes.c_double, ctypes.c_double]
+_lib.ddg_sampler_worm_f0_config.restype = ctypes.c_int
+_lib.ddg_sampler_worm_f0_config.errcheck = _check_int
+_lib.ddg_sampler_worm_f0_episode.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_double)]
+_lib.ddg_sampler_worm_f0_episode.restype = ctypes.c_int
+_lib.ddg_sampler_worm_f0_episode.errcheck = _check_int
+
 # Non-local slide channel: (handle, prob, max_step)
 _lib.ddg_sampler_set_nonlocal_slide_prob.argtypes = [
     ctypes.c_void_p, ctypes.c_double, ctypes.c_int]
