@@ -547,8 +547,8 @@ class ManifoldSampler:
             out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
         return {"changed": bool(changed), "opened": int(out[0]),
                 "head": int(out[1]), "steps": int(out[2]),
-                "closed": {0: None, 3: "undone", 4: "pair"}.get(
-                    int(out[3])),
+                "closed": {0: None, 3: "undone", 4: "transport",
+                           6: "roundtrip"}.get(int(out[3])),
                 "dS": float(out[4]), "umax": float(out[5]),
                 "nH": int(out[6]), "accH": int(out[7]),
                 "nG": int(out[8]), "accG": int(out[9]),

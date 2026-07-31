@@ -5402,6 +5402,15 @@ bool wormPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
     // this equals it -- computed here so the two can never drift.)
     immutable double pcl = 1.0 - cfg.ph - cfg.pg;
     if (!(pcl > 0.0)) return false;
+    // FREE MODES: which ball creates (1->4) and which adopts (flag) is
+    // drawn here, and which ball is DELETED is drawn again at the close.
+    // Both are uniform over the two balls, so the 1/2's cancel between
+    // the forward close and the reverse open -- the family is then
+    // manifestly self-inverse instead of self-inverse-by-relabelling.
+    // Deleting the ADOPTED ball is transport (a vertex moves); deleting
+    // the CREATED one is a round trip that commits only corridor work.
+    immutable int cre = uniform(0, 2);
+    immutable int adp = 1 - cre;
     immutable long f3 = cast(long) mfd.fVector[3];
     res.opened = 0;
 
@@ -5448,16 +5457,16 @@ bool wormPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
         foreach (f; mfd.star(vf.only))
         {
             int i = 0;
-            foreach (x; f) ball[1].seed[i++] = x;
+            foreach (x; f) ball[adp].seed[i++] = x;
             seedOk = (i == 4);
             break;
         }
         if (!seedOk) return false;
-        ball[1].head = vf;
-        ball[1].isInsert = false;
-        if (!refresh(1)) return false;
+        ball[adp].head = vf;
+        ball[adp].isInsert = false;
+        if (!refresh(adp)) return false;
     }
-    immutable double u1 = ball[1].u;
+    immutable double u1 = ball[adp].u;
 
     // alpha_open = alpha_openinsert(0) * alpha_openflag(1), one zeta2
     immutable double laOpen = log(cfg.zeta2) - cast(double)(dB14 + dP14)
@@ -5476,18 +5485,18 @@ bool wormPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
             unusedVertices.assumeSafeAppend;
             break;
         }
-    ball[0].head = vn;
-    ball[0].isInsert = true;
-    ball[0].seed = [tet[0], tet[1], tet[2], vn];
-    ball[0].seed[].sort();
-    if (!refresh(0) || !refresh(1)) { unwindAll(); return false; }
+    ball[cre].head = vn;
+    ball[cre].isInsert = true;
+    ball[cre].seed = [tet[0], tet[1], tet[2], vn];
+    ball[cre].seed[].sort();
+    if (!refresh(cre) || !refresh(adp)) { unwindAll(); return false; }
     // the two balls must be support-disjoint from the start
-    foreach (k; 0 .. ball[0].z)
-        if (inStar(1, bLk[0][k])) { unwindAll(); return false; }
-    if (inStar(1, ball[0].head)) { unwindAll(); return false; }
+    foreach (k; 0 .. ball[cre].z)
+        if (inStar(adp, bLk[cre][k])) { unwindAll(); return false; }
+    if (inStar(adp, ball[cre].head)) { unwindAll(); return false; }
     res.opened = 2;
-    res.head = cast(int) ball[1].head;      // the head that will be deleted
-    res.umax = ball[0].u + ball[1].u;
+    res.head = cast(int) ball[adp].head;
+    res.umax = ball[cre].u + ball[adp].u;
 
     // -- two-ball walk ---------------------------------------------------
     immutable double pcum0 = 0.5 * cfg.ph;
@@ -5618,13 +5627,19 @@ bool wormPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
         }
         else
         {
-            // CLOSE the pair: 4->1 at ball 1, drop ball 0.
-            // alpha = alpha_close41(1) * alpha_closeflag(0), one zeta2.
-            if (ball[1].z != 4) continue;
-            Vertex[4] nb = [bLk[1][0], bLk[1][1], bLk[1][2], bLk[1][3]];
+            // CLOSE the pair: 4->1 at one ball (drawn), drop the other.
+            // alpha = alpha_close41(del) * alpha_closeflag(keep), one
+            // zeta2. Either ball may be the deleted one: deleting the
+            // adopted ball transports a vertex, deleting the created
+            // ball is a round trip that keeps only the corridor work.
+            immutable int del = uniform(0, 2);
+            immutable int keep = 1 - del;
+            if (ball[del].z != 4) continue;
+            Vertex[4] nb = [bLk[del][0], bLk[del][1],
+                            bLk[del][2], bLk[del][3]];
             nb[].sort();
-            Vertex[1] h1 = [ball[1].head];
-            if (!supportClear(1, h1[], nb[])) continue;
+            Vertex[1] h1 = [ball[del].head];
+            if (!supportClear(del, h1[], nb[])) continue;
             auto bm41 = BM(h1[], nb[]);
             if (!mfd.hasValidMove(bm41)) continue;
             immutable real dB = mfd.speculativeBistellarDelta(bm41, baseRun,
@@ -5638,16 +5653,16 @@ bool wormPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
             immutable long f3after = cast(long) mfd.fVector[3] - 3;
             immutable double Wc = seedWeightTotal();
             immutable double wc = exp(-cfg.mu * (2.0 + 0.5
-                * cast(double) mfd.degreeOrZero!0(ball[0].head.only)));
+                * cast(double) mfd.degreeOrZero!0(ball[keep].head.only)));
             immutable double la = -cast(double)(dB + dP)
-                - ball[0].u - ball[1].u - log(cfg.zeta2)
+                - ball[del].u - ball[keep].u - log(cfg.zeta2)
                 - log(cast(double) f3after) - log(cast(double) cfg.lmax)
                 - log(Wc / wc) - log(pcl);
             if (la >= 0 || uniform01 <= exp(la))
             {
                 applyMove(h1[], nb[]);
-                unusedVertices ~= ball[1].head;
-                res.closedHow = 4;
+                unusedVertices ~= ball[del].head;
+                res.closedHow = (del == adp) ? 4 : 6;   // 4 = transport
                 res.dS = cast(double) deltaTotal;
                 currentObjective += deltaTotal;
                 return true;
