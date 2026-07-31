@@ -5834,6 +5834,105 @@ private long wf0ChainSites(Vertex)(ref Manifold!(3, Vertex) mfd,
     return n;
 }
 
+/// Collect the tets containing an edge. Returns the count, -1 on overflow.
+private int wf0ChordStar(Vertex)(ref Manifold!(3, Vertex) mfd,
+    Vertex[2] chord, Vertex[4][] outT)
+{
+    int n = 0;
+    foreach (f; mfd.star(chord[]))
+    {
+        if (n >= outT.length) return -1;
+        Vertex[4] tt;
+        int k = 0;
+        foreach (x; f) { if (k < 4) tt[k] = x; k++; }
+        if (k != 4) continue;
+        tt[].sort();
+        outT[n++] = tt;
+    }
+    return n;
+}
+
+/// Enumerate moves whose support contains BOTH chord endpoints -- the
+/// chord analogue of wf0EnumH, and by the same lemma: only such a move
+/// can change the chord's own local configuration, so every other move
+/// leaves this head invariant.
+///
+/// This is what lets a flicker CATALYSE anything. The global repair
+/// kernel proposes uniformly over the whole manifold, so it lands in the
+/// flicker's ~5-vertex support about once in 300 draws; targeting the
+/// creation site fixed WHERE the flicker is born but not where the walk
+/// looks. Proposals drawn from this set are, by construction, exactly
+/// the moves the flicker can affect.
+///
+/// The 3->2 centered on the chord itself is EXCLUDED: that is the
+/// episode's close, not a head move.
+private int wf0ChordEnumH(Vertex)(ref Manifold!(3, Vertex) mfd,
+    Vertex[2] chord, scope Vertex[4][] tets, int nT,
+    WF0Cand!Vertex[] outC)
+{
+    int n = 0;
+    Vertex[3][256] seenF;
+    int nSF = 0;
+    Vertex[2][256] seenE;
+    int nSE = 0;
+    bool bothIn(scope const(Vertex)[] x, scope const(Vertex)[] y)
+    {
+        bool ga = false, gb = false;
+        foreach (q; x) { if (q == chord[0]) ga = true;
+                         if (q == chord[1]) gb = true; }
+        foreach (q; y) { if (q == chord[0]) ga = true;
+                         if (q == chord[1]) gb = true; }
+        return ga && gb;
+    }
+    foreach (ti; 0 .. nT)
+    {
+        auto T = tets[ti];
+        foreach (skip; 0 .. 4)
+        {
+            Vertex[3] face;                  // T is sorted => face is too
+            int k = 0;
+            foreach (i; 0 .. 4) if (i != skip) face[k++] = T[i];
+            bool dup = false;
+            foreach (i; 0 .. nSF) if (seenF[i] == face) { dup = true; break; }
+            if (dup) continue;
+            if (nSF < seenF.length) seenF[nSF++] = face;
+            int[2] ap = 0;
+            if (mfd.writeFaceApexes(face[0], face[1], face[2], ap.ptr) != 2)
+                continue;
+            Vertex[2] axis = ap[0] < ap[1]
+                ? [cast(Vertex) ap[0], cast(Vertex) ap[1]]
+                : [cast(Vertex) ap[1], cast(Vertex) ap[0]];
+            if (!bothIn(face[], axis[])) continue;
+            if (mfd.degreeOrZero!1(axis[]) != 0) continue;
+            if (mfd.anyFrozen(face[])) continue;
+            if (n < outC.length)
+            { outC[n].is23 = true; outC[n].f = face; outC[n].p = axis; n++; }
+        }
+        foreach (a2; 0 .. 4)
+            foreach (b2; a2 + 1 .. 4)
+            {
+                Vertex[2] e = T[a2] < T[b2] ? [T[a2], T[b2]]
+                                            : [T[b2], T[a2]];
+                if (e == chord) continue;        // that is the CLOSE
+                bool dup = false;
+                foreach (i; 0 .. nSE) if (seenE[i] == e) { dup = true; break; }
+                if (dup) continue;
+                if (nSE < seenE.length) seenE[nSE++] = e;
+                if (mfd.degreeOrZero!1(e[]) != 3) continue;
+                int[8] lkB = 0;
+                if (mfd.writeEdgeLinkCycle(e[0], e[1], T[], lkB.ptr) != 3)
+                    continue;
+                Vertex[3] link = [cast(Vertex) lkB[0], cast(Vertex) lkB[1],
+                                  cast(Vertex) lkB[2]];
+                link[].sort();
+                if (!bothIn(link[], e[])) continue;
+                if (n < outC.length)
+                { outC[n].is23 = false; outC[n].f = link; outC[n].p = e; n++; }
+            }
+    }
+    return n;
+}
+
 /// Isolation wrapper for the site enumerator (see ddg_sampler_chain_sites).
 long wf0ChainSitesProbe(Vertex)(ref Manifold!(3, Vertex) mfd, int kmax)
 {
@@ -5889,8 +5988,43 @@ bool wormChordPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
         nApplied = 0;
     }
 
-    immutable double pcl = 1.0 - cfg.pg;
+    // mixture: cfg.ph funds the two chord head kernels (split evenly),
+    // cfg.pg the global repair, the remainder the close
+    immutable double pcl = 1.0 - cfg.ph - cfg.pg;
     if (!(pcl > 0.0 && pcl < 1.0)) return false;
+    immutable double pch0 = 0.5 * cfg.ph;
+    immutable double pch1 = cfg.ph;
+    immutable double pgTop = cfg.ph + cfg.pg;
+
+    // per-head caches: tets containing the chord, and the candidate set
+    static Vertex[4][64][2] hTets;
+    static WF0Cand!Vertex[256][2] hCand;
+    Vertex[2][2] chords;
+    int[2] hNT = 0;
+    int[2] hNH = 0;
+
+    int refreshChord(int i)
+    {
+        hNT[i] = wf0ChordStar(mfd, chords[i], hTets[i][]);
+        if (hNT[i] < 0) { hNH[i] = 0; return -1; }
+        hNH[i] = wf0ChordEnumH(mfd, chords[i], hTets[i][], hNT[i],
+                               hCand[i][]);
+        return hNH[i];
+    }
+
+    /// a head move may not reach into the other head's tets
+    bool chordClear(int self, scope const(Vertex)[] a,
+                    scope const(Vertex)[] b)
+    {
+        immutable o = 1 - self;
+        foreach (ti; 0 .. hNT[o])
+            foreach (x; hTets[o][ti])
+            {
+                foreach (q; a) if (q == x) return false;
+                foreach (q; b) if (q == x) return false;
+            }
+        return true;
+    }
 
     // -- OPEN --------------------------------------------------------------
     // ball 0: CREATE a chord (2->3) at a site drawn uniformly from the
@@ -5942,6 +6076,10 @@ bool wormChordPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
     res.opened = 3;                      // chord-pair open
     res.head = cast(int) chordB[0];
     Vertex[2] chordA = axis;
+    chords[0] = chordA;
+    chords[1] = chordB;
+    if (refreshChord(0) < 0 || refreshChord(1) < 0)
+    { unwindAll(); return false; }
 
     // -- walk: plain Metropolis (U == 0, so dU == 0 for every move) -------
     while (true)
@@ -5955,7 +6093,44 @@ bool wormChordPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
             return false;
         }
         res.steps++;
-        if (uniform01 < cfg.pg)
+        immutable double rr = uniform01;
+        if (rr < pch1)
+        {
+            // CHORD HEAD kernel: propose only moves the flicker can
+            // affect. U == 0 here, so the ratio is pure Metropolis with
+            // the per-class count correction |H|/|H'|.
+            immutable int i = (rr < pch0) ? 0 : 1;
+            res.nH++;
+            if (hNH[i] == 0) continue;
+            auto c = hCand[i][uniform(0, hNH[i])];
+            if (!chordClear(i, c.f[], c.p[])) continue;
+            auto bmh = c.is23 ? BM(c.f[], c.p[]) : BM(c.p[], c.f[]);
+            if (!mfd.hasValidMove(bmh)) continue;
+            immutable int nH0 = hNH[i];
+            immutable real dh = applyMove(c.is23 ? c.f[] : c.p[],
+                                          c.is23 ? c.p[] : c.f[]);
+            if (refreshChord(0) < 0 || refreshChord(1) < 0)
+            {
+                applyMove(bmh.coCenter, bmh.center);
+                refreshChord(0); refreshChord(1);
+                continue;
+            }
+            immutable double lah = -cast(double) dh
+                + log(cast(double) nH0)
+                - log(cast(double)(hNH[i] == 0 ? 1 : hNH[i]));
+            if (hNH[i] != 0 && (lah >= 0 || uniform01 <= exp(lah)))
+            {
+                res.accH++;
+                record(c.is23 ? c.f[] : c.p[], c.is23 ? c.p[] : c.f[]);
+            }
+            else
+            {
+                applyMove(bmh.coCenter, bmh.center);
+                refreshChord(0); refreshChord(1);
+            }
+            continue;
+        }
+        if (rr < pgTop)
         {
             res.nG++;
             Vertex fresh = cast(Vertex) mfd.fVector[0];
@@ -5981,6 +6156,8 @@ bool wormChordPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
                 res.accG++;
                 applyMove(bm.center, bm.coCenter);
                 record(bm.center, bm.coCenter);
+                refreshChord(0);
+                refreshChord(1);
             }
             continue;
         }

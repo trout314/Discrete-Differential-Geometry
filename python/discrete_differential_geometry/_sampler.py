@@ -528,13 +528,14 @@ class ManifoldSampler:
                 "nG": int(out[8]), "accG": int(out[9]),
                 "zmin": int(out[10]), "nZ4": int(out[11])}
 
-    def set_worm_pair(self, zeta2: float = 1.0, bcp: float = 0.05) -> None:
+    def set_worm_pair(self, zeta2: float = 1.0, bcp: float = 0.05,
+                      chain_k: int = 20) -> None:
         """Configure the BILOCAL (two-ball) sector: ``zeta2`` the pair
         fugacity, ``bcp`` the close-pair share of open steps. The
         umbrella, caps and seed bias come from :meth:`set_worm_f0`,
         which must be called first."""
         _lib.ddg_sampler_worm_pair_config(
-            self._handle, float(zeta2), float(bcp))
+            self._handle, float(zeta2), float(bcp), int(chain_k))
 
     def worm_pair_episode(self) -> dict:
         """Run one bilocal episode: a vertex is created at one ball and
@@ -573,7 +574,8 @@ class ManifoldSampler:
                 "head": int(out[1]), "steps": int(out[2]),
                 "closed": {0: None, 3: "undone", 5: "chord"}.get(
                     int(out[3])),
-                "dS": float(out[4]), "nG": int(out[8]),
+                "dS": float(out[4]), "nH": int(out[6]),
+                "accH": int(out[7]), "nG": int(out[8]),
                 "accG": int(out[9])}
 
     def set_nonlocal_slide_prob(self, prob: float, max_step: int = 8) -> None:

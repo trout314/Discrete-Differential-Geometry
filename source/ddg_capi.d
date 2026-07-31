@@ -4145,7 +4145,7 @@ extern(C) long ddg_sampler_chain_sites(void* sampler_handle,
 /// Set the PAIR sector knobs (zeta2 = pair fugacity, bcp = close-pair
 /// share of open steps). Everything else comes from the f0 config.
 extern(C) int ddg_sampler_worm_pair_config(void* sampler_handle,
-    double zeta2, double bcp) nothrow
+    double zeta2, double bcp, int chain_k) nothrow
 {
     clearError();
     try
@@ -4155,6 +4155,7 @@ extern(C) int ddg_sampler_worm_pair_config(void* sampler_handle,
         if (bcp <= 0 || bcp >= 1) { setError("bad bcp"); return -1; }
         s.wormF0.zeta2 = zeta2;
         s.wormF0.bcp = bcp;
+        if (chain_k >= 1) s.wormF0.chainK = chain_k;
         return 0;
     }
     catch (Exception e) { setError(e.msg); return -1; }
