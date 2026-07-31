@@ -23,10 +23,11 @@ dict/set iteration order, which is insertion-history-dependent in Python
 and would silently break the reverse-check reversibility scheme (see the
 bilocal design doc's bookkeeping section).
 
-The 1<->4 boundary ops are NOT executable through a sampler driver (the
-capi forbids vertex-changing targeted moves); callers finish a vertex
-removal/insertion by duplicating at the Manifold level and repricing with
-a fresh sampler (see vertex_removal_v2.py for the pattern).
+The 1<->4 boundary ops run through the sampler: the capi supports
+targeted vertex-changing moves (4->1 returns the removed label to the
+sampler's pool; 1->4 consumes its caller-chosen label), and the Live
+index mirrors them, so composites price in place with no dup + fresh-
+sampler repricing dance.
 """
 from __future__ import annotations
 
@@ -292,9 +293,9 @@ def net_effect(moves):
 # Frame-parameterized, no search; E->V is valid at EVERY deg-4 edge with no
 # ambient preconditions; the matching-slot reverse is the exact inverse
 # (validated 6/6 with machine-precision dS antisymmetry, transmute_lab.py).
-# The 1<->4 boundary op cannot run through a sampler driver (capi); callers
-# execute it at the Manifold level on a dup and reprice with a fresh
-# sampler -- pass a `sampler_factory(manifold) -> (sampler, Live)` for that.
+# The 1<->4 boundary ops run THROUGH the sampler (the capi supports
+# targeted 1<->4 with label-pool bookkeeping); pass a
+# `sampler_factory(manifold) -> (sampler, Live)` to price the copy.
 
 def cycle_of(L, e):
     """Link 4-cycle of a deg-4 edge, in cyclic order (canonical start)."""
@@ -335,8 +336,8 @@ def edge_to_vertex(m0, e, label, sampler_factory, slot=0):
     a, b = cyc[slot % 4], cyc[(slot + 1) % 4]
     c, d = cyc[(slot + 2) % 4], cyc[(slot + 3) % 4]
     m2 = m0.dup() if hasattr(m0, "dup") else m0.copy()
-    m2.do_bistellar_move(sorted([u, w, c, d]), [label])   # offline 1->4
     s2, L2 = sampler_factory(m2)
+    L2.do(sorted([u, w, c, d]), [label])      # 1->4 through the sampler
     L2.do(tuple(sorted((u, w, c))), (label, b))
     L2.do(tuple(sorted((u, w, d))), (label, a))
     L2.do(tuple(sorted((u, w))), (label, a, b))
@@ -359,7 +360,5 @@ def vertex_to_edge(view, v, diag_pair, keep_pair, sampler_factory):
           tuple(link3_of(L3, tuple(sorted((v, p3))))))
     nb = sorted({x for t in L3.v2t[v] for x in t} - {v})
     assert len(nb) == 4
-    m4 = s3.manifold.dup()
-    m4.do_bistellar_move([v], nb)                        # offline 4->1
-    s4, L4 = sampler_factory(m4)
-    return s4, L4, (u, w)
+    L3.do([v], nb)                            # 4->1 through the sampler
+    return s3, L3, (u, w)

@@ -3878,9 +3878,11 @@ extern(C) double ddg_sampler_current_objective(void* sampler_handle) nothrow
 /// the bookkeeping-safe entry point for externally proposed compound moves
 /// (e.g. the knot slide) -- the bare ddg_manifold_* targeted moves applied to
 /// a sampler's manifold would silently detach the cocycle. Vertex-changing
-/// moves (1-4 / 4-1) are rejected: unusedVertices bookkeeping assumes
-/// run()-chosen labels. The opt-in geometry ledger / event logs do NOT see
-/// these moves.
+/// moves (1-4 / 4-1) maintain the unusedVertices label pool: a 4-1 pushes
+/// the removed label; a 1-4 consumes its (caller-chosen) label from the
+/// pool if present there (a label above the tracked pool is simply used --
+/// the manifold-level validation guarantees it is fresh). The opt-in
+/// geometry ledger / event logs do NOT see these moves.
 extern(C) int ddg_sampler_do_bistellar_move(void* sampler_handle,
     const(int)* center, int center_len,
     const(int)* cocenter, int cocenter_len) nothrow
@@ -3890,15 +3892,29 @@ extern(C) int ddg_sampler_do_bistellar_move(void* sampler_handle,
     {
         if (sampler_handle is null) { setError("null handle"); return -1; }
         auto s = cast(SamplerState*) sampler_handle;
-        if (center_len == 1 || cocenter_len == 1)
-        {
-            setError("vertex-changing targeted moves (1-4/4-1) are not "
-                     ~ "supported through a sampler");
-            return -1;
-        }
         auto rc = ddg_manifold_do_bistellar_move(s.manifoldHandle,
             center, center_len, cocenter, cocenter_len);
         if (rc != 0) return rc;   // validation failed; error already set
+        if (center_len == 1)
+        {
+            // 4->1: the removed vertex label returns to the pool.
+            s.unusedVertices ~= center[0];
+        }
+        else if (cocenter_len == 1)
+        {
+            // 1->4: consume the caller-chosen label from the pool. It may
+            // legitimately be absent (a fresh label above the pool).
+            foreach (i; 0 .. s.unusedVertices.length)
+            {
+                if (s.unusedVertices[i] == cocenter[0])
+                {
+                    s.unusedVertices[i] = s.unusedVertices[$ - 1];
+                    s.unusedVertices = s.unusedVertices[0 .. $ - 1];
+                    s.unusedVertices.assumeSafeAppend;
+                    break;
+                }
+            }
+        }
         if (s.dim == 3 && s.cocycle.enabled)
         {
             import std.algorithm : sort;

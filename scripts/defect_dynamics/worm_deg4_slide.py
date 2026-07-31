@@ -95,13 +95,23 @@ class Live:
                 self._rm(tuple(sorted(t)))
             for t in ((x, y, a, b), (x, y, b, c), (x, y, a, c)):
                 self._add(tuple(sorted(t)))
-        else:                                    # 3->2
+        elif len(cen) == 2:                      # 3->2
             u, w = cen
             a, b, c = coc
             for t in ((u, w, a, b), (u, w, b, c), (u, w, a, c)):
                 self._rm(tuple(sorted(t)))
             for t in ((a, b, c, u), (a, b, c, w)):
                 self._add(tuple(sorted(t)))
+        elif len(cen) == 4:                      # 1->4 (coc = [new label])
+            (v,) = coc
+            self._rm(tuple(sorted(cen)))
+            for f in combinations(cen, 3):
+                self._add(tuple(sorted(f + (v,))))
+        else:                                    # 4->1 (cen = [vertex])
+            (v,) = cen
+            for f in combinations(coc, 3):
+                self._rm(tuple(sorted(f + (v,))))
+            self._add(tuple(sorted(coc)))
 
     def ball(self, seeds, R):
         seen = set(seeds)

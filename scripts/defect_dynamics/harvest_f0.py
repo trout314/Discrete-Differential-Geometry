@@ -1,11 +1,12 @@
 """Force-mode f0 harvest: planner-built vertex removals, no Hastings.
 
 Repeated rounds of: cost-optimal (link, collar) plan (link_planner) ->
-lift through the sampler -> offline 4->1 (dup + fresh-sampler repricing;
-the capi forbids 1<->4 through targeted moves) -> short thermal relax of
-the fast sector. Benchmark (bilocal design doc 3): on the down-quenched
-m^2-only C15 gas, close the +10 pin gap, f0 1536 -> 1522, each removal
-net-favorable with the net price decaying to ~0 as the gap closes.
+lift through the sampler -> 4->1 through the sampler (the capi now
+supports targeted 1<->4 with label-pool bookkeeping) -> short thermal
+relax of the fast sector. Benchmark (bilocal design doc 3): on the
+down-quenched m^2-only C15 gas, close the +10 pin gap, f0 1536 -> 1522,
+each removal net-favorable with the net price decaying to ~0 as the gap
+closes.
 
 Usage:
   python scripts/defect_dynamics/harvest_f0.py START.mfd OUT.mfd \
@@ -113,11 +114,9 @@ def main():
                 print(f" r{rnd} v={tv}: Z_end={len(nb)} != 4 -- rolled "
                       f"back", flush=True)
                 continue
-            m2 = s.manifold.dup()
-            m2.do_bistellar_move([tv], nb)
-            s2, _ = fresh(m2)
-            net = s2.current_objective - S0r
-            fv2 = [int(x) for x in m2.f_vector]
+            L.do([tv], nb)                     # 4->1 through the sampler
+            net = s.current_objective - S0r
+            fv2 = [int(x) for x in s.manifold.f_vector]
             gap2 = fv2[1] - 6.0 * fv2[3] / ETARGET
             match = abs(dS_exec - pds) < 1e-6
             print(f" r{rnd} v={tv} REMOVED: {len(ops)}+1 moves, planned "
@@ -125,16 +124,15 @@ def main():
                   f"{barrier:+.2f} refund {net - dS_exec:+.2f} NET "
                   f"{net:+.3f} | f={fv2} gap={gap2:+.2f} "
                   f"({time.time() - t0:.1f}s)", flush=True)
-            s3, _ = fresh(m2)
             ddg.set_random_seed(SEED + rnd)
             if RELAX > 0:
-                s3.run(sweeps=RELAX)
-            dS_rel = s3.current_objective - s2.current_objective
-            m = s3.manifold
+                s.run(sweeps=RELAX)
+            dS_rel = s.current_objective - S0r - net
+            m = s.manifold
             fv3 = [int(x) for x in m.f_vector]
             print(f"   relax {RELAX:g}sw dS={dS_rel:+.3f} -> f={fv3} "
                   f"gap={fv3[1] - 6.0 * fv3[3] / ETARGET:+.2f} | "
-                  f"cum S-S00 = {s3.current_objective - S00:+.3f}",
+                  f"cum S-S00 = {s.current_objective - S00:+.3f}",
                   flush=True)
             removed += 1
             ok = True

@@ -291,28 +291,25 @@ def propose(m, rng, force_dir=None):
         if zdeg(L, v) != 4:
             return {**info, "abort": "stopz", "steps": len(path)}
         nb = sorted({x for t in L.v2t[v] for x in t} - {v})
-        m2 = dup_of(s.manifold)
         try:
-            m2.do_bistellar_move([v], nb)
+            L.do([v], nb)              # 4->1 through the sampler
         except Exception:
             return {**info, "abort": "4to1"}
-        s2, L2 = fresh(m2)
-        dS = s2.current_objective - S0
+        dS = s.current_objective - S0
         # reverse: insertion on y, seed tet nb, label v, retraced path
-        logq_r = (-math.log(int(m2.f_vector[3]))
-                  - math.log(label_pool_size(L2)))
-        m3 = dup_of(m2)
-        m3.do_bistellar_move(sorted(nb), [v])
-        s3, L3 = fresh(m3)
-        lqr = retrace_reshape(L3, s3, v,
+        logq_r = (-math.log(int(s.manifold.f_vector[3]))
+                  - math.log(label_pool_size(L)))
+        y = dup_of(s.manifold)         # proposal snapshot
+        L.do(sorted(nb), [v])          # 1->4 back, in place
+        lqr = retrace_reshape(L, s, v,
                               [rev_op(op) for op in reversed(path)])
         if lqr is None:
             return {**info, "abort": "retrace"}
         logq_r += lqr
         if VALIDATE:
-            assert facet_set(s3.manifold) == facet_set(m), \
+            assert facet_set(s.manifold) == facet_set(m), \
                 "reverse retrace does not reconstruct x"
-        return {**info, "m_new": m2, "dS": dS, "logq_f": logq_f,
+        return {**info, "m_new": y, "dS": dS, "logq_f": logq_f,
                 "logq_r": logq_r, "steps": len(path)}
 
     # insertion
@@ -323,32 +320,28 @@ def propose(m, rng, force_dir=None):
     info["seed"] = list(t_seed)
     info["label"] = v_new
     logq_f = -math.log(len(all_tets)) - math.log(len(pool))
-    m2 = dup_of(m)
     try:
-        m2.do_bistellar_move(sorted(t_seed), [v_new])
+        L.do(sorted(t_seed), [v_new])  # 1->4 through the sampler
     except Exception:
         return {**info, "abort": "1to4"}
-    s2, L2 = fresh(m2)
-    res = sample_reshape(L2, s2, v_new, rng)
+    res = sample_reshape(L, s, v_new, rng)
     if res is None:
         return {**info, "abort": "reshape"}
     path, lq = res
     logq_f += lq
-    dS = s2.current_objective - S0
-    y = dup_of(s2.manifold)          # proposed state (reshaped, v_new in)
+    dS = s.current_objective - S0
+    y = dup_of(s.manifold)           # proposed state (reshaped, v_new in)
     # reverse: removal on y seeded at v_new, retraced reversed path
-    s3, L3 = fresh(dup_of(y))
-    logq_r = -math.log(len({x for e in L3.edeg for x in e}))
-    lqr = retrace_reshape(L3, s3, v_new,
+    logq_r = -math.log(f0 + 1)
+    lqr = retrace_reshape(L, s, v_new,
                           [rev_op(op) for op in reversed(path)])
     if lqr is None:
         return {**info, "abort": "retrace"}
     logq_r += lqr
     if VALIDATE:
-        nb = sorted({x for t in L3.v2t[v_new] for x in t} - {v_new})
-        m4 = dup_of(s3.manifold)
-        m4.do_bistellar_move([v_new], nb)
-        assert facet_set(m4) == facet_set(m), \
+        nb = sorted({x for t in L.v2t[v_new] for x in t} - {v_new})
+        L.do([v_new], nb)            # 4->1 completes the reverse
+        assert facet_set(s.manifold) == facet_set(m), \
             "reverse retrace does not reconstruct x"
     return {**info, "m_new": y, "dS": dS, "logq_f": logq_f,
             "logq_r": logq_r, "steps": len(path)}

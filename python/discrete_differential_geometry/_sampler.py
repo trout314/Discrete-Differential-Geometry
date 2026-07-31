@@ -341,8 +341,12 @@ class ManifoldSampler:
         along with the n6-potential state). Use this to apply externally
         proposed compound moves (e.g. the knot slide) mid-run.
 
-        Vertex-changing moves (1-4 / 4-1) are rejected by the D core. The
-        opt-in geometry ledger / event logs do not see these moves. All
+        Vertex-changing moves are supported: a 4->1 (``center=[v]``,
+        ``cocenter=<4 neighbors>``) returns the removed label to the
+        sampler's label pool; a 1->4 (``center=<tet>``,
+        ``cocenter=[label]``) consumes its caller-chosen label from the
+        pool (a fresh label above the pool is simply used). The opt-in
+        geometry ledger / event logs do not see these moves. All
         preconditions are validated in the D core (raises on an invalid
         move)."""
         c = np.asarray(center, dtype=np.intc).ravel()
