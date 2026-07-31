@@ -451,38 +451,62 @@ class ManifoldSampler:
                     pg: float = 0.49, bcf: float = 0.01,
                     bc4: float = 0.05, maxstep: int = 100000,
                     ucap_hi: float = 35.0,
-                    ucap_lo: float = -20.0, mu: float = 1.5) -> None:
+                    ucap_lo: float = -20.0, mu: float = 1.5,
+                    f0_ref: "tuple | None" = None) -> None:
         """Configure the f0 worm channel (scheme C, design doc 3.2).
 
         ``utab`` maps spoke-degree multisets (tuples) to umbrella
-        values; keys are packed into degree-bucket counts (3..9+, 8
+        values -- either plain floats (frozen table), or triples
+        ``(cum_dS, df1, df3)`` for the f-ADAPTIVE tube: ``cum_dS`` the
+        cumulative action change measured at build time, ``df1``/``df3``
+        the corridor state's exact (f1, f3) offset from the corridor
+        start, and ``f0_ref = (f1, f3)`` the build-time f-vector
+        reference (required with triples). The D engine then recompiles
+        the frozen scalar table at each episode open from the current
+        f-vector -- the global-pin part of every tube value self-adjusts
+        across the whole f0 range, so one tube build serves many
+        commits. Keys are packed into degree-bucket counts (3..9+, 8
         bits each) -- distinct multisets with any degree above 9 may
-        collide, resolved by min. ``ufb`` is the 6-coefficient linear
-        fallback (n3, n4, n5, n6, n7plus, Zdeficit) with constant
+        collide, resolved by min value. ``ufb`` is the 6-coefficient
+        linear fallback (n3, n4, n5, n6, n7plus, Zdeficit) with constant
         ``ufbc`` and Z reference ``z0``. Mixture weights: ``aof`` =
         open-flag share of openings; ``ph``/``pg``/``bcf``/``bc4`` =
         head / global-repair / close-flag / close-41 shares of open
         steps. ``maxstep`` caps episodes (capped walks are exactly
         undone in the D core)."""
         packed = {}
+        adaptive = False
         for ms, u in utab.items():
             k = 0
             for d in ms:
                 k += 1 << (8 * min(max(int(d) - 3, 0), 6))
-            if k in packed:
-                packed[k] = min(packed[k], float(u))
+            if isinstance(u, (tuple, list)):
+                trip = (float(u[0]), float(u[1]), float(u[2]))
+                adaptive = True
             else:
-                packed[k] = float(u)
-        keys = np.array(sorted(packed), dtype=np.uint64)
-        vals = np.array([packed[k] for k in sorted(packed)],
-                        dtype=np.float64)
+                trip = (float(u), 0.0, 0.0)
+            if k not in packed or trip[0] < packed[k][0]:
+                packed[k] = trip
+        if adaptive and f0_ref is None:
+            raise ValueError("f0_ref=(f1, f3) is required with "
+                             "(cum, df1, df3) table values")
+        tf1, tf3 = (float(f0_ref[0]), float(f0_ref[1])) \
+            if f0_ref is not None else (0.0, 0.0)
+        ks = sorted(packed)
+        keys = np.array(ks, dtype=np.uint64)
+        vals = np.array([packed[k][0] for k in ks], dtype=np.float64)
+        df1 = np.array([packed[k][1] for k in ks], dtype=np.float64)
+        df3 = np.array([packed[k][2] for k in ks], dtype=np.float64)
+        as_p = lambda a: a.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
         fb = np.asarray(ufb, dtype=np.float64)
         assert fb.shape == (6,)
         _lib.ddg_sampler_worm_f0_config(
             self._handle,
             keys.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
-            vals.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-            len(keys),
+            as_p(vals),
+            as_p(df1) if adaptive else None,
+            as_p(df3) if adaptive else None,
+            tf1, tf3, len(keys),
             fb.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
             float(ufbc), float(z0), int(lmax), float(zeta),
             float(aof), float(ph), float(pg), float(bcf), float(bc4),

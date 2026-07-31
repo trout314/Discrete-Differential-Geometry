@@ -4568,7 +4568,20 @@ struct WormF0Params
     double ucapHi = 35.0;    ///< U ceiling: soft confinement (a valid
     double ucapLo = -20.0;   ///< table choice; stops fallback runaway)
     double mu = 1.5;         ///< open-flag seed bias: p(v) ~ e^{-mu Z(v)}
-    double[ulong] utab;      ///< packed spoke multiset -> U
+    double[ulong] utab;      ///< packed spoke multiset -> U (compiled)
+    WF0Skel[ulong] skel;     ///< f-independent skeleton (see wf0Compile)
+    double tubeF1 = 0;       ///< f-vector at skeleton build time
+    double tubeF3 = 0;
+}
+
+/// f-independent tube skeleton entry: the corridor state's measured
+/// cumulative dS at build time, plus its exact (f1, f3) offset from the
+/// corridor start ('23' flip: +1,+1; spoke delete: -1,-1 per move).
+struct WF0Skel
+{
+    double val = 0;          ///< cum dS measured at (tubeF1, tubeF3)
+    double df1 = 0;
+    double df3 = 0;
 }
 
 struct WormF0Result
@@ -4604,6 +4617,42 @@ private ulong wf0Key(scope const(size_t)[] degs) @nogc nothrow
         k += 1UL << (8 * cast(int) b);
     }
     return k;
+}
+
+/// The global-pin part of the action as a function of (f1, f3): the only
+/// action terms NONLINEAR in the f-vector (volume pin + edge pin). The
+/// intensive variance terms are also nonlinear but are off (coef 0) in
+/// worm runs; if on, tube flatness degrades slightly -- balance is
+/// unaffected either way, since U is a free choice.
+double wf0PinPart(P)(P params, real f1, real f3)
+{
+    immutable real dv = f3 - params.numFacetsTarget;
+    immutable real dh = f1 - 6.0L * f3 / params.hingeDegreeTarget;
+    return cast(double) (params.numFacetsCoef * dv * dv
+        + params.numHingesCoef * dh * dh);
+}
+
+/// Compile the frozen scalar table for ONE episode from the stored
+/// f-independent skeleton, at the episode-start f-vector (f1, f3):
+///   U_k = cum_k + [g(f + d_k) - g(f)] - [g(f0 + d_k) - g(f0)]
+/// (g = wf0PinPart, f0 = build-time f, d_k = the state's exact f offset).
+/// The m^2 part of cum_k is f-independent (local, orbit-quantized), so
+/// this reprices the corridor's pin content at current conditions -- one
+/// skeleton serves the whole f0 range. U stays FROZEN within the episode
+/// (the dU == 0 lemma for global repair moves survives verbatim); each
+/// episode is balanced under its own compiled table and the closed
+/// measure is U-independent, so per-episode recompiles are exactly
+/// unbiased. Zero-delta skeletons (plain tables) compile to themselves.
+void wf0Compile(P)(ref WormF0Params cfg, P params, long f1, long f3)
+{
+    if (cfg.skel.length == 0) return;
+    immutable double gNow = wf0PinPart(params, f1, f3);
+    immutable double gRef = wf0PinPart(params, cfg.tubeF1, cfg.tubeF3);
+    foreach (k, sk; cfg.skel)
+        cfg.utab[k] = sk.val
+            + (wf0PinPart(params, f1 + sk.df1, f3 + sk.df3) - gNow)
+            - (wf0PinPart(params, cfg.tubeF1 + sk.df1,
+                          cfg.tubeF3 + sk.df3) - gRef);
 }
 
 private double wf0U(const ref WormF0Params cfg,

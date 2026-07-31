@@ -3941,14 +3941,23 @@ extern(C) int ddg_sampler_do_bistellar_move(void* sampler_handle,
 }
 
 /// Configure the f0 worm channel (scheme C; dim=3 samplers only). keys/vals
-/// are the frozen umbrella table (packed spoke-multiset bucket counts ->
-/// U value; see sampler.wf0Key); ufb6 the 6 linear-fallback coefficients
-/// (n3,n4,n5,n6,n7plus,Zdeficit), ufbc its constant, z0 the Z reference.
-/// Mixture weights: aof (open-flag share of openings), ph/pg/bcf/bc4 the
-/// open-state kernel shares (must sum to 1). maxstep sizes the exact-undo
-/// buffer. Pass n = 0 to reconfigure weights while keeping the table.
+/// are the umbrella table (packed spoke-multiset bucket counts -> value;
+/// see sampler.wf0Key). df1/df3 (optional, may be null) make the table
+/// f-ADAPTIVE: vals become build-time cumulative dS, df1/df3 each state's
+/// exact f-vector offset from the corridor start, and (tube_f1, tube_f3)
+/// the f-vector the values were measured at; the engine then recompiles
+/// the frozen scalar table at each episode open from the current f-vector
+/// (sampler.wf0Compile -- exactly unbiased, episodes start/end closed).
+/// Null df1/df3 = plain frozen table (zero deltas compile to themselves).
+/// ufb6 the 6 linear-fallback coefficients (n3,n4,n5,n6,n7plus,Zdeficit),
+/// ufbc its constant, z0 the Z reference. Mixture weights: aof (open-flag
+/// share of openings), ph/pg/bcf/bc4 the open-state kernel shares (must
+/// sum to 1). maxstep sizes the exact-undo buffer. Pass n = 0 to
+/// reconfigure weights while keeping the table.
 extern(C) int ddg_sampler_worm_f0_config(void* sampler_handle,
-    const(ulong)* keys, const(double)* vals, long n,
+    const(ulong)* keys, const(double)* vals,
+    const(double)* df1, const(double)* df3,
+    double tube_f1, double tube_f3, long n,
     const(double)* ufb6, double ufbc, double z0, int lmax,
     double zeta, double aof, double ph, double pg, double bcf,
     double bc4, int maxstep, double ucap_hi, double ucap_lo,
@@ -3966,8 +3975,16 @@ extern(C) int ddg_sampler_worm_f0_config(void* sampler_handle,
         if (n > 0)
         {
             s.wormF0.utab = null;
+            s.wormF0.skel = null;
             foreach (i; 0 .. n)
+            {
                 s.wormF0.utab[keys[i]] = vals[i];
+                s.wormF0.skel[keys[i]] = WF0Skel(vals[i],
+                    df1 !is null ? df1[i] : 0.0,
+                    df3 !is null ? df3[i] : 0.0);
+            }
+            s.wormF0.tubeF1 = tube_f1;
+            s.wormF0.tubeF3 = tube_f3;
         }
         if (ufb6 !is null)
             s.wormF0.ufb[] = ufb6[0 .. 6][];
@@ -4001,6 +4018,13 @@ extern(C) double ddg_sampler_worm_f0_u(void* sampler_handle, int v) nothrow
         auto s = cast(SamplerState*) sampler_handle;
         auto mh = cast(ManifoldHandle*) s.manifoldHandle;
         auto mw = cast(ManifoldWrapper!3*) mh.ptr;
+        struct Params { int numFacetsTarget; real hingeDegreeTarget;
+            real numFacetsCoef; real numHingesCoef; }
+        auto params = Params(s.numFacetsTarget,
+            cast(real) s.hingeDegreeTarget, cast(real) s.numFacetsCoef,
+            cast(real) s.numHingesCoef);
+        wf0Compile(s.wormF0, params,
+            mw.mfd.fVector[1], mw.mfd.fVector[3]);
         return mw.mfd.wormF0DebugU(s.wormF0, v);
     }
     catch (Exception e) { setError(e.msg); return double.nan; }
@@ -4041,6 +4065,10 @@ extern(C) int ddg_sampler_worm_f0_episode(void* sampler_handle,
             cast(real) s.hingeDegreeTargetCoef,
             cast(real) s.coDim3DegreeTargetCoef,
             cast(real) s.coDim3DegreeTarget);
+        // Recompile the frozen table from the f-adaptive skeleton at the
+        // episode-start f-vector (no-op for plain zero-delta tables).
+        wf0Compile(s.wormF0, params,
+            mw.mfd.fVector[1], mw.mfd.fVector[3]);
         WormF0Result res;
         immutable changed = mw.mfd.wormF0Episode(s.currentObjective,
             s.unusedVertices, params, s.wormF0,

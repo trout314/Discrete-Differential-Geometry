@@ -86,9 +86,10 @@ ZETA_D = float(os.environ.get("ZETA_D", "50.0"))
 BCF_D = float(os.environ.get("BCF_D", "1e-4"))
 BC4_D = float(os.environ.get("BC4_D", "0.1"))
 OFFPEN = float(os.environ.get("OFFPEN", "-3.0"))  # off-tube U
-UCAP_HI = float(os.environ.get("UCAP_HI", "31.0"))
+UCAP_HI = float(os.environ.get("UCAP_HI", "45.0"))
 UCAP_LO = float(os.environ.get("UCAP_LO", "-15.0"))
 LMAX = int(os.environ.get("LMAX", "4096"))
+RETUBE_EVERY = int(os.environ.get("RETUBE_EVERY", "10"))  # commits/rebuild
 
 
 def _e(a, b):
@@ -420,7 +421,11 @@ def build_orbit_tube(s, L, ntry=8, nodecap=200000):
     of the cheapest low-Z seed, replayed exactly (planner cost model ==
     executed dS to machine precision). Multiset values from ONE
     coherent context -- no cross-orbit min-agg traps. Returns
-    {multiset: cum dS} including the start state at 0."""
+    ({multiset: (cum dS, df1, df3)}, (f1, f3)) -- each corridor state's
+    cumulative dS, its exact f-vector offset from the corridor start,
+    and the build-time f reference. The D engine reprices the global-pin
+    part of each value at every episode open, so ONE build stays valid
+    as f drifts (retube only to refresh the local m^2 content)."""
     import link_planner as LP
     fv = [int(x) for x in s.manifold.f_vector]
     S0 = s.current_objective
@@ -436,7 +441,7 @@ def build_orbit_tube(s, L, ntry=8, nodecap=200000):
     if best is None:
         return None
     v, ops, c = best
-    tab = {spoke_ms(L, v): 0.0}
+    tab = {spoke_ms(L, v): (0.0, 0, 0)}
     applied = []
     try:
         for op in ops:
@@ -452,13 +457,16 @@ def build_orbit_tube(s, L, ntry=8, nodecap=200000):
                             else (ab, tuple(sorted((v,) + xy))))
             L.do(cen, coc)
             applied.append((cen, coc))
-            tab[spoke_ms(L, v)] = round(s.current_objective - S0, 6)
+            fvn = s.manifold.f_vector
+            tab[spoke_ms(L, v)] = (
+                round(s.current_objective - S0, 6),
+                int(fvn[1]) - fv[1], int(fvn[3]) - fv[3])
     except Exception:
         pass
     for cen, coc in reversed(applied):
         L.do(coc, cen)
     assert abs(s.current_objective - S0) < 1e-6
-    return tab
+    return tab, (fv[1], fv[3])
 
 
 def anchor_utab(L, sample):
@@ -528,13 +536,15 @@ def main():
         pg = 1.0 - PHD - BCF_D - BC4_D
 
         def retube():
-            tube = build_orbit_tube(s, L)
-            if tube is None:
+            r = build_orbit_tube(s, L)
+            if r is None:
                 return 0
+            tube, f0ref = r
             s.set_worm_f0(tube, [0.0] * 6, OFFPEN, Z0, lmax=LMAX,
                           zeta=ZETA_D, aof=AOF, ph=PHD, pg=pg,
                           bcf=BCF_D, bc4=BC4_D, maxstep=MAXSTEP,
-                          ucap_hi=UCAP_HI, ucap_lo=UCAP_LO, mu=MU)
+                          ucap_hi=UCAP_HI, ucap_lo=UCAP_LO, mu=MU,
+                          f0_ref=f0ref)
             return len(tube)
         nt = retube()
         print(f"D-side episodes: single-orbit tube ({nt} states), "
@@ -543,6 +553,7 @@ def main():
         acc = {"of": [0, 0], "oi": [0, 0], "re": [0, 0], "cf": [0, 0],
                "c4": [0, 0]}
         undone = 0
+        commits = 0
         t0 = time.time()
         for cyc in range(cycles):
             if relax > 0:
@@ -556,11 +567,17 @@ def main():
             for _ in range(episodes):
                 r = s.worm_f0_episode()
                 if r["changed"]:
-                    # the f-vector moved: rebuild the tube (each
-                    # episode is balanced under its own frozen U --
-                    # the closed-sector measure is U-independent)
+                    # the tube's pin part self-adjusts (f-adaptive
+                    # skeleton, recompiled at each episode open), so a
+                    # commit no longer forces a rebuild -- retube only
+                    # every RETUBE_EVERY commits to refresh the local
+                    # m^2 content (each episode is balanced under its
+                    # own frozen compiled U; the closed-sector measure
+                    # is U-independent, so any cadence is unbiased)
                     L = W.Live(s.manifold, driver=s.do_bistellar_move)
-                    retube()
+                    commits += 1
+                    if commits % RETUBE_EVERY == 0:
+                        retube()
                 acc["re"][0] += r["nH"] + r["nG"]
                 acc["re"][1] += r["accH"] + r["accG"]
                 if r["opened"]:

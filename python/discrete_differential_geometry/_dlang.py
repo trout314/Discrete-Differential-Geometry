@@ -784,10 +784,13 @@ _lib.ddg_sampler_worm_at.argtypes = [
 _lib.ddg_sampler_worm_at.restype = ctypes.c_long
 _lib.ddg_sampler_worm_at.errcheck = _check_int
 
-# f0 worm channel (scheme C): frozen umbrella table + episode driver
+# f0 worm channel (scheme C): umbrella table (optionally f-adaptive via
+# df1/df3 offsets + build-time f reference) + episode driver
 _lib.ddg_sampler_worm_f0_config.argtypes = [
     ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint64),
-    ctypes.POINTER(ctypes.c_double), ctypes.c_long,
+    ctypes.POINTER(ctypes.c_double),
+    ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_double),
+    ctypes.c_double, ctypes.c_double, ctypes.c_long,
     ctypes.POINTER(ctypes.c_double), ctypes.c_double, ctypes.c_double,
     ctypes.c_int, ctypes.c_double, ctypes.c_double, ctypes.c_double,
     ctypes.c_double, ctypes.c_double, ctypes.c_double, ctypes.c_int,
