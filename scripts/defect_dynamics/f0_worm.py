@@ -26,14 +26,22 @@ close-flag is the escape hatch (accepts freely where U ~ 0), so no
 abort exists. Episode debris is physical and balanced. The 1<->4
 sector crossings run through the sampler (capi label-pool support).
 
-v1 umbrella: U = ETA*(Z0 - Z(v)) + GAMMA*(PHI0 - Phi(v)), Phi =
-sum sqrt(d(v,u)-3); Z0/PHI0 calibrated from the start state so
-U(typical star) ~ 0. Staircase table = v2.
+v3 umbrella: FROZEN spoke-multiset table harvested at startup from
+planner collapse corridors (exact on-corridor; per-spoke linear
+least-squares fallback off-corridor). Any constant table is a valid
+umbrella -- provenance never enters the balance.
 
 Usage: python scripts/defect_dynamics/f0_worm.py START.mfd OUTBASE \
            [ETARGET [CIMP [F3T]]]
-Env: ETA GAMMA ZETA AOF BR BCF BC4 CYCLES RELAX EPISODES MAXSTEP SEED
-     LMAX  (AOI = 1-AOF)
+Reshape proposals are TWO-CLASS (v2 fix): with prob PH uniform over
+candidates whose support contains v (the collapse-relevant class H --
+class membership is move-symmetric since the support set is invariant),
+else uniform over the rest; Hastings uses the drawn class's counts on
+both sides (PH cancels). Episodes that hit MAXSTEP are EXACTLY UNDONE
+(full accepted-move unwind, recorded dS must be 0) -- never committed.
+
+Env: UNSEEDS UNC ZETA AOF BR BCF BC4 PH CYCLES RELAX EPISODES
+     MAXSTEP SEED LMAX  (AOI = 1-AOF)
 """
 import json
 import math
@@ -52,14 +60,15 @@ import worm_deg4_slide as W
 ETARGET = float(sys.argv[3]) if len(sys.argv) > 3 else 5.1067907
 CIMP = float(sys.argv[4]) if len(sys.argv) > 4 else 0.7
 F3T = int(sys.argv[5]) if len(sys.argv) > 5 else 8704
-ETA = float(os.environ.get("ETA", "1.2"))
-GAMMA = float(os.environ.get("GAMMA", "1.0"))
-ZETA = float(os.environ.get("ZETA", "1e-3"))
+UNSEEDS = int(os.environ.get("UNSEEDS", "16"))
+UNC = int(os.environ.get("UNC", "150000"))
+ZETA = float(os.environ.get("ZETA", "0.05"))
 AOF = float(os.environ.get("AOF", "0.5"))          # open-flag | closed
 AOI = 1.0 - AOF                                    # open-insert | closed
-BR = float(os.environ.get("BR", "0.90"))           # reshape | open
-BCF = float(os.environ.get("BCF", "0.05"))         # close-flag | open
+BR = float(os.environ.get("BR", "0.94"))           # reshape | open
+BCF = float(os.environ.get("BCF", "0.01"))         # close-flag | open
 BC4 = 1.0 - BR - BCF                               # close-41 | open
+PH = float(os.environ.get("PH", "0.5"))           # head-class proposal prob
 MAXSTEP = int(os.environ.get("MAXSTEP", "3000"))
 LMAX = int(os.environ.get("LMAX", "4096"))
 
@@ -83,34 +92,110 @@ def nb_of(L, v):
     return {x for t in L.v2t[v] for x in t} - {v}
 
 
-def phi_of(L, v):
-    out = 0.0
-    for u in nb_of(L, v):
-        d = L.edeg[_e(v, u)]
-        if d > 3:
-            out += math.sqrt(d - 3)
-    return out
+def spoke_ms(L, v):
+    """Sorted spoke-degree multiset of the head star."""
+    return tuple(sorted(L.edeg[_e(v, u)] for u in nb_of(L, v)))
 
 
-# Z0/PHI0 are fixed at startup (calibration constants, NOT state).
+# The umbrella: a FROZEN table over spoke multisets, seeded at startup
+# from planner-harvested collapse corridors (each corridor state has a
+# distinct multiset, so the measured staircase is represented EXACTLY
+# on-corridor -- a per-spoke SUM provably cannot do this, residuals
+# +-7). Off-table states fall back to a least-squares per-spoke linear
+# form fitted to the same corridor data. Any constant table is a valid
+# umbrella; provenance does not enter the balance.
+UTAB = {}
+UFB = [0.0] * 6      # (n3, n4, n5, n6, n7plus, Zdeficit) coefficients
 Z0 = 12.0
-PHI0 = 18.0
+
+
+def U_fallback(ms):
+    n = [0] * 5
+    for d in ms:
+        n[min(max(d, 3), 7) - 3] += 1
+    z = Z0 - len(ms)
+    return (UFB[0] * n[0] + UFB[1] * n[1] + UFB[2] * n[2]
+            + UFB[3] * n[3] + UFB[4] * n[4] + UFB[5] * z)
 
 
 def U_of(L, v):
-    return ETA * (Z0 - len(nb_of(L, v))) + GAMMA * (PHI0 - phi_of(L, v))
+    ms = spoke_ms(L, v)
+    u = UTAB.get(ms)
+    return u if u is not None else U_fallback(ms)
 
 
-def region_candidates(L, v):
+def build_umbrella(s, L, nseeds, nodecap):
+    """Harvest collapse corridors from a stratified vertex sample and
+    freeze the multiset->cost table + linear fallback. Deterministic;
+    exact rollback after each replay."""
+    import numpy as np
+    import link_planner as LP
+    fv = [int(x) for x in s.manifold.f_vector]
+    vs = sorted({x for e in L.edeg for x in e},
+                key=lambda u: (len(nb_of(L, u)), u))
+    seeds = vs[:: max(1, len(vs) // nseeds)][:nseeds]
+    S0 = s.current_objective
+    data = {}                      # ms -> [cum values]
+    for v in seeds:
+        data.setdefault(spoke_ms(L, v), []).append(0.0)
+        ops, c = LP.plan_collapse(L, v, CIMP, 1.0, ETARGET, fv[3],
+                                  fv[1], F3T, nodecap=nodecap,
+                                  optimize="cost")
+        if ops is None:
+            continue
+        applied = []
+        try:
+            for op in ops:
+                if op[0] == "delete":
+                    u = op[1]
+                    tets = [t for t in L.v2t[v] if u in t]
+                    lk = sorted({x for t in tets for x in t} - {v, u})
+                    cen, coc = _e(v, u), tuple(lk)
+                else:
+                    _, ab, xy, flavor = op
+                    cen, coc = ((tuple(sorted((v,) + ab)), xy)
+                                if flavor == "23"
+                                else (ab, tuple(sorted((v,) + xy))))
+                L.do(cen, coc)
+                applied.append((cen, coc))
+                data.setdefault(spoke_ms(L, v), []).append(
+                    s.current_objective - S0)
+        except Exception:
+            pass
+        for cen, coc in reversed(applied):
+            L.do(coc, cen)
+        assert abs(s.current_objective - S0) < 1e-6
+    # MIN over seeds: where corridors of different orbits share a
+    # multiset, undercrediting is safe (umbrella too weak = slow walk)
+    # while overcrediting inflates sector-crossing rates.
+    tab = {ms: min(cs) for ms, cs in data.items()}
+    # linear fallback fit on the corridor data
+    global Z0
+    Z0 = sum(len(nb_of(L, u)) for u in seeds) / len(seeds)
+    rows, targ = [], []
+    for ms, u in tab.items():
+        n = [0] * 5
+        for d in ms:
+            n[min(max(d, 3), 7) - 3] += 1
+        rows.append(n + [Z0 - len(ms)])
+        targ.append(u)
+    coef, *_ = np.linalg.lstsq(np.array(rows, float),
+                               np.array(targ), rcond=None)
+    return tab, list(coef)
+
+
+def region_split(L, v):
     """All optimistically-valid 2<->3 moves whose support meets
-    {v} u lk(v). Support-membership is move-symmetric (doc 3.2 lemma);
+    {v} u lk(v), split into (H, R): H = support contains v (collapse-
+    relevant), R = rest. Support-membership AND the H/R split are
+    move-symmetric (doc 3.2 lemma; the support set is invariant);
     optimistic validity (cheap static checks, D-core rejection of a
     drawn move = auto-reject) is applied identically on both sides."""
     head = {v} | nb_of(L, v)
     tets = set()
     for u in head:
         tets |= L.v2t[u]
-    out = []
+    outH, outR = [], []
     seen_f, seen_e = set(), set()
     for t in tets:
         for f in combinations(t, 3):
@@ -124,9 +209,10 @@ def region_candidates(L, v):
             ap = tuple(sorted((set(ts[0]) | set(ts[1])) - set(f)))
             if len(ap) != 2 or ap in L.edeg:
                 continue
-            if not (set(f) | set(ap)) & head:
+            sup = set(f) | set(ap)
+            if not sup & head:
                 continue
-            out.append((f, ap))                       # 2->3
+            (outH if v in sup else outR).append((f, ap))   # 2->3
         for e in combinations(t, 2):
             if e in seen_e:
                 continue
@@ -139,10 +225,11 @@ def region_candidates(L, v):
             lk = sorted({x for tt in t3 for x in tt} - set(e))
             if len(lk) != 3:
                 continue
-            if not (set(e) | set(lk)) & head:
+            sup = set(e) | set(lk)
+            if not sup & head:
                 continue
-            out.append((e, tuple(lk)))                # 3->2
-    return out
+            (outH if v in sup else outR).append((e, tuple(lk)))  # 3->2
+    return outH, outR
 
 
 class Worm:
@@ -152,7 +239,7 @@ class Worm:
         self.s, self.L, self.rng = s, L, rng
         self.acc = {k: [0, 0] for k in
                     ("of", "oi", "re", "cf", "c4")}   # [tries, accepts]
-        self.forced = 0
+        self.undone = 0
 
     def _hit(self, kind, ok):
         self.acc[kind][0] += 1
@@ -166,8 +253,9 @@ class Worm:
     def verts(self):
         return {x for e in self.L.edeg for x in e}
 
-    def try_open(self):
-        """One opening attempt from closed. Returns head vertex or None."""
+    def try_open(self, applied):
+        """One opening attempt from closed. Returns head vertex or
+        None; appends the opening move (if any) to `applied`."""
         s, L, rng = self.s, self.L, self.rng
         vs = sorted(self.verts())
         f0 = len(vs)
@@ -192,80 +280,107 @@ class Worm:
         la = (math.log(ZETA) - dS + U_of(L, vn) + math.log(f3)
               + math.log(len(pool)) + math.log(BC4 / AOI))
         if self._mh("oi", la):
+            applied.append((sorted(tet), [vn]))
             return vn
         L.do([vn], sorted(tet))
         return None
 
     def reshape(self, v):
+        """One two-class reshape attempt. Returns the accepted (cen,
+        coc) or None. The drawn class's counts enter the Hastings on
+        both sides; PH cancels (class assignment is move-invariant)."""
         s, L, rng = self.s, self.L, self.rng
-        A = region_candidates(L, v)
+        H, R = region_split(L, v)
+        pick_h = rng.random() < PH
+        A = H if pick_h else R
         if not A:
-            return
+            self._hit("re", 0)
+            return None
         cen, coc = A[rng.randrange(len(A))]
+        n1 = len(A)
         S0, U0 = s.current_objective, U_of(L, v)
         try:
             L.do(cen, coc)
         except Exception:
             self._hit("re", 0)
-            return
+            return None
         dS = s.current_objective - S0
         dU = U_of(L, v) - U0
-        n2 = len(region_candidates(L, v))
+        H2, R2 = region_split(L, v)
+        n2 = len(H2) if pick_h else len(R2)
         if n2 == 0:                    # reverse unproposable: reject
             self._hit("re", 0)
             L.do(coc, cen)
-            return
-        la = -dS + dU + math.log(len(A)) - math.log(n2)
-        if not self._mh("re", la):
-            L.do(coc, cen)
-
-    def try_close(self, v):
-        """One closing attempt. Returns 'cf'/'c4' on success, None else."""
-        s, L, rng = self.s, self.L, self.rng
-        r = rng.random()
-        if r < BR:
-            self.reshape(v)
             return None
+        la = -dS + dU + math.log(n1) - math.log(n2)
+        if self._mh("re", la):
+            return (cen, coc)
+        L.do(coc, cen)
+        return None
+
+    def close_flag(self, v):
+        L = self.L
         f0 = len(self.verts())
-        if r < BR + BCF:                               # close-flag
-            la = (-U_of(L, v) - math.log(ZETA) - math.log(f0)
-                  + math.log(AOF / BCF))
-            return "cf" if self._mh("cf", la) else None
-        nb = sorted(nb_of(L, v))                       # close-41
+        la = (-U_of(L, v) - math.log(ZETA) - math.log(f0)
+              + math.log(AOF / BCF))
+        return self._mh("cf", la)
+
+    def close_41(self, v):
+        s, L = self.s, self.L
+        nb = sorted(nb_of(L, v))
         if len(nb) != 4:
             self._hit("c4", 0)
-            return None
+            return False
+        f0 = len(self.verts())
         S0, U0 = s.current_objective, U_of(L, v)
         try:
             L.do([v], nb)
         except Exception:
             self._hit("c4", 0)
-            return None
+            return False
         dS = s.current_objective - S0
         f3m = int(s.manifold.f_vector[3])
         poolm = LMAX - (f0 - 1)
         la = (-dS - U0 - math.log(ZETA) + math.log(AOI / BC4)
               - math.log(f3m) - math.log(poolm))
         if self._mh("c4", la):
-            return "c4"
+            return True
         L.do(sorted(nb), [v])
-        return None
+        return False
 
     def episode(self):
-        """One full attempt: open, walk, close. Returns a record."""
+        """One full attempt: open, walk, close. A capped episode is
+        EXACTLY UNDONE (recorded dS must be 0) -- never committed."""
         t0 = time.time()
         S0 = self.s.current_objective
-        v = self.try_open()
+        applied = []
+        v = self.try_open(applied)
         if v is None:
             return {"opened": 0}
+        rng = self.rng
         steps, closed, umax = 0, None, U_of(self.L, v)
         while closed is None:
             steps += 1
-            if steps > MAXSTEP:                        # emergency only:
-                self.forced += 1                       # breaks exactness,
-                closed = "forced"                      # must stay 0
-                break
-            closed = self.try_close(v)
+            if steps > MAXSTEP:
+                for cen, coc in reversed(applied):
+                    self.L.do(coc, cen)
+                self.undone += 1
+                return {"opened": 1, "head": int(v), "steps": steps,
+                        "closed": "undone", "dS": round(
+                            self.s.current_objective - S0, 6),
+                        "umax": round(umax, 2),
+                        "t": round(time.time() - t0, 2)}
+            r = rng.random()
+            if r < BR:
+                mv = self.reshape(v)
+                if mv is not None:
+                    applied.append(mv)
+            elif r < BR + BCF:
+                if self.close_flag(v):
+                    closed = "cf"
+            else:
+                if self.close_41(v):
+                    closed = "c4"
             umax = max(umax, U_of(self.L, v))
         return {"opened": 1, "head": int(v), "steps": steps,
                 "closed": closed, "dS": round(
@@ -274,7 +389,7 @@ class Worm:
 
 
 def main():
-    global Z0, PHI0
+    
     start, outbase = sys.argv[1], sys.argv[2]
     cycles = int(os.environ.get("CYCLES", "200"))
     relax = float(os.environ.get("RELAX", "2"))
@@ -286,18 +401,22 @@ def main():
     s, L = fresh(m)
     # calibrate U's zero point from the start state (fixed constants)
     vs = sorted({x for e in L.edeg for x in e})
-    samp = vs[:: max(1, len(vs) // 200)]
-    Z0 = sum(len(nb_of(L, u)) for u in samp) / len(samp)
-    PHI0 = sum(phi_of(L, u) for u in samp) / len(samp)
+    t_cal = time.time()
+    tab, coef = build_umbrella(s, L, UNSEEDS, UNC)
+    UTAB.update(tab)
+    UFB[:] = coef
+    print(f"umbrella: {len(UTAB)} corridor multisets from {UNSEEDS} "
+          f"seeds ({time.time() - t_cal:.0f}s); Z0={Z0:.2f}; "
+          f"U[3,3,3,3]={UTAB.get((3, 3, 3, 3), float('nan')):+.1f}",
+          flush=True)
     log = open(outbase + ".chan.jsonl", "w")
     log.write(json.dumps({
         "start": start, "etarget": ETARGET, "cimp": CIMP, "f3t": F3T,
-        "eta": ETA, "gamma": GAMMA, "zeta": ZETA, "z0": round(Z0, 3),
-        "phi0": round(PHI0, 3), "aof": AOF, "br": BR, "bcf": BCF,
+        "zeta": ZETA, "z0": round(Z0, 3), "unseeds": UNSEEDS,
+        "utab": len(UTAB), "aof": AOF, "br": BR, "bcf": BCF,
         "bc4": BC4, "cycles": cycles, "relax": relax,
         "episodes": episodes, "maxstep": MAXSTEP, "seed": seed}) + "\n")
-    print(f"U calib: Z0={Z0:.2f} PHI0={PHI0:.2f}  "
-          f"U(Z=4 star)~{ETA * (Z0 - 4) + GAMMA * PHI0:.1f}", flush=True)
+
     worm = Worm(s, L, rng)
     t0 = time.time()
     for cyc in range(cycles):
@@ -316,12 +435,12 @@ def main():
             print(f"cyc {cyc:4d} f0={fv[0]} gap={gap:+6.2f} "
                   f"S={s.current_objective:8.2f} | "
                   + " ".join(f"{k}:{x[1]}/{x[0]}" for k, x in a.items())
-                  + f" forced={worm.forced} ({time.time() - t0:.0f}s)",
+                  + f" undone={worm.undone} ({time.time() - t0:.0f}s)",
                   flush=True)
     s.manifold.save(outbase + ".final.mfd")
     log.close()
     print(f"done: {outbase}.final.mfd (+ .chan.jsonl) "
-          f"forced={worm.forced}", flush=True)
+          f"undone={worm.undone}", flush=True)
 
 
 if __name__ == "__main__":
