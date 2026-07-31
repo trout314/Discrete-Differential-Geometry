@@ -411,6 +411,106 @@ precision every round. Two findings beyond the pass:
    both proposable at correct Hastings weights, the sampled f₀
    trajectory IS the free-energy measurement.
 
+### 3.2 Scheme C: the extended-ensemble worm (adopted design)
+
+Scheme B (stepwise CBMC, `f0_channel.py`) is a measured negative:
+with one shared constructor rule everything telescopes, so guidance is
+repaid in full at the single accept —
+log α = −ΔS_tot + (2β−1)ΔS_resh + 2ηΔZ + 2γΔΦ + seeds — and
+completion-strength shaping costs ~e⁻⁷⁰ while slack-compatible shaping
+completes 0/15 walks. Scheme C moves the guidance from the proposal
+into the STATIONARY WEIGHT of an auxiliary sector we never measure.
+
+**Extended ensemble.** Alongside closed states T (weight e^{−S}), open
+states (T, v) with a marked head vertex:
+
+    π̂(T)    = e^{−S(T)}
+    π̂(T, v) = ζ · e^{−S(T) + U(T, v)}
+
+ζ, U are free knobs; the closed-sector conditional of π̂ is e^{−S}/Z
+for ANY choice, so U buys mixing and cannot buy bias (measurements
+gate on closed). The barrier is kinetics, not thermodynamics: choose
+U ≈ the collapse cost profile and the open walk sees S − U ≈ flat,
+crossing diffusively what one-shot proposals cross at rate e^{−20}.
+Lineage: Prokof'ev–Svistunov worm × expanded ensembles; the open head
+is the worm head, the link/collar calculus is its local alphabet.
+
+**Head, region, alphabet (post-discussion design).** Head = ONE
+marked vertex (durable: only its own 4→1 kills it); the tet appears
+as its closed-sector shadow (4→1 closes into a tet, 1→4 opens from
+one — the vertex↔tet transmutation IS the sector crossing). The
+reshape alphabet is REGION-sized, not star-confined (star-only
+alphabets cannot repair boundary debris — the DFS cage found +16.40
+vs the star-planner's +20.601, and the ~9 illegal edges/vacancy of
+the force harvest are boundary debris an episode can anneal before
+closing): every 2↔3 move whose support intersects {v} ∪ lk(v),
+i.e. moves inside the union of the stars of the closed star's
+vertices. KEY LEMMA (exact proposal symmetry): this membership is
+invariant under the move itself — a move not containing v changes no
+edge at v, so nb(v) and the support's intersection with {v}∪lk(v)
+are unchanged; a move containing v contains it in both directions.
+Proposals: uniform over the OPTIMISTICALLY-valid candidate set A
+(cheap static checks; D-core rejection of a drawn candidate = null
+move, consistently on both sides), so
+α_reshape = min(1, e^{−Δ(S−U)} · |A(T)|/|A(T′)|).
+
+**The five moves** (channel step; fixed mixture weights a_of, a_oi
+from closed and b_r, b_cf, b_c4 from open; invalid draws auto-reject):
+
+1. open-flag  T → (T,v), v ~ U(vertices):
+   α = min(1, ζ e^{U(T,v)} · f₀(T) · b_cf / a_of)
+2. close-flag (T,v) → T:
+   α = min(1, e^{−U(T,v)}/ζ · a_of / (f₀(T) b_cf))
+3. reshape    (T,v) → (T′,v): α_reshape above.
+4. open-insert T → (T⁺,v): tet ~ U(f₃), label ~ U(pool):
+   α = min(1, ζ e^{−ΔS₁₄ + U(T⁺,v)} · f₃(T)·|pool(T)| · b_c4 / a_oi)
+5. close-41   (T,v) at Z=4 → T⁻ (4→1):
+   α = min(1, e^{−ΔS₄₁ − U(T,v)}/ζ · a_oi / (f₃(T⁻)·|pool(T⁻)| b_c4))
+
+Episodes: open → reshape… → close. No abort exists or is needed —
+close-flag is always proposable and is the escape hatch; debris left
+by a bailed episode is physical and balanced. The label pool is the
+fixed-window convention of `f0_channel.py`.
+
+**U (umbrella ≠ drift — a distinction scheme B blurred).** U should
+MATCH the measured cost profile, not slam downhill: v1 closed form
+U = η(Z₀−Z) + γ(Φ₀−Φ) fitted to the harvest staircase (≈ +20.6 at
+the Z=4 star, ≈ +29 at the peak ⇒ η ≈ 1.2, γ ≈ 1.0, NOT the CBMC
+drift values 2.5/3.0); v2 = static table u(Z, n₃) from the
+orbit-quantized planner staircase; reserve: planner-exact U
+(remaining plan cost; S−U exactly flat, needs incremental planner)
+and frozen Wang–Landau. Optional region-cleanliness term −c·n_ill(R).
+ζ sets the open population (α_of ∝ ζ f₀ e^{U_typ}; normalize
+U(typical star) ≈ 0 and take ζ ~ 10⁻³ for O(1) two-way flag rates).
+
+**Pair family (bilocal / QM observables).** Two-head sector
+π̂ ∝ ζ₂ e^{−S + U(h₁) + U(h₂) + V(h₁,h₂)} with V the association
+(same-BC-spiral tether, separation weight). Pairs are created
+LOCALLY AT COINCIDENCE (insertion head + adjacent collapse-flag head,
+one small move), separate diffusively via head moves, and close ONLY
+as pairs (re-merge, or joint transport closure = the bilocal move,
+one bracket). NO transitions between 1-head and 2-head sectors:
+balance closes each family's loop through the closed sector, and
+forbidding them makes pair identity exact — the PS pattern. The
+stationary histogram P(s) reweighted by e^{−V} is the Euclidean
+two-point correlator of the carried quantum along the helix (the
+transfer-matrix/QM reading; the §2.5 frame returns as the pair's
+recorded (chain, s)). Half-closure, if ever allowed for mixing, is a
+tagged toggle recorded as pair dissolution.
+
+**Ledger.** Episodes are real dynamics: one bracket per episode
+(CHANNEL_F0), elementary events inside (types 0/3 at the sector
+crossings), §2.6 label epochs, sixFlips-on-1↔4 check, event-buffer
+headroom for 100+-move brackets. v1 Python driver logs a sidecar
+.chan.jsonl; D-side brackets land with the D port.
+
+**Plan.** v1 `f0_worm.py`: single-head family, Python driver,
+sweeps-while-closed + contiguous episodes; acceptance test = the f₀
+free-energy measurement on the quenched state (does the ensemble
+choose gap-open f₀=1536/n_ill 63 or defect-financed f₀=1522/n_ill
+189 — and does episode-annealed closure beat the ~9-edges/vacancy
+debris). Then: staircase U table, pair family, D port + brackets.
+
 ## 4. Pairing kernels (unchanged from v1, one addition)
 
 - **P1 chain-paired** (primary): seed + slot → deterministic
