@@ -528,6 +528,32 @@ class ManifoldSampler:
                 "nG": int(out[8]), "accG": int(out[9]),
                 "zmin": int(out[10]), "nZ4": int(out[11])}
 
+    def set_worm_pair(self, zeta2: float = 1.0, bcp: float = 0.05) -> None:
+        """Configure the BILOCAL (two-ball) sector: ``zeta2`` the pair
+        fugacity, ``bcp`` the close-pair share of open steps. The
+        umbrella, caps and seed bias come from :meth:`set_worm_f0`,
+        which must be called first."""
+        _lib.ddg_sampler_worm_pair_config(
+            self._handle, float(zeta2), float(bcp))
+
+    def worm_pair_episode(self) -> dict:
+        """Run one bilocal episode: a vertex is created at one ball and
+        destroyed at the other, so the net f-change vanishes and the
+        global pins cost exactly zero (measured 0.0e+00 at every
+        separation). ``closed == "pair"`` means the pair committed."""
+        out = np.zeros(12, dtype=np.float64)
+        changed = _lib.ddg_sampler_worm_pair_episode(
+            self._handle,
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
+        return {"changed": bool(changed), "opened": int(out[0]),
+                "head": int(out[1]), "steps": int(out[2]),
+                "closed": {0: None, 3: "undone", 4: "pair"}.get(
+                    int(out[3])),
+                "dS": float(out[4]), "umax": float(out[5]),
+                "nH": int(out[6]), "accH": int(out[7]),
+                "nG": int(out[8]), "accG": int(out[9]),
+                "zmin": int(out[10]), "nZ4": int(out[11])}
+
     def set_nonlocal_slide_prob(self, prob: float, max_step: int = 8) -> None:
         """Enable the NON-LOCAL slide channel (dim = 3 only).
 

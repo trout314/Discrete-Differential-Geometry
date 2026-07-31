@@ -4568,6 +4568,8 @@ struct WormF0Params
     double ucapHi = 35.0;    ///< U ceiling: soft confinement (a valid
     double ucapLo = -20.0;   ///< table choice; stops fallback runaway)
     double mu = 1.5;         ///< open-flag seed bias: p(v) ~ e^{-mu Z(v)}
+    double zeta2 = 1.0;      ///< PAIR fugacity (two-ball episodes)
+    double bcp = 0.05;       ///< close-pair share of open steps
     double[ulong] utab;      ///< packed spoke multiset -> U (compiled)
     WF0Skel[ulong] skel;     ///< f-independent skeleton (see wf0Compile)
     double tubeF1 = 0;       ///< f-vector at skeleton build time
@@ -5218,6 +5220,434 @@ bool wormF0Episode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
                 applyMove(hA[], nb[]);
                 unusedVertices ~= head;
                 res.closedHow = 2;
+                res.dS = cast(double) deltaTotal;
+                currentObjective += deltaTotal;
+                return true;
+            }
+        }
+    }
+    assert(0);
+}
+
+/*
+BILOCAL (two-ball) episodes.
+=============================
+
+The single-head episode above opens ONE ball, walks it under the frozen
+umbrella, and closes. A bilocal move is the same structure with TWO
+balls, and it exists because a pair whose NET f-change vanishes pays no
+global pin at all: the pin cost is g(f + df_A + df_B) - g(f), identically
+zero when df_B = -df_A, at ANY separation. Measured: the single-head 1->4
+pays +22.75 in pin alone at gap +10, the conserving pair pays 0.0e+00.
+
+Roles. Head 0 is opened by a 1->4 (a fresh vertex) and closes by being
+DROPPED (it stays); head 1 is opened by FLAGGING an existing vertex and
+closes by 4->1 (it is deleted). Net over the episode: one vertex created
+at 0, one destroyed at 1, f0 unchanged -- vertex transport. Running the
+family with the roles swapped gives the reverse transition, so the family
+is its own inverse and the two closures pair crosswise, exactly as
+open-flag/close-flag and open-insert/close-41 do for one head.
+
+Factorization. Everything factorizes when the two balls' vertex supports
+are DISJOINT, and only then: measured residual 1e-13 at graph distance
+>= 1 versus up to +29.4 when the stars share a vertex. Hence
+  U(h0,h1) = U(h0) + U(h1)   -- the SAME single-head tube serves both,
+  alpha_open  = alpha_openinsert(0) * alpha_openflag(1)  with one zeta2,
+  alpha_close = alpha_close41(1)    * alpha_closeflag(0) with one zeta2.
+Disjointness is enforced as a STATE FUNCTION (reject any move whose
+support meets the other head's closed star), so it never breaks balance;
+no minimum separation is needed, and none is imposed -- transport cost is
+range-independent (measured flat out to 60 chain steps).
+
+The dU == 0 lemma survives with two exclusions: a global repair move
+whose support contains neither head leaves both umbrella values fixed, so
+that kernel stays plain Metropolis.
+*/
+
+/// Per-head cache for a two-ball episode (the single-head episode keeps
+/// the same state in locals; here it is indexed so two can coexist).
+private struct WF0Ball(Vertex)
+{
+    Vertex head;
+    Vertex[4] seed;
+    int nT;
+    int z;
+    double u = 0.0;
+    int nH;
+    int nDep;
+    bool isInsert;           ///< opened by 1->4 (role 0) vs flagged
+}
+
+/// One bilocal (two-ball) episode. Returns true if the closed state
+/// changed. currentObjective is kept exact; a capped walk is unwound
+/// exactly, like the single-head episode.
+bool wormPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
+    ref real currentObjective, ref Vertex[] unusedVertices,
+    P params, const ref WormF0Params cfg,
+    VertexPotState!Vertex* potState, VertexPot* pot,
+    scope WF0Applied!Vertex[] undoBuf, out WormF0Result res)
+{
+    import std.math : log, exp;
+    import std.random : uniform, uniform01;
+    alias BM = BistellarMove!(3, Vertex);
+
+    // big per-ball buffers live in TLS, not on the stack
+    static Vertex[4][96][2] bTets = void;
+    static Vertex[48][2] bLk = void;
+    static size_t[48][2] bDegs = void;
+    static WF0Cand!Vertex[512][2] bH = void;
+    static Vertex[160][2] bDep = void;
+    WF0Ball!Vertex[2] ball;
+
+    real baseRun = currentObjective
+        - (potState !is null ? potState.total : 0.0L);
+    real deltaTotal = 0.0L;
+    int nApplied = 0;
+
+    real applyMove(scope const(Vertex)[] cen, scope const(Vertex)[] coc)
+    {
+        auto bm = BM(cen, coc);
+        immutable real dBase =
+            mfd.speculativeBistellarDelta(bm, baseRun, params);
+        real dPot = 0.0L;
+        if (potState !is null)
+            dPot = mfd.potentialBistellarDelta(bm, *potState, *pot, true);
+        mfd.doMove(bm);
+        baseRun += dBase;
+        deltaTotal += dBase + dPot;
+        return dBase + dPot;
+    }
+
+    void record(scope const(Vertex)[] cen, scope const(Vertex)[] coc)
+    {
+        assert(nApplied < undoBuf.length, "wormPair undo buffer overflow");
+        undoBuf[nApplied].cl = cast(int) cen.length;
+        undoBuf[nApplied].ccl = cast(int) coc.length;
+        undoBuf[nApplied].cen[0 .. cen.length] = cen[];
+        undoBuf[nApplied].coc[0 .. coc.length] = coc[];
+        nApplied++;
+    }
+
+    void unwindAll()
+    {
+        foreach_reverse (k; 0 .. nApplied)
+        {
+            auto cen = undoBuf[k].coc[0 .. undoBuf[k].ccl];
+            auto coc = undoBuf[k].cen[0 .. undoBuf[k].cl];
+            if (undoBuf[k].cl == 4 && undoBuf[k].ccl == 1)
+                unusedVertices ~= undoBuf[k].coc[0];
+            applyMove(cen, coc);
+        }
+        nApplied = 0;
+    }
+
+    bool refresh(int i)
+    {
+        ball[i].z = wf0Star(mfd, ball[i].head, ball[i].seed,
+                            bTets[i][], ball[i].nT, bLk[i][], bDegs[i][]);
+        if (ball[i].z < 0) return false;
+        ball[i].u = wf0U(cfg, bDegs[i][0 .. ball[i].z]);
+        ball[i].nH = wf0EnumH(mfd, ball[i].head, bTets[i][], ball[i].nT,
+                              bH[i][]);
+        ball[i].nDep = 0;
+        void dep(Vertex x)
+        {
+            foreach (k; 0 .. ball[i].nDep) if (bDep[i][k] == x) return;
+            if (ball[i].nDep < bDep[i].length)
+                bDep[i][ball[i].nDep++] = x;
+        }
+        dep(ball[i].head);
+        foreach (k; 0 .. ball[i].z) dep(bLk[i][k]);
+        foreach (k; 0 .. ball[i].nH)
+        {
+            foreach (x; bH[i][k].f) dep(x);
+            foreach (x; bH[i][k].p) dep(x);
+        }
+        return true;
+    }
+
+    /// closed star of ball i (head + its link) -- the disjointness set
+    bool inStar(int i, Vertex x)
+    {
+        if (x == ball[i].head) return true;
+        foreach (k; 0 .. ball[i].z) if (bLk[i][k] == x) return true;
+        return false;
+    }
+
+    /// a move's support may not meet the OTHER ball's closed star
+    bool supportClear(int self, scope const(Vertex)[] a,
+                      scope const(Vertex)[] b)
+    {
+        immutable o = 1 - self;
+        foreach (x; a) if (inStar(o, x)) return false;
+        foreach (x; b) if (inStar(o, x)) return false;
+        return true;
+    }
+
+    // -- biased-seed normalizer (shared by open-flag and close-flag) -----
+    double seedWeightTotal()
+    {
+        double W = 0.0;
+        foreach (sv; mfd.simplices(0))
+            W += exp(-cfg.mu
+                     * (2.0 + 0.5 * cast(double) mfd.degreeOrZero!0(sv)));
+        return W;
+    }
+
+    // -- OPEN the pair ---------------------------------------------------
+    // p_close is the ACTUAL probability of the close branch in the step
+    // mixture below; it must be the same number in both acceptance
+    // ratios or open/close balance is off by their ratio. (cfg.bcp is
+    // the requested share; the config validates ph + pg + bcp == 1, so
+    // this equals it -- computed here so the two can never drift.)
+    immutable double pcl = 1.0 - cfg.ph - cfg.pg;
+    if (!(pcl > 0.0)) return false;
+    immutable long f3 = cast(long) mfd.fVector[3];
+    res.opened = 0;
+
+    // ball 0: 1->4 at a uniform tet with a uniform label
+    auto facet = mfd.randomFacetOfDim(3);
+    Vertex[4] tet;
+    {
+        int i = 0;
+        foreach (x; facet) tet[i++] = x;
+    }
+    tet[].sort();
+    auto vn = cast(Vertex) uniform(0, cfg.lmax);
+    auto bm14 = BM(tet[], vn.only);
+    if (!mfd.hasValidMove(bm14)) return false;
+
+    // ball 1: biased seed over existing vertices, p(v) = w/W
+    immutable double W = seedWeightTotal();
+    immutable double rPick = uniform01 * W;
+    double acc = 0.0, wv = 0.0;
+    Vertex vf = Vertex.init;
+    bool got = false;
+    foreach (sv; mfd.simplices(0))
+    {
+        immutable double w = exp(-cfg.mu
+            * (2.0 + 0.5 * cast(double) mfd.degreeOrZero!0(sv)));
+        acc += w;
+        if (acc >= rPick) { vf = sv.front; wv = w; got = true; break; }
+    }
+    if (!got) return false;
+    // the flagged vertex must not sit inside the insert's own tet
+    foreach (x; tet) if (x == vf) return false;
+
+    immutable real dB14 = mfd.speculativeBistellarDelta(bm14, baseRun,
+                                                        params);
+    real dP14 = 0.0L;
+    if (potState !is null)
+        dP14 = mfd.potentialBistellarDelta(bm14, *potState, *pot, false);
+    size_t[4] freshDegs = [3, 3, 3, 3];
+    immutable double u0 = wf0U(cfg, freshDegs[]);
+
+    // ball 1's umbrella BEFORE any move (flagging changes nothing)
+    {
+        bool seedOk = false;
+        foreach (f; mfd.star(vf.only))
+        {
+            int i = 0;
+            foreach (x; f) ball[1].seed[i++] = x;
+            seedOk = (i == 4);
+            break;
+        }
+        if (!seedOk) return false;
+        ball[1].head = vf;
+        ball[1].isInsert = false;
+        if (!refresh(1)) return false;
+    }
+    immutable double u1 = ball[1].u;
+
+    // alpha_open = alpha_openinsert(0) * alpha_openflag(1), one zeta2
+    immutable double laOpen = log(cfg.zeta2) - cast(double)(dB14 + dP14)
+        + u0 + u1 + log(cast(double) f3) + log(cast(double) cfg.lmax)
+        + log(W / wv) + log(pcl);
+    if (!(laOpen >= 0 || uniform01 <= exp(laOpen))) return false;
+
+    Vertex[1] vnA = [vn];
+    applyMove(tet[], vnA[]);
+    record(tet[], vnA[]);
+    foreach (j; 0 .. unusedVertices.length)
+        if (unusedVertices[j] == vn)
+        {
+            unusedVertices[j] = unusedVertices[$ - 1];
+            unusedVertices = unusedVertices[0 .. $ - 1];
+            unusedVertices.assumeSafeAppend;
+            break;
+        }
+    ball[0].head = vn;
+    ball[0].isInsert = true;
+    ball[0].seed = [tet[0], tet[1], tet[2], vn];
+    ball[0].seed[].sort();
+    if (!refresh(0) || !refresh(1)) { unwindAll(); return false; }
+    // the two balls must be support-disjoint from the start
+    foreach (k; 0 .. ball[0].z)
+        if (inStar(1, bLk[0][k])) { unwindAll(); return false; }
+    if (inStar(1, ball[0].head)) { unwindAll(); return false; }
+    res.opened = 2;
+    res.head = cast(int) ball[1].head;      // the head that will be deleted
+    res.umax = ball[0].u + ball[1].u;
+
+    // -- two-ball walk ---------------------------------------------------
+    immutable double pcum0 = 0.5 * cfg.ph;
+    immutable double pcum1 = cfg.ph;
+    immutable double pcum2 = cfg.ph + cfg.pg;
+
+    while (true)
+    {
+        if (res.steps >= cfg.maxstep)
+        {
+            unwindAll();
+            res.closedHow = 3;
+            res.dS = cast(double) deltaTotal;
+            currentObjective += deltaTotal;
+            return false;
+        }
+        res.steps++;
+        if (ball[1].z < res.zmin) res.zmin = ball[1].z;
+        if (ball[1].z == 4) res.nZ4++;
+        immutable double r = uniform01;
+
+        if (r < pcum1)
+        {
+            // HEAD kernel on ball i
+            immutable int i = (r < pcum0) ? 0 : 1;
+            res.nH++;
+            if (ball[i].nH == 0) continue;
+            auto c = bH[i][uniform(0, ball[i].nH)];
+            if (!supportClear(i, c.f[], c.p[])) continue;
+            BM bm = c.is23 ? BM(c.f[], c.p[]) : BM(c.p[], c.f[]);
+            if (!mfd.hasValidMove(bm)) continue;
+            immutable int nH0 = ball[i].nH;
+            immutable double uOld = ball[i].u;
+            auto seedOld = ball[i].seed;
+            immutable real d = applyMove(c.is23 ? c.f[] : c.p[],
+                                         c.is23 ? c.p[] : c.f[]);
+            // re-seed from a post-move tet containing this head
+            {
+                bool inSup = false;
+                foreach (x; c.f) if (x == ball[i].head) inSup = true;
+                foreach (x; c.p) if (x == ball[i].head) inSup = true;
+                if (inSup)
+                {
+                    if (c.is23)
+                    {
+                        outer23: foreach (a; 0 .. 3) foreach (b2; a + 1 .. 3)
+                        {
+                            Vertex[4] t = [c.f[a], c.f[b2], c.p[0], c.p[1]];
+                            foreach (x; t) if (x == ball[i].head)
+                            { t[].sort(); ball[i].seed = t; break outer23; }
+                        }
+                    }
+                    else
+                    {
+                        foreach (bb; 0 .. 2)
+                        {
+                            Vertex[4] t = [c.f[0], c.f[1], c.f[2], c.p[bb]];
+                            bool has = false;
+                            foreach (x; t) if (x == ball[i].head) has = true;
+                            if (has) { t[].sort(); ball[i].seed = t; break; }
+                        }
+                    }
+                }
+            }
+            if (!refresh(i))
+            {
+                applyMove(bm.coCenter, bm.center);
+                ball[i].seed = seedOld;
+                refresh(i);
+                continue;
+            }
+            immutable double la = -cast(double) d + (ball[i].u - uOld)
+                + log(cast(double) nH0)
+                - log(cast(double)(ball[i].nH == 0 ? 1 : ball[i].nH));
+            if (ball[i].nH != 0 && (la >= 0 || uniform01 <= exp(la)))
+            {
+                res.accH++;
+                record(c.is23 ? c.f[] : c.p[], c.is23 ? c.p[] : c.f[]);
+            }
+            else
+            {
+                applyMove(bm.coCenter, bm.center);
+                ball[i].seed = seedOld;
+                refresh(i);
+            }
+            immutable double ut = ball[0].u + ball[1].u;
+            if (ut > res.umax) res.umax = ut;
+        }
+        else if (r < pcum2)
+        {
+            // GLOBAL repair: dU = 0 iff the support misses BOTH heads
+            res.nG++;
+            Vertex fresh = unusedVertices.length > 0
+                ? unusedVertices[$ - 1]
+                : cast(Vertex) mfd.fVector[0];
+            auto bm = mfd.chooseRandomMove(fresh, params);
+            if (bm.center.length == 1 || bm.coCenter.length == 1) continue;
+            bool touches = false;
+            foreach (x; bm.center)
+                if (x == ball[0].head || x == ball[1].head) touches = true;
+            foreach (x; bm.coCenter)
+                if (x == ball[0].head || x == ball[1].head) touches = true;
+            if (touches) continue;
+            immutable real dB = mfd.speculativeBistellarDelta(bm, baseRun,
+                                                              params);
+            real dP = 0.0L;
+            if (potState !is null)
+                dP = mfd.potentialBistellarDelta(bm, *potState, *pot,
+                                                 false);
+            immutable double la = -cast(double)(dB + dP);
+            if (la >= 0 || uniform01 <= exp(la))
+            {
+                res.accG++;
+                applyMove(bm.center, bm.coCenter);
+                record(bm.center, bm.coCenter);
+                foreach (i; 0 .. 2)
+                {
+                    bool hit = false;
+                    foreach (x; bm.center)
+                        foreach (k; 0 .. ball[i].nDep)
+                            if (bDep[i][k] == x) hit = true;
+                    foreach (x; bm.coCenter)
+                        foreach (k; 0 .. ball[i].nDep)
+                            if (bDep[i][k] == x) hit = true;
+                    if (hit) refresh(i);
+                }
+            }
+        }
+        else
+        {
+            // CLOSE the pair: 4->1 at ball 1, drop ball 0.
+            // alpha = alpha_close41(1) * alpha_closeflag(0), one zeta2.
+            if (ball[1].z != 4) continue;
+            Vertex[4] nb = [bLk[1][0], bLk[1][1], bLk[1][2], bLk[1][3]];
+            nb[].sort();
+            Vertex[1] h1 = [ball[1].head];
+            if (!supportClear(1, h1[], nb[])) continue;
+            auto bm41 = BM(h1[], nb[]);
+            if (!mfd.hasValidMove(bm41)) continue;
+            immutable real dB = mfd.speculativeBistellarDelta(bm41, baseRun,
+                                                              params);
+            real dP = 0.0L;
+            if (potState !is null)
+                dP = mfd.potentialBistellarDelta(bm41, *potState, *pot,
+                                                 false);
+            // the reverse open would re-insert at ball 1's site and flag
+            // ball 0's vertex: f3 and the seed normalizer are POST-close
+            immutable long f3after = cast(long) mfd.fVector[3] - 3;
+            immutable double Wc = seedWeightTotal();
+            immutable double wc = exp(-cfg.mu * (2.0 + 0.5
+                * cast(double) mfd.degreeOrZero!0(ball[0].head.only)));
+            immutable double la = -cast(double)(dB + dP)
+                - ball[0].u - ball[1].u - log(cfg.zeta2)
+                - log(cast(double) f3after) - log(cast(double) cfg.lmax)
+                - log(Wc / wc) - log(pcl);
+            if (la >= 0 || uniform01 <= exp(la))
+            {
+                applyMove(h1[], nb[]);
+                unusedVertices ~= ball[1].head;
+                res.closedHow = 4;
                 res.dS = cast(double) deltaTotal;
                 currentObjective += deltaTotal;
                 return true;

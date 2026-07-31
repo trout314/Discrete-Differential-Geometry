@@ -4009,6 +4009,83 @@ extern(C) int ddg_sampler_worm_f0_config(void* sampler_handle,
     catch (Exception e) { setError(e.msg); return -1; }
 }
 
+/// Run one BILOCAL (two-ball) episode: a vertex is created at one ball
+/// and destroyed at the other, so the net f-change vanishes and the
+/// global pins cost exactly nothing. out12 has the same layout as
+/// ddg_sampler_worm_f0_episode; closedHow = 4 means the pair closed.
+/// Requires ddg_sampler_worm_f0_config first (shares the umbrella,
+/// caps and mu; uses zeta2/bcp for the pair sector).
+extern(C) int ddg_sampler_worm_pair_episode(void* sampler_handle,
+    double* out12) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null handle"); return -1; }
+        auto s = cast(SamplerState*) sampler_handle;
+        if (!s.wormF0On) { setError("f0 worm not configured"); return -1; }
+        if (s.dim != 3) { setError("pair worm requires dim=3"); return -1; }
+        if (s.cocycle.enabled)
+        { setError("pair worm is not cocycle-safe"); return -1; }
+        if (s.geoLedger.trackRoles || s.geoLedger.logEvents
+            || s.geoLedger.logSixFlips)
+        { setError("pair worm does not mirror the geometry ledger yet");
+          return -1; }
+        auto mh = cast(ManifoldHandle*) s.manifoldHandle;
+        auto mw = cast(ManifoldWrapper!3*) mh.ptr;
+        if (s.currentObjective != s.currentObjective)
+            recomputeObjective(s);
+        struct Params { int numFacetsTarget; real hingeDegreeTarget;
+            real numFacetsCoef; real numHingesCoef; real hingeDegreeVarianceCoef;
+            real coDim3DegreeVarianceCoef; real hingeDegreeTargetCoef;
+            real coDim3DegreeTargetCoef; real coDim3DegreeTarget; }
+        auto params = Params(s.numFacetsTarget,
+            cast(real) s.hingeDegreeTarget, cast(real) s.numFacetsCoef,
+            cast(real) s.numHingesCoef, cast(real) s.hingeDegreeVarianceCoef,
+            cast(real) s.coDim3DegreeVarianceCoef,
+            cast(real) s.hingeDegreeTargetCoef,
+            cast(real) s.coDim3DegreeTargetCoef,
+            cast(real) s.coDim3DegreeTarget);
+        wf0Compile(s.wormF0, params,
+            mw.mfd.fVector[1], mw.mfd.fVector[3]);
+        WormF0Result res;
+        immutable changed = mw.mfd.wormPairEpisode(s.currentObjective,
+            s.unusedVertices, params, s.wormF0,
+            s.potEnabled ? &s.vertexPotState : null,
+            s.potEnabled ? &s.vertexPot : null,
+            s.wormF0Undo, res);
+        if (out12 !is null)
+        {
+            out12[0] = res.opened;   out12[1] = res.head;
+            out12[2] = res.steps;    out12[3] = res.closedHow;
+            out12[4] = res.dS;       out12[5] = res.umax;
+            out12[6] = res.nH;       out12[7] = res.accH;
+            out12[8] = res.nG;       out12[9] = res.accG;
+            out12[10] = res.zmin;    out12[11] = res.nZ4;
+        }
+        return changed ? 1 : 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/// Set the PAIR sector knobs (zeta2 = pair fugacity, bcp = close-pair
+/// share of open steps). Everything else comes from the f0 config.
+extern(C) int ddg_sampler_worm_pair_config(void* sampler_handle,
+    double zeta2, double bcp) nothrow
+{
+    clearError();
+    try
+    {
+        auto s = cast(SamplerState*) sampler_handle;
+        if (s is null) { setError("null handle"); return -1; }
+        if (bcp <= 0 || bcp >= 1) { setError("bad bcp"); return -1; }
+        s.wormF0.zeta2 = zeta2;
+        s.wormF0.bcp = bcp;
+        return 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
 /// Debug probe: D-side umbrella value at a vertex's current star.
 extern(C) double ddg_sampler_worm_f0_u(void* sampler_handle, int v) nothrow
 {

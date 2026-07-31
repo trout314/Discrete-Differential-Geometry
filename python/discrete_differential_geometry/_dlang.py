@@ -802,6 +802,16 @@ _lib.ddg_sampler_worm_f0_episode.argtypes = [
 _lib.ddg_sampler_worm_f0_episode.restype = ctypes.c_int
 _lib.ddg_sampler_worm_f0_episode.errcheck = _check_int
 
+# bilocal (two-ball) episodes
+_lib.ddg_sampler_worm_pair_episode.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_double)]
+_lib.ddg_sampler_worm_pair_episode.restype = ctypes.c_int
+_lib.ddg_sampler_worm_pair_episode.errcheck = _check_int
+_lib.ddg_sampler_worm_pair_config.argtypes = [
+    ctypes.c_void_p, ctypes.c_double, ctypes.c_double]
+_lib.ddg_sampler_worm_pair_config.restype = ctypes.c_int
+_lib.ddg_sampler_worm_pair_config.errcheck = _check_int
+
 # Non-local slide channel: (handle, prob, max_step)
 _lib.ddg_sampler_set_nonlocal_slide_prob.argtypes = [
     ctypes.c_void_p, ctypes.c_double, ctypes.c_int]
