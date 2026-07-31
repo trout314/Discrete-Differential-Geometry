@@ -40,8 +40,14 @@ else uniform over the rest; Hastings uses the drawn class's counts on
 both sides (PH cancels). Episodes that hit MAXSTEP are EXACTLY UNDONE
 (full accepted-move unwind, recorded dS must be 0) -- never committed.
 
-Env: UNSEEDS UNC ZETA AOF BR BCF BC4 PH CYCLES RELAX EPISODES
-     MAXSTEP SEED LMAX  (AOI = 1-AOF)
+Env: UNSEEDS UNC WLCYC WLD0 UTAB_LOAD ZETA AOF BR BCF BC4 PH
+     CYCLES RELAX EPISODES MAXSTEP SEED LMAX  (AOI = 1-AOF)
+
+WLCYC > 0 runs a Wang-Landau calibration phase first (visited
+multisets penalized by a staged decaying delta, periodic re-anchor),
+then FREEZES the table (saved to OUTBASE.utab.json, reloadable via
+UTAB_LOAD), reloads the start state, and runs production with full
+exactness (any frozen table is a valid umbrella).
 """
 import json
 import math
@@ -62,6 +68,9 @@ CIMP = float(sys.argv[4]) if len(sys.argv) > 4 else 0.7
 F3T = int(sys.argv[5]) if len(sys.argv) > 5 else 8704
 UNSEEDS = int(os.environ.get("UNSEEDS", "16"))
 UNC = int(os.environ.get("UNC", "150000"))
+WLCYC = int(os.environ.get("WLCYC", "0"))          # WL calibration cycles
+WLD0 = float(os.environ.get("WLD0", "0.5"))        # initial WL delta
+UTAB_LOAD = os.environ.get("UTAB_LOAD", "")        # frozen table json
 ZETA = float(os.environ.get("ZETA", "0.05"))
 AOF = float(os.environ.get("AOF", "0.5"))          # open-flag | closed
 AOI = 1.0 - AOF                                    # open-insert | closed
@@ -106,6 +115,7 @@ def spoke_ms(L, v):
 # umbrella; provenance does not enter the balance.
 UTAB = {}
 UFB = [0.0] * 6      # (n3, n4, n5, n6, n7plus, Zdeficit) coefficients
+UFBC = 0.0           # fallback constant (shifts with re-anchoring)
 Z0 = 12.0
 
 
@@ -115,7 +125,7 @@ def U_fallback(ms):
         n[min(max(d, 3), 7) - 3] += 1
     z = Z0 - len(ms)
     return (UFB[0] * n[0] + UFB[1] * n[1] + UFB[2] * n[2]
-            + UFB[3] * n[3] + UFB[4] * n[4] + UFB[5] * z)
+            + UFB[3] * n[3] + UFB[4] * n[4] + UFB[5] * z + UFBC)
 
 
 def U_of(L, v):
@@ -240,6 +250,7 @@ class Worm:
         self.acc = {k: [0, 0] for k in
                     ("of", "oi", "re", "cf", "c4")}   # [tries, accepts]
         self.undone = 0
+        self.wl_delta = 0.0        # >0 only during WL calibration
 
     def _hit(self, kind, ok):
         self.acc[kind][0] += 1
@@ -381,11 +392,44 @@ class Worm:
             else:
                 if self.close_41(v):
                     closed = "c4"
+            if closed is None and self.wl_delta:
+                # Wang-Landau: penalize the visited multiset (flatten
+                # the visit histogram; table is frozen for production)
+                ms = spoke_ms(self.L, v)
+                UTAB[ms] = U_of(self.L, v) - self.wl_delta
             umax = max(umax, U_of(self.L, v))
         return {"opened": 1, "head": int(v), "steps": steps,
                 "closed": closed, "dS": round(
                     self.s.current_objective - S0, 3),
                 "umax": round(umax, 2), "t": round(time.time() - t0, 2)}
+
+
+def anchor_utab(L, sample):
+    """Uniform-shift the umbrella so U(typical closed star) ~ 0. A
+    global shift is a gauge choice (trades against zeta only)."""
+    global UFBC
+    off = sum(U_of(L, u) for u in sample) / len(sample)
+    for k in list(UTAB):
+        UTAB[k] -= off
+    UFBC -= off
+    return off
+
+
+def save_utab(path):
+    with open(path, "w") as f:
+        json.dump({"z0": Z0, "ufb": list(UFB), "ufbc": UFBC,
+                   "tab": {",".join(map(str, k)): v
+                           for k, v in UTAB.items()}}, f)
+
+
+def load_utab(path):
+    global Z0, UFBC
+    d = json.load(open(path))
+    Z0 = d["z0"]
+    UFB[:] = d["ufb"]
+    UFBC = d["ufbc"]
+    UTAB.update({tuple(int(x) for x in k.split(",")): v
+                 for k, v in d["tab"].items()})
 
 
 def main():
@@ -402,13 +446,19 @@ def main():
     # calibrate U's zero point from the start state (fixed constants)
     vs = sorted({x for e in L.edeg for x in e})
     t_cal = time.time()
-    tab, coef = build_umbrella(s, L, UNSEEDS, UNC)
-    UTAB.update(tab)
-    UFB[:] = coef
-    print(f"umbrella: {len(UTAB)} corridor multisets from {UNSEEDS} "
-          f"seeds ({time.time() - t_cal:.0f}s); Z0={Z0:.2f}; "
-          f"U[3,3,3,3]={UTAB.get((3, 3, 3, 3), float('nan')):+.1f}",
-          flush=True)
+    if UTAB_LOAD:
+        load_utab(UTAB_LOAD)
+        print(f"umbrella: loaded {len(UTAB)} multisets from "
+              f"{UTAB_LOAD}", flush=True)
+    else:
+        tab, coef = build_umbrella(s, L, UNSEEDS, UNC)
+        UTAB.update(tab)
+        UFB[:] = coef
+        print(f"umbrella: {len(UTAB)} corridor multisets from "
+              f"{UNSEEDS} seeds ({time.time() - t_cal:.0f}s); "
+              f"Z0={Z0:.2f}; U[3,3,3,3]="
+              f"{UTAB.get((3, 3, 3, 3), float('nan')):+.1f}",
+              flush=True)
     log = open(outbase + ".chan.jsonl", "w")
     log.write(json.dumps({
         "start": start, "etarget": ETARGET, "cimp": CIMP, "f3t": F3T,
@@ -419,6 +469,36 @@ def main():
 
     worm = Worm(s, L, rng)
     t0 = time.time()
+    if WLCYC and not UTAB_LOAD:
+        vs0 = sorted({x for e in L.edeg for x in e})
+        anchor_sample = vs0[:: max(1, len(vs0) // 100)]
+        worm.wl_delta = WLD0
+        stage = max(1, WLCYC // 6)
+        for cyc in range(WLCYC):
+            if relax > 0:
+                s.run(sweeps=relax)
+                worm.L = L = W.Live(s.manifold,
+                                    driver=s.do_bistellar_move)
+            for _ in range(episodes):
+                worm.episode()
+            if (cyc + 1) % stage == 0:
+                worm.wl_delta /= 2.0
+                off = anchor_utab(L, anchor_sample)
+                a = worm.acc
+                print(f"WL {cyc + 1:3d}/{WLCYC} delta="
+                      f"{worm.wl_delta:.3f} |UTAB|={len(UTAB)} "
+                      f"anchor{off:+.2f} | "
+                      + " ".join(f"{k}:{x[1]}/{x[0]}"
+                                 for k, x in a.items())
+                      + f" undone={worm.undone} "
+                      f"({time.time() - t0:.0f}s)", flush=True)
+        worm.wl_delta = 0.0
+        save_utab(outbase + ".utab.json")
+        print(f"WL frozen -> {outbase}.utab.json; reloading start "
+              f"state for production", flush=True)
+        m = ddg.Manifold.load(start, 3)
+        s, L = fresh(m)
+        worm = Worm(s, L, rng)
     for cyc in range(cycles):
         if relax > 0:
             s.run(sweeps=relax)
