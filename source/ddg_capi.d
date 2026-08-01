@@ -4142,6 +4142,58 @@ extern(C) long ddg_sampler_chain_sites(void* sampler_handle,
     catch (Exception e) { setError(e.msg); return -1; }
 }
 
+/// Run one STRICT-CLOSURE chord episode. Both marks are pure flags, so
+/// the sector boundary makes no move; the close fires only when one mark
+/// is a degree-3 chord, the other is ABSENT, and the absent one's region
+/// carries no degree-3 edge -- i.e. the flicker relocated AND its old
+/// neighbourhood came out clean. out12 as for the other episodes;
+/// closedHow = 7 means the strict close fired.
+extern(C) int ddg_sampler_worm_chord_strict(void* sampler_handle,
+    double* out12) nothrow
+{
+    clearError();
+    try
+    {
+        if (sampler_handle is null) { setError("null handle"); return -1; }
+        auto s = cast(SamplerState*) sampler_handle;
+        if (!s.wormF0On) { setError("worm not configured"); return -1; }
+        if (s.dim != 3) { setError("requires dim=3"); return -1; }
+        if (s.cocycle.enabled)
+        { setError("not cocycle-safe"); return -1; }
+        auto mh = cast(ManifoldHandle*) s.manifoldHandle;
+        auto mw = cast(ManifoldWrapper!3*) mh.ptr;
+        if (s.currentObjective != s.currentObjective)
+            recomputeObjective(s);
+        struct Params { int numFacetsTarget; real hingeDegreeTarget;
+            real numFacetsCoef; real numHingesCoef; real hingeDegreeVarianceCoef;
+            real coDim3DegreeVarianceCoef; real hingeDegreeTargetCoef;
+            real coDim3DegreeTargetCoef; real coDim3DegreeTarget; }
+        auto params = Params(s.numFacetsTarget,
+            cast(real) s.hingeDegreeTarget, cast(real) s.numFacetsCoef,
+            cast(real) s.numHingesCoef, cast(real) s.hingeDegreeVarianceCoef,
+            cast(real) s.coDim3DegreeVarianceCoef,
+            cast(real) s.hingeDegreeTargetCoef,
+            cast(real) s.coDim3DegreeTargetCoef,
+            cast(real) s.coDim3DegreeTarget);
+        WormF0Result res;
+        immutable changed = mw.mfd.wormChordStrictEpisode(
+            s.currentObjective, params, s.wormF0,
+            s.potEnabled ? &s.vertexPotState : null,
+            s.potEnabled ? &s.vertexPot : null, s.wormF0Undo, res);
+        if (out12 !is null)
+        {
+            out12[0] = res.opened;   out12[1] = res.head;
+            out12[2] = res.steps;    out12[3] = res.closedHow;
+            out12[4] = res.dS;       out12[5] = res.umax;
+            out12[6] = res.nH;       out12[7] = res.accH;
+            out12[8] = res.nG;       out12[9] = res.accG;
+            out12[10] = res.zmin;    out12[11] = res.nZ4;
+        }
+        return changed ? 1 : 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
 /// Upload the CHORD carrier's umbrella: keys are packed endpoint-spoke
 /// multisets (sampler.wf0Key over the degrees of every edge at either
 /// chord endpoint), vals the replayed cumulative dS of a measured

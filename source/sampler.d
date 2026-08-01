@@ -5846,8 +5846,34 @@ private long wf0ChainSites(Vertex)(ref Manifold!(3, Vertex) mfd,
 /// changes iff an endpoint is in the support. That restores the
 /// dU == 0 lemma for every move outside the head class.
 private int wf0ChordDegs(Vertex)(ref Manifold!(3, Vertex) mfd,
-    Vertex[2] chord, scope Vertex[4][] tets, int nT, size_t[] outD)
+    Vertex[2] chord, scope Vertex[4][] tets, int nT, size_t[] outD,
+    out int n3reg)
 {
+    // The region's degree-3 edge count -- i.e. IS A HELPER PRESENT. The
+    // degree multiset alone cannot tell a bare flicker from a catalysed
+    // end-state (measured: 18 of 40 fresh flickers aliased onto tube
+    // entries, inheriting catalysed prices as low as -5.96), and that
+    // aliasing is what forced one U value to serve two incompatible
+    // roles. This is exactly the variable the catalysed path turns on.
+    n3reg = 0;
+    {
+        Vertex[2][512] seenE;
+        int nSE = 0;
+        foreach (ti; 0 .. nT)
+            foreach (a2; 0 .. 4)
+                foreach (b2; a2 + 1 .. 4)
+                {
+                    Vertex[2] e = tets[ti][a2] < tets[ti][b2]
+                        ? [tets[ti][a2], tets[ti][b2]]
+                        : [tets[ti][b2], tets[ti][a2]];
+                    bool dup = false;
+                    foreach (i; 0 .. nSE)
+                        if (seenE[i] == e) { dup = true; break; }
+                    if (dup) continue;
+                    if (nSE < seenE.length) seenE[nSE++] = e;
+                    if (mfd.degreeOrZero!1(e[]) == 3) n3reg++;
+                }
+    }
     Vertex[128] nb;
     int nn = 0;
     foreach (ti; 0 .. nT)
@@ -5874,11 +5900,19 @@ private int wf0ChordDegs(Vertex)(ref Manifold!(3, Vertex) mfd,
 }
 
 /// Umbrella for the chord carrier: the replayed catalysed-path table.
+/// wf0Key uses buckets 0..6 (bits 0..55); the top byte is free, so the
+/// region's degree-3 count rides there and cannot collide with it.
+private ulong wf0ChordKey(scope const(size_t)[] degs, int n3reg) @nogc nothrow
+{
+    return wf0Key(degs)
+        + (cast(ulong)(n3reg > 255 ? 255 : n3reg) << 56);
+}
+
 private double wf0ChordU(const ref WormF0Params cfg,
-                         scope const(size_t)[] degs) nothrow
+                         scope const(size_t)[] degs, int n3reg) nothrow
 {
     if (cfg.ctab.length == 0) return 0.0;
-    immutable k = wf0Key(degs);
+    immutable k = wf0ChordKey(degs, n3reg);
     if (auto p = k in cfg.ctab)
     {
         double u = *p;
@@ -6082,9 +6116,11 @@ bool wormChordPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
         if (hNT[i] < 0) { hNH[i] = 0; return -1; }
         hNH[i] = wf0ChordEnumH(mfd, chords[i], hTets[i][], hNT[i],
                                hCand[i][]);
+        int n3reg;
         immutable nd = wf0ChordDegs(mfd, chords[i], hTets[i][], hNT[i],
-                                    hDegs[i][]);
-        hU[i] = (nd < 0) ? cfg.cfb : wf0ChordU(cfg, hDegs[i][0 .. nd]);
+                                    hDegs[i][], n3reg);
+        hU[i] = (nd < 0) ? cfg.cfb
+                         : wf0ChordU(cfg, hDegs[i][0 .. nd], n3reg);
         return hNH[i];
     }
 
@@ -6325,6 +6361,291 @@ private long wf0Deg3Delta(Vertex)(ref Manifold!(3, Vertex) mfd,
             if (mfd.degreeOrZero!1(e[]) == 4) d++;   // 4 -> 3, joins
         }
     return d;
+}
+
+/*
+STRICT-CLOSURE chord channel.
+=============================
+
+The transport channel above has a WEAK closure condition -- degree 3,
+which a 2->3 satisfies the instant the flicker is born -- so it commits
+relocations and almost nothing else. Trying to fix that with the
+umbrella cannot work: the open-sector weight is zeta e^{-S+U}, so a high
+U both DRAWS the walk to a state and, through alpha_close ~ e^{-dS-U},
+BLOCKS closing from it. Same parameter, same sign, both effects.
+Measured: large positive tube entries sent abandonment to 101/200, and
+clamping them merely traded that back for lost opens. There is no U that
+makes a state unattractive AND hard to close from.
+
+So the discrimination moves out of U and into the CLOSURE CRITERION,
+where it belongs, expressed as an absolute local configuration (a state
+function) rather than a comparison with the start (history, which would
+break balance).
+
+Both marks are pure flags -- no move at open or close -- so the whole
+f-change comes from the walk, and the sector boundary costs nothing.
+The open-sector state is the UNORDERED pair of marked vertex-pairs, so
+the roles need not be tracked and the reverse is automatic:
+
+  open   pick e_full  (an existing degree-3 chord, uniform over n3)
+         pick e_empty (an ABSENT pair from the chain-targeted sites)
+         gate: e_empty's region carries no degree-3 edge
+  close  fires when one mark is degree 3 and the other is ABSENT, and
+         the absent one's region carries no degree-3 edge
+
+At open the close condition already holds, so a null closure is
+available; that is harmless (it commits nothing). A PRODUCTIVE episode
+swaps them -- the old chord is gone, a new one stands at the target, and
+the gate says the old neighbourhood came out clean, i.e. the reaction
+happened rather than a bare relocation. The same gate sits on both legs,
+which is what keeps the close and its reverse open in balance.
+*/
+
+/// Does the region around a vertex pair carry no degree-3 edge? The
+/// region is the union of the two vertices' stars, so this is defined
+/// whether or not the pair is currently an edge.
+private bool wf0RegionClean(Vertex)(ref Manifold!(3, Vertex) mfd,
+    Vertex[2] mark, Vertex[2] ignore)
+{
+    foreach (v; mark)
+    {
+        Vertex[4] seed;
+        bool got = false;
+        foreach (f; mfd.star(v.only))
+        {
+            int k = 0;
+            foreach (x; f) { if (k < 4) seed[k] = x; k++; }
+            got = (k == 4);
+            break;
+        }
+        if (!got) return false;
+        static Vertex[4][256] st;
+        immutable n = collectStar(mfd, v, seed, st[], 0);
+        if (n < 0) return false;
+        foreach (i; 0 .. n)
+            foreach (a2; 0 .. 4)
+                foreach (b2; a2 + 1 .. 4)
+                {
+                    Vertex[2] e = st[i][a2] < st[i][b2]
+                        ? [st[i][a2], st[i][b2]] : [st[i][b2], st[i][a2]];
+                    if (e == ignore) continue;   // the other mark
+                    if (mfd.degreeOrZero!1(e[]) == 3) return false;
+                }
+    }
+    return true;
+}
+
+/// One STRICT-CLOSURE chord episode (see the note above). Returns true
+/// if the closed state changed.
+bool wormChordStrictEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
+    ref real currentObjective, P params, const ref WormF0Params cfg,
+    VertexPotState!Vertex* potState, VertexPot* pot,
+    scope WF0Applied!Vertex[] undoBuf, out WormF0Result res)
+{
+    import std.math : log, exp;
+    import std.random : uniform, uniform01;
+    alias BM = BistellarMove!(3, Vertex);
+
+    real baseRun = currentObjective
+        - (potState !is null ? potState.total : 0.0L);
+    real deltaTotal = 0.0L;
+    int nApplied = 0;
+
+    real applyMove(scope const(Vertex)[] cen, scope const(Vertex)[] coc)
+    {
+        auto bm = BM(cen, coc);
+        immutable real dBase =
+            mfd.speculativeBistellarDelta(bm, baseRun, params);
+        real dPot = 0.0L;
+        if (potState !is null)
+            dPot = mfd.potentialBistellarDelta(bm, *potState, *pot, true);
+        mfd.doMove(bm);
+        baseRun += dBase;
+        deltaTotal += dBase + dPot;
+        return dBase + dPot;
+    }
+
+    void record(scope const(Vertex)[] cen, scope const(Vertex)[] coc)
+    {
+        assert(nApplied < undoBuf.length, "strict undo buffer overflow");
+        undoBuf[nApplied].cl = cast(int) cen.length;
+        undoBuf[nApplied].ccl = cast(int) coc.length;
+        undoBuf[nApplied].cen[0 .. cen.length] = cen[];
+        undoBuf[nApplied].coc[0 .. coc.length] = coc[];
+        nApplied++;
+    }
+
+    void unwindAll()
+    {
+        foreach_reverse (k; 0 .. nApplied)
+            applyMove(undoBuf[k].coc[0 .. undoBuf[k].ccl],
+                      undoBuf[k].cen[0 .. undoBuf[k].cl]);
+        nApplied = 0;
+    }
+
+    immutable double pcl = 1.0 - cfg.ph - cfg.pg;
+    if (!(pcl > 0.0 && pcl < 1.0)) return false;
+
+    // -- OPEN: two pure flags, no move --------------------------------
+    immutable long n3 = wf0Deg3Scan(mfd, -1, null, null);
+    if (n3 <= 0) return false;
+    Vertex fa, fb;
+    wf0Deg3Scan(mfd, uniform(0, n3), &fa, &fb);
+    Vertex[2] mFull = fa < fb ? [fa, fb] : [fb, fa];
+
+    immutable long nSite = wf0ChainSites!Vertex(mfd, cfg.chainK, -1,
+                                                null, null);
+    if (nSite <= 0) return false;
+    Vertex[3] face = -1;
+    Vertex[2] mEmpty = -1;
+    wf0ChainSites!Vertex(mfd, cfg.chainK, uniform(0, nSite),
+                         &face, &mEmpty);
+    if (mEmpty[0] < 0) return false;
+    // the two marks must be disjoint, and the target region clean
+    foreach (x; mEmpty) foreach (y; mFull) if (x == y) return false;
+    if (!wf0RegionClean(mfd, mEmpty, mFull)) return false;
+
+    immutable double laOpen = cfg.zeta2
+        + log(cast(double) n3) + log(cast(double) nSite) + log(pcl);
+    if (!(laOpen >= 0 || uniform01 <= exp(laOpen))) return false;
+    res.opened = 4;                       // strict chord open
+    res.head = cast(int) mFull[0];
+
+    Vertex[2][2] marks = [mFull, mEmpty];
+
+    // -- walk ----------------------------------------------------------
+    static Vertex[4][256][2] mTets;
+    static WF0Cand!Vertex[1024][2] mCand;
+    int[2] mNT = 0;
+    int[2] mNH = 0;
+
+    int refreshMark(int i)
+    {
+        Vertex[4] seed;
+        bool got = false;
+        foreach (f; mfd.star(marks[i][0].only))
+        {
+            int k = 0;
+            foreach (x; f) { if (k < 4) seed[k] = x; k++; }
+            got = (k == 4);
+            break;
+        }
+        if (!got) { mNT[i] = 0; mNH[i] = 0; return -1; }
+        int n = collectStar(mfd, marks[i][0], seed, mTets[i][], 0);
+        if (n < 0) { mNH[i] = 0; return -1; }
+        n = collectStar(mfd, marks[i][1], seed, mTets[i][], n);
+        if (n < 0) { mNH[i] = 0; return -1; }
+        foreach (k; 0 .. n) mTets[i][k][].sort();
+        mNT[i] = n;
+        mNH[i] = wf0ChordEnumH(mfd, marks[i], mTets[i][], n, mCand[i][]);
+        return mNH[i];
+    }
+    if (refreshMark(0) < 0 || refreshMark(1) < 0) return false;
+
+    immutable double pm0 = 0.5 * cfg.ph;
+    immutable double pm1 = cfg.ph;
+    immutable double pgTop = cfg.ph + cfg.pg;
+
+    while (true)
+    {
+        if (res.steps >= cfg.maxstep)
+        {
+            unwindAll();
+            res.closedHow = 3;
+            res.dS = cast(double) deltaTotal;
+            currentObjective += deltaTotal;
+            return false;
+        }
+        res.steps++;
+        immutable double rr = uniform01;
+        if (rr < pm1)
+        {
+            immutable int i = (rr < pm0) ? 0 : 1;
+            res.nH++;
+            if (mNH[i] == 0) continue;
+            auto c = mCand[i][uniform(0, mNH[i])];
+            auto bmh = c.is23 ? BM(c.f[], c.p[]) : BM(c.p[], c.f[]);
+            if (!mfd.hasValidMove(bmh)) continue;
+            immutable int nH0 = mNH[i];
+            immutable real dh = applyMove(c.is23 ? c.f[] : c.p[],
+                                          c.is23 ? c.p[] : c.f[]);
+            if (refreshMark(0) < 0 || refreshMark(1) < 0)
+            {
+                applyMove(bmh.coCenter, bmh.center);
+                refreshMark(0); refreshMark(1);
+                continue;
+            }
+            immutable double lah = -cast(double) dh
+                + log(cast(double) nH0)
+                - log(cast(double)(mNH[i] == 0 ? 1 : mNH[i]));
+            if (mNH[i] != 0 && (lah >= 0 || uniform01 <= exp(lah)))
+            {
+                res.accH++;
+                record(c.is23 ? c.f[] : c.p[], c.is23 ? c.p[] : c.f[]);
+            }
+            else
+            {
+                applyMove(bmh.coCenter, bmh.center);
+                refreshMark(0); refreshMark(1);
+            }
+            continue;
+        }
+        if (rr < pgTop)
+        {
+            res.nG++;
+            Vertex fresh = cast(Vertex) mfd.fVector[0];
+            auto bm = mfd.chooseRandomMove(fresh, params);
+            if (bm.center.length == 1 || bm.coCenter.length == 1) continue;
+            bool touches = false;
+            foreach (x; bm.center)
+                foreach (mk; marks) if (x == mk[0] || x == mk[1])
+                    touches = true;
+            foreach (x; bm.coCenter)
+                foreach (mk; marks) if (x == mk[0] || x == mk[1])
+                    touches = true;
+            if (touches) continue;
+            immutable real dB = mfd.speculativeBistellarDelta(bm, baseRun,
+                                                              params);
+            real dP = 0.0L;
+            if (potState !is null)
+                dP = mfd.potentialBistellarDelta(bm, *potState, *pot,
+                                                 false);
+            immutable double la = -cast(double)(dB + dP);
+            if (la >= 0 || uniform01 <= exp(la))
+            {
+                res.accG++;
+                applyMove(bm.center, bm.coCenter);
+                record(bm.center, bm.coCenter);
+                refreshMark(0); refreshMark(1);
+            }
+            continue;
+        }
+
+        // -- CLOSE: one mark full, the other empty, empty region clean --
+        immutable long d0 = cast(long) mfd.degreeOrZero!1(marks[0][]);
+        immutable long d1 = cast(long) mfd.degreeOrZero!1(marks[1][]);
+        int full = -1, empty = -1;
+        if (d0 == 3 && d1 == 0) { full = 0; empty = 1; }
+        else if (d1 == 3 && d0 == 0) { full = 1; empty = 0; }
+        else continue;
+        if (!wf0RegionClean(mfd, marks[empty], marks[full])) continue;
+        // no move at the close; the counts are the CURRENT ones
+        immutable long n3c = wf0Deg3Scan(mfd, -1, null, null);
+        immutable long nSiteC = wf0ChainSites!Vertex(mfd, cfg.chainK, -1,
+                                                     null, null);
+        if (n3c <= 0 || nSiteC <= 0) continue;
+        immutable double la = -cfg.zeta2
+            - log(cast(double) n3c) - log(cast(double) nSiteC)
+            - log(pcl);
+        if (la >= 0 || uniform01 <= exp(la))
+        {
+            res.closedHow = 7;            // strict close
+            res.dS = cast(double) deltaTotal;
+            currentObjective += deltaTotal;
+            return nApplied > 0;
+        }
+    }
+    assert(0);
 }
 
 // ---------------------------------------------------------------------------

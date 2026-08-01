@@ -31,11 +31,19 @@ import discrete_differential_geometry as ddg  # noqa: E402
 
 
 def chord_sig(L, c):
-    """The chord's local signature: sorted degrees of every edge at
-    either endpoint (the chord's own edge included)."""
-    nb = set()
+    """The chord's local signature: (region degree-3 count, sorted
+    degrees of every edge at either endpoint).
+
+    The leading count is what distinguishes a BARE flicker from one with
+    a helper alongside it -- i.e. the variable the catalysed path turns
+    on. Without it the key aliases: 18 of 40 fresh flickers landed on a
+    tube entry and inherited catalysed end-state prices, forcing one U
+    value to serve two incompatible roles. Must stay in lockstep with
+    wf0ChordDegs / wf0ChordKey on the D side."""
+    nb, tets = set(), set()
     for e in c:
         for t in L.v2t[e]:
+            tets.add(tuple(sorted(t)))
             nb |= set(t)
     nb -= set(c)
     out = []
@@ -44,7 +52,10 @@ def chord_sig(L, c):
             d = L.edeg.get((min(e, u), max(e, u)))
             if d is not None:
                 out.append(d)
-    return tuple(sorted(out))
+    edges = {(t[i], t[j]) for t in tets
+             for i in range(4) for j in range(i + 1, 4)}
+    n3 = sum(1 for e in edges if L.edeg.get(e, 0) == 3)
+    return (n3,) + tuple(sorted(out))
 
 
 def apexes(L, face):

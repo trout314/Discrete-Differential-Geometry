@@ -555,6 +555,26 @@ class ManifoldSampler:
                 "nG": int(out[8]), "accG": int(out[9]),
                 "zmin": int(out[10]), "nZ4": int(out[11])}
 
+    def worm_chord_strict_episode(self) -> dict:
+        """One STRICT-CLOSURE chord episode. Both marks are pure flags,
+        so the sector boundary makes no move and the whole f-change
+        comes from the walk. The close fires only when one mark is a
+        degree-3 chord, the other is ABSENT, and the absent one's region
+        carries no degree-3 edge -- the flicker relocated AND its old
+        neighbourhood came out clean, i.e. a reaction rather than a bare
+        relocation. ``closed == "strict"`` marks a committed one."""
+        out = np.zeros(12, dtype=np.float64)
+        changed = _lib.ddg_sampler_worm_chord_strict(
+            self._handle,
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
+        return {"changed": bool(changed), "opened": int(out[0]),
+                "steps": int(out[2]),
+                "closed": {0: None, 3: "undone", 7: "strict"}.get(
+                    int(out[3])),
+                "dS": float(out[4]), "nH": int(out[6]),
+                "accH": int(out[7]), "nG": int(out[8]),
+                "accG": int(out[9])}
+
     def set_worm_chord(self, ctab: dict, offpen: float = 0.0) -> None:
         """Upload the CHORD carrier's umbrella, replayed from measured
         catalysed paths. ``ctab`` maps the chord's local signature --
@@ -562,8 +582,11 @@ class ManifoldSampler:
         cumulative dS along the path. Empty dict disables it (U = 0)."""
         packed = {}
         for ms, u in ctab.items():
-            k = 0
-            for d in ms:
+            # ms = (region deg-3 count, *endpoint edge degrees). The
+            # count rides in the top byte, which wf0Key leaves free
+            # (it uses buckets 0..6, bits 0..55) -- see wf0ChordKey.
+            k = (int(ms[0]) & 0xFF) << 56
+            for d in ms[1:]:
                 k += 1 << (8 * min(max(int(d) - 3, 0), 6))
             packed[k] = min(packed.get(k, float(u)), float(u))
         ks = sorted(packed)
