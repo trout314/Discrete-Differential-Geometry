@@ -595,7 +595,7 @@ class ManifoldSampler:
         carries no degree-3 edge -- the flicker relocated AND its old
         neighbourhood came out clean, i.e. a reaction rather than a bare
         relocation. ``closed == "strict"`` marks a committed one."""
-        out = np.zeros(16, dtype=np.float64)
+        out = np.zeros(20, dtype=np.float64)
         changed = _lib.ddg_sampler_worm_chord_strict(
             self._handle,
             out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
@@ -606,7 +606,17 @@ class ManifoldSampler:
                 "dS": float(out[4]), "nH": int(out[6]),
                 "accH": int(out[7]), "nG": int(out[8]),
                 "accG": int(out[9]),
-                "df": tuple(int(out[12 + k]) for k in range(4))}
+                "df": tuple(int(out[12 + k]) for k in range(4)),
+                # catalysis audit: largest accepted single-move dS, the
+                # count of accepted UPHILL moves, and 100x the max
+                # running excursion max_k(S_k - S_0)
+                "dsmax": float(out[5]), "nup": int(out[11]),
+                "exc": float(out[10]) / 100.0,
+                # [head, global] arms -- global is plain thermal
+                # Metropolis forbidden from touching the marks, so it
+                # is the built-in control for the head arm
+                "dsarm": (float(out[16]), float(out[18])),
+                "nuparm": (int(out[17]), int(out[19]))}
 
     def set_worm_chord(self, ctab: dict, offpen: float = 0.0) -> None:
         """Upload the CHORD carrier's umbrella, replayed from measured
@@ -653,7 +663,17 @@ class ManifoldSampler:
                 "dS": float(out[4]), "nH": int(out[6]),
                 "accH": int(out[7]), "nG": int(out[8]),
                 "accG": int(out[9]),
-                "df": tuple(int(out[12 + k]) for k in range(4))}
+                "df": tuple(int(out[12 + k]) for k in range(4)),
+                # catalysis audit: largest accepted single-move dS, the
+                # count of accepted UPHILL moves, and 100x the max
+                # running excursion max_k(S_k - S_0)
+                "dsmax": float(out[5]), "nup": int(out[11]),
+                "exc": float(out[10]) / 100.0,
+                # [head, global] arms -- global is plain thermal
+                # Metropolis forbidden from touching the marks, so it
+                # is the built-in control for the head arm
+                "dsarm": (float(out[16]), float(out[18])),
+                "nuparm": (int(out[17]), int(out[19]))}
 
     def set_nonlocal_slide_prob(self, prob: float, max_step: int = 8) -> None:
         """Enable the NON-LOCAL slide channel (dim = 3 only).

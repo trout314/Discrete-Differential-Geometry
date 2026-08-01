@@ -4203,6 +4203,10 @@ extern(C) int ddg_sampler_worm_chord_strict(void* sampler_handle,
             out12[8] = res.nG;       out12[9] = res.accG;
             out12[10] = res.zmin;    out12[11] = res.nZ4;
             foreach (k; 0 .. 4) out12[12 + k] = res.df[k];
+            // catalysis audit: [head, global] max accepted dS and
+            // accepted-uphill counts (the global arm is the control)
+            out12[16] = res.dsArm[0];  out12[17] = res.nUpArm[0];
+            out12[18] = res.dsArm[1];  out12[19] = res.nUpArm[1];
         }
         return changed ? 1 : 0;
     }

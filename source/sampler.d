@@ -4609,6 +4609,11 @@ struct WormF0Result
     int zmin = 999;          ///< deepest link size reached
     long nZ4;                ///< steps spent at Z == 4
     long[4] df;              ///< per-episode net f change (census)
+    // explicit zero-init: D default-initializes floating point to NaN,
+    // and every comparison against NaN is false, so `if (d > dsArm[0])`
+    // would never fire and the arm split silently reported NaN
+    double[2] dsArm = [0.0, 0.0];  ///< strict: max accepted dS [head, global]
+    long[2] nUpArm;          ///< strict: accepted uphill count per arm
 }
 
 /// One committed move (for exact cap-undo).
@@ -6555,6 +6560,44 @@ bool wormChordStrictEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
         nApplied = 0;
     }
 
+    // CATALYSIS AUDIT. Every walk move here is priced alone (head is
+    // -dS + Hastings counts, global is plain -dS, and U == 0), so no
+    // move can spend action released by another. The observable
+    // consequence is that accepted uphill moves must follow the bare
+    // Metropolis tail e^-X -- so the largest accepted dS over N
+    // accepted uphill moves should sit near log N, NOT beyond it.
+    // res.umax = largest accepted single-move dS; res.nZ4 = number of
+    // accepted UPHILL moves; res.zmin = 100 * max running excursion
+    // max_k (S_k - S_0), the barrier the episode actually crossed.
+    // The GLOBAL kernel is the built-in control: it is plain thermal
+    // Metropolis over the whole manifold and is explicitly forbidden
+    // from touching either mark, while the HEAD kernel works right at
+    // the flicker. If catalysis were real the head arm would accept
+    // uphill moves the global arm cannot. Split the statistics.
+    res.umax = 0.0;
+    res.nZ4 = 0;
+    res.zmin = 0;
+    res.dsArm[] = 0.0;
+    res.nUpArm[] = 0;
+    void noteAccept(double d, bool isHead)
+    {
+        if (d > res.umax) res.umax = d;
+        if (d > 0.0) res.nZ4++;
+        if (isHead)
+        {
+            if (d > res.dsArm[0]) res.dsArm[0] = d;
+            if (d > 0.0) res.nUpArm[0]++;
+        }
+        else
+        {
+            if (d > res.dsArm[1]) res.dsArm[1] = d;
+            if (d > 0.0) res.nUpArm[1]++;
+        }
+        immutable double exc = cast(double) deltaTotal;
+        if (exc * 100.0 > cast(double) res.zmin)
+            res.zmin = cast(int)(exc * 100.0);
+    }
+
     double pcl = 1.0 - cfg.ph - cfg.pg;
     if (!(pcl > 0.0 && pcl < 1.0)) return false;
     double phE = cfg.ph, pgE = cfg.pg;
@@ -6686,6 +6729,7 @@ bool wormChordStrictEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
             if (mNH[i] != 0 && (lah >= 0 || uniform01 <= exp(lah)))
             {
                 res.accH++;
+                noteAccept(cast(double) dh, true);
                 record(c.is23 ? c.f[] : c.p[], c.is23 ? c.p[] : c.f[]);
             }
             else
@@ -6719,6 +6763,7 @@ bool wormChordStrictEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
             if (la >= 0 || uniform01 <= exp(la))
             {
                 res.accG++;
+                noteAccept(cast(double)(dB + dP), false);
                 applyMove(bm.center, bm.coCenter);
                 record(bm.center, bm.coCenter);
                 refreshMark(0); refreshMark(1);
