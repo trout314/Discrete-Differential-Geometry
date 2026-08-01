@@ -2934,6 +2934,59 @@ bool findTetOfEdge(Vertex)(ref Manifold!(3, Vertex) mfd,
 /// face-neighbour walk restricted to facets containing v covers it.  `arr`
 /// may already hold other vertices' stars: the walk uses its own per-call
 /// visited set (indices into arr), so shared facets do not block it.
+/// collectStar must return the SAME SET for every valid seed, and that
+/// set must be star(v).
+///
+/// This is what makes Manifold.someFacetContaining safe to substitute for
+/// `star(v).front`: facets() sorts, so star(v).front was the
+/// lexicographically least tet on v, while the witness is whichever was
+/// inserted most recently. The seed feeds collectStar, so the star comes
+/// back in a different ORDER, and the head kernel's uniform draw over the
+/// candidate list therefore lands on a different candidate for the same
+/// RNG stream -- observed as 96 -> 116 commits over 3000 episodes. That
+/// is a relabelling of the proposal, not a change to it: the candidate
+/// SET and its COUNT are what the uniform draw and the Hastings ratio
+/// (nH0/nH) depend on, and this test pins both.
+unittest
+{
+    import std.algorithm : sort, canFind;
+    import manifold_examples : standardSphere;
+    auto m = standardSphere!3;
+    // churn a little so vertices have non-trivial stars
+    int fresh = 0;
+    foreach (sv; m.simplices(0))
+        if (sv[0] >= fresh) fresh = sv[0] + 1;
+    auto f0 = m.facets.front.dup;
+    m.doMove(BistellarMove!(3, int)(f0, [fresh]));
+
+    foreach (sv; m.simplices(0))
+    {
+        immutable v = sv[0];
+        // every tet on v, as sorted quadruples, from star()
+        int[4][] want;
+        foreach (f; m.star(v.only))
+        {
+            int[4] t = [f[0], f[1], f[2], f[3]];
+            t[].sort();
+            want ~= t;
+        }
+        want.sort();
+        assert(want.length > 0);
+        // collectStar from EVERY valid seed must reproduce exactly that
+        foreach (seed; want)
+        {
+            int[4][64] arr;
+            immutable n = collectStar(m, v, seed, arr[], 0);
+            assert(n == cast(int) want.length,
+                "collectStar size depends on the seed");
+            int[4][] got;
+            foreach (i; 0 .. n) { auto t = arr[i]; t[].sort(); got ~= t; }
+            got.sort();
+            assert(got == want, "collectStar set depends on the seed");
+        }
+    }
+}
+
 private int collectStar(Vertex)(ref Manifold!(3, Vertex) mfd, Vertex v,
     Vertex[4] seed, Vertex[4][] arr, int n)
 {
@@ -6144,10 +6197,30 @@ long wf0ChainSitesProbe(Vertex)(ref Manifold!(3, Vertex) mfd, int kmax)
 ///
 /// beta == 0 short-circuits to the uniform path, so the default is
 /// bit-for-bit the certified behaviour and W == the plain site count.
+/// One enumerated creation site, for the COLLECT mode below.
+struct WF0Site(Vertex)
+{
+    Vertex[3] face;
+    Vertex[2] axis;
+    double wt = 0.0;
+}
+
+/// ditto (COLLECT mode). Pass `outAll`/`outNAll` to have every accepted
+/// site appended in enumeration order along with its weight. The caller
+/// can then make the weighted draw itself over the cached array instead
+/// of paying a SECOND full enumeration for it -- phase 1 is O(N), and
+/// the open used to run it twice purely because the draw needs the total
+/// weight before it can be scaled. Selecting the first i with
+/// pick < sum(wt[0..i+1]) over the cache is exactly the in-loop rule, so
+/// this is bit-identical (same distribution, same single uniform01).
+/// Collection stops silently if `outAll` fills; `*outNAll` reports how
+/// many were stored and the caller must fall back if it is short of the
+/// enumerated count.
 private double wf0ChainSitesW(Vertex)(ref Manifold!(3, Vertex) mfd,
     int kmax, double beta, Vertex exA, Vertex exB,
     double pick, Vertex[3]* outFace, Vertex[2]* outAx,
-    Vertex tgA, Vertex tgB, double* outTgW)
+    Vertex tgA, Vertex tgB, double* outTgW,
+    WF0Site!Vertex[] outAll = null, int* outNAll = null)
 {
     import std.math : exp;
     // ---- flicker supports, as a per-vertex bitmask (up to 64 tracked;
@@ -6188,6 +6261,7 @@ private double wf0ChainSitesW(Vertex)(ref Manifold!(3, Vertex) mfd,
     double W = 0.0;
     bool tookPick = false;
     if (outTgW !is null) *outTgW = 0.0;
+    if (outNAll !is null) *outNAll = 0;
 
     static Vertex[4][4096] starts;
     int nStart = 0;
@@ -6245,6 +6319,14 @@ private double wf0ChainSitesW(Vertex)(ref Manifold!(3, Vertex) mfd,
                 {
                     *outFace = face; *outAx = axis; tookPick = true;
                     if (outTgW !is null && tgA < 0) *outTgW = wt;
+                }
+                if (outAll !is null && outNAll !is null
+                    && *outNAll < outAll.length)
+                {
+                    outAll[*outNAll].face = face;
+                    outAll[*outNAll].axis = axis;
+                    outAll[*outNAll].wt = wt;
+                    ++*outNAll;
                 }
                 W += wt;
             }
@@ -6772,15 +6854,35 @@ bool wormChordStrictEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
     // excluded from the neighbour count (it is leaving). At aggBeta = 0
     // the weights are all 1, W == the old nSite, and the draw is the
     // original uniform one.
+    // ONE enumeration, cached. The draw needs the total weight before it
+    // can be scaled, which is why this used to run the (O(N)) enumeration
+    // twice; collecting the sites instead and drawing over the cache is
+    // the same rule -- first i with pick < sum(wt[0 .. i+1]) -- so it is
+    // bit-identical, and it removes one of the episode's three sweeps.
+    static WF0Site!Vertex[16384] siteBuf;   // zero-init, never = void
+    int nSite2 = 0;
     immutable double Wopen = wf0ChainSitesW!Vertex(mfd, cfg.chainK,
-        cfg.aggBeta, mFull[0], mFull[1], -1.0, null, null, -1, -1, null);
+        cfg.aggBeta, mFull[0], mFull[1], -1.0, null, null, -1, -1, null,
+        siteBuf[], &nSite2);
     if (!(Wopen > 0)) return false;
     Vertex[3] face = -1;
     Vertex[2] mEmpty = -1;
     double wPick = 0.0;
-    wf0ChainSitesW!Vertex(mfd, cfg.chainK, cfg.aggBeta,
-        mFull[0], mFull[1], uniform01 * Wopen, &face, &mEmpty,
-        -1, -1, &wPick);
+    {
+        immutable double pk = uniform01 * Wopen;
+        double acc = 0.0;
+        foreach (i; 0 .. nSite2)
+        {
+            if (pk < acc + siteBuf[i].wt)
+            {
+                face = siteBuf[i].face;
+                mEmpty = siteBuf[i].axis;
+                wPick = siteBuf[i].wt;
+                break;
+            }
+            acc += siteBuf[i].wt;
+        }
+    }
     if (mEmpty[0] < 0 || !(wPick > 0)) return false;
     // the two marks must be disjoint, and the target region clean
     foreach (x; mEmpty) foreach (y; mFull) if (x == y) return false;
