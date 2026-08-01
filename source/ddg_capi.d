@@ -4142,6 +4142,27 @@ extern(C) long ddg_sampler_chain_sites(void* sampler_handle,
     catch (Exception e) { setError(e.msg); return -1; }
 }
 
+/// Upload the CHORD carrier's umbrella: keys are packed endpoint-spoke
+/// multisets (sampler.wf0Key over the degrees of every edge at either
+/// chord endpoint), vals the replayed cumulative dS of a measured
+/// catalysed path. offpen is the flat off-tube value. n = 0 clears it.
+extern(C) int ddg_sampler_worm_chord_config(void* sampler_handle,
+    const(ulong)* keys, const(double)* vals, long n,
+    double offpen) nothrow
+{
+    clearError();
+    try
+    {
+        auto s = cast(SamplerState*) sampler_handle;
+        if (s is null) { setError("null handle"); return -1; }
+        s.wormF0.ctab = null;
+        foreach (i; 0 .. n) s.wormF0.ctab[keys[i]] = vals[i];
+        s.wormF0.cfb = offpen;
+        return 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
 /// Set the PAIR sector knobs (zeta2 = pair fugacity, bcp = close-pair
 /// share of open steps). Everything else comes from the f0 config.
 extern(C) int ddg_sampler_worm_pair_config(void* sampler_handle,

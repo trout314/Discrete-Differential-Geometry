@@ -555,6 +555,26 @@ class ManifoldSampler:
                 "nG": int(out[8]), "accG": int(out[9]),
                 "zmin": int(out[10]), "nZ4": int(out[11])}
 
+    def set_worm_chord(self, ctab: dict, offpen: float = 0.0) -> None:
+        """Upload the CHORD carrier's umbrella, replayed from measured
+        catalysed paths. ``ctab`` maps the chord's local signature --
+        the sorted degrees of every edge at either endpoint -- to the
+        cumulative dS along the path. Empty dict disables it (U = 0)."""
+        packed = {}
+        for ms, u in ctab.items():
+            k = 0
+            for d in ms:
+                k += 1 << (8 * min(max(int(d) - 3, 0), 6))
+            packed[k] = min(packed.get(k, float(u)), float(u))
+        ks = sorted(packed)
+        keys = np.array(ks, dtype=np.uint64)
+        vals = np.array([packed[k] for k in ks], dtype=np.float64)
+        _lib.ddg_sampler_worm_chord_config(
+            self._handle,
+            keys.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+            vals.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+            len(keys), float(offpen))
+
     def worm_chord_episode(self) -> dict:
         """Run one CHORD (2<->3) bilocal episode -- the flicker carrier.
 

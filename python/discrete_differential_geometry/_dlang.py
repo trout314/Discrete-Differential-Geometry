@@ -811,6 +811,11 @@ _lib.ddg_sampler_worm_chord_episode.argtypes = [
     ctypes.c_void_p, ctypes.POINTER(ctypes.c_double)]
 _lib.ddg_sampler_worm_chord_episode.restype = ctypes.c_int
 _lib.ddg_sampler_worm_chord_episode.errcheck = _check_int
+_lib.ddg_sampler_worm_chord_config.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint64),
+    ctypes.POINTER(ctypes.c_double), ctypes.c_long, ctypes.c_double]
+_lib.ddg_sampler_worm_chord_config.restype = ctypes.c_int
+_lib.ddg_sampler_worm_chord_config.errcheck = _check_int
 _lib.ddg_sampler_chain_sites.argtypes = [ctypes.c_void_p, ctypes.c_int]
 _lib.ddg_sampler_chain_sites.restype = ctypes.c_long
 _lib.ddg_sampler_worm_pair_config.argtypes = [

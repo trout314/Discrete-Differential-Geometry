@@ -4573,6 +4573,10 @@ struct WormF0Params
                              ///< around each defect for creation sites
     double bcp = 0.05;       ///< close-pair share of open steps
     double[ulong] utab;      ///< packed spoke multiset -> U (compiled)
+    double[ulong] ctab;      ///< CHORD carrier: packed endpoint-spoke
+                             ///< multiset -> U, replayed from measured
+                             ///< catalysed paths (see build_chord_tube)
+    double cfb = 0.0;        ///< chord off-tube flat value
     WF0Skel[ulong] skel;     ///< f-independent skeleton (see wf0Compile)
     double tubeF1 = 0;       ///< f-vector at skeleton build time
     double tubeF3 = 0;
@@ -5834,6 +5838,57 @@ private long wf0ChainSites(Vertex)(ref Manifold!(3, Vertex) mfd,
     return n;
 }
 
+/// The chord's local signature: the degrees of every edge at either
+/// endpoint. This is the chord analogue of the vertex head's spoke
+/// multiset, and it is the right key because U must change exactly when
+/// the wide head class fires: an edge (x,u) changes degree only if a tet
+/// on it is touched, which needs BOTH x and u in the support, so U
+/// changes iff an endpoint is in the support. That restores the
+/// dU == 0 lemma for every move outside the head class.
+private int wf0ChordDegs(Vertex)(ref Manifold!(3, Vertex) mfd,
+    Vertex[2] chord, scope Vertex[4][] tets, int nT, size_t[] outD)
+{
+    Vertex[128] nb;
+    int nn = 0;
+    foreach (ti; 0 .. nT)
+        foreach (x; tets[ti])
+        {
+            if (x == chord[0] || x == chord[1]) continue;
+            bool seen = false;
+            foreach (i; 0 .. nn) if (nb[i] == x) { seen = true; break; }
+            if (seen) continue;
+            if (nn >= nb.length) return -1;
+            nb[nn++] = x;
+        }
+    int n = 0;
+    foreach (i; 0 .. nn)
+        foreach (c; chord)
+        {
+            Vertex[2] e = c < nb[i] ? [c, nb[i]] : [nb[i], c];
+            immutable d = mfd.degreeOrZero!1(e[]);
+            if (d == 0) continue;
+            if (n >= outD.length) return -1;
+            outD[n++] = d;
+        }
+    return n;
+}
+
+/// Umbrella for the chord carrier: the replayed catalysed-path table.
+private double wf0ChordU(const ref WormF0Params cfg,
+                         scope const(size_t)[] degs) nothrow
+{
+    if (cfg.ctab.length == 0) return 0.0;
+    immutable k = wf0Key(degs);
+    if (auto p = k in cfg.ctab)
+    {
+        double u = *p;
+        if (u > cfg.ucapHi) u = cfg.ucapHi;
+        if (u < cfg.ucapLo) u = cfg.ucapLo;
+        return u;
+    }
+    return cfg.cfb;
+}
+
 /// Collect the union of the two endpoint stars -- NOT just the tets
 /// containing the whole chord. A move that touches only ONE endpoint
 /// cannot alter the chord's degree (see wf0ChordEnumH), and those are
@@ -6018,6 +6073,8 @@ bool wormChordPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
     Vertex[2][2] chords;
     int[2] hNT = 0;
     int[2] hNH = 0;
+    double[2] hU = 0.0;
+    static size_t[256][2] hDegs;
 
     int refreshChord(int i)
     {
@@ -6025,6 +6082,9 @@ bool wormChordPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
         if (hNT[i] < 0) { hNH[i] = 0; return -1; }
         hNH[i] = wf0ChordEnumH(mfd, chords[i], hTets[i][], hNT[i],
                                hCand[i][]);
+        immutable nd = wf0ChordDegs(mfd, chords[i], hTets[i][], hNT[i],
+                                    hDegs[i][]);
+        hU[i] = (nd < 0) ? cfg.cfb : wf0ChordU(cfg, hDegs[i][0 .. nd]);
         return hNH[i];
     }
 
@@ -6083,19 +6143,24 @@ bool wormChordPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
     real dP23 = 0.0L;
     if (potState !is null)
         dP23 = mfd.potentialBistellarDelta(bm23, *potState, *pot, false);
-    immutable double laOpen = cfg.zeta2 - cast(double)(dB23 + dP23)
+    // U of the pair AFTER the open; the created chord's own value is
+    // only known once it exists, so the ratio is assembled below.
+    immutable double laOpenBase = cfg.zeta2 - cast(double)(dB23 + dP23)
         + log(cast(double) nSite) + log(cast(double) n3) + log(pcl);
-    if (!(laOpen >= 0 || uniform01 <= exp(laOpen))) return false;
-
+    // The created chord's umbrella only exists once the chord does, so
+    // apply first, measure both, then decide and roll back on reject.
     applyMove(face[], axis[]);
-    record(face[], axis[]);
-    res.opened = 3;                      // chord-pair open
-    res.head = cast(int) chordB[0];
     Vertex[2] chordA = axis;
     chords[0] = chordA;
     chords[1] = chordB;
     if (refreshChord(0) < 0 || refreshChord(1) < 0)
-    { unwindAll(); return false; }
+    { applyMove(axis[], face[]); return false; }
+    immutable double laOpen = laOpenBase + hU[0] + hU[1];
+    if (!(laOpen >= 0 || uniform01 <= exp(laOpen)))
+    { applyMove(axis[], face[]); return false; }
+    record(face[], axis[]);
+    res.opened = 3;                      // chord-pair open
+    res.head = cast(int) chordB[0];
 
     // -- walk: plain Metropolis (U == 0, so dU == 0 for every move) -------
     while (true)
@@ -6123,6 +6188,7 @@ bool wormChordPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
             auto bmh = c.is23 ? BM(c.f[], c.p[]) : BM(c.p[], c.f[]);
             if (!mfd.hasValidMove(bmh)) continue;
             immutable int nH0 = hNH[i];
+            immutable double uPre = hU[0] + hU[1];
             immutable real dh = applyMove(c.is23 ? c.f[] : c.p[],
                                           c.is23 ? c.p[] : c.f[]);
             if (refreshChord(0) < 0 || refreshChord(1) < 0)
@@ -6132,6 +6198,7 @@ bool wormChordPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
                 continue;
             }
             immutable double lah = -cast(double) dh
+                + (hU[0] + hU[1] - uPre)
                 + log(cast(double) nH0)
                 - log(cast(double)(hNH[i] == 0 ? 1 : hNH[i]));
             if (hNH[i] != 0 && (lah >= 0 || uniform01 <= exp(lah)))
@@ -6153,12 +6220,18 @@ bool wormChordPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
             auto bm = mfd.chooseRandomMove(fresh, params);
             if (bm.center.length == 1 || bm.coCenter.length == 1) continue;
             // never annihilate a head chord outside the close
-            if (bm.center.length == 2)
+            // with a chord umbrella, U changes iff an endpoint is in
+            // the support, so those moves belong to the head kernel and
+            // the dU == 0 lemma covers everything left here
             {
-                Vertex[2] c = [bm.center[0], bm.center[1]];
-                c[].sort();
-                if ((c[0] == chordA[0] && c[1] == chordA[1])
-                    || (c[0] == chordB[0] && c[1] == chordB[1])) continue;
+                bool touches = false;
+                foreach (x; bm.center)
+                    foreach (cc; chords)
+                        if (x == cc[0] || x == cc[1]) touches = true;
+                foreach (x; bm.coCenter)
+                    foreach (cc; chords)
+                        if (x == cc[0] || x == cc[1]) touches = true;
+                if (touches) continue;
             }
             immutable real dB = mfd.speculativeBistellarDelta(bm, baseRun,
                                                               params);
@@ -6212,6 +6285,7 @@ bool wormChordPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
         applyMove(tri[], chordB[]);
         if (nSiteAfter <= 0) continue;
         immutable double la = -cast(double)(dB + dP) - cfg.zeta2
+            - hU[0] - hU[1]
             - log(cast(double) nSiteAfter) - log(cast(double) n3after)
             - log(pcl);
         if (la >= 0 || uniform01 <= exp(la))
