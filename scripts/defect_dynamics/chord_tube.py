@@ -140,13 +140,22 @@ def build_chord_tube(s, L, seeds_faces, depth=3, nodecap=6000,
 
         rec([], depth)
         if best[0] is not None:
-            # REPLAY: walk the winning path recording (signature, cum dS)
+            # REPLAY: walk the winning path recording (signature, cum dS).
+            # The reference is S1, the BARE-FLICKER state -- not S0. The
+            # open sector begins and ends at the bare flicker, so that is
+            # where U must vanish. Measuring from S0 instead loads the
+            # flicker's own creation cost (+6..+23) onto every entry and
+            # puts the umbrella's zero at the catalysed END of the path,
+            # i.e. exactly backwards: the walk is then drawn away from
+            # the one state it can close in, and the close (carrying -U)
+            # is suppressed. Path SELECTION still scores against S0,
+            # since a catalysed path has to pay for its own flicker.
             path, net = best[0]
+            S1 = s.current_objective
             tab.setdefault(chord_sig(L, chord), 0.0)
-            cum = s.current_objective - S0
             for cen, coc in path:
                 L.do(cen, coc)
-                cum = s.current_objective - S0
+                cum = s.current_objective - S1
                 sig = chord_sig(L, chord)
                 # keep the CHEAPEST route to each signature
                 if sig not in tab or cum < tab[sig]:
@@ -158,9 +167,10 @@ def build_chord_tube(s, L, seeds_faces, depth=3, nodecap=6000,
         if lk is not None:
             L.do(chord, lk)
         assert abs(s.current_objective - S0) < 1e-6, "seed not restored"
-    if tab and anchor is not None:
-        base = min(tab.values())
-        tab = {k: v - base + anchor for k, v in tab.items()}
+    # No min-anchoring: the bare-flicker signature is already the zero,
+    # by construction of the S1 reference above. A uniform shift is a
+    # gauge (it trades against zeta2), but pinning it to min() would move
+    # the zero off the closable state again.
     return tab, npath
 
 
