@@ -98,7 +98,7 @@ def closable(L, c):
 
 
 def build_chord_tube(s, L, seeds_faces, depth=3, nodecap=6000,
-                     nseed=30, anchor=0.0):
+                     nseed=30, clamp_negative=True):
     """Search for catalysed paths and replay the best ones into a
     {signature: cumulative dS} table. Returns (table, n_paths)."""
     tab = {}
@@ -171,6 +171,17 @@ def build_chord_tube(s, L, seeds_faces, depth=3, nodecap=6000,
     # by construction of the S1 reference above. A uniform shift is a
     # gauge (it trades against zeta2), but pinning it to min() would move
     # the zero off the closable state again.
+    #
+    # CLAMP the below-zero entries at that same zero. They come from
+    # catalysed END states (net dS < 0), which have no business pricing a
+    # just-born flicker: the open ratio carries +U, so a fresh flicker
+    # whose signature happened to match a -24 entry had its open
+    # suppressed by e^-24. Measured: unopened episodes rose 135 -> 175
+    # once the negative entries were in play. Clamping keeps every
+    # signature at or above the bare-flicker reference, so the umbrella
+    # can only ever HELP the walk climb, never tax the opening.
+    if clamp_negative:
+        tab = {k: (v if v > 0.0 else 0.0) for k, v in tab.items()}
     return tab, npath
 
 
