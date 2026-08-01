@@ -5428,21 +5428,8 @@ bool wormPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
     // ratios or open/close balance is off by their ratio. (cfg.bcp is
     // the requested share; the config validates ph + pg + bcp == 1, so
     // this equals it -- computed here so the two can never drift.)
-    // p_close IS cfg.bcp, with ph/pg rescaled to make room for it. It
-    // used to be 1 - ph - pg, which made bcp inert (the in-code claim
-    // that "the config validates ph + pg + bcp == 1" was never true --
-    // the f0 config validates ph + pg + bcf + bc4 <= 1 and knows
-    // nothing about bcp). The value matters: at 1 - ph - pg = 0.10 the
-    // mean episode is 10 steps, so the close always fires while the
-    // created ball is still the bare z=4 spike it opened as, and EVERY
-    // closure is a roundtrip. Transport needs the corridor to collapse
-    // the adopted ball first, which takes hundreds of steps.
-    immutable double pcl = cfg.bcp;
-    if (!(pcl > 0.0 && pcl < 1.0)) return false;
-    if (!(cfg.ph + cfg.pg > 0.0)) return false;
-    immutable double pmix = (1.0 - pcl) / (cfg.ph + cfg.pg);
-    immutable double phE = cfg.ph * pmix;
-    immutable double pgE = cfg.pg * pmix;
+    immutable double pcl = 1.0 - cfg.ph - cfg.pg;
+    if (!(pcl > 0.0)) return false;
     // FREE MODES: which ball creates (1->4) and which adopts (flag) is
     // drawn here, and which ball is DELETED is drawn again at the close.
     // Both are uniform over the two balls, so the 1/2's cancel between
@@ -5543,12 +5530,11 @@ bool wormPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
     res.opened = 2;
     res.head = cast(int) ball[adp].head;
     res.umax = ball[cre].u + ball[adp].u;
-    double laBest = -1e300;   // best close log-alpha (diagnostic)
 
     // -- two-ball walk ---------------------------------------------------
-    immutable double pcum0 = 0.5 * phE;
-    immutable double pcum1 = phE;
-    immutable double pcum2 = phE + pgE;
+    immutable double pcum0 = 0.5 * cfg.ph;
+    immutable double pcum1 = cfg.ph;
+    immutable double pcum2 = cfg.ph + cfg.pg;
 
     while (true)
     {
@@ -5561,14 +5547,8 @@ bool wormPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
             return false;
         }
         res.steps++;
-        // track the ADOPTED ball: transport closes by deleting IT, so
-        // whether it reaches z=4 is the question. (This used to track
-        // ball[1], an arbitrary index -- with the roles drawn per
-        // episode that was the created ball half the time, which sits
-        // at z=4 from birth and made the counter look healthy while
-        // transport was never actually reachable.)
-        if (ball[adp].z < res.zmin) res.zmin = ball[adp].z;
-        if (ball[adp].z == 4) res.nZ4++;
+        if (ball[1].z < res.zmin) res.zmin = ball[1].z;
+        if (ball[1].z == 4) res.nZ4++;
         immutable double r = uniform01;
 
         if (r < pcum1)
@@ -5686,14 +5666,18 @@ bool wormPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
             // ball is a round trip that keeps only the corridor work.
             immutable int del = uniform(0, 2);
             immutable int keep = 1 - del;
+            res.df[0]++;                        // close branch entered
             if (ball[del].z != 4) continue;
+            res.df[1]++;                        // drawn ball is at z == 4
             Vertex[4] nb = [bLk[del][0], bLk[del][1],
                             bLk[del][2], bLk[del][3]];
             nb[].sort();
             Vertex[1] h1 = [ball[del].head];
             if (!supportClear(del, h1[], nb[])) continue;
+            res.df[2]++;                        // other ball is clear
             auto bm41 = BM(h1[], nb[]);
             if (!mfd.hasValidMove(bm41)) continue;
+            res.df[3]++;                        // the 4->1 is legal
             immutable real dB = mfd.speculativeBistellarDelta(bm41, baseRun,
                                                               params);
             real dP = 0.0L;
@@ -5722,20 +5706,8 @@ bool wormPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
                 + uRawDel - uRawKeep - log(cfg.zeta2)
                 - log(cast(double) f3after) - log(cast(double) cfg.lmax)
                 - log(Wc / wc) - log(pcl);
-            // DIAGNOSTIC: the best close attempt, and its ingredients.
-            // Kept in its OWN accumulator: res.umax is already seeded at
-            // the open with ball[cre].u + ball[adp].u, so folding close
-            // attempts into it reports max(la, -19.75) and buries every
-            // attempt worse than the open's U sum.
-            if (la > laBest)
-            {
-                laBest = la;
-                res.df[0] = cast(long)(cast(double)(dB + dP) * 100.0);
-                res.df[1] = cast(long)(uRawKeep * 100.0);
-                res.df[2] = cast(long)(log(Wc / wc) * 100.0);
-                res.df[3] = ball[keep].z;
-                res.umax = laBest;
-            }
+            // DIAGNOSTIC: how far the best close attempt fell short
+            if (la > res.umax || res.umax == 0.0) res.umax = la;
             if (la >= 0 || uniform01 <= exp(la))
             {
                 applyMove(h1[], nb[]);

@@ -526,7 +526,13 @@ class ManifoldSampler:
                 "dS": float(out[4]), "umax": float(out[5]),
                 "nH": int(out[6]), "accH": int(out[7]),
                 "nG": int(out[8]), "accG": int(out[9]),
-                "zmin": int(out[10]), "nZ4": int(out[11])}
+                "zmin": int(out[10]), "nZ4": int(out[11]),
+                # diagnostics for the BEST close attempt of the
+                # episode (the pair has no f census of its own, so
+                # res.df carries them): dS41*100, uRawKeep*100,
+                # log(Wc/wc)*100, z of the kept ball. "umax" is that
+                # attempt's log-alpha, NOT the open's U sum.
+                "cdiag": tuple(int(out[12 + k]) for k in range(4))}
 
     def set_worm_pair(self, zeta2: float = 1.0, bcp: float = 0.05,
                       chain_k: int = 20) -> None:
@@ -548,10 +554,21 @@ class ManifoldSampler:
 
     def worm_pair_episode(self) -> dict:
         """Run one bilocal episode: a vertex is created at one ball and
-        destroyed at the other, so the net f-change vanishes and the
-        global pins cost exactly zero (measured 0.0e+00 at every
-        separation). ``closed == "pair"`` means the pair committed."""
-        out = np.zeros(12, dtype=np.float64)
+        destroyed at the other, so the net f-change vanishes EXACTLY
+        (both closures are f-neutral -- this channel transports a
+        vertex, it cannot change f0) and the global pins cost exactly
+        zero (measured 0.0e+00 at every separation).
+
+        The umbrella is ROLE-SIGNED: the created ball carries -U and the
+        adopted ball +U, so one star grows while the other collapses and
+        the U content is conserved open-to-close; the close prices both
+        balls under the REVERSE episode's roles. ``zeta2`` must be a
+        calibrated finite value (see f0_worm.calib_zeta2) -- auto is
+        chord-only -- and ``bcp`` IS p_close, so it sets the mean
+        episode length. ``closed`` is "transport" (the adopted vertex
+        was deleted, so a vertex moved) or "roundtrip" (the created one
+        was deleted, committing only the walk's corridor work)."""
+        out = np.zeros(16, dtype=np.float64)
         changed = _lib.ddg_sampler_worm_pair_episode(
             self._handle,
             out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
@@ -562,7 +579,13 @@ class ManifoldSampler:
                 "dS": float(out[4]), "umax": float(out[5]),
                 "nH": int(out[6]), "accH": int(out[7]),
                 "nG": int(out[8]), "accG": int(out[9]),
-                "zmin": int(out[10]), "nZ4": int(out[11])}
+                "zmin": int(out[10]), "nZ4": int(out[11]),
+                # diagnostics for the BEST close attempt of the
+                # episode (the pair has no f census of its own, so
+                # res.df carries them): dS41*100, uRawKeep*100,
+                # log(Wc/wc)*100, z of the kept ball. "umax" is that
+                # attempt's log-alpha, NOT the open's U sum.
+                "cdiag": tuple(int(out[12 + k]) for k in range(4))}
 
     def worm_chord_strict_episode(self) -> dict:
         """One STRICT-CLOSURE chord episode. Both marks are pure flags,

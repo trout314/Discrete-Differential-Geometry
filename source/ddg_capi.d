@@ -4025,6 +4025,17 @@ extern(C) int ddg_sampler_worm_pair_episode(void* sampler_handle,
         auto s = cast(SamplerState*) sampler_handle;
         if (!s.wormF0On) { setError("f0 worm not configured"); return -1; }
         if (s.dim != 3) { setError("pair worm requires dim=3"); return -1; }
+        // The pair open prices its fugacity as log(zeta2), and the auto
+        // path stores zeta2 = 0, so an auto request would silently make
+        // every open log(0) = -inf and the channel would report a clean
+        // zero-commit run forever. Auto is implemented for the CHORD
+        // episode only -- the pair's proposal density carries a per-draw
+        // log(W/wv) term, not just state counts, so cancelling it would
+        // redefine the seed proposal and break the mirror at the close.
+        // Fail loudly instead of running a dead channel.
+        if (s.wormF0.zeta2Auto)
+        { setError("pair worm: zeta2=NaN (auto) unsupported; pass a "
+                   ~ "calibrated finite zeta2"); return -1; }
         if (s.cocycle.enabled)
         { setError("pair worm is not cocycle-safe"); return -1; }
         if (s.geoLedger.trackRoles || s.geoLedger.logEvents
@@ -4062,6 +4073,9 @@ extern(C) int ddg_sampler_worm_pair_episode(void* sampler_handle,
             out12[6] = res.nH;       out12[7] = res.accH;
             out12[8] = res.nG;       out12[9] = res.accG;
             out12[10] = res.zmin;    out12[11] = res.nZ4;
+            // best close log-alpha and its ingredients (res.df reused;
+            // the pair episode has no f census of its own)
+            foreach (k; 0 .. 4) out12[12 + k] = res.df[k];
         }
         return changed ? 1 : 0;
     }

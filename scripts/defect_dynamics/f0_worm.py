@@ -42,6 +42,8 @@ both sides (PH cancels). Episodes that hit MAXSTEP are EXACTLY UNDONE
 
 Env: DSIDE PHD UNSEEDS UNC WLCYC WLD0 UTAB_LOAD ZETA AOF BR BCF BC4 PH
      CYCLES RELAX EPISODES MAXSTEP SEED LMAX  (AOI = 1-AOF)
+     CHORD CPH CPG CBCP CMAXSTEP CHAINK  (the chord carrier, off by
+     default; CHORD = strict-closure chord episodes per cycle)
 
 WLCYC > 0 runs a Wang-Landau calibration phase first (visited
 multisets penalized by a staged decaying delta, periodic re-anchor),
@@ -92,6 +94,22 @@ LMAX = int(os.environ.get("LMAX", "4096"))
 RETUBE_EVERY = int(os.environ.get("RETUBE_EVERY", "10"))  # commits/rebuild
 AUTOZETA = bool(int(os.environ.get("AUTOZETA", "1")))  # calibrate zeta
 ANCHOR_U = float(os.environ.get("ANCHOR_U", "20.6"))   # canonical U[3^4]
+# --- CHORD carrier (the second bilocal carrier), interleaved per cycle.
+# It conserves f0 EXACTLY (Delta f0 == 0 structurally), so it can never
+# move the f0 read-out by itself; it is here as the fixed-f0 f3 mobility
+# that unblocks the vertex channel's reshaper. Defaults reproduce the
+# configuration whose two-sided balance was certified in
+# scripts/defect_dynamics/twosided_chord.py -- do not drift from them
+# without re-certifying.
+CHORD = int(os.environ.get("CHORD", "0"))          # chord episodes/cycle
+CPH = float(os.environ.get("CPH", "0.5"))          # chord head share
+CPG = float(os.environ.get("CPG", "0.3"))          # chord global share
+CBCP = float(os.environ.get("CBCP", "0.05"))       # chord close share
+CMAXSTEP = int(os.environ.get("CMAXSTEP", "800"))  # chord step cap
+CHAINK = int(os.environ.get("CHAINK", "20"))       # chord site window
+BCP = float(os.environ.get("BCP", "0.002"))        # pair p_close
+UFBSEEDS = int(os.environ.get("UFBSEEDS", "24"))   # seeds for the ufb fit
+UFB_ON = bool(int(os.environ.get("UFB_ON", "1")))  # off-tube gradient
 
 
 def _e(a, b):
@@ -486,23 +504,74 @@ def build_orbit_tube(s, L, ntry=8, nodecap=200000):
     return tab, (fv[1], fv[3]), shift
 
 
+def fit_ufb(s, L, nseeds=None, nodecap=UNC):
+    """Fit the per-spoke linear fallback that prices OFF-TUBE stars.
+
+    The orbit tube is a SINGLE collapse corridor -- 12 states from one
+    vertex -- and the D config has always been called with ufb = 0, so
+    wf0U returned the flat constant ufbc for everything off it. That is
+    fine for the single-ball channel, which opens by inserting its own
+    fresh z=4 head (already on the corridor), but it is fatal for the
+    pair channel: the adopted ball is drawn from the whole crystal,
+    lands on an ordinary Z12 star (the dominant TCP coordination), and
+    sees a perfectly flat umbrella with no reason to collapse. Measured:
+    the adopted ball's zmin stayed at its starting 12 in EVERY episode,
+    so the transport closure -- which deletes that ball -- was
+    unreachable no matter how zeta2 was tuned.
+
+    So: keep the single-orbit tube as the EXACT on-corridor table (that
+    is what avoids the cross-orbit min-agg traps build_umbrella warns
+    about) and use a many-corridor least-squares fit only for the
+    off-tube gradient. Both halves are free choices of U, so neither
+    can bias the closed measure.
+
+    Returns the 6 coefficients (n3, n4, n5, n6, n7plus, Zdeficit);
+    build_umbrella also sets the module-level Z0 reference as a side
+    effect. NOT f-adaptive (unlike the tube, whose pin part is
+    recompiled per episode) -- again a free choice, so it costs walk
+    efficiency as f drifts, never correctness."""
+    _tab, coef = build_umbrella(s, L, nseeds or UFBSEEDS, nodecap)
+    return list(coef)
+
+
 def pin_part(f1, f3):
     """The action terms NONLINEAR in the f-vector (volume + edge pins) --
     the f-dependent half of every tube value (see sampler.wf0PinPart)."""
     return 0.1 * (f3 - F3T) ** 2 + (f1 - 6.0 * f3 / ETARGET) ** 2
 
 
-def tube_u(tube, fref, f1, f3, ms, offpen=OFFPEN):
+def tube_u(tube, fref, f1, f3, ms, offpen=OFFPEN, ufb=None, z0=None):
     """Tube value at multiset ``ms``, compiled at the live f-vector
-    exactly as the D engine does; off-tube states get the flat OFFPEN."""
+    exactly as the D engine does.
+
+    Off-tube states take the SAME per-spoke linear fallback wf0U uses,
+    ``ufbc + ufb[5](z0 - z) + sum ufb[i] n[i]`` with ``offpen`` as the
+    constant -- pass ``ufb=None`` for the flat-plateau behaviour. This
+    has to track wf0U exactly: once fit_ufb turned the plateau into a
+    gradient on the D side, a Python model still returning the flat
+    constant misprices every off-tube head, and calib_zeta2 is built
+    entirely out of those values."""
     if ms not in tube:
-        return offpen
-    cum, d1, d3 = tube[ms]
+        if ufb is None:
+            return offpen
+        n = [0] * 5
+        for d in ms:
+            n[min(max(int(d), 3), 7) - 3] += 1
+        z0 = Z0 if z0 is None else z0
+        u = offpen + ufb[5] * (z0 - len(ms))
+        for i in range(5):
+            u += ufb[i] * n[i]
+        return max(min(u, UCAP_HI), UCAP_LO)
+    ent = tube[ms]
+    if not isinstance(ent, (tuple, list)):
+        return ent          # plain-float table (build_umbrella): not
+                            # f-adaptive, so no pin recompilation
+    cum, d1, d3 = ent
     return (cum + (pin_part(f1 + d1, f3 + d3) - pin_part(f1, f3))
             - (pin_part(fref[0] + d1, fref[1] + d3) - pin_part(*fref)))
 
 
-def calib_zeta(s, L, tube, fref, offpen=OFFPEN, ntet=24):
+def calib_zeta(s, L, tube, fref, offpen=OFFPEN, ntet=24, ufb=None):
     """Auto-calibrate the open-sector fugacity zeta.
 
     From sampler.d (close-41 / open-insert, exact inverses):
@@ -540,10 +609,86 @@ def calib_zeta(s, L, tube, fref, offpen=OFFPEN, ntet=24):
     if not ds:
         return ZETA_D, float("nan"), float("nan")
     dS14 = sum(ds) / len(ds)
-    u4 = tube_u(tube, fref, fv[1], fv[3], (3, 3, 3, 3), offpen)
+    u4 = tube_u(tube, fref, fv[1], fv[3], (3, 3, 3, 3), offpen, ufb)
     logz = (dS14 - u4 - math.log(fv[3]) - math.log(LMAX)
             - math.log(BC4_D / (1.0 - AOF)))
     return math.exp(max(min(logz, 30.0), -30.0)), dS14, u4
+
+
+def calib_zeta2(s, L, tube, fref, offpen=OFFPEN, ntry=48,
+                ph=None, pg=None, bcp=None, ufb=None):
+    """Auto-calibrate the PAIR channel's fugacity zeta2.
+
+    From sampler.d, the pair open is
+      log a_open = log z2 - dS14 + u0 + u1
+                   + log f3 + log lmax + log(W/wv) + log p_close
+    with u0 the CREATED ball's umbrella at its fresh (3,3,3,3) star and
+    u1 the ADOPTED ball's -- role-signed, so u0 = -U[3,3,3,3] and
+    u1 = +U(star of the drawn vertex). The close carries the exact
+    mirror, so both legs are O(1) iff
+
+      log z2* = dS14 - u0 - u1
+                - log f3 - log lmax - log(W/wv) - log p_close.
+
+    W/wv is the drawn vertex's inverse seed probability under the
+    engine's biased seed p(v) ~ exp(-mu(2 + deg/2)); it is sampled here
+    the same way, so the average is over the SAME law the engine uses.
+    Like zeta, zeta2 is a free ensemble parameter (the closed-sector
+    marginal does not depend on it), so recalibrating between episodes
+    is exactly unbiased -- and necessary, because the bracket is
+    dominated by dS14, which is pin-driven and drifts as the gap closes.
+
+    Returns (zeta2*, mean bracket, sd bracket). The sd is the number
+    that matters: a scalar can only price the mean, so a draw sitting
+    k units off has one leg at ~1 and its inverse at ~e^-k."""
+    ph = PHD if ph is None else ph
+    pg = (1.0 - PHD - BCF_D - BC4_D) if pg is None else pg
+    pcl = BCP if bcp is None else bcp     # p_close IS bcp for the pair
+    if not (0.0 < pcl < 1.0) or not (ph + pg > 0.0):
+        return ZETA_D, float("nan"), float("nan")
+    fv = [int(x) for x in s.manifold.f_vector]
+    f1, f3 = fv[1], fv[3]
+    tets = [t for ts in L.v2t.values() for t in ts]
+    top = max(x for t in tets for x in t)
+    verts = sorted({x for e in L.edeg for x in e})
+    # the engine's seed weight is exp(-mu(2 + deg/2)) with deg =
+    # Manifold._vertexDegrees[v], which counts FACETS in the star (it is
+    # bumped once per tet on insert), NOT link vertices. len(L.v2t[v]) is
+    # that same count. Using the neighbour count instead (mean 2f1/f0 =
+    # 13.4 against the tet mean 4f3/f0 = 22.8) models a different
+    # proposal than the one being priced and threw log(W/wv) off by ~17,
+    # which is exactly the shortfall the close was showing.
+    wt = {v: math.exp(-MU * (2.0 + 0.5 * len(L.v2t[v]))) for v in verts}
+    W = sum(wt.values())
+    u0 = -tube_u(tube, fref, f1, f3, (3, 3, 3, 3), offpen, ufb)
+    rng = random.Random(0xBEEF ^ f3)
+    brk = []
+    for i in range(ntry):
+        t = rng.choice(tets)
+        S0 = s.current_objective
+        try:
+            s.do_bistellar_move(list(t), [top + 1 + i])
+        except Exception:
+            continue
+        dS14 = s.current_objective - S0
+        s.do_bistellar_move([top + 1 + i], sorted(t))
+        assert abs(s.current_objective - S0) < 1e-6
+        r, acc, vf = rng.random() * W, 0.0, None
+        for v in verts:
+            acc += wt[v]
+            if acc >= r:
+                vf = v
+                break
+        if vf is None or vf in t:
+            continue
+        u1 = tube_u(tube, fref, f1, f3, spoke_ms(L, vf), offpen, ufb)
+        brk.append(dS14 - u0 - u1 - math.log(f3) - math.log(LMAX)
+                   - math.log(W / wt[vf]) - math.log(pcl))
+    if not brk:
+        return ZETA_D, float("nan"), float("nan")
+    mean = sum(brk) / len(brk)
+    sd = (sum((x - mean) ** 2 for x in brk) / len(brk)) ** 0.5
+    return math.exp(max(min(mean, 300.0), -300.0)), mean, sd
 
 
 def anchor_utab(L, sample):
@@ -616,6 +761,27 @@ def main():
                  "dS14": float("nan"), "u4": float("nan"),
                  "offpen": OFFPEN}
 
+        def push(ph_, pg_, bcf_, bc4_, maxstep_):
+            """Push the current tube under a given step mixture. The two
+            carriers share one WormF0Params, so each channel's block
+            swaps the mixture in and the other swaps it back. That is
+            safe: every episode is detailed-balanced under whatever
+            (U, zeta, mixture) is frozen at its open, and the closed
+            measure does not depend on any of them -- the same master
+            theorem that licenses between-episode recalibration."""
+            s.set_worm_f0(state["tube"], [0.0] * 6, state["offpen"], Z0,
+                          lmax=LMAX, zeta=state["zeta"], aof=AOF,
+                          ph=ph_, pg=pg_, bcf=bcf_, bc4=bc4_,
+                          maxstep=maxstep_, ucap_hi=UCAP_HI,
+                          ucap_lo=UCAP_LO, mu=MU,
+                          f0_ref=state["fref"])
+
+        def push_vertex():
+            push(PHD, pg, BCF_D, BC4_D, MAXSTEP)
+
+        def push_chord():
+            push(CPH, CPG, 1e-4, 1.0 - CPH - CPG - 1e-4, CMAXSTEP)
+
         def reconfig():
             """Push the current tube at a freshly calibrated zeta. The
             insert cost drifts with the state, so zeta is recalibrated
@@ -626,12 +792,7 @@ def main():
                                         state["fref"],
                                         state["offpen"])
                 state.update(zeta=z, dS14=d14, u4=u4)
-            s.set_worm_f0(state["tube"], [0.0] * 6, state["offpen"], Z0,
-                          lmax=LMAX, zeta=state["zeta"], aof=AOF,
-                          ph=PHD, pg=pg, bcf=BCF_D, bc4=BC4_D,
-                          maxstep=MAXSTEP, ucap_hi=UCAP_HI,
-                          ucap_lo=UCAP_LO, mu=MU,
-                          f0_ref=state["fref"])
+            push_vertex()
 
         def retube():
             r = build_orbit_tube(s, L)
@@ -650,10 +811,19 @@ def main():
               f"dS14={state['dS14']:+.2f} U4={state['u4']:+.2f}) "
               f"ph={PHD} pg={pg:.4f} bcf={BCF_D} "
               f"bc4={BC4_D} mu={MU} maxstep={MAXSTEP}", flush=True)
+        if CHORD:
+            s.set_worm_pair(zeta2=float("nan"), bcp=CBCP,
+                            chain_k=CHAINK)
+            print(f"chord carrier: {CHORD} episodes/cycle, ph={CPH} "
+                  f"pg={CPG} bcp={CBCP} maxstep={CMAXSTEP} "
+                  f"chain_k={CHAINK} (auto zeta2 + p_close)",
+                  flush=True)
         acc = {"of": [0, 0], "oi": [0, 0], "re": [0, 0], "cf": [0, 0],
                "c4": [0, 0]}
         undone = 0
         commits = 0
+        ccommit = 0
+        ccensus = {}
         t0 = time.time()
         for cyc in range(cycles):
             if relax > 0:
@@ -663,6 +833,34 @@ def main():
                                 driver=s.do_bistellar_move)
                 globals()  # (Live rebuilt for tube builds below)
                 L = worm_L
+            # CHORD block first: it is the fixed-f0 solvent, so let it
+            # act before the vertex channel tries to remove anything.
+            if CHORD:
+                push_chord()
+                cdirty = False
+                for _ in range(CHORD):
+                    f0_before = int(s.manifold.f_vector[0])
+                    rc = s.worm_chord_strict_episode()
+                    if rc["changed"]:
+                        # CONTROL, asserted every commit: this channel
+                        # conserves f0 exactly. If it ever does not, the
+                        # f0 read-out below is contaminated and the run
+                        # is void -- so fail loudly rather than quietly
+                        # attribute a chord artefact to the vertex
+                        # channel's free energy.
+                        assert int(s.manifold.f_vector[0]) == f0_before, \
+                            "chord channel changed f0 -- channel is bad"
+                        ccommit += 1
+                        ccensus[rc["df"]] = ccensus.get(rc["df"], 0) + 1
+                        L = W.Live(s.manifold,
+                                   driver=s.do_bistellar_move)
+                        cdirty = True
+                # a chord commit moves f3, hence the pin gap, hence the
+                # vertex channel's insert cost -- recalibrate zeta
+                if cdirty and AUTOZETA:
+                    reconfig()
+                else:
+                    push_vertex()
             eps = []
             for _ in range(episodes):
                 r = s.worm_f0_episode()
@@ -704,7 +902,7 @@ def main():
                 "cyc": cyc, "f": fv, "gap": round(gap, 3),
                 "S": round(s.current_objective, 3),
                 "zeta": state["zeta"], "dS14": state["dS14"],
-                "u4": state["u4"], "ep": eps}) + "\n")
+                "u4": state["u4"], "cc": ccommit, "ep": eps}) + "\n")
             log.flush()
             if cyc % 10 == 0 or cyc == cycles - 1:
                 print(f"cyc {cyc:4d} f0={fv[0]} gap={gap:+6.2f} "
@@ -712,11 +910,19 @@ def main():
                       + " ".join(f"{k}:{x[1]}/{x[0]}"
                                  for k, x in acc.items())
                       + f" undone={undone} z={state['zeta']:.1e}"
+                      + (f" ch={ccommit}" if CHORD else "")
                       + f" ({time.time() - t0:.0f}s)", flush=True)
         s.manifold.save(outbase + ".final.mfd")
+        if CHORD:
+            log.write(json.dumps({"chord_census":
+                                  {str(k): v
+                                   for k, v in ccensus.items()},
+                                  "chord_commits": ccommit}) + "\n")
         log.close()
         print(f"done: {outbase}.final.mfd (+ .chan.jsonl) "
-              f"undone={undone}", flush=True)
+              f"undone={undone}"
+              + (f" chord_commits={ccommit}" if CHORD else ""),
+              flush=True)
         return
 
     worm = Worm(s, L, rng)
