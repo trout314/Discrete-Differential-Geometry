@@ -4835,14 +4835,7 @@ double wormF0DebugU(Vertex)(ref Manifold!(3, Vertex) mfd,
     const ref WormF0Params cfg, Vertex v)
 {
     Vertex[4] seed;
-    bool ok = false;
-    foreach (f; mfd.star(v.only))
-    {
-        int i = 0;
-        foreach (x; f) seed[i++] = x;
-        ok = (i == 4);
-        break;
-    }
+    bool ok = mfd.someFacetContaining(v, seed);
     if (!ok) return double.nan;
     Vertex[4][96] tets = void;
     int nT = 0;
@@ -5025,14 +5018,7 @@ bool wormF0Episode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
         }
         if (!got) return false;
         // seed tet: any facet containing v (O(N), once per episode)
-        bool seedOk = false;
-        foreach (f; mfd.star(v.only))
-        {
-            int i = 0;
-            foreach (x; f) headSeed[i++] = x;
-            seedOk = (i == 4);
-            break;
-        }
+        immutable bool seedOk = mfd.someFacetContaining(v, headSeed);
         if (!seedOk) return false;
         head = v;
         if (!refreshHead()) return false;
@@ -5529,14 +5515,8 @@ bool wormPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
 
     // ball 1's umbrella BEFORE any move (flagging changes nothing)
     {
-        bool seedOk = false;
-        foreach (f; mfd.star(vf.only))
-        {
-            int i = 0;
-            foreach (x; f) ball[adp].seed[i++] = x;
-            seedOk = (i == 4);
-            break;
-        }
+        immutable bool seedOk =
+            mfd.someFacetContaining(vf, ball[adp].seed);
         if (!seedOk) return false;
         ball[adp].head = vf;
         ball[adp].isInsert = false;
@@ -6649,15 +6629,7 @@ private bool wf0RegionClean(Vertex)(ref Manifold!(3, Vertex) mfd,
     foreach (v; mark)
     {
         Vertex[4] seed;
-        bool got = false;
-        foreach (f; mfd.star(v.only))
-        {
-            int k = 0;
-            foreach (x; f) { if (k < 4) seed[k] = x; k++; }
-            got = (k == 4);
-            break;
-        }
-        if (!got) return false;
+        if (!mfd.someFacetContaining(v, seed)) return false;
         static Vertex[4][256] st;
         immutable n = collectStar(mfd, v, seed, st[], 0);
         if (n < 0) return false;
@@ -6846,15 +6818,8 @@ bool wormChordStrictEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
     int refreshMark(int i)
     {
         Vertex[4] seed;
-        bool got = false;
-        foreach (f; mfd.star(marks[i][0].only))
-        {
-            int k = 0;
-            foreach (x; f) { if (k < 4) seed[k] = x; k++; }
-            got = (k == 4);
-            break;
-        }
-        if (!got) { mNT[i] = 0; mNH[i] = 0; return -1; }
+        if (!mfd.someFacetContaining(marks[i][0], seed))
+        { mNT[i] = 0; mNH[i] = 0; return -1; }
         int n = collectStar(mfd, marks[i][0], seed, mTets[i][], 0);
         if (n < 0) { mNH[i] = 0; return -1; }
         n = collectStar(mfd, marks[i][1], seed, mTets[i][], n);

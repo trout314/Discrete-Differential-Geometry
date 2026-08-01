@@ -55,6 +55,19 @@ private:
     // Empty array (the default) means nothing is frozen.
     ubyte[] _vertexFrozen;
 
+    // Witness facet per vertex, indexed like _vertexDegrees: some facet
+    // containing v, refreshed on every insertion. Exists because star()
+    // is `facets.filter!(...)` and facets() eagerly dups AND sorts all N
+    // facets -- so callers that only wanted ONE tet on v were paying
+    // O(N log N) plus N allocations each time (measured ~1.4 ms at
+    // N=8704, and the worm episode does it several times per walk step).
+    // Removal deliberately does NOT repair this; someFacetContaining()
+    // validates on read and rescans if stale. That fallback is a safety
+    // net rather than a hot path: in every Pachner move each surviving
+    // vertex of a removed facet also lies in an inserted one, so the
+    // insert half of the same move refreshes it.
+    Facet[] _vertexWitness;
+
     // Per-dimension HashMaps for dimensions 1 .. dimension-1 only.
     // Dimension 0 uses _vertexDegrees; dimension `dimension` uses _facetArrayIdx.
     static foreach (_d_; 1 .. dimension_)
@@ -203,6 +216,7 @@ public:
     {
         _vertexDegrees = _vertexDegrees.dup;
         _vertexFrozen = _vertexFrozen.dup;
+        _vertexWitness = _vertexWitness.dup;
         static foreach (d; 1 .. dimension_)
             mixin("_dimMap" ~ to!string(d) ~ " = _dimMap" ~ to!string(d) ~ ".dup;");
 
@@ -530,6 +544,16 @@ public:
 
         _facetArrayIdx[facetBuffer] = cast(uint) _facetArray.length;
         _facetArray ~= facetBuffer;
+
+        // Refresh the per-vertex witness. Always overwrite: keeping the
+        // freshest facet is what makes the stale path unreachable in
+        // practice, and it is 4 ints per vertex.
+        foreach (v; facet)
+        {
+            if (v >= _vertexWitness.length)
+                _vertexWitness.length = v + 1;
+            _vertexWitness[v] = facetBuffer;
+        }
     }
 
     // Special version of removeFacet to update tracked info.
@@ -881,6 +905,49 @@ public:
         return facets.filter!(f => simplex.isSubsetOf(f));
     }
 
+    /** Write SOME facet containing vertex `v` into `outF`; returns false
+    if `v` is not in the manifold.
+
+    O(1) in the common case, via the per-vertex witness refreshed on every
+    facet insertion. This exists because `star(v)` is
+    `facets.filter!(...)` and `facets()` eagerly dups AND sorts all N
+    facets before `filter` ever runs -- so a caller that just wanted one
+    incident tet (and then broke out of the loop) was paying O(N log N)
+    plus N allocations. Measured ~1.4 ms per call at N = 8704.
+
+    The witness is validated on read (`v` must be in it and it must still
+    be a facet), so a stale entry is never returned; it falls back to a
+    scan of the facet array. Removal does not repair the witness, but
+    every Pachner move re-inserts facets covering each surviving vertex of
+    the ones it removed, so the fallback is a safety net, not a hot path.
+    */
+    bool someFacetContaining()(Vertex v, out Facet outF) const
+    {
+        if (v < 0 || v >= _vertexDegrees.length || _vertexDegrees[v] == 0)
+            return false;
+        if (v < _vertexWitness.length)
+        {
+            Facet w = _vertexWitness[v];
+            bool has = false;
+            foreach (x; w[]) if (x == v) { has = true; break; }
+            if (has && (w in _facetArrayIdx) !is null)
+            {
+                outF = w;
+                return true;
+            }
+        }
+        // Stale (or never set): rescan. Correct but O(N) -- if this ever
+        // shows up in a profile, the invariant above has been broken.
+        foreach (ref f; _facetArray[])
+            foreach (x; f[])
+                if (x == v)
+                {
+                    outF = f;
+                    return true;
+                }
+        return false;
+    }
+
     /// Return the link of a simplex.
     auto link(S)(S simplex) const if (isIRof!(S, const(Vertex)))
     {
@@ -889,6 +956,7 @@ public:
 
     /// Save the manifold to a file.
     void saveTo()(string fileName, const(string)[] comments = null) const
+
     {
         toSimplicialComplex.saveTo(fileName, comments);
     }
@@ -1633,7 +1701,46 @@ pure @safe unittest
         [1, 2], [0, 4], [0, 2], [2, 5], [3, 5], [3, 4]]);
 }
 
-// NOTE: The following unittest cannot be @safe since throwsWithMsg 
+/// someFacetContaining must agree with star() for EVERY vertex, and keep
+/// agreeing after move churn -- the witness is refreshed on insertion and
+/// deliberately not repaired on removal, so this pins the claim that a
+/// Pachner move can never leave it stale.
+unittest
+{
+    import std.algorithm : canFind;
+
+    void checkAll(M)(ref M m)
+    {
+        foreach (sv; m.simplices(0))
+        {
+            immutable v = sv[0];
+            typeof(m).Facet w;
+            assert(m.someFacetContaining(v, w),
+                "someFacetContaining failed for a present vertex");
+            assert(w[].canFind(v), "witness does not contain the vertex");
+            assert(m.containsFacet(w[]), "witness is not a facet");
+            // and it must be one of the facets star() would have yielded
+            assert(m.star(v.only).canFind!(f => f == w[]),
+                "witness is outside star(v)");
+        }
+    }
+
+    auto m = standardSphere!3;
+    checkAll(m);
+    // 1->4 at a facet, then 4->1 back: exercises insertion of a new
+    // vertex and removal of one. The new label must be unused --
+    // standardSphere!3 already occupies 0..4.
+    int fresh = 0;
+    foreach (sv; m.simplices(0))
+        if (sv[0] >= fresh) fresh = sv[0] + 1;
+    auto f = m.facets.front.dup;
+    m.doMove(BistellarMove!3(f, [fresh]));
+    checkAll(m);
+    m.doMove(BistellarMove!3([fresh], f));
+    checkAll(m);
+}
+
+// NOTE: The following unittest cannot be @safe since throwsWithMsg
 // catches an Error
 ///
 pure @system unittest
