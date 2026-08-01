@@ -5834,21 +5834,31 @@ private long wf0ChainSites(Vertex)(ref Manifold!(3, Vertex) mfd,
     return n;
 }
 
-/// Collect the tets containing an edge. Returns the count, -1 on overflow.
+/// Collect the union of the two endpoint stars -- NOT just the tets
+/// containing the whole chord. A move that touches only ONE endpoint
+/// cannot alter the chord's degree (see wf0ChordEnumH), and those are
+/// exactly the moves that do work while the flicker stays closable, so
+/// they must be in the region. Uses collectStar (O(deg^2),
+/// allocation-free) seeded from a tet on the chord, which dedups across
+/// the two calls because it appends through a running count.
 private int wf0ChordStar(Vertex)(ref Manifold!(3, Vertex) mfd,
     Vertex[2] chord, Vertex[4][] outT)
 {
-    int n = 0;
+    Vertex[4] seed;
+    bool got = false;
     foreach (f; mfd.star(chord[]))
     {
-        if (n >= outT.length) return -1;
-        Vertex[4] tt;
         int k = 0;
-        foreach (x; f) { if (k < 4) tt[k] = x; k++; }
-        if (k != 4) continue;
-        tt[].sort();
-        outT[n++] = tt;
+        foreach (x; f) { if (k < 4) seed[k] = x; k++; }
+        if (k == 4) { got = true; }
+        break;
     }
+    if (!got) return -1;
+    int n = collectStar(mfd, chord[0], seed, outT, 0);
+    if (n < 0) return -1;
+    n = collectStar(mfd, chord[1], seed, outT, n);
+    if (n < 0) return -1;
+    foreach (i; 0 .. n) outT[i][].sort();
     return n;
 }
 
@@ -5871,18 +5881,24 @@ private int wf0ChordEnumH(Vertex)(ref Manifold!(3, Vertex) mfd,
     WF0Cand!Vertex[] outC)
 {
     int n = 0;
-    Vertex[3][256] seenF;
+    Vertex[3][1024] seenF;
     int nSF = 0;
-    Vertex[2][256] seenE;
+    Vertex[2][1024] seenE;
     int nSE = 0;
-    bool bothIn(scope const(Vertex)[] x, scope const(Vertex)[] y)
+    // A move's support must MEET the chord -- one endpoint is enough,
+    // and one endpoint is what we want. The chord's degree is the number
+    // of tets containing BOTH endpoints, and every tet a move touches
+    // has all its vertices in the support; so a move omitting an
+    // endpoint cannot change the degree, and the flicker stays closable
+    // while work happens beside it. Demanding BOTH endpoints (the
+    // vertex-head analogue) guarantees the degree changes and so
+    // guarantees the closure condition is destroyed -- measured 0/125
+    // vs 2186/2286 moves leaving the chord closable.
+    bool meetsChord(scope const(Vertex)[] x, scope const(Vertex)[] y)
     {
-        bool ga = false, gb = false;
-        foreach (q; x) { if (q == chord[0]) ga = true;
-                         if (q == chord[1]) gb = true; }
-        foreach (q; y) { if (q == chord[0]) ga = true;
-                         if (q == chord[1]) gb = true; }
-        return ga && gb;
+        foreach (q; x) if (q == chord[0] || q == chord[1]) return true;
+        foreach (q; y) if (q == chord[0] || q == chord[1]) return true;
+        return false;
     }
     foreach (ti; 0 .. nT)
     {
@@ -5902,7 +5918,7 @@ private int wf0ChordEnumH(Vertex)(ref Manifold!(3, Vertex) mfd,
             Vertex[2] axis = ap[0] < ap[1]
                 ? [cast(Vertex) ap[0], cast(Vertex) ap[1]]
                 : [cast(Vertex) ap[1], cast(Vertex) ap[0]];
-            if (!bothIn(face[], axis[])) continue;
+            if (!meetsChord(face[], axis[])) continue;
             if (mfd.degreeOrZero!1(axis[]) != 0) continue;
             if (mfd.anyFrozen(face[])) continue;
             if (n < outC.length)
@@ -5925,7 +5941,7 @@ private int wf0ChordEnumH(Vertex)(ref Manifold!(3, Vertex) mfd,
                 Vertex[3] link = [cast(Vertex) lkB[0], cast(Vertex) lkB[1],
                                   cast(Vertex) lkB[2]];
                 link[].sort();
-                if (!bothIn(link[], e[])) continue;
+                if (!meetsChord(link[], e[])) continue;
                 if (n < outC.length)
                 { outC[n].is23 = false; outC[n].f = link; outC[n].p = e; n++; }
             }
@@ -5997,8 +6013,8 @@ bool wormChordPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
     immutable double pgTop = cfg.ph + cfg.pg;
 
     // per-head caches: tets containing the chord, and the candidate set
-    static Vertex[4][64][2] hTets;
-    static WF0Cand!Vertex[256][2] hCand;
+    static Vertex[4][256][2] hTets;
+    static WF0Cand!Vertex[1024][2] hCand;
     Vertex[2][2] chords;
     int[2] hNT = 0;
     int[2] hNH = 0;
