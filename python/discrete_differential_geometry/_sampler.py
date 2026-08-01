@@ -534,7 +534,13 @@ class ManifoldSampler:
         fugacity (pass ``float("nan")`` to auto-calibrate it from the
         proposal density -- for the strict chord channel the open makes
         no move, so the balanced value is just minus the log proposal
-        density and needs no probe), ``bcp`` the close-pair share. The
+        density and needs no probe). ``bcp`` is the close-pair share --
+        but under auto-zeta2 it is reinterpreted: p_close is derived as
+        maxstep/(1/bcp), i.e. the mean episode length becomes
+        ``maxstep * bcp`` and abandonment falls to ~e^(-1/bcp). p_close
+        cannot be tuned independently once zeta2 is auto, because it
+        already sits inside zeta2* = -(log n3 + log nSite + log
+        p_close); the two are derived together. The
         umbrella, caps and seed bias come from :meth:`set_worm_f0`,
         which must be called first."""
         _lib.ddg_sampler_worm_pair_config(

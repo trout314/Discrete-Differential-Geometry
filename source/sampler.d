@@ -4570,6 +4570,10 @@ struct WormF0Params
     double mu = 1.5;         ///< open-flag seed bias: p(v) ~ e^{-mu Z(v)}
     double zeta2 = 1.0;      ///< PAIR fugacity (two-ball episodes)
     bool zeta2Auto = false;  ///< derive zeta2 from the proposal density
+    double pclTarget = 10.0; ///< auto p_close: mean episode length is
+                             ///< maxstep/pclTarget, so abandonment is
+                             ///< ~e^-pclTarget and the walk uses its
+                             ///< budget instead of closing at once
     int chainK = 20;         ///< chord channel: chain windows searched
                              ///< around each defect for creation sites
     double bcp = 0.05;       ///< close-pair share of open steps
@@ -6485,8 +6489,27 @@ bool wormChordStrictEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
         nApplied = 0;
     }
 
-    immutable double pcl = 1.0 - cfg.ph - cfg.pg;
+    double pcl = 1.0 - cfg.ph - cfg.pg;
     if (!(pcl > 0.0 && pcl < 1.0)) return false;
+    double phE = cfg.ph, pgE = cfg.pg;
+    if (cfg.zeta2Auto && cfg.maxstep > 0 && cfg.pclTarget > 0)
+    {
+        // AUTO p_close. The close is a geometric trial, so the mean
+        // episode length is 1/p_close; tying it to the step budget as
+        // maxstep/pclTarget makes abandonment ~e^-pclTarget and stops
+        // the walk from closing before it has done anything. p_close
+        // is NOT a free knob once zeta2 is auto: it already sits inside
+        // zeta2* = -(log n3 + log nSite + log p_close), so the two must
+        // be derived together or they fight. Frozen for the episode,
+        // like zeta2.
+        double want = cfg.pclTarget / cast(double) cfg.maxstep;
+        if (want > pcl) want = pcl;
+        if (want < 1e-12) want = 1e-12;
+        immutable double scale = (1.0 - want) / (cfg.ph + cfg.pg);
+        phE = cfg.ph * scale;
+        pgE = cfg.pg * scale;
+        pcl = want;
+    }
 
     // -- OPEN: two pure flags, no move --------------------------------
     immutable long n3 = wf0Deg3Scan(mfd, -1, null, null);
@@ -6558,9 +6581,9 @@ bool wormChordStrictEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
     }
     if (refreshMark(0) < 0 || refreshMark(1) < 0) return false;
 
-    immutable double pm0 = 0.5 * cfg.ph;
-    immutable double pm1 = cfg.ph;
-    immutable double pgTop = cfg.ph + cfg.pg;
+    immutable double pm0 = 0.5 * phE;
+    immutable double pm1 = phE;
+    immutable double pgTop = phE + pgE;
 
     while (true)
     {

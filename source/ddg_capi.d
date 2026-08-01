@@ -4230,6 +4230,7 @@ extern(C) int ddg_sampler_worm_pair_config(void* sampler_handle,
         // NaN requests auto-calibration from the proposal density
         s.wormF0.zeta2Auto = (zeta2 != zeta2);
         s.wormF0.zeta2 = s.wormF0.zeta2Auto ? 0.0 : zeta2;
+        if (s.wormF0.zeta2Auto && bcp > 0) s.wormF0.pclTarget = 1.0 / bcp;
         s.wormF0.bcp = bcp;
         if (chain_k >= 1) s.wormF0.chainK = chain_k;
         return 0;
