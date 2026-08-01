@@ -534,6 +534,23 @@ class ManifoldSampler:
                 # attempt's log-alpha, NOT the open's U sum.
                 "cdiag": tuple(int(out[12 + k]) for k in range(4))}
 
+    def set_worm_chord_agg(self, region_max: int = 0,
+                           agg_beta: float = 0.0) -> None:
+        """Chord-channel AGGREGATION knobs. ``region_max`` is how many
+        other degree-3 edges an EMPTY mark's region may contain; 0 is
+        the original region-clean test, under which genuine aggregation
+        is impossible -- the only tolerated neighbour is the adopted
+        chord, i.e. the one being relocated away, so no partner ever
+        remains. ``agg_beta`` weights the destination draw by
+        exp(beta * n), n = flickers whose support shares a vertex with
+        the site's (the exact condition for bilocal factorization to
+        fail). The weight lives purely in the proposal and cancels in
+        the Hastings ratio, so it selects the relaxation PATHWAY and
+        cannot move the equilibrium. Defaults reproduce the certified
+        channel bit-for-bit."""
+        _lib.ddg_sampler_worm_chord_agg(
+            self._handle, int(region_max), float(agg_beta))
+
     def set_worm_pair(self, zeta2: float = 1.0, bcp: float = 0.05,
                       chain_k: int = 20) -> None:
         """Configure the BILOCAL (two-ball) sector: ``zeta2`` the pair

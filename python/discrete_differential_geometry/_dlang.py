@@ -904,6 +904,11 @@ _lib.ddg_sampler_nonlocal_slide_at.errcheck = _check_int
 # FPKMC infrastructure (notes/FPKMC_DESIGN.md, M1)
 # ---------------------------------------------------------------------------
 
+_lib.ddg_sampler_worm_chord_agg.argtypes = [
+    ctypes.c_void_p, ctypes.c_int, ctypes.c_double]
+_lib.ddg_sampler_worm_chord_agg.restype = ctypes.c_int
+_lib.ddg_sampler_worm_chord_agg.errcheck = _check_int
+
 _lib.ddg_manifold_chain_walk.argtypes = [
     ctypes.c_void_p, ctypes.POINTER(ctypes.c_int), ctypes.c_long,
     ctypes.POINTER(ctypes.c_int),

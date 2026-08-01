@@ -4234,6 +4234,30 @@ extern(C) int ddg_sampler_worm_chord_config(void* sampler_handle,
     catch (Exception e) { setError(e.msg); return -1; }
 }
 
+/// Set the chord channel's AGGREGATION knobs. `region_max` is how many
+/// other degree-3 edges an EMPTY mark's region may hold (0 = the
+/// original region-clean test, under which genuine aggregation is
+/// impossible: the only tolerated neighbour is the adopted chord, i.e.
+/// the one leaving). `agg_beta` weights the destination draw by
+/// exp(beta * n) with n the flickers whose support meets the site's.
+/// Both default to the certified behaviour (0, 0.0).
+extern(C) int ddg_sampler_worm_chord_agg(void* sampler_handle,
+    int region_max, double agg_beta) nothrow
+{
+    clearError();
+    try
+    {
+        auto s = cast(SamplerState*) sampler_handle;
+        if (s is null) { setError("null handle"); return -1; }
+        if (region_max < 0) { setError("bad region_max"); return -1; }
+        if (agg_beta != agg_beta) { setError("bad agg_beta"); return -1; }
+        s.wormF0.regionMax = region_max;
+        s.wormF0.aggBeta = agg_beta;
+        return 0;
+    }
+    catch (Exception e) { setError(e.msg); return -1; }
+}
+
 /// Set the PAIR sector knobs (zeta2 = pair fugacity, bcp = close-pair
 /// share of open steps). Everything else comes from the f0 config.
 extern(C) int ddg_sampler_worm_pair_config(void* sampler_handle,

@@ -4582,6 +4582,31 @@ struct WormF0Params
                              ///< multiset -> U, replayed from measured
                              ///< catalysed paths (see build_chord_tube)
     double cfb = 0.0;        ///< chord off-tube flat value
+    // --- AGGREGATION knobs (chord channel). Defaults reproduce the
+    // certified behaviour bit-for-bit: regionMax = 0 is the original
+    // region-clean test, aggBeta = 0 is the original uniform site draw.
+    int regionMax = 0;       ///< other degree-3 edges tolerated in an
+                             ///< EMPTY mark's region. The predicate stays
+                             ///< symmetric ("whenever a mark is empty its
+                             ///< region holds <= regionMax flickers"),
+                             ///< applied identically at open and close --
+                             ///< only the threshold moves. At 0 genuine
+                             ///< aggregation is IMPOSSIBLE: the only
+                             ///< tolerated neighbour is the adopted chord,
+                             ///< i.e. the one leaving, so no partner ever
+                             ///< remains (measured: 89.1% of sites have 0
+                             ///< flickers near, 10.7% have exactly 1,
+                             ///< 0.25% have >= 2 and can never pass).
+    double aggBeta = 0.0;    ///< destination weight w = exp(aggBeta * n),
+                             ///< n = distinct flickers whose SUPPORT
+                             ///< shares a vertex with the site's (the
+                             ///< exact condition under which bilocal
+                             ///< factorization fails, so the only geometry
+                             ///< in which the two interact). Lives purely
+                             ///< in the proposal and cancels in the
+                             ///< Hastings ratio, so any value samples the
+                             ///< same equilibrium -- it selects the
+                             ///< relaxation PATHWAY, not the fixed point.
     WF0Skel[ulong] skel;     ///< f-independent skeleton (see wf0Compile)
     double tubeF1 = 0;       ///< f-vector at skeleton build time
     double tubeF3 = 0;
@@ -6121,6 +6146,138 @@ long wf0ChainSitesProbe(Vertex)(ref Manifold!(3, Vertex) mfd, int kmax)
     return wf0ChainSites!Vertex(mfd, kmax, -1, null, null);
 }
 
+/// AGGREGATION-WEIGHTED creation-site enumeration for the chord channel.
+///
+/// Same candidate set as wf0ChainSites (valid 2->3 sites within `kmax`
+/// chain windows of some degree-3 chord), but each site i carries
+/// w_i = exp(beta * n_i) with n_i the number of DISTINCT flickers whose
+/// support shares a vertex with site i's support -- exactly the
+/// condition under which bilocal factorization fails (measured 1e-13
+/// when disjoint), hence the only geometry in which the two interact.
+/// The adopted chord (exA, exB) is excluded from n_i: it is about to be
+/// annihilated, so counting it would reward the flicker for staying put.
+///
+/// Returns the total weight W. With `pick` in [0, W) the selected site
+/// is written to outFace/outAx. With (tgA, tgB) >= 0 the weight of the
+/// site whose AXIS equals that pair is written to *outTgW (0 if absent)
+/// -- that is what the close needs for the reverse proposal density.
+///
+/// beta == 0 short-circuits to the uniform path, so the default is
+/// bit-for-bit the certified behaviour and W == the plain site count.
+private double wf0ChainSitesW(Vertex)(ref Manifold!(3, Vertex) mfd,
+    int kmax, double beta, Vertex exA, Vertex exB,
+    double pick, Vertex[3]* outFace, Vertex[2]* outAx,
+    Vertex tgA, Vertex tgB, double* outTgW)
+{
+    import std.math : exp;
+    // ---- flicker supports, as a per-vertex bitmask (up to 64 tracked;
+    // beyond that the weight is a well-defined function of the first 64
+    // in enumeration order, which is deterministic, so balance holds).
+    static ulong[8192] fmask;
+    static Vertex[512] touched;
+    int nTouch = 0;
+    int nF = 0;
+    if (beta != 0.0)
+    {
+        foreach (ed; mfd.simplices(1))
+        {
+            Vertex[2] e;
+            int i = 0;
+            foreach (x; ed) { if (i < 2) e[i] = x; i++; }
+            if (i != 2) continue;
+            if (mfd.degreeOrZero!1(e[]) != 3) continue;
+            if ((e[0] == exA && e[1] == exB) || (e[0] == exB && e[1] == exA))
+                continue;                       // the adopted chord
+            if (nF >= 64) break;
+            Vertex[8] lk;
+            immutable nl = wf0EdgeLink(mfd, e[0], e[1], lk[]);
+            if (nl != 3) continue;
+            immutable ulong bit = 1UL << nF;
+            Vertex[5] sup = [e[0], e[1], lk[0], lk[1], lk[2]];
+            foreach (x; sup)
+            {
+                if (x < 0 || x >= fmask.length) continue;
+                if (fmask[x] == 0 && nTouch < touched.length)
+                    touched[nTouch++] = x;
+                fmask[x] |= bit;
+            }
+            nF++;
+        }
+    }
+
+    double W = 0.0;
+    bool tookPick = false;
+    if (outTgW !is null) *outTgW = 0.0;
+
+    static Vertex[4][4096] starts;
+    int nStart = 0;
+    foreach (f; mfd.simplices(3))
+    {
+        Vertex[4] w;
+        {
+            int k = 0;
+            foreach (x; f) { if (k < 4) w[k] = x; k++; }
+            if (k != 4) continue;
+        }
+        w[].sort();
+        bool near = false;
+        foreach (i2; 0 .. 4)
+            foreach (j2; i2 + 1 .. 4)
+            {
+                Vertex[2] e = [w[i2], w[j2]];
+                if (mfd.degreeOrZero!1(e[]) == 3) near = true;
+            }
+        if (!near) continue;
+        if (nStart >= starts.length) break;
+        starts[nStart++] = w;
+    }
+    foreach (si; 0 .. nStart)
+    {
+        Vertex[4] w = starts[si];
+        foreach (step; 0 .. kmax)
+        {
+            int[2] ap = 0;
+            if (mfd.writeFaceApexes(w[1], w[2], w[3], ap.ptr) != 2) break;
+            Vertex[2] axis = ap[0] < ap[1]
+                ? [cast(Vertex) ap[0], cast(Vertex) ap[1]]
+                : [cast(Vertex) ap[1], cast(Vertex) ap[0]];
+            Vertex[3] face = [w[1], w[2], w[3]];
+            face[].sort();
+            if (mfd.degreeOrZero!1(axis[]) == 0 && !mfd.anyFrozen(face[]))
+            {
+                double wt = 1.0;
+                if (beta != 0.0)
+                {
+                    ulong acc = 0;
+                    foreach (x; face)
+                        if (x >= 0 && x < fmask.length) acc |= fmask[x];
+                    foreach (x; axis)
+                        if (x >= 0 && x < fmask.length) acc |= fmask[x];
+                    int n = 0;
+                    for (ulong t = acc; t; t &= t - 1) n++;
+                    wt = exp(beta * cast(double) n);
+                }
+                if (tgA >= 0 && axis[0] == tgA && axis[1] == tgB
+                    && outTgW !is null)
+                    *outTgW = wt;
+                if (!tookPick && pick >= 0 && pick < W + wt
+                    && outFace !is null)
+                {
+                    *outFace = face; *outAx = axis; tookPick = true;
+                    if (outTgW !is null && tgA < 0) *outTgW = wt;
+                }
+                W += wt;
+            }
+            Vertex nxt = (ap[0] == w[0]) ? cast(Vertex) ap[1]
+                                         : cast(Vertex) ap[0];
+            if (ap[0] != w[0] && ap[1] != w[0]) break;
+            w = [w[1], w[2], w[3], nxt];
+        }
+    }
+    foreach (i; 0 .. nTouch) fmask[touched[i]] = 0;
+    return W;
+}
+
 /// One CHORD bilocal episode (see the note above). Returns true if the
 /// closed state changed. currentObjective stays exact; a capped walk is
 /// unwound exactly.
@@ -6482,8 +6639,13 @@ which is what keeps the close and its reverse open in balance.
 /// region is the union of the two vertices' stars, so this is defined
 /// whether or not the pair is currently an edge.
 private bool wf0RegionClean(Vertex)(ref Manifold!(3, Vertex) mfd,
-    Vertex[2] mark, Vertex[2] ignore)
+    Vertex[2] mark, Vertex[2] ignore, int maxAllowed = 0)
 {
+    // count DISTINCT degree-3 edges in the union of the mark's two
+    // vertex stars, excluding `ignore`, and pass iff at most maxAllowed.
+    // maxAllowed = 0 is the original all-or-nothing test.
+    Vertex[2][64] found;
+    int nf = 0;
     foreach (v; mark)
     {
         Vertex[4] seed;
@@ -6506,7 +6668,14 @@ private bool wf0RegionClean(Vertex)(ref Manifold!(3, Vertex) mfd,
                     Vertex[2] e = st[i][a2] < st[i][b2]
                         ? [st[i][a2], st[i][b2]] : [st[i][b2], st[i][a2]];
                     if (e == ignore) continue;   // the other mark
-                    if (mfd.degreeOrZero!1(e[]) == 3) return false;
+                    if (mfd.degreeOrZero!1(e[]) != 3) continue;
+                    bool seen = false;
+                    foreach (j; 0 .. nf)
+                        if (found[j] == e) { seen = true; break; }
+                    if (seen) continue;
+                    if (nf >= found.length) return false;   // way over
+                    found[nf++] = e;
+                    if (nf > maxAllowed) return false;
                 }
     }
     return true;
@@ -6627,17 +6796,24 @@ bool wormChordStrictEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
     wf0Deg3Scan(mfd, uniform(0, n3), &fa, &fb);
     Vertex[2] mFull = fa < fb ? [fa, fb] : [fb, fa];
 
-    immutable long nSite = wf0ChainSites!Vertex(mfd, cfg.chainK, -1,
-                                                null, null);
-    if (nSite <= 0) return false;
+    // AGGREGATION-WEIGHTED destination draw. The adopted chord is
+    // excluded from the neighbour count (it is leaving). At aggBeta = 0
+    // the weights are all 1, W == the old nSite, and the draw is the
+    // original uniform one.
+    immutable double Wopen = wf0ChainSitesW!Vertex(mfd, cfg.chainK,
+        cfg.aggBeta, mFull[0], mFull[1], -1.0, null, null, -1, -1, null);
+    if (!(Wopen > 0)) return false;
     Vertex[3] face = -1;
     Vertex[2] mEmpty = -1;
-    wf0ChainSites!Vertex(mfd, cfg.chainK, uniform(0, nSite),
-                         &face, &mEmpty);
-    if (mEmpty[0] < 0) return false;
+    double wPick = 0.0;
+    wf0ChainSitesW!Vertex(mfd, cfg.chainK, cfg.aggBeta,
+        mFull[0], mFull[1], uniform01 * Wopen, &face, &mEmpty,
+        -1, -1, &wPick);
+    if (mEmpty[0] < 0 || !(wPick > 0)) return false;
     // the two marks must be disjoint, and the target region clean
     foreach (x; mEmpty) foreach (y; mFull) if (x == y) return false;
-    if (!wf0RegionClean(mfd, mEmpty, mFull)) return false;
+    if (!wf0RegionClean(mfd, mEmpty, mFull, cfg.regionMax))
+        return false;
 
     // AUTO zeta2. Both marks are pure flags, so the open carries no dS
     // term at all and the balanced fugacity is simply minus the log
@@ -6649,7 +6825,7 @@ bool wormChordStrictEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
     // retubing. At zeta2 = 0 the open saturated at +9.1 and the close
     // died at e^-9.1: nothing ever closed.
     immutable double dens = log(cast(double) n3)
-        + log(cast(double) nSite) + log(pcl);
+        + log(Wopen / wPick) + log(pcl);
     immutable double z2 = cfg.zeta2Auto ? -dens : cfg.zeta2;
     immutable double laOpen = z2 + dens;
     if (!(laOpen >= 0 || uniform01 <= exp(laOpen))) return false;
@@ -6778,14 +6954,21 @@ bool wormChordStrictEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
         if (d0 == 3 && d1 == 0) { full = 0; empty = 1; }
         else if (d1 == 3 && d0 == 0) { full = 1; empty = 0; }
         else continue;
-        if (!wf0RegionClean(mfd, marks[empty], marks[full])) continue;
+        if (!wf0RegionClean(mfd, marks[empty], marks[full],
+                            cfg.regionMax)) continue;
         // no move at the close; the counts are the CURRENT ones
         immutable long n3c = wf0Deg3Scan(mfd, -1, null, null);
-        immutable long nSiteC = wf0ChainSites!Vertex(mfd, cfg.chainK, -1,
-                                                     null, null);
-        if (n3c <= 0 || nSiteC <= 0) continue;
+        // the REVERSE episode adopts marks[full] and must draw
+        // marks[empty] as its destination, so its density needs that
+        // site's weight in the post-move state. wRev == 0 means the
+        // reverse cannot propose this move at all -- decline.
+        double wRev = 0.0;
+        immutable double Wc = wf0ChainSitesW!Vertex(mfd, cfg.chainK,
+            cfg.aggBeta, marks[full][0], marks[full][1], -1.0, null, null,
+            marks[empty][0], marks[empty][1], &wRev);
+        if (n3c <= 0 || !(Wc > 0) || !(wRev > 0)) continue;
         immutable double la = -z2
-            - log(cast(double) n3c) - log(cast(double) nSiteC)
+            - log(cast(double) n3c) - log(Wc / wRev)
             - log(pcl);
         if (la >= 0 || uniform01 <= exp(la))
         {
