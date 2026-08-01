@@ -4569,6 +4569,7 @@ struct WormF0Params
     double ucapLo = -20.0;   ///< table choice; stops fallback runaway)
     double mu = 1.5;         ///< open-flag seed bias: p(v) ~ e^{-mu Z(v)}
     double zeta2 = 1.0;      ///< PAIR fugacity (two-ball episodes)
+    bool zeta2Auto = false;  ///< derive zeta2 from the proposal density
     int chainK = 20;         ///< chord channel: chain windows searched
                              ///< around each defect for creation sites
     double bcp = 0.05;       ///< close-pair share of open steps
@@ -4603,6 +4604,7 @@ struct WormF0Result
     long nH, accH, nG, accG;
     int zmin = 999;          ///< deepest link size reached
     long nZ4;                ///< steps spent at Z == 4
+    long[4] df;              ///< per-episode net f change (census)
 }
 
 /// One committed move (for exact cap-undo).
@@ -6505,11 +6507,25 @@ bool wormChordStrictEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
     foreach (x; mEmpty) foreach (y; mFull) if (x == y) return false;
     if (!wf0RegionClean(mfd, mEmpty, mFull)) return false;
 
-    immutable double laOpen = cfg.zeta2
-        + log(cast(double) n3) + log(cast(double) nSite) + log(pcl);
+    // AUTO zeta2. Both marks are pure flags, so the open carries no dS
+    // term at all and the balanced fugacity is simply minus the log
+    // proposal density -- no probe needed, unlike the vertex carrier
+    // where dS14 has to be measured. Frozen at the OPEN and reused at
+    // the close, so it is a constant of the episode (state-dependent
+    // within an episode would break balance); recomputing it per
+    // episode is exactly unbiased by the same argument that licenses
+    // retubing. At zeta2 = 0 the open saturated at +9.1 and the close
+    // died at e^-9.1: nothing ever closed.
+    immutable double dens = log(cast(double) n3)
+        + log(cast(double) nSite) + log(pcl);
+    immutable double z2 = cfg.zeta2Auto ? -dens : cfg.zeta2;
+    immutable double laOpen = z2 + dens;
     if (!(laOpen >= 0 || uniform01 <= exp(laOpen))) return false;
     res.opened = 4;                       // strict chord open
     res.head = cast(int) mFull[0];
+    immutable long[4] fOpen = [cast(long) mfd.fVector[0],
+        cast(long) mfd.fVector[1], cast(long) mfd.fVector[2],
+        cast(long) mfd.fVector[3]];
 
     Vertex[2][2] marks = [mFull, mEmpty];
 
@@ -6634,11 +6650,13 @@ bool wormChordStrictEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
         immutable long nSiteC = wf0ChainSites!Vertex(mfd, cfg.chainK, -1,
                                                      null, null);
         if (n3c <= 0 || nSiteC <= 0) continue;
-        immutable double la = -cfg.zeta2
+        immutable double la = -z2
             - log(cast(double) n3c) - log(cast(double) nSiteC)
             - log(pcl);
         if (la >= 0 || uniform01 <= exp(la))
         {
+            foreach (k; 0 .. 4)
+                res.df[k] = cast(long) mfd.fVector[k] - fOpen[k];
             res.closedHow = 7;            // strict close
             res.dS = cast(double) deltaTotal;
             currentObjective += deltaTotal;

@@ -4188,6 +4188,7 @@ extern(C) int ddg_sampler_worm_chord_strict(void* sampler_handle,
             out12[6] = res.nH;       out12[7] = res.accH;
             out12[8] = res.nG;       out12[9] = res.accG;
             out12[10] = res.zmin;    out12[11] = res.nZ4;
+            foreach (k; 0 .. 4) out12[12 + k] = res.df[k];
         }
         return changed ? 1 : 0;
     }
@@ -4226,7 +4227,9 @@ extern(C) int ddg_sampler_worm_pair_config(void* sampler_handle,
         auto s = cast(SamplerState*) sampler_handle;
         if (s is null) { setError("null handle"); return -1; }
         if (bcp <= 0 || bcp >= 1) { setError("bad bcp"); return -1; }
-        s.wormF0.zeta2 = zeta2;
+        // NaN requests auto-calibration from the proposal density
+        s.wormF0.zeta2Auto = (zeta2 != zeta2);
+        s.wormF0.zeta2 = s.wormF0.zeta2Auto ? 0.0 : zeta2;
         s.wormF0.bcp = bcp;
         if (chain_k >= 1) s.wormF0.chainK = chain_k;
         return 0;

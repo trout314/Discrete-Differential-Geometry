@@ -531,7 +531,10 @@ class ManifoldSampler:
     def set_worm_pair(self, zeta2: float = 1.0, bcp: float = 0.05,
                       chain_k: int = 20) -> None:
         """Configure the BILOCAL (two-ball) sector: ``zeta2`` the pair
-        fugacity, ``bcp`` the close-pair share of open steps. The
+        fugacity (pass ``float("nan")`` to auto-calibrate it from the
+        proposal density -- for the strict chord channel the open makes
+        no move, so the balanced value is just minus the log proposal
+        density and needs no probe), ``bcp`` the close-pair share. The
         umbrella, caps and seed bias come from :meth:`set_worm_f0`,
         which must be called first."""
         _lib.ddg_sampler_worm_pair_config(
@@ -563,7 +566,7 @@ class ManifoldSampler:
         carries no degree-3 edge -- the flicker relocated AND its old
         neighbourhood came out clean, i.e. a reaction rather than a bare
         relocation. ``closed == "strict"`` marks a committed one."""
-        out = np.zeros(12, dtype=np.float64)
+        out = np.zeros(16, dtype=np.float64)
         changed = _lib.ddg_sampler_worm_chord_strict(
             self._handle,
             out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
@@ -573,7 +576,8 @@ class ManifoldSampler:
                     int(out[3])),
                 "dS": float(out[4]), "nH": int(out[6]),
                 "accH": int(out[7]), "nG": int(out[8]),
-                "accG": int(out[9])}
+                "accG": int(out[9]),
+                "df": tuple(int(out[12 + k]) for k in range(4))}
 
     def set_worm_chord(self, ctab: dict, offpen: float = 0.0) -> None:
         """Upload the CHORD carrier's umbrella, replayed from measured
@@ -619,7 +623,8 @@ class ManifoldSampler:
                     int(out[3])),
                 "dS": float(out[4]), "nH": int(out[6]),
                 "accH": int(out[7]), "nG": int(out[8]),
-                "accG": int(out[9])}
+                "accG": int(out[9]),
+                "df": tuple(int(out[12 + k]) for k in range(4))}
 
     def set_nonlocal_slide_prob(self, prob: float, max_step: int = 8) -> None:
         """Enable the NON-LOCAL slide channel (dim = 3 only).
