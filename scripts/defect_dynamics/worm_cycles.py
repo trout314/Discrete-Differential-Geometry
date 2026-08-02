@@ -36,6 +36,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 for p in ("../../python", "../../scripts"):
     sys.path.insert(0, os.path.join(_HERE, p))
 import discrete_differential_geometry as ddg
+from discrete_differential_geometry import CrystalSymmetry
 import worm_moves as wm
 from crystal_grains import REF_GLOB, best_refs
 from worm_catalog import canon_sig
@@ -199,12 +200,26 @@ def main():
             if args.moves is not None else f"walks<={args.walks}")
     print(f"reference: {path}  N3={len(F0)}  {mode}")
 
+    # Seed one DFS per EXACT symmetry orbit of 2-3 sites. This used to seed per
+    # canon_sig bucket, but that signature is only an Aut invariant, so its
+    # buckets are unions of orbits: on R it gives 47 buckets for 102 orbits, and
+    # the follow-up move set DIFFERS between orbits inside 28 of them. Seeding
+    # per bucket therefore explored one arbitrary orbit's move tree and silently
+    # skipped the others' -- fatal for a search whose whole claim is endpoint
+    # completeness. (canon_sig is still worth reporting as a coarsening; see
+    # worm_catalog.py.)
+    sym = CrystalSymmetry.for_manifold_path(path)
+    face_orbit = sym.orbit_id_map("face")
     buckets = defaultdict(list)
+    sigs = set()
     for face, d, e, valid in wm.two_three_sites(F0, faces0, edeg0):
         if valid:
-            buckets[canon_sig(face, d, e, edeg0, vedges0)].append((face, d, e))
+            buckets[face_orbit[tuple(sorted(face))]].append((face, d, e))
+            sigs.add(canon_sig(face, d, e, edeg0, vedges0))
     reps = [s[0] for _, s in sorted(buckets.items())]
-    print(f"{len(reps)} creation-class representatives\n")
+    print(f"{len(reps)} creation-orbit representatives "
+          f"(|Aut| = {sym.order}; the old canon_sig bucketing would have "
+          f"seeded only {len(sigs)})\n")
 
     endpoints = defaultdict(list)
     visited = {}                  # state hash -> best remaining budget seen
