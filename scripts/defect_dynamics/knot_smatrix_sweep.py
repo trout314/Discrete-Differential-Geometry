@@ -15,10 +15,28 @@ with one deterministic collision per class. Completeness rests on:
   2. finite enumeration: chain windows are (tet, dropped-vertex) pairs, at
      most 4 per tet, over the finitely many tets in the contact ball --
      ALL are walked, both directions arising as separate drops;
-  3. crystal periodicity + determinism: configurations identical up to a
-     lattice translation give identical outcomes move-for-move, so classes
-     are deduped by EXACT relative-position keys (translation-safe; missed
-     point-group symmetries only cause harmless redundancy, never a gap).
+  3. crystal symmetry + determinism: configurations related by ANY
+     automorphism of the triangulation give identical outcomes move-for-move,
+     so classes are deduped by exact Aut keys (symmetry.config_key), anchored
+     on knot A's frame.
+
+     This replaced a rounded relative-position hash of a BALL of surrounding
+     vertices, which was wrong in both directions. It keyed on the
+     ENVIRONMENT rather than the object, so two chords sitting in congruent
+     balls but oriented differently within them were MERGED -- measured on
+     R m4 chainA: of the 130 A-windows it dropped, 87 were not Aut-equivalent
+     to the representative kept, i.e. silently missing classes in a sweep
+     declaring exhaustiveness. It also missed every point-group equivalence,
+     giving 680 classes where there are 271. The two partitions cross-cut;
+     the old one was neither a refinement nor a coarsening of the truth.
+
+     One consequence to expect: with A's window PINNED there is no residual
+     symmetry to exploit, because Aut acts freely on frames -- any g fixing
+     A's frame is the identity. So for a fixed A, distinct B geometries are
+     now all kept, where the ball hash used to fuse some of them. Expect more
+     collisions per A-class and fewer A-classes (271 vs 680); the sharing that
+     still pays is the washboard cache, whose key is B's start frame alone and
+     so is shared across all A-classes.
 
 Per collision: the approach V profile (theorem check), the contact
 FINGERPRINT (canonicalized bipartite adjacency between A's and B's
@@ -45,13 +63,6 @@ from knot_collider import make_knot, slide_along, ESTAR
 from crossing_collider import walk_stretch, chord_mid, tangent, minimg
 from cocycle_check import reference_frac_positions
 import defect_state as ds
-
-
-def relkey(rp, verts, origin, box, digits=4):
-    """Translation-invariant key: sorted rounded positions rel. to origin."""
-    rel = minimg(rp[sorted(set(verts))] - origin, box)
-    return tuple(sorted(tuple(int(round(x * 10 ** digits)) for x in row)
-                        for row in rel))
 
 
 def roles(st, verts):
@@ -201,13 +212,11 @@ def main():
         for a in t:
             nbr.setdefault(int(a), set()).update(int(x) for x in t)
 
-    # ---- A-window translation classes over the whole orbit
+    # ---- A-window classes over the whole orbit, EXACT under Aut
+    winA = lambda b: [chainA[(b + i) % LA] for i in range(4)]
     aclasses = {}
     for b in range(0, LA - 12, 4):
-        mid = chord_mid(rp, chainA, b, box)
-        ball = np.where((minimg(rp - mid, box) ** 2).sum(1)
-                        < args.ball_r ** 2)[0]
-        k = relkey(rp, ball, mid, box)
+        k = _cc.config_key([winA(b)])
         if k not in aclasses:
             aclasses[k] = b
     reps = sorted(aclasses.values())
@@ -220,7 +229,8 @@ def main():
         reps = reps[:args.limit_classes]
     reps = reps[args.start_class:]
     print(f"orbit L={LA}: {LA//4} windows -> {len(aclasses)} A-window "
-          f"translation classes; running {len(reps)}", flush=True)
+          f"classes (exact, under the full Aut); running {len(reps)}",
+          flush=True)
 
     need = 4 * (args.kmax + 3)
     t0 = time.time()
@@ -231,7 +241,7 @@ def main():
     mW = ddg.Manifold.load(args.ref, 3)      # washboard passes
     mC = ddg.Manifold.load(args.ref, 3)      # collision passes
     fs0_n = mW.num_facets
-    wb_cache = {}                            # segment relkey -> Ssb dict
+    wb_cache = {}                     # B start-frame Aut key -> Ssb dict
     for ai, bA in enumerate(reps):
         midA = chord_mid(rp, chainA, bA, box)
         tanA = tangent(rp, chainA, bA, box)
@@ -258,7 +268,8 @@ def main():
                     continue
                 if not (4 * args.kmax + 4 <= jX <= len(stx) - 12):
                     continue
-                jk = relkey(rp, stx[jX - 8:jX + 12], midA, box)
+                jk = _cc.config_key([winA(bA),
+                                     [int(stx[jX + i]) for i in range(4)]])
                 if jk in seen:
                     continue
                 seen.add(jk)
@@ -279,7 +290,8 @@ def main():
                 r0 = bA + 8 + jXs          # seg[i] = chainA[r0 - i]
                 seg = [chainA[(r0 - i) % LA]
                        for i in range(jXs + 4 * args.kmax + 25)]
-            jk = relkey(rp, seg[max(0, jXs - 8):jXs + 12], midA, box)
+            jk = _cc.config_key([winA(bA),
+                                 [int(seg[jXs + i]) for i in range(4)]])
             if jk not in seen:
                 seen.add(jk)
                 geoms.append((seg, jXs, 0.0))
@@ -321,11 +333,12 @@ def main():
                 break
             ncoll += 1
             j0 = jX - 4 * args.kmax
-            # pass 1: B washboard -- cached by the translation-invariant
-            # key of the path segment (the same chain geometry recurs
-            # across A-classes)
+            # pass 1: B washboard -- cached by the EXACT Aut key of B's own
+            # start frame. The BC walk is deterministic, so that frame
+            # determines the whole segment, and the segment length is fixed;
+            # the same chain geometry recurs across A-classes.
             seg = stx[max(0, j0 - 1):jX + 9]
-            wkey = relkey(rp, seg, rp[stx[j0]], box)
+            wkey = _cc.config_key([[int(stx[j0 + i]) for i in range(4)]])
             if wkey in wb_cache:
                 Ssb = wb_cache[wkey]
                 if Ssb is None:

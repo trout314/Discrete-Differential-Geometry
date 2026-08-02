@@ -899,6 +899,54 @@ class CrystalSymmetry:
         """Is there an automorphism carrying frame tuple ``a`` to ``b``?"""
         return self.canonical_frame_key(a) == self.canonical_frame_key(b)
 
+    def frame_canonicalizer(self):
+        """``(orbit_of_frame, element_of_frame, n_orbits)``.
+
+        ``elements[element_of_frame[f]]`` is the UNIQUE automorphism carrying
+        orbit ``orbit_of_frame[f]``'s representative to frame ``f`` -- unique
+        because the action on frames is free. Built in one pass costing exactly
+        ``24*nT`` frame lookups.
+        """
+        if getattr(self, "_fcanon", None) is None:
+            v = self.view
+            nF = 24 * v.nT
+            orb = np.full(nF, -1, np.int32)
+            eidx = np.full(nF, -1, np.int32)
+            elems = self.elements
+            n = 0
+            for f in range(nF):
+                if orb[f] >= 0:
+                    continue
+                w = v.frame_window(f)
+                for i, g in enumerate(elems):
+                    img = v.frame_id(tuple(int(g[x]) for x in w))
+                    orb[img] = n
+                    eidx[img] = i
+                n += 1
+            self._fcanon = (orb, eidx, n)
+        return self._fcanon
+
+    def config_key(self, frames):
+        """Exact Aut-invariant key of a configuration, ANCHORED on frames[0].
+
+        Same equivalence as :meth:`canonical_frame_key` but O(len(frames)) per
+        query after a one-time table build, which is what makes it usable
+        inside a sweep. It works because Aut acts freely on frames: the element
+        taking the anchor's orbit representative to ``frames[0]`` is unique, so
+        pushing every other frame back through its inverse gives a well-defined
+        normal form.
+
+        Use when one frame is naturally distinguished (the object under study,
+        e.g. knot A) and the rest are described relative to it.
+        """
+        orb, eidx, _ = self.frame_canonicalizer()
+        v = self.view
+        f0 = int(frames[0])
+        ginv = _inverse(self.elements[int(eidx[f0])])
+        return (int(orb[f0]),) + tuple(
+            v.frame_id(tuple(int(ginv[x]) for x in v.frame_window(int(f))))
+            for f in frames[1:])
+
     # -- orbits --------------------------------------------------------------
 
     def _orbit_table(self, kind):

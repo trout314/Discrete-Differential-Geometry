@@ -199,6 +199,22 @@ class ChainClasses:
         lab = self.view.labels
         return [int(lab[self.view.frame_window(f)[0]]) for f in c[i:] + c[:i]]
 
+    def frame_of(self, window):
+        """Frame id of an ordered vertex 4-tuple (original labels)."""
+        return self.view.frame_id(tuple(self.view.index[int(x)] for x in window))
+
+    def config_key(self, windows):
+        """Exact Aut-invariant key of a configuration given as ordered vertex
+        4-tuples, anchored on ``windows[0]``.
+
+        Two configurations get the same key iff some automorphism carries one
+        to the other -- an equivalence certificate, not a fingerprint. Use it
+        instead of hashing rounded positions of a surrounding ball: that keys
+        on the ENVIRONMENT, and two objects can sit in congruent environments
+        while being oriented differently within them.
+        """
+        return self.sym.config_key([self.frame_of(w) for w in windows])
+
     def class_of_frame(self, window):
         """Which class an ordered vertex 4-tuple lies on -- e.g. to record the
         class a legacy ``bc_orbit(m, F[0])`` seed actually landed in."""

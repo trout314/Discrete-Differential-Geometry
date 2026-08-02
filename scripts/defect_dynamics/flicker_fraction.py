@@ -110,7 +110,7 @@ def main():
             if tid not in born:
                 fac = st.induced_facets(cx.verts)
                 vc, ec = st.decorations(cx.verts)
-                ck, _ = ds.canonical_key(fac, ecolor=ec, vcolor=vc)
+                ck = ds.canonical_key_exact(fac, ecolor=ec, vcolor=vc)
                 born[tid] = {
                     "birth_move": cur_type, "clock": clock,
                     "nv": len(cx.verts), "f": list(st.induced_shape(

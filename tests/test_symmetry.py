@@ -340,3 +340,56 @@ def test_cache_round_trip(tmp_path):
                         gens=np.zeros((0, first.view.V), np.int32))
     third = CrystalSymmetry.for_manifold_path(path)
     assert third.order == first.order
+
+
+@pytest.mark.parametrize("name,m,order,point", CRYSTALS)
+def test_config_key_matches_canonical_frame_key(name, m, order, point):
+    """The O(1)-per-query table form must induce the SAME partition as the
+    min-over-group form -- it is an optimisation, not a different notion."""
+    _, sym = _sym(name, m)
+    nF = 24 * sym.view.nT
+    frames = list(range(0, nF, max(1, nF // 60)))[:60]
+    a, b = {}, {}
+    for f in frames:
+        a.setdefault(sym.config_key([f]), []).append(f)
+        b.setdefault(sym.canonical_frame_key([f]), []).append(f)
+    assert sorted(map(sorted, a.values())) == sorted(map(sorted, b.values()))
+    pairs = [(frames[i], frames[(i + 3) % len(frames)])
+             for i in range(len(frames))]
+    a, b = {}, {}
+    for p in pairs:
+        a.setdefault(sym.config_key(list(p)), []).append(p)
+        b.setdefault(sym.canonical_frame_key(list(p)), []).append(p)
+    assert sorted(map(sorted, a.values())) == sorted(map(sorted, b.values()))
+
+
+@pytest.mark.parametrize("name,m,order,point", CRYSTALS)
+def test_config_key_is_an_equivalence_certificate(name, m, order, point):
+    """Equal keys must mean an automorphism really carries one to the other,
+    and unequal keys that no automorphism does."""
+    _, sym = _sym(name, m)
+    base = 0
+    imgs = [sym.view.frame_id(tuple(int(g[x]) for x in sym.view.frame_window(base)))
+            for g in sym.elements[:12]]
+    for f in imgs:                       # in the orbit by construction
+        assert sym.config_key([f]) == sym.config_key([base])
+        assert sym.frames_equivalent([f], [base])
+    # a frame in a DIFFERENT orbit must differ
+    orb, _, _ = sym.frame_canonicalizer()
+    other = int(np.nonzero(orb != orb[base])[0][0])
+    assert sym.config_key([other]) != sym.config_key([base])
+    assert not sym.frames_equivalent([other], [base])
+
+
+def test_anchored_key_has_no_residual_freedom():
+    """With the anchor pinned there is no symmetry left -- Aut acts freely on
+    frames -- so two configurations sharing an anchor are equivalent only if
+    their other frames are literally equal. This is why pinning knot A leaves
+    every distinct B geometry distinct."""
+    _, sym = _sym("a15", 2)
+    nF = 24 * sym.view.nT
+    a = 0
+    seen = {}
+    for f in range(0, nF, max(1, nF // 40)):
+        seen.setdefault(sym.config_key([a, f]), []).append(f)
+    assert all(len(v) == 1 for v in seen.values())

@@ -178,6 +178,45 @@ def canonical_key(facets, vcolor=None, ecolor=None, limit=200000):
     return (best, exact)
 
 
+def canonical_key_exact(facets, vcolor=None, ecolor=None, limit=200000):
+    """`canonical_key` that REFUSES a truncated search instead of returning one.
+
+    The two return modes of `canonical_key` fail in OPPOSITE directions, and
+    only one of them is safe to ignore:
+
+      exact=True  -- the minimisation ran to completion, so the key is a true
+                     canonical form: key equality <=> isomorphism, both ways.
+      exact=False -- the minimum was taken over an arbitrary PREFIX of the
+                     orderings, and that prefix depends on the input vertex
+                     LABELS (the colour classes are sorted by label). The key
+                     is then no longer a function of the isomorphism class.
+
+    Equal keys still PROVE isomorphism even when truncated -- equality means
+    some ordering makes the two complexes literally identical. What breaks is
+    the converse: two isomorphic complexes can truncate at different points
+    and get different keys. So a discarded exact=False OVER-SPLITS, reporting
+    one species as several and dividing its count among the fragments. (Note
+    this is the opposite failure to a WL-style invariant, which merges.)
+
+    Callers that use the key as a species identity want the certificate, so
+    they should call this. Raising is cheap in practice: a single 2->3 makes a
+    5-vertex complex, whose search is at most 5! = 120 against a limit of
+    200000, and the flag has never come back False on any flicker data
+    measured. It would only trigger on a large, highly symmetric compound --
+    exactly where a silent over-split would be hardest to notice.
+    """
+    key, exact = canonical_key(facets, vcolor=vcolor, ecolor=ecolor,
+                               limit=limit)
+    if not exact:
+        raise ValueError(
+            f"canonical_key truncated on a {len({v for f in facets for v in f})}"
+            f"-vertex complex (limit={limit}): the key is no longer a function "
+            f"of the isomorphism class and would over-split this species. "
+            f"Raise `limit`, or call canonical_key directly and handle the "
+            f"flag deliberately.")
+    return key
+
+
 class Complex:
     """One connected defect: its vertices, its label, and its closed star.
 

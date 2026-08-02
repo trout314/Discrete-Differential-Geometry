@@ -76,11 +76,11 @@ def flicker_key(group, cx=None, facets=None, vcolor=None, ecolor=None):
     if group == "sig":
         return json.dumps([list(cx.sig), list(cx.nodes)])
     if group == "full":
-        k, _ = ds.canonical_key(facets, ecolor=ecolor, vcolor=vcolor)
+        k = ds.canonical_key_exact(facets, ecolor=ecolor, vcolor=vcolor)
     elif group == "decorated":
-        k, _ = ds.canonical_key(facets, ecolor=ecolor)
+        k = ds.canonical_key_exact(facets, ecolor=ecolor)
     else:
-        k, _ = ds.canonical_key(facets)
+        k = ds.canonical_key_exact(facets)
     return json.dumps(k)
 
 
@@ -186,7 +186,8 @@ def main():
         for cx in comps:
             fac = st.induced_facets(cx.verts)
             vc, ec = st.decorations(cx.verts)
-            ck, exact = ds.canonical_key(fac, ecolor=ec, vcolor=vc)
+            ck = ds.canonical_key_exact(fac, ecolor=ec, vcolor=vc)
+            exact = True          # canonical_key_exact raises otherwise
             # Keys at EVERY grouping level species_report.py offers, because a
             # coarser key cannot be projected out of the full one -- dropping a
             # decoration changes which vertex ordering minimises the form. A
@@ -194,8 +195,8 @@ def main():
             # built the same way, or the membership test silently misses.
             keys = {
                 "full": ck,
-                "decorated": ds.canonical_key(fac, ecolor=ec)[0],
-                "induced": ds.canonical_key(fac)[0],
+                "decorated": ds.canonical_key_exact(fac, ecolor=ec),
+                "induced": ds.canonical_key_exact(fac),
                 "sig": [list(cx.sig), list(cx.nodes)],
             }
             sumz = st.total_coordination(cx.verts)
