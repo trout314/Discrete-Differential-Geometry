@@ -13,9 +13,11 @@ from .convergence import (
     integrated_autocorrelation_time,
     weighted_ess,
 )
-from . import vertex_fields, structure_factor, graph_hyperuniformity, cocycle
+from . import (vertex_fields, structure_factor, graph_hyperuniformity, cocycle,
+               symmetry)
 from .vertex_fields import FIELDS
 from .cocycle import torus_positions
+from .symmetry import CrystalSymmetry
 from ._dlang import _lib as _lib
 
 
@@ -80,6 +82,8 @@ __all__ = [
     "structure_factor",
     "graph_hyperuniformity",
     "cocycle",
+    "symmetry",
+    "CrystalSymmetry",
     "FIELDS",
     "torus_positions",
 ]

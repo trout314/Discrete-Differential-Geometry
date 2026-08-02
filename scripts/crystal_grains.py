@@ -71,6 +71,7 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_ROOT, "python"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import discrete_differential_geometry as ddg
+from discrete_differential_geometry.symmetry import TriView, develop_partial
 from fk_skeleton import edges_from_facets
 from dopant_pairs import vertex_classes
 from tcp_reference import STRUCTURES
@@ -100,6 +101,9 @@ def build_struct(facets):
       tets   : (nT,4) int array of tet vertices
       typ    : (V,) int, vertex FK-class (-1 impure, else n6 code 0/2/3/4)
       edg    : dict (u<w) -> hinge degree
+      view   : discrete_differential_geometry.symmetry.TriView (adjacency
+               tables; source of truth for face2/tetid, and what the shared
+               `develop_partial` traversal walks)
       face2  : dict sorted-triple -> list of (tet_id, apex_vertex)
       tetid  : dict sorted-4-tuple -> tet_id
       adj    : relabelled neighbour lists
@@ -112,16 +116,10 @@ def build_struct(facets):
     typ = np.where(imp > 0, -1, n6).astype(int)
     eu, edeg, V = edges_from_facets(facets)
     edg = {(int(a), int(b)): int(d) for (a, b), d in zip(eu, edeg)}
-    face2 = collections.defaultdict(list)
-    tetid = {}
-    for t, tv in enumerate(tets):
-        tv = tuple(int(x) for x in tv)
-        tetid[tuple(sorted(tv))] = t
-        for apex in tv:
-            face = tuple(sorted(v for v in tv if v != apex))
-            face2[face].append((t, apex))
-    return dict(tets=tets, typ=typ, edg=edg, face2=face2, tetid=tetid,
-                adj=adj, pure=(imp == 0), V=V, nT=len(tets))
+    view = TriView(tets, relabel=False)               # ids already 0..V-1
+    return dict(tets=tets, typ=typ, edg=edg, view=view, face2=view.face2,
+                tetid=view.tetid, adj=adj, pure=(imp == 0), V=V,
+                nT=len(tets))
 
 
 def _edge(st, u, w):
@@ -179,34 +177,16 @@ def ref_index(refs):
 def develop(st, rst, seed_tet, sig0):
     """Grow a single-valued covering map from `seed_tet` (sample tet id) with
     initial correspondence `sig0`. Returns {sample tet id -> sig} for every tet
-    consistently reached (the grain, at tet granularity)."""
-    seed_rt = tuple(sorted(sig0[int(v)] for v in st["tets"][seed_tet]))
-    rtid0 = rst["tetid"][seed_rt]
-    assign = {seed_tet: (rtid0, sig0)}
-    q = collections.deque([seed_tet])
-    while q:
-        t = q.popleft()
-        rtid, sig = assign[t]
-        tv = [int(v) for v in st["tets"][t]]
-        for apex in tv:
-            face = [v for v in tv if v != apex]
-            snb = [x for x in st["face2"][tuple(sorted(face))] if x[0] != t]
-            if not snb:
-                continue
-            t2, apex2 = snb[0]
-            if t2 in assign:
-                continue                                   # already fixed
-            rface = tuple(sorted(sig[v] for v in face))
-            rnb = [x for x in rst["face2"][rface] if x[0] != rtid]
-            if not rnb:
-                continue
-            rtid2, rapex2 = rnb[0]
-            sig2 = {v: sig[v] for v in face}
-            sig2[apex2] = rapex2
-            if _tet_ok(st, rst, [int(v) for v in st["tets"][t2]], sig2):
-                assign[t2] = (rtid2, sig2)
-                q.append(t2)
-    return assign
+    consistently reached (the grain, at tet granularity).
+
+    The traversal itself lives in `symmetry.develop_partial` -- it is the same
+    forced-propagation argument that makes a crystal's automorphism group
+    computable from one frame (`symmetry.develop_total`), differing only in
+    what a mismatch means: here a grain BOUNDARY, there a failed automorphism.
+    This function supplies the decoration test that makes it grain growth."""
+    return develop_partial(
+        st["view"], rst["view"], seed_tet, sig0,
+        accept=lambda tv, sig: _tet_ok(st, rst, tv, sig))
 
 
 def _drop_subsumed_grains(st, grain_of_tet, phase_of_grain):

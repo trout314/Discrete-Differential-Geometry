@@ -107,6 +107,17 @@ Stable, reusable bindings to the D core. This is the public API for research scr
 - **`_manifold_view.py`** — `ManifoldView` class (borrowed handle, read-only).
 - **`_sampler.py`** — `ManifoldSampler`, `SamplerParams`, `SamplerStats`.
 - **`_simplicial_complex.py`** — `SimplicialComplex` class.
+- **`symmetry.py`** — `CrystalSymmetry`: the EXACT automorphism group of a
+  triangulation (as explicit vertex permutations), orbit maps for
+  vertices/edges/faces/tets, stabilizers, and the full BC-chain enumeration
+  with chain orbits. Cached per `.mfd` in a `.sym.npz` sidecar. Use this
+  instead of bucketing by WL colours / degree signatures / rounded coordinates
+  — those give bounds, not orbits. Also home to `develop_partial` /
+  `develop_total`, the shared covering-map traversal `crystal_grains.py`
+  builds grains with. **Caveat (see the module docstring): Aut(K) is the
+  symmetry of the abstract complex and may legitimately exceed the physical
+  crystal's space group** — do not report it as a crystallographic order
+  without checking the factorisation.
 
 ### Research Scripts (scripts/)
 
