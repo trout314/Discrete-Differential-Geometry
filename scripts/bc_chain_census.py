@@ -37,9 +37,12 @@ Per class this reports:
   WINDING
       The chain's class in H_1(T^3) = Z^3, in supercell lattice-vector units,
       summed from minimum-image steps of the reference fractional positions.
-      Requires the tcp_reference labelling v = cell*ns + site; the script
-      VALIDATES that (every edge must be shorter than half a cell) and refuses
-      to report winding rather than print a wrong number.
+      Reported as the SET of windings realized across the class: translations
+      preserve winding but the point group rotates it, so a class has a
+      winding orbit, not a winding. The minimum-image reconstruction is
+      certified by cochain closure before any of it is reported (see
+      ``validate_positions``); if it fails, winding is suppressed rather than
+      guessed.
 
   COVERAGE
       How many tet / vertex orbits the chain visits, out of all of them. A
@@ -54,16 +57,15 @@ Per class this reports:
       mirror.
 
   MIRROR (this one is chirality)
-      Handedness flips under ORIENTATION-REVERSING automorphisms. Aut(K) is
-      combinatorial and may contain them; Aut+ (orientation-preserving) has
-      index 1 or 2. A chain class is ACHIRAL iff its stabilizer contains an
-      orientation-reversing element -- then the mirror image of the chain is
-      the chain itself, up to Aut+. If the stabilizer is entirely inside Aut+
-      the class is CHIRAL: its Aut-orbit splits into two Aut+-orbits, a
-      left- and a right-handed enantiomer. (Equivalently: orbit size under
-      Aut+ is halved exactly when the stabilizer loses no element.) If Aut has
-      no orientation-reversing element at all, the crystal itself is chiral
-      and no enantiomer is present to compare with -- reported separately.
+      Handedness flips under ORIENTATION-REVERSING automorphisms, so the
+      relevant group is Aut+ = the orientation-preserving subgroup (index 1 or
+      2). A class is CHIRAL iff its Aut-orbit splits into two Aut+-orbits --
+      a left- and a right-handed enantiomer that the full Aut identifies -- and
+      ACHIRAL iff some orientation-reversing automorphism fixes it. If Aut has
+      no orientation-reversing element at all the crystal itself is chiral
+      (a Sohncke space group) and no enantiomer is present to compare with;
+      that is reported separately. Computed by
+      ``CrystalSymmetry.is_chiral``/``.orientation_preserving``.
 
 Usage:
   python scripts/bc_chain_census.py data/tcp_reference/T3_R_m3_N24462.mfd
@@ -209,68 +211,6 @@ def chain_holonomy(sym, chain):
         q.axis()
 
 
-_PARITY4 = {}
-
-
-def _perm_sign(p):
-    """Sign of a permutation given as a 4-tuple of distinct indices."""
-    if p not in _PARITY4:
-        s, seen = 1, list(p)
-        for i in range(4):
-            for j in range(i + 1, 4):
-                if seen[i] > seen[j]:
-                    s = -s
-        _PARITY4[p] = s
-    return _PARITY4[p]
-
-
-def orientation_parity(view):
-    """parity[t] in {0,1}: the tet's coherently oriented vertex order is its
-    sorted order, or sorted with the last two swapped when parity is 1.
-
-    Adjacent tets are consistent iff they induce OPPOSITE orientations on the
-    shared face; dropping vertex i from a sorted 4-tuple leaves a sorted face,
-    so the induced sign is just (-1)^i. Same rule as
-    development.TransportContext._orient, on TriView's arrays.
-    """
-    st = np.sort(np.asarray(view.tets), axis=1)
-    keys = [tuple(int(x) for x in st[t]) for t in range(view.nT)]
-    parity = np.full(view.nT, -1, np.int8)
-    parity[0] = 0
-    stack = [0]
-    while stack:
-        t = stack.pop()
-        kt = keys[t]
-        for i in range(4):
-            face = kt[:i] + kt[i + 1:]
-            u = [x for x in view.face2[face] if x[0] != t][0][0]
-            ku = keys[u]
-            iu = ku.index(next(v for v in ku if v not in face))
-            want = parity[t] ^ ((i ^ iu ^ 1) & 1)
-            if parity[u] < 0:
-                parity[u] = want
-                stack.append(u)
-            elif parity[u] != want:
-                raise ValueError("non-orientable complex")
-    if (parity < 0).any():
-        raise ValueError("disconnected complex")
-    return st, keys, parity
-
-
-def _canon_order(key, par):
-    return (key[0], key[1], key[3], key[2]) if par else key
-
-
-def orientation_sign(view, keys, parity, g):
-    """+1 if automorphism `g` preserves the global orientation, -1 if it
-    reverses it. Well defined: the sign is the same at every tet."""
-    o = _canon_order(keys[0], int(parity[0]))
-    img = tuple(int(g[v]) for v in o)
-    t2 = view.tetid[tuple(sorted(img))]
-    o2 = _canon_order(keys[t2], int(parity[t2]))
-    return _perm_sign(tuple(o2.index(v) for v in img))
-
-
 def reverse_frame(view, fid):
     w = view.frame_window(fid)
     return view.frame_id((w[3], w[2], w[1], w[0]))
@@ -325,12 +265,12 @@ def main(path, jsonout, no_cache):
                              for x in np.asarray(view.tets[0])))
     default_class = int(oid[int(chain_of[f0])])
 
-    _, keys, parity = orientation_parity(view)
-    signs = [orientation_sign(view, keys, parity, g) for g in sym.elements]
-    n_rev = sum(1 for s in signs if s < 0)
+    n_rev = (sym.order - sym.orientation_preserving.order
+             if sym.has_orientation_reversing else 0)
     if n_rev:
-        print(f"  orientation: Aut+ has index 2 ({sym.order - n_rev} preserving, "
-              f"{n_rev} reversing) -- mirror images are comparable")
+        print(f"  orientation: Aut+ has index 2 "
+              f"({sym.orientation_preserving.order} preserving, {n_rev} "
+              f"reversing) -- mirror images are comparable")
     else:
         print(f"  orientation: every automorphism preserves orientation, so "
               f"the CRYSTAL is chiral; no chain has its mirror present to "
@@ -343,15 +283,14 @@ def main(path, jsonout, no_cache):
         pos_in = {int(f): i for i, f in enumerate(c)}
         w0 = view.frame_window(int(c[0]))
 
-        shifts, stab_signs = set(), []
-        for g, sg in zip(sym.elements, signs):
+        shifts = set()
+        for g in sym.elements:
             img = view.frame_id(tuple(int(g[v]) for v in w0))
             if int(chain_of[img]) == reps[k]:
                 shifts.add(pos_in[img])
-                stab_signs.append(sg)
         screw = min((s for s in shifts if s), default=L)
-        # achiral iff some orientation-REVERSING automorphism fixes the chain
-        mirror = (None if not n_rev else any(s < 0 for s in stab_signs))
+        chiral = sym.is_chiral("chain", reps[k])
+        mirror = None if chiral is None else not chiral
 
         tets = np.array([int(f) // 24 for f in c])
         verts = np.unique(view.tets[tets].ravel())

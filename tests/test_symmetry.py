@@ -188,6 +188,99 @@ def test_melt_has_trivial_symmetry():
     assert sym.n_orbits("vertex") == sym.view.V
 
 
+@pytest.mark.parametrize("name,m,order,point", CRYSTALS)
+def test_orientation_sign_is_a_homomorphism(name, m, order, point):
+    """The sign must be well defined (same at every tet) and multiplicative."""
+    _, sym = _sym(name, m)
+    view = sym.view
+    for g in sym.elements[:8]:
+        seen = set()
+        for t in range(min(view.nT, 40)):
+            o = view.oriented_order(t)
+            img = tuple(int(g[x]) for x in o)
+            o2 = view.oriented_order(view.tetid[tuple(sorted(img))])
+            from discrete_differential_geometry.symmetry import _perm_sign
+            seen.add(_perm_sign(tuple(o2.index(x) for x in img)))
+        assert len(seen) == 1, "orientation sign differs between tets"
+    from discrete_differential_geometry.symmetry import _compose
+    for g in sym.elements[:6]:
+        for h in sym.elements[:6]:
+            assert sym.orientation_sign(_compose(g, h)) == \
+                sym.orientation_sign(g) * sym.orientation_sign(h)
+
+
+@pytest.mark.parametrize("name,m,order,point", CRYSTALS)
+def test_orientation_preserving_subgroup(name, m, order, point):
+    """Aut+ must be an honest index-1-or-2 subgroup of orientation-preserving
+    elements, usable as a group in its own right."""
+    _, sym = _sym(name, m)
+    plus = sym.orientation_preserving
+    assert plus.order in (sym.order, sym.order // 2)
+    assert plus.order == (sym.order // 2 if sym.has_orientation_reversing
+                          else sym.order)
+    assert all(sym.orientation_sign(g) > 0 for g in plus.elements)
+    full = {g.tobytes() for g in sym.elements}
+    assert all(g.tobytes() in full for g in plus.elements)
+    # every inherited method works against the subgroup
+    for kind in ("vertex", "edge", "face", "tet"):
+        assert sum(plus.orbit_sizes(kind)) == sum(sym.orbit_sizes(kind))
+        assert plus.n_orbits(kind) >= sym.n_orbits(kind)
+        rep = plus.orbit_representatives(kind)[0]
+        assert len(plus.stabilizer(kind, rep)) == \
+            plus.stabilizer_order(kind, rep)
+
+
+@pytest.mark.parametrize("name,m,order,point", CRYSTALS)
+def test_chirality_matches_orbit_splitting(name, m, order, point):
+    """is_chiral must agree with the stabilizer definition: a class is achiral
+    exactly when an orientation-reversing element fixes it."""
+    _, sym = _sym(name, m)
+    if not sym.has_orientation_reversing:
+        assert sym.is_chiral("tet", sym.orbit_representatives("tet")[0]) is None
+        return
+    for kind in ("vertex", "edge", "face", "tet"):
+        for rep in sym.orbit_representatives(kind)[:6]:
+            by_stab = all(sym.orientation_sign(g) > 0
+                          for g in sym.stabilizer(kind, rep))
+            assert sym.is_chiral(kind, rep) == by_stab
+    # orbit counts: each chiral orbit splits in two, achiral ones do not
+    plus = sym.orientation_preserving
+    for kind in ("vertex", "edge", "face", "tet"):
+        n_chiral = sum(1 for r in sym.orbit_representatives(kind)
+                       if sym.is_chiral(kind, r))
+        assert plus.n_orbits(kind) == sym.n_orbits(kind) + n_chiral
+
+
+def test_bc_chains_are_always_chiral():
+    """A tetrahelix is intrinsically handed, so no orientation-reversing
+    automorphism can ever fix a BC chain -- every chain class splits."""
+    for name, m in (("a15", 2), ("c15", 2), ("r", 2)):
+        _, sym = _sym(name, m)
+        assert sym.has_orientation_reversing
+        n = len(sym.chain_orbits()[1])
+        assert all(sym.is_chiral("chain", i) for i in sym.chain_orbits()[2])
+        assert len(sym.orientation_preserving.chain_orbits()[1]) == 2 * n
+
+
+def test_sohncke_group_has_no_mirror():
+    """The delta phase is P2_1 2_1 2_1, a chiral (Sohncke) space group: the
+    combinatorics alone must show zero orientation-reversing automorphisms,
+    and then chirality questions have no answer."""
+    facets = np.asarray(tr.build_t3_triangulation("delta", 2)[0])
+    sym = CrystalSymmetry.compute(facets)
+    assert not sym.has_orientation_reversing
+    assert sym.orientation_preserving is sym
+    assert sym.is_chiral("chain", 0) is None
+    assert sym.is_chiral("tet", sym.orbit_representatives("tet")[0]) is None
+
+
+def test_chain_tables_shared_between_group_and_subgroup():
+    """Chains belong to the triangulation, so Aut and Aut+ must not each pay
+    for the 24*nT enumeration."""
+    _, sym = _sym("a15", 2)
+    assert sym.chains is sym.orientation_preserving.chains
+
+
 def test_disconnected_input_is_refused():
     """Development from one frame cannot see automorphisms that permute
     components, so it would report a subgroup (typically trivial). That is a

@@ -71,6 +71,45 @@ with no accidental automorphisms --
 so for these crystals the two groups coincide.  That is an empirical result
 at these supercells, not a theorem.
 
+Aut vs Aut+ : WHICH GROUP DOES YOUR QUANTITY LIVE UNDER?
+--------------------------------------------------------
+``Aut`` is the symmetry of the abstract complex, and the sampler's state IS
+that complex: its action is built from edge degrees, coordinations and the
+f-vector, and its Pachner moves are defined combinatorially, so the Markov
+chain COMMUTES with ``Aut`` -- if x -> y is legal with dS, so is g(x) -> g(y)
+with the same dS and the same acceptance. Every sampler observable is
+therefore constant on ``Aut`` orbits, which is why ``Aut``-orbit counts are
+the number of genuinely distinct cases to enumerate or measure.
+
+But ``K`` carries no ORIENTATION. It is orientable; an orientation is extra
+structure you impose. Quantities that exist only after that choice -- the
+spinor sign of a Wilson line, the handedness of a BC helix, anything built
+from an epsilon tensor, a Dirac walk's coin -- are not ``Aut``-invariant: an
+orientation-reversing g maps them to their negatives. For those the group is
+``Aut+`` (:attr:`CrystalSymmetry.orientation_preserving`), the index-1-or-2
+orientation-preserving subgroup.
+
+The compact statement: an ``Aut``-invariant quantity is a SCALAR; one that is
+``Aut+``-invariant but flips under ``Aut \ Aut+`` is a PSEUDOSCALAR, and
+averaging a pseudoscalar over an ``Aut`` orbit gives exactly zero.
+
+Rule of thumb: if the quantity survives writing the complex down with no
+notion of left and right, use ``Aut``; if computing it required fixing a sign,
+an orientation, or a seed parity, use ``Aut+``. (``TransportContext``'s
+``seed_tet`` gauge is precisely such a choice, and its docstring's warning
+that a parity flip mirrors every axis is this distinction biting in practice.)
+
+Measured: A15/C15/C14/SIGMA/R all have ``|Aut+| = |Aut|/2``, and NO BC chain
+class in any of them is achiral -- as a tetrahelix must be -- so every chain
+orbit splits into an enantiomer pair (R: 14 classes under ``Aut``, 28 under
+``Aut+``). The crystals are achiral while their helices are handed: a racemic
+mixture, so any chirality-odd bulk average must vanish by symmetry, and a
+nonzero one is a bug or a gauge leak. The delta phase is the exception that
+proves the machinery: P2_1 2_1 2_1 is a Sohncke (chiral) group, and the
+combinatorics alone return zero orientation-reversing automorphisms, so
+``is_chiral`` correctly answers ``None`` -- there is no mirror image present
+to compare against.
+
 Terminology
 -----------
 "Orbit" in ``scripts/defect_dynamics/`` almost always means a BC CHAIN (the
@@ -145,6 +184,8 @@ class TriView:
         self._edeg = None
         self._adj = None
         self._colours = None
+        self._orient = None
+        self._chains = None
 
     # -- lazily built tables -------------------------------------------------
 
@@ -227,6 +268,98 @@ class TriView:
             col = nxt
         self._colours = col
         return col
+
+    @property
+    def orientation(self):
+        """``(sorted tet keys, parity)``: parity[t] is 0 if the tet's
+        coherently oriented vertex order is its sorted order, 1 if it is
+        sorted with the last two swapped.
+
+        Adjacent tets are consistent iff they induce OPPOSITE orientations on
+        the shared face, and dropping vertex i from a sorted 4-tuple leaves a
+        sorted face, so the induced sign is (-1)^i. Same rule as
+        ``development.TransportContext._orient``. Raises on a non-orientable
+        complex, where handedness is not defined at all.
+        """
+        if self._orient is None:
+            st = np.sort(np.asarray(self.tets), axis=1)
+            keys = [tuple(int(x) for x in st[t]) for t in range(self.nT)]
+            par = np.full(self.nT, -1, np.int8)
+            par[0] = 0
+            stack = [0]
+            while stack:
+                t = stack.pop()
+                kt = keys[t]
+                for i in range(4):
+                    face = kt[:i] + kt[i + 1:]
+                    u = [x for x in self.face2[face] if x[0] != t][0][0]
+                    ku = keys[u]
+                    iu = ku.index(next(v for v in ku if v not in face))
+                    want = par[t] ^ ((i ^ iu ^ 1) & 1)
+                    if par[u] < 0:
+                        par[u] = want
+                        stack.append(u)
+                    elif par[u] != want:
+                        raise ValueError(
+                            "non-orientable complex: orientation, and hence "
+                            "handedness and Aut+, are undefined")
+            if (par < 0).any():
+                raise ValueError("disconnected complex")
+            self._orient = (keys, par)
+        return self._orient
+
+    def oriented_order(self, t):
+        """Tet ``t``'s coherently oriented vertex 4-tuple."""
+        keys, par = self.orientation
+        k = keys[t]
+        return (k[0], k[1], k[3], k[2]) if par[t] else k
+
+    def chain_tables(self):
+        """``(nxt, chain_of, chains)`` -- every BC chain, as cycles of the
+        sliding-window map on frames.
+
+        The map (v0,v1,v2,v3) -> (v1,v2,v3, other apex of face v1v2v3) is a
+        BIJECTION on frames (its inverse prepends the other apex of v0v1v2),
+        so the ``24*nT`` frames partition into disjoint cycles -- the complete
+        set of directed BC chains, in one linear pass. This is the global
+        version of ``worm_helix.bc_orbit``, which walks one chain from one
+        hand-picked seed tet.
+
+        Lives on the view, not on a group: chains are a property of the
+        triangulation, so ``Aut`` and ``Aut+`` share one enumeration.
+        """
+        if self._chains is not None:
+            return self._chains
+        tets, (nbr, napex) = self.tets, self.nbr
+        pos = [None] * self.nT
+        for t in range(self.nT):
+            tv = tets[t]
+            pos[t] = {int(tv[0]): 0, int(tv[1]): 1,
+                      int(tv[2]): 2, int(tv[3]): 3}
+        nxt = np.empty(24 * self.nT, np.int64)
+        for t in range(self.nT):
+            tv = [int(x) for x in tets[t]]
+            for pi, p in enumerate(PERMS):
+                w1, w2, w3 = tv[p[1]], tv[p[2]], tv[p[3]]
+                t2 = int(nbr[t, p[0]])
+                a2 = int(napex[t, p[0]])
+                q = pos[t2]
+                nxt[t * 24 + pi] = t2 * 24 + PERM_INDEX[
+                    (q[w1], q[w2], q[w3], q[a2])]
+        chain_of = np.full(24 * self.nT, -1, np.int64)
+        chains = []
+        for f in range(24 * self.nT):
+            if chain_of[f] >= 0:
+                continue
+            c, x = [], f
+            cid = len(chains)
+            while chain_of[x] < 0:
+                chain_of[x] = cid
+                c.append(x)
+                x = int(nxt[x])
+            chains.append(np.array(c, np.int64))
+        self._chains = (nxt, chain_of, chains)
+        return self._chains
 
     def is_dual_connected(self):
         """Is the dual (tet-adjacency) graph connected?
@@ -397,6 +530,58 @@ def _closure(gens, V):
     return list(elems.values())
 
 
+_PARITY4 = {}
+
+
+def _perm_sign(p):
+    """Sign of a permutation given as a tuple of distinct indices."""
+    s = _PARITY4.get(p)
+    if s is None:
+        s = 1
+        for i in range(len(p)):
+            for j in range(i + 1, len(p)):
+                if p[i] > p[j]:
+                    s = -s
+        _PARITY4[p] = s
+    return s
+
+
+def _inverse(g):
+    return np.argsort(g).astype(np.int32)
+
+
+def _orientation_kernel_generators(sym):
+    """Generators of the index-2 orientation-preserving subgroup.
+
+    Schreier's lemma with transversal {e, r} for any orientation-reversing r:
+    the kernel is generated by ``t*g*T[sign(t*g)]^-1`` over transversal
+    elements t and group generators g. That is at most ``2 * |gens|``
+    permutations, so the subgroup's orbit computations stay as cheap as the
+    parent's -- filtering ``elements`` for sign +1 instead would hand the
+    union-find thousands of redundant generators.
+
+    The caller verifies the result (closure order and signs); this is a
+    construction, not a promise.
+    """
+    ident = np.arange(sym.view.V, dtype=np.int32)
+    r = next((g for g in sym.generators if sym.orientation_sign(g) < 0), None)
+    if r is None:
+        return list(sym.generators)
+    T = {1: ident, -1: r}
+    Tinv = {1: ident, -1: _inverse(r)}
+    out, seen = [], set()
+    for tsign, t in T.items():
+        for g in sym.generators:
+            u = _compose(g, t)                       # t then g
+            s = tsign * sym.orientation_sign(g)
+            cand = _compose(Tinv[s], u)
+            k = cand.tobytes()
+            if k not in seen and not np.array_equal(cand, ident):
+                seen.add(k)
+                out.append(cand)
+    return out
+
+
 def _frame_signature(view, window, col):
     """Aut-invariant decoration of an ordered tet (lossless candidate filter)."""
     deg = view.edge_degree
@@ -448,13 +633,14 @@ class CrystalSymmetry:
     sidecar, :meth:`for_manifold_path`.
     """
 
-    def __init__(self, view, generators, order):
+    def __init__(self, view, generators, order, name="Aut"):
         self.view = view
         self.generators = [np.asarray(g, np.int32) for g in generators]
         self.order = int(order)
+        self.name = name
         self._elements = None
         self._orbits = {}
-        self._chains = None
+        self._plus = None
 
     # -- construction --------------------------------------------------------
 
@@ -587,6 +773,97 @@ class CrystalSymmetry:
             return int(lab[g[ix[int(obj)]]])
         return tuple(int(lab[g[ix[int(v)]]]) for v in obj)
 
+    # -- orientation and Aut+ ------------------------------------------------
+
+    def orientation_sign(self, g):
+        """``+1`` if ``g`` preserves the global orientation, ``-1`` if it
+        reverses it. Well defined: the sign is the same at every tet, because
+        the orientation is propagated coherently over the dual graph."""
+        v = self.view
+        keys, par = v.orientation
+        o = v.oriented_order(0)
+        img = tuple(int(g[x]) for x in o)
+        t2 = v.tetid[tuple(sorted(img))]
+        o2 = v.oriented_order(t2)
+        return _perm_sign(tuple(o2.index(x) for x in img))
+
+    @property
+    def has_orientation_reversing(self):
+        """Does the group contain an orientation-reversing element?
+
+        ``False`` means the CRYSTAL itself is chiral (a Sohncke space group,
+        e.g. the delta phase's P2_1 2_1 2_1): there is no mirror operation at
+        all, so no object has its enantiomer present to be compared with, and
+        every ``is_chiral`` query returns ``None`` rather than a verdict.
+        """
+        return any(self.orientation_sign(g) < 0 for g in self.generators)
+
+    @property
+    def orientation_preserving(self):
+        """``Aut+``, as a :class:`CrystalSymmetry` in its own right.
+
+        Returned as a full group object, so every orbit / stabilizer /
+        chain-orbit method works on it unchanged -- ``sym.stabilizer(...)`` and
+        ``sym.orientation_preserving.stabilizer(...)`` are the same call
+        against different groups. It shares the view, hence the cached chain
+        enumeration and orientation parity.
+
+        WHICH ONE TO USE. Quantities that are functions of the abstract
+        complex -- the action, move rates, defect species, chain length,
+        holonomy ANGLE -- are Aut-invariant, and Aut orbits count the
+        genuinely distinct cases. Quantities that only exist after an
+        orientation is chosen -- handedness, Wilson-line spinor signs, any
+        pseudoscalar -- are only Aut+-invariant; an orientation-reversing
+        element maps them to their negatives, so quotienting by the full Aut
+        would average them to zero. See the class docstring of
+        ``development.TransportContext`` for the same distinction biting in
+        practice (a parity flip mirrors every axis).
+        """
+        if self._plus is None:
+            if not self.has_orientation_reversing:
+                self._plus = self
+            else:
+                gens = _orientation_kernel_generators(self)
+                sub = CrystalSymmetry(self.view, gens, self.order // 2,
+                                      name=self.name + "+")
+                # never ship an unverified subgroup
+                elems = sub.elements
+                if len(elems) != self.order // 2:
+                    raise AssertionError(
+                        f"Aut+ construction closed to {len(elems)}, expected "
+                        f"{self.order // 2}")
+                if any(self.orientation_sign(g) < 0 for g in elems):
+                    raise AssertionError(
+                        "Aut+ construction admitted an orientation-reversing "
+                        "element")
+                self._plus = sub
+        return self._plus
+
+    def is_chiral(self, kind, obj):
+        """Does ``obj``'s Aut-orbit split into two Aut+-orbits?
+
+        ``True`` means no orientation-reversing automorphism fixes ``obj``, so
+        it and its mirror are inequivalent -- an enantiomer pair that the full
+        Aut identifies. ``False`` means some mirror fixes it (achiral).
+        ``None`` means the group has no orientation-reversing element at all,
+        so the question has no answer here (see
+        :attr:`has_orientation_reversing`).
+
+        Uses orbit sizes rather than scanning stabilizers: by orbit-stabilizer
+        the Aut+-orbit is halved exactly when the stabilizer keeps all its
+        elements, i.e. exactly when nothing in it reverses orientation.
+        """
+        if not self.has_orientation_reversing:
+            return None
+        plus = self.orientation_preserving
+        if kind == "chain":
+            full = len(self.chain_orbits()[1][self.chain_orbit_id(obj)])
+            half = len(plus.chain_orbits()[1][plus.chain_orbit_id(obj)])
+        else:
+            full = self.orbit_sizes(kind)[self.orbit_id(kind, obj)]
+            half = plus.orbit_sizes(kind)[plus.orbit_id(kind, obj)]
+        return half * 2 == full
+
     # -- orbits --------------------------------------------------------------
 
     def _orbit_table(self, kind):
@@ -686,47 +963,9 @@ class CrystalSymmetry:
     # -- BC chains -----------------------------------------------------------
 
     def _chain_tables(self):
-        """Enumerate every BC chain as a cycle of the sliding-window map.
-
-        The map (v0,v1,v2,v3) -> (v1,v2,v3, other apex of face v1v2v3) is a
-        BIJECTION on frames (its inverse prepends the other apex of v0v1v2), so
-        the ``24*nT`` frames partition into disjoint cycles -- the complete set
-        of directed BC chains, obtained in one linear pass.  This is the global
-        version of ``worm_helix.bc_orbit``, which walks one chain from one
-        hand-picked seed tet.
-        """
-        if self._chains is not None:
-            return self._chains
-        v = self.view
-        tets, (nbr, napex) = v.tets, v.nbr
-        pos = [None] * v.nT
-        for t in range(v.nT):
-            tv = tets[t]
-            pos[t] = {int(tv[0]): 0, int(tv[1]): 1, int(tv[2]): 2, int(tv[3]): 3}
-        nxt = np.empty(24 * v.nT, np.int64)
-        for t in range(v.nT):
-            tv = [int(x) for x in tets[t]]
-            for pi, p in enumerate(PERMS):
-                w1, w2, w3 = tv[p[1]], tv[p[2]], tv[p[3]]
-                t2 = int(nbr[t, p[0]])
-                a2 = int(napex[t, p[0]])
-                q = pos[t2]
-                nxt[t * 24 + pi] = t2 * 24 + PERM_INDEX[
-                    (q[w1], q[w2], q[w3], q[a2])]
-        chain_of = np.full(24 * v.nT, -1, np.int64)
-        chains = []
-        for f in range(24 * v.nT):
-            if chain_of[f] >= 0:
-                continue
-            c, x = [], f
-            cid = len(chains)
-            while chain_of[x] < 0:
-                chain_of[x] = cid
-                c.append(x)
-                x = int(nxt[x])
-            chains.append(np.array(c, np.int64))
-        self._chains = (nxt, chain_of, chains)
-        return self._chains
+        """Delegate to the view: chains belong to the triangulation, so a
+        group and its subgroups share one enumeration."""
+        return self.view.chain_tables()
 
     @property
     def chains(self):
@@ -778,12 +1017,21 @@ class CrystalSymmetry:
         self._orbits["chain"] = (oid, members, [m[0] for m in members])
         return self._orbits["chain"]
 
+    def chain_orbit_id(self, i):
+        """Orbit index of chain ``i``."""
+        return int(self.chain_orbits()[0][int(i)])
+
+    def chain_stabilizer_order(self, i):
+        _, members, _ = self.chain_orbits()
+        return self.order // len(members[self.chain_orbit_id(i)])
+
     # -- reporting -----------------------------------------------------------
 
     def summary(self):
         oid, members, reps = self.chain_orbits()
         lens = collections.Counter(len(c) for c in self.chains)
-        return dict(
+        out = dict(
+            group=self.name,
             V=self.view.V, nT=self.view.nT, order=self.order,
             n_generators=len(self.generators),
             frame_orbits=24 * self.view.nT // self.order,
@@ -793,4 +1041,13 @@ class CrystalSymmetry:
             chain_lengths=dict(sorted(lens.items())),
             n_chain_orbits=len(members),
             chain_orbit_sizes=[len(m) for m in members],
+            has_orientation_reversing=self.has_orientation_reversing,
         )
+        if self.has_orientation_reversing:
+            plus = self.orientation_preserving
+            out["orientation_preserving_order"] = plus.order
+            out["orbits_orientation_preserving"] = {
+                k: plus.n_orbits(k) for k in ("vertex", "edge", "face", "tet")}
+            out["n_chain_orbits_orientation_preserving"] = \
+                len(plus.chain_orbits()[1])
+        return out

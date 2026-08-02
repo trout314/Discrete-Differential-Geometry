@@ -110,7 +110,13 @@ Stable, reusable bindings to the D core. This is the public API for research scr
 - **`symmetry.py`** — `CrystalSymmetry`: the EXACT automorphism group of a
   triangulation (as explicit vertex permutations), orbit maps for
   vertices/edges/faces/tets, stabilizers, and the full BC-chain enumeration
-  with chain orbits. Cached per `.mfd` in a `.sym.npz` sidecar. Use this
+  with chain orbits, plus the orientation-preserving subgroup **Aut+**
+  (`.orientation_preserving` is itself a `CrystalSymmetry`, so every orbit /
+  stabilizer method works on it unchanged) and `.is_chiral(kind, obj)`. Use
+  **Aut** for anything the sampler sees (action, rates, species — all
+  Aut-invariant); use **Aut+** for quantities that exist only after an
+  orientation is chosen (handedness, Wilson-line spinor signs, any
+  pseudoscalar). Cached per `.mfd` in a `.sym.npz` sidecar. Use this
   instead of bucketing by WL colours / degree signatures / rounded coordinates
   — those give bounds, not orbits. Also home to `develop_partial` /
   `develop_total`, the shared covering-map traversal `crystal_grains.py`
@@ -125,6 +131,10 @@ Active Python CLIs for experiments and analysis. They import the library but are
 
 - **Seed generation:** `equilibrium_vdv.py` — the current production driver (fixed-β equilibrium sampling; `--produce` emits seed families with multi-chain R̂ gating). `grow_seed.py` — grows a small seed to large N to feed 1e6/1e7 chains. `anneal_vdv.py` — two-stage VDV annealing, kept for comparison against equilibrium.
 - **Grid sweeps:** `explore_grid.py` / `produce_grid.py` — sweep the β/N × edge-target × N grid over `equilibrium_vdv.py --produce` (explore = short `--dry-run` map of the certifiable frontier, writes nothing; produce = production-length certify + copy into `seeds/`). Both are thin CLIs over the shared engine `tools/grid_sweep.py`; `--only-n/--only-edge/--only-bon` restrict to a subset or a single cell.
+- **Symmetry:** `move_site_census.py` — exact 2→3 move-site classes (= Aut face
+  orbits) with curvature ledgers. `bc_chain_census.py` — every BC chain class of
+  a crystal: length, screw, exact holonomy, winding orbit, tet/vertex orbit
+  coverage, chirality under Aut+. Both over `symmetry.CrystalSymmetry`.
 - **Analysis chain:** `distance_distribution.py` → `roundness_analysis.py` → `scale_curvature.py` (graph-distance distributions → roundness vs round S³ → scale-aware curvature). Each imports the previous.
 
 Import bootstrap convention: compute `_ROOT` from `__file__`, then `sys.path.insert` `python/` (always), `tools/` (if using `seed_utils`), and the script's own dir (if importing a sibling script).
