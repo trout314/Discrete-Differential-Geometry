@@ -90,7 +90,8 @@ orientation-reversing g maps them to their negatives. For those the group is
 orientation-preserving subgroup.
 
 The compact statement: an ``Aut``-invariant quantity is a SCALAR; one that is
-``Aut+``-invariant but flips under ``Aut \ Aut+`` is a PSEUDOSCALAR, and
+``Aut+``-invariant but flips under the orientation-reversing coset is a
+PSEUDOSCALAR, and
 averaging a pseudoscalar over an ``Aut`` orbit gives exactly zero.
 
 Rule of thumb: if the quantity survives writing the complex down with no
@@ -863,6 +864,40 @@ class CrystalSymmetry:
             full = self.orbit_sizes(kind)[self.orbit_id(kind, obj)]
             half = plus.orbit_sizes(kind)[plus.orbit_id(kind, obj)]
         return half * 2 == full
+
+    # -- exact configuration keys --------------------------------------------
+
+    def canonical_frame_key(self, frames):
+        """Exact Aut-invariant key of an ordered tuple of FRAMES.
+
+        Two configurations described by frame tuples have the same key iff
+        some automorphism carries one to the other -- so this is a genuine
+        equivalence certificate, not a fingerprint. Use it wherever a driver
+        needs to know "have I already done this configuration".
+
+        Why frames and not positions: a configuration must be keyed on the
+        OBJECT, not on its environment. Keying on a ball of surrounding
+        vertices (as a rounded relative-position hash does) merges two chords
+        that sit in congruent balls but are oriented differently within them
+        -- a false merge, which in an exhaustive sweep is a silently dropped
+        class. Frames carry the orientation, and because Aut acts FREELY on
+        frames the minimisation below has a unique minimiser, so the key is
+        well defined.
+
+        Cost is |Aut| * len(frames) frame lookups per call.
+        """
+        v = self.view
+        wins = [v.frame_window(int(f)) for f in frames]
+        best = None
+        for g in self.elements:
+            k = tuple(v.frame_id(tuple(int(g[x]) for x in w)) for w in wins)
+            if best is None or k < best:
+                best = k
+        return best
+
+    def frames_equivalent(self, a, b):
+        """Is there an automorphism carrying frame tuple ``a`` to ``b``?"""
+        return self.canonical_frame_key(a) == self.canonical_frame_key(b)
 
     # -- orbits --------------------------------------------------------------
 
