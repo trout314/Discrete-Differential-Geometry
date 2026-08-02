@@ -8,7 +8,10 @@ spin-ice pattern where contractible worms are trivial and only torus-WRAPPING
 worms act (changing the web winding sector W). The deterministic BC chain
 (sliding window: drop oldest vertex, exit the opposite face, adopt the apex --
 after trout314/quantum-random-walks) closes into wrapping orbits in the
-crystal (e.g. length 2286, winding (0,0,10)), providing the track.
+crystal, providing the track. Those orbits are now ENUMERATED rather than
+stumbled on: R has exactly 14 chain classes, of which 4 wind along a pure
+axis (L=315 winding (0,0,4) and L=2286 winding (0,0,10), each as a chiral
+pair). Pick one with --chain-class; it is recorded in the output.
 
 Chain-aligned worms are CHAIN-INTERNAL: the face between chain tets k, k+1 is
 (v_{k+1}, v_{k+2}, v_{k+3}) with apexes (v_k, v_{k+4}), so 2-3/3-2 moves on
@@ -17,7 +20,8 @@ edge-degree overlay in chain-relative indices. Motif = path segment between
 two states with identical relative code at different chain offsets.
 
 Stages:
-  1. find a wrapping orbit (pure-axis winding preferred);
+  1. select a wrapping chain CLASS (exact lookup, default the shortest
+     pure-axis one; see tools/chain_select.py);
   2. DFS in the chain tube (2-3 on faces of a sliding vertex window + 3-2 on
      worm deg-3 edges) from a chain-creation, detecting code repetition along
      the path -> MOTIF (relative move list, period p);
@@ -42,12 +46,13 @@ from itertools import combinations
 import numpy as np
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-for p in ("../../python", "../../scripts"):
+for p in ("../../python", "../../scripts", "../../tools"):
     sys.path.insert(0, os.path.join(_HERE, p))
 import discrete_differential_geometry as ddg
 import worm_moves as wm
 from cocycle_check import reference_frac_positions
 from crystal_grains import REF_GLOB, best_refs
+from chain_select import add_chain_args
 
 ESTAR = 5.105025
 
@@ -87,20 +92,24 @@ def orbit_winding(verts, rp, period):
     return np.round(wind / period).astype(int)
 
 
-def find_axis_orbit(m, F, rp, period, tries=40, seed=1):
-    """Random starts until an orbit with pure-axis winding is found."""
-    rng = np.random.default_rng(seed)
-    best = None
-    for _ in range(tries):
-        t = F[rng.integers(len(F))]
-        v = bc_orbit(m, [int(x) for x in rng.permutation(t)])
-        w = orbit_winding(v, rp, period)
-        nz = np.nonzero(w)[0]
-        if len(nz) == 1:
-            return v, w
-        if best is None or len(v) < len(best[0]):
-            best = (v, w)
-    return best
+def find_axis_orbit(path, selector="axis"):
+    """The BC chain class winding along a single lattice axis -- LOOKED UP,
+    not searched for. Returns (ChainClasses, class index, vertex sequence,
+    winding of that exact chain).
+
+    This used to take up to 40 random seed frames and return whichever
+    pure-axis chain it stumbled on. Two problems, both now gone: which axis
+    chain you got depended on an RNG seed and was never recorded, and if none
+    of the 40 tries hit, it silently returned the SHORTEST chain it had seen
+    -- not an axis chain at all -- which the caller then reported as if it
+    were. The chain classes are enumerated exactly now
+    (``symmetry.CrystalSymmetry``), so the axis classes are a lookup, the
+    choice is recorded, and their absence raises instead of degrading.
+    """
+    from chain_select import ChainClasses
+    cc = ChainClasses(path)
+    k = cc.select(selector)
+    return cc, k, cc.vertices(k), cc.representative_winding(k)
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +165,7 @@ def main():
     ap.add_argument("--json", default=None)
     ap.add_argument("--propagate", action="store_true",
                     help="drive the worm around the full orbit and close")
+    add_chain_args(ap)
     args = ap.parse_args()
     path = args.ref or best_refs(REF_GLOB)["r"]
     m = ddg.Manifold.load(path, 3)
@@ -164,7 +174,8 @@ def main():
     period = float(args.mcell)
 
     print(f"reference: {path}  N3={len(F)}")
-    verts, wind = find_axis_orbit(m, F, rp, period)
+    cc, kcls, verts, wind = find_axis_orbit(path, args.chain_class)
+    print(f"  {cc.summary_line(kcls)}")
     L = len(verts)
     wrap = L / max(1, int(abs(wind).max()))
     print(f"orbit: length {L}, winding {wind.tolist()} box periods "

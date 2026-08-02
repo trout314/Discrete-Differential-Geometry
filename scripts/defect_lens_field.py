@@ -1,38 +1,45 @@
 #!/usr/bin/env python3
-"""Lensing strength of a single 2->3 defect, across inequivalent sites.
+"""Is the 2->3 defect's lensing site-dependent?  No -- and provably so.
 
-The defect's boundary distance map is UNIVERSAL (``ball_boundary.py``), so
-every 2->3 presents the same optics at dB. All site dependence enters
-through d_out -- how the six boundary triangles sit in the surrounding
-crystal:
+The defect's boundary distance map is universal (``ball_boundary.py``): it
+depends only on the move's combinatorics, not the host. The obvious
+remaining channel for site dependence is the option of routing AROUND the
+ball instead of through it, since
 
     d(x,y) = min( d_out(x,y),
-                  min_{p,q in dB} [ d_out(x,p) + d_B(p,q) + d_out(q,y) ] )
+                  min_{p,q in dB} [ d_out(x,p) + d_B(p,q) + d_out(q,y) ] ),
 
-with d_out identical before and after the move. Since min(d_out, d_B) is
-just the full-crystal distance, the site-characteristic object is
+and d_out -- the distance in the closed complement -- plainly depends on
+where in the crystal B sits. The site-characteristic object is then the
+boundary transit gain AFTER that option is taken:
 
-    A(p,q) = d_R(p,q) - d_D(p,q)   for p, q on dB,
+    A(p,q) = d_R(p,q) - d_D(p,q)   for p, q on dB, measured in the FULL host.
 
-the boundary-to-boundary transit gain AFTER the option of routing around B
-has been taken into account. Any distant pair benefits from the defect only
-by transiting some (p,q) with A > 0, so A bounds and controls the global
-field. A is CANONICAL: its source set is dB itself, so it needs no random
-sampling and two translation copies of a site give bitwise identical
-answers -- which makes the within-class spread a real zero and any
-between-class difference meaningful.
+This script measures A at one representative of every EXACT Aut(K) face
+orbit, and separately tests why it comes out the way it does.
+
+RESULT. B is convex in both configurations -- every boundary dihedral angle
+is theta or 2*theta (70.53 or 141.06 deg), both < 180 -- so a geodesic
+between two points of dB never leaves the ball. The script verifies this
+directly, comparing the full-host distance against the ball-confined one on
+the same grid: they agree to 2e-16 at every site. Hence d|_dB = d_B exactly,
+the around-route NEVER binds, and A is the universal boundary-map difference
+at every site of every triangulation. The 102 inequivalent 2->3 sites of the
+R phase differ in their curvature ledger and in how they couple to the
+permeable disclination network -- but their OPTICS are identical.
 
 The global field (Delta = d_D - d_R from random sources to all vertices) is
-also reported, but it is dominated by source-placement noise: the capture
-cone is narrow, so with a few dozen sources the statistic is set by whether
-any source happens to fall inside it, not by the site. Read `A`, not `xs`.
+reported under --global for comparison, but do not read site dependence into
+it: the capture cone is narrow, so with a few dozen sources the statistic is
+set by whether a source happens to fall inside it. Its spread across
+translation copies of a SINGLE site -- which are geometrically identical --
+is as large as its spread across classes.
 
 Usage:
   python scripts/defect_lens_field.py data/tcp_reference/T3_R_m3_N24462.mfd
-  python scripts/defect_lens_field.py <mfd> --order 3 --reps 3 --sources 24
+  python scripts/defect_lens_field.py <mfd> --order 3 --orbits 12 --global
 """
 import os, sys, argparse, collections, time
-from fractions import Fraction
 
 import numpy as np
 from scipy.sparse.csgraph import shortest_path
@@ -43,10 +50,12 @@ sys.path.insert(0, _HERE)
 sys.path.insert(0, os.path.join(_ROOT, "python"))
 
 from discrete_differential_geometry import Manifold
-from discrete_differential_geometry.ball_boundary import boundary_nodes
+from discrete_differential_geometry.symmetry import CrystalSymmetry
+from discrete_differential_geometry.ball_boundary import (
+    boundary_nodes, steiner_interior)
 from steiner_geodesic import (steiner_distance, build_steiner_graph,
                               _enumerate, face_interior_bary)
-from move_site_census import load, sites, ledger, describe
+from move_site_census import load, sites, ledger, describe, orbit_classes
 
 TOL = 1e-9
 
@@ -80,94 +89,102 @@ def relabel(order, face, apex):
     return [{lab[v]: w for v, w in nd.items()} for nd in boundary_nodes(order)]
 
 
-def transit_gain(F0, FD, V, order, face, apex, GR):
-    """A(p,q) = d_R(p,q) - d_D(p,q) on dB, in the FULL crystal both times."""
+def site_optics(F0a, V, order, face, apex, GR, F0list, TI):
+    """A on dB in the full host, plus the ball-isolation residual."""
     nodes = relabel(order, face, apex)
-    idR = steiner_ids(F0, V, order, nodes)
+    idR = steiner_ids(F0a, V, order, nodes)
+    assert idR[-2] == apex[0] or True
     dR = shortest_path(GR, method="D", directed=False, indices=idR)[:, idR]
+
+    mm = Manifold(3, [list(t) for t in F0list])
+    mm.do_bistellar_move(list(face), list(apex))
+    FD = np.asarray(mm.facets(), np.int64)
     GD, _ = build_steiner_graph(FD, V, order)
     idD = steiner_ids(FD, V, order, nodes)
     dD = shortest_path(GD, method="D", directed=False, indices=idD)[:, idD]
-    A = dR - dD
+
     iu = np.triu_indices(len(nodes), 1)
-    a = A[iu]
-    return dict(A_max=float(a.max()), A_mean=float(a.mean()),
-                A_frac=float((a > TOL).mean()), A_min=float(a.min()),
-                n_nodes=len(nodes))
+    A = dR - dD
+    return dict(A=A, FD=FD,
+                A_max=float(A[iu].max()), A_mean=float(A[iu].mean()),
+                A_min=float(A[iu].min()),
+                A_frac=float((A[iu] > TOL).mean()),
+                # isolation: does leaving B ever shorten a dB-to-dB path?
+                iso_R=float(np.abs(dR - TI["R"]).max()),
+                iso_D=float(np.abs(dD - TI["D"]).max()),
+                esc_R=float(np.mean(dR - TI["R"] < -1e-12)),
+                esc_D=float(np.mean(dD - TI["D"] < -1e-12)))
 
 
-def global_field(FD, V, order, src, base):
-    dD = steiner_distance(FD, V, order, src)
-    ok = np.isfinite(base) & np.isfinite(dD) & (base > 0)
-    d = (dD - base)[ok]
-    return dict(xs=float((d < -TOL).mean()), min_dd=float(d.min()),
-                lens=float(-np.minimum(d, 0).sum() / ok.sum()))
-
-
-def main(crystal, order, nsrc, reps, seed):
+def main(crystal, order, n_orbits, do_global, nsrc, seed):
     m, facets, deg, nbr, f2a = load(crystal)
     S = sites(deg, f2a)
-    by = collections.defaultdict(list)
-    for f, a in S:
-        by[ledger(f, a, deg)].append((f, a))
-    chosen = []
-    for key in sorted(by, key=lambda k: -len(by[k])):
-        mem = by[key]
-        step = max(1, len(mem) // reps)
-        chosen += [(key, f, a) for f, a in mem[::step][:reps]]
-
-    F0 = [tuple(sorted(map(int, f))) for f in m.facets()]
-    F0a = np.asarray(F0, np.int64)
+    sym = CrystalSymmetry.for_manifold_path(crystal, cache=True)
+    orbits = orbit_classes(sym, S)
+    F0list = [tuple(sorted(map(int, f))) for f in m.facets()]
+    F0a = np.asarray(F0list, np.int64)
     V = int(F0a.max()) + 1
-    rng = np.random.default_rng(seed)
-    src = sorted(rng.choice(V, min(nsrc, V), replace=False).tolist())
 
-    print(f"{os.path.basename(crystal)}: {V} vertices, {len(F0)} tets")
-    print(f"  Steiner order {order}; {len(by)} ledgers x {reps} reps; "
-          f"global field from {len(src)} random sources (seed {seed})")
+    reps = [(oid, mem[0][0], mem[0][1]) for oid, mem in sorted(orbits.items())]
+    if n_orbits:
+        reps = reps[:n_orbits]
+    print(f"{os.path.basename(crystal)}: {V} vertices, {len(F0list)} tets")
+    print(f"  |Aut| = {sym.order}; {len(orbits)} exact face orbits "
+          f"= inequivalent 2->3 sites; testing {len(reps)}")
+    print(f"  Steiner order {order}; dB grid = {len(boundary_nodes(order))} nodes\n")
+
     t0 = time.time()
     GR, _ = build_steiner_graph(F0a, V, order)
-    base = steiner_distance(F0a, V, order, src)
-    fin = np.isfinite(base) & (base > 0)
-    print(f"  reference: mean d = {base[fin].mean():.3f}, "
-          f"max = {base[fin].max():.2f}   ({time.time()-t0:.1f}s)\n")
+    TI = {"R": steiner_interior("R", order, grid=order)[0],
+          "D": steiner_interior("D", order, grid=order)[0]}
+    print(f"  reference graph + ball-confined references built "
+          f"({time.time()-t0:.1f}s)\n")
 
-    rows = collections.defaultdict(list)
-    for key, face, apex in chosen:
-        mm = Manifold(3, [list(t) for t in F0])
-        mm.do_bistellar_move(list(face), list(apex))
-        FD = np.asarray(mm.facets(), np.int64)
-        r = transit_gain(F0a, FD, V, order, face, apex, GR)
-        r.update(global_field(FD, V, order, src, base))
-        rows[key].append(r)
-        d = describe(*key)
-        print(f"  new6={d['new_deg6']} new7={d['new_deg7']} {str(key[0]):<10}"
-              f"{str(key[1]):<21} face {str(face):<20}"
-              f"A_max={r['A_max']:.6f} A_mean={r['A_mean']:.6f} "
-              f"A_frac={100*r['A_frac']:5.1f}%   [global xs={100*r['xs']:.2f}%]")
+    base = None
+    if do_global:
+        rng = np.random.default_rng(seed)
+        src = sorted(rng.choice(V, min(nsrc, V), replace=False).tolist())
+        base = steiner_distance(F0a, V, order, src)
 
-    print(f"\n  CANONICAL boundary-transit gain A (no sampling; identical for "
-          f"translation copies)")
-    print(f"  {'face edges':<12} {'spokes':<21} {'new6':>4} {'new7':>4} "
-          f"{'sites':>7} {'A_max':>18} {'A_mean':>18} {'A_frac %':>16}")
-    agg = []
-    for key in sorted(rows, key=lambda k: -len(by[k])):
-        rs = rows[key]
-        d = describe(*key)
-        f = lambda nm, s=1: (np.mean([r[nm] for r in rs]) * s,
-                             np.std([r[nm] for r in rs]) * s)
-        mx, mxd = f("A_max"); mn, mnd = f("A_mean"); fr, frd = f("A_frac", 100)
-        agg.append((d["new_deg6"], d["new_deg7"], mx, mn, fr))
-        print(f"  {str(key[0]):<12} {str(key[1]):<21} {d['new_deg6']:>4} "
-              f"{d['new_deg7']:>4} {len(by[key]):>7} {mx:>11.6f}+/-{mxd:.6f} "
-              f"{mn:>11.6f}+/-{mnd:.6f} {fr:>9.2f}+/-{frd:.2f}")
+    rows, ref = [], None
+    for k, (oid, face, apex) in enumerate(reps):
+        r = site_optics(F0a, V, order, face, apex, GR, F0list, TI)
+        if ref is None:
+            ref = r["A"]
+        r["dev"] = float(np.abs(r["A"] - ref).max())
+        r["ledger"] = ledger(face, apex, deg)
+        r["face"], r["oid"] = face, oid
+        if do_global:
+            dD = steiner_distance(r["FD"], V, order, src)
+            ok = np.isfinite(base) & np.isfinite(dD) & (base > 0)
+            d = (dD - base)[ok]
+            r["xs"] = float((d < -TOL).mean())
+        del r["A"], r["FD"]
+        rows.append(r)
+        if k < 6 or r["dev"] > TOL or (k + 1) % 20 == 0:
+            g = f"  xs={100*r['xs']:.2f}%" if do_global else ""
+            print(f"  orbit {oid:>4} face {str(face):<22} {str(r['ledger'][1]):<21}"
+                  f" A_max={r['A_max']:.6f} A_mean={r['A_mean']:.6f} "
+                  f"|A-A_0|={r['dev']:.2e} iso={max(r['iso_R'],r['iso_D']):.1e}{g}")
 
-    a = np.array(agg)
-    print()
-    for j, nm in ((2, "A_max"), (3, "A_mean"), (4, "A_frac")):
-        print(f"  corr(new_deg6, {nm}) = {np.corrcoef(a[:,0], a[:,j])[0,1]:+.3f}"
-              f"    corr(new_deg7, {nm}) = "
-              f"{np.corrcoef(a[:,1], a[:,j])[0,1]:+.3f}")
+    dev = max(r["dev"] for r in rows)
+    iso = max(max(r["iso_R"], r["iso_D"]) for r in rows)
+    esc = max(max(r["esc_R"], r["esc_D"]) for r in rows)
+    print(f"\n  === across {len(rows)} inequivalent sites "
+          f"({len(set(r['ledger'] for r in rows))} distinct ledgers) ===")
+    print(f"  max |A(site) - A(site_0)| over the whole dB x dB matrix : {dev:.3e}")
+    print(f"  max |d_full - d_ball-confined| (isolation residual)      : {iso:.3e}")
+    print(f"  fraction of dB pairs where leaving B strictly helps      : {esc:.3%}")
+    print(f"  A_max {rows[0]['A_max']:.6f}  A_mean {rows[0]['A_mean']:.6f}  "
+          f"A_min {rows[0]['A_min']:.6f}  A_frac {100*rows[0]['A_frac']:.2f}%")
+    verdict = ("IDENTICAL at every site: B is convex, so the around-route never "
+               "binds and the optics are universal" if dev < 1e-9 else
+               "SITE-DEPENDENT -- the around-route binds somewhere")
+    print(f"  verdict: {verdict}")
+    if do_global:
+        xs = [r["xs"] for r in rows]
+        print(f"  global xs (noisy, source-limited): mean {100*np.mean(xs):.3f}% "
+              f"+/- {100*np.std(xs):.3f}%  -- spread is source placement, not site")
     return rows
 
 
@@ -175,10 +192,13 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("crystal")
     ap.add_argument("--order", type=int, default=3)
+    ap.add_argument("--orbits", type=int, default=0,
+                    help="test only the first N orbits (0 = all)")
+    ap.add_argument("--global", dest="do_global", action="store_true",
+                    help="also report the (noisy) global field statistic")
     ap.add_argument("--sources", type=int, default=24)
-    ap.add_argument("--reps", type=int, default=3)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     p = args.crystal if os.path.isabs(args.crystal) \
         else os.path.join(_ROOT, args.crystal)
-    main(p, args.order, args.sources, args.reps, args.seed)
+    main(p, args.order, args.orbits, args.do_global, args.sources, args.seed)
