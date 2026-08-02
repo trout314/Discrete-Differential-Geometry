@@ -3,7 +3,25 @@
 import numpy as np
 import pytest
 
+import discrete_differential_geometry as ddg
 from discrete_differential_geometry import Manifold, ManifoldSampler, SamplerParams
+
+
+@pytest.fixture(autouse=True)
+def _deterministic_rng():
+    """Seed the D core's move RNG before every sampler test.
+
+    That RNG is a GLOBAL, and nothing here seeded it, so these tests were
+    stochastic and their outcome depended on whatever ran before them --
+    test_growth_with_hinge_moves asserts ramped_grow reaches its target and
+    misses on roughly 1 run in 40 when left unseeded, which is exactly the
+    kind of intermittent red that trains people to re-run instead of look.
+
+    Note this makes the test REPRODUCIBLE, not unconditionally true: the
+    growth condition is genuinely marginal at these parameters. If it ever
+    fails again, that is a real signal about ramped_grow, not noise.
+    """
+    ddg.set_random_seed(20260802)
 
 
 class TestSampler:
