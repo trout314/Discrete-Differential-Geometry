@@ -37,6 +37,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 for _p in ("../../python", "../../scripts", "../../tools", "."):
     sys.path.insert(0, os.path.join(_HERE, _p))
 import discrete_differential_geometry as ddg
+from discrete_differential_geometry import CrystalSymmetry
 from discrete_differential_geometry.move_geometry import EVENT_DTYPE
 import defect_state as ds
 
@@ -106,7 +107,12 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--cell", required=True)
     ap.add_argument("--limit", type=int, default=0,
-                    help="stop after this many triangles (0 = all)")
+                    help="stop after this many sites -- makes the species "
+                         "list INCOMPLETE; for debugging only (0 = no limit)")
+    ap.add_argument("--exhaustive", action="store_true",
+                    help="visit every triangle instead of one per symmetry "
+                         "orbit; same answer, ~|Aut| times slower (kept as a "
+                         "cross-check of the orbit reduction)")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
@@ -126,20 +132,54 @@ def main():
           f"{', '.join(f'{k}:{v}' for k, v in sorted(Counter(edeg0.values()).items()))}")
 
     tri = triangle_apexes(st)
-    print(f"  {len(tri)} triangles")
+
+    # A 2->3 site IS a triangle, and symmetry-equivalent triangles give
+    # congruent defects, so ONE representative per Aut face orbit reproduces
+    # the whole species list -- weighted by the orbit size, the counts are
+    # identical to visiting every triangle. On R m3 that is 102 sites instead
+    # of 48924. It also makes completeness a fact rather than a hope: the old
+    # loop was complete only if run to the end, and --limit silently truncated
+    # it.
+    if args.exhaustive:
+        work = [(f, ap_, 1) for f, ap_ in tri.items()]
+        print(f"  {len(tri)} triangles (EXHAUSTIVE mode: every site)")
+    else:
+        sym = CrystalSymmetry.for_manifold_path(args.cell)
+        fo = sym.orbit_id_map("face")
+        missing = [f for f in tri if tuple(sorted(f)) not in fo]
+        if missing:
+            print(f"  {len(missing)} triangles absent from the symmetry face "
+                  f"map -- vertex labelling mismatch; refusing to guess")
+            return 1
+        seen = {}
+        for f, ap_ in tri.items():
+            oid = fo[tuple(sorted(f))]
+            if oid in seen:
+                seen[oid][2] += 1
+            else:
+                seen[oid] = [f, ap_, 1]
+        work = [tuple(v) for v in seen.values()]
+        print(f"  {len(tri)} triangles -> {len(work)} Aut face orbits "
+              f"(|Aut| = {sym.order}); one representative each, weighted by "
+              f"orbit size")
+    if args.limit:
+        print(f"  WARNING: --limit {args.limit} truncates the enumeration; "
+              f"the species list below is INCOMPLETE")
 
     species = defaultdict(lambda: {"n": 0, "rep": None})
     skipped_existing_edge = 0
     ntried = 0
-    for f, ap_ in tri.items():
+    nsites = 0
+    for f, ap_, mult in work:
         if len(ap_) != 2:
             continue
         x, y = sorted(ap_)
         if ds._ek(x, y) in st.edeg:
             # the 2->3 would duplicate an existing edge: not a valid move
-            skipped_existing_edge += 1
+            skipped_existing_edge += mult
             continue
-        ntried += 1
+        ntried += mult
+        nsites += 1
         st.apply(_ev(1, list(f) + [x, y]))
         comps = st.components(broad=True)
         rec = []
@@ -171,11 +211,11 @@ def main():
         # defect into more than one component, so key on the multiset)
         label = tuple(sorted(r["key"] for r in rec))
         s = species[label]
-        s["n"] += 1
+        s["n"] += mult
         if s["rep"] is None:
             s["rep"] = rec
         st.apply(_ev(2, [x, y] + list(f)))       # reciprocal 3->2 restores
-        if args.limit and ntried >= args.limit:
+        if args.limit and nsites >= args.limit:
             break
 
     bad = [e for e, d in st.edeg.items() if d != edeg0.get(e, 0)]
@@ -183,7 +223,9 @@ def main():
           f"{len(st.defect)} defect vertices remain "
           f"-> {'OK' if not bad and not st.defect else 'FAILED'}")
     print(f"{ntried} valid 2->3 sites, {skipped_existing_edge} triangles "
-          f"skipped (apexes already joined by an edge)")
+          f"skipped (apexes already joined by an edge)"
+          + ("" if args.exhaustive else f"  [from {nsites} orbit "
+             f"representatives, weighted]"))
 
     print(f"\n{len(species)} distinct species from a single 2->3:")
     rows = sorted(species.items(), key=lambda kv: -kv[1]["n"])
