@@ -18,7 +18,7 @@ Catalysis iff  reloc + barrier_assisted  <  barrier_unassisted.
 """
 import os, sys
 import numpy as np
-_R = "/Users/atrout/Desktop/Discrete-Differential-Geometry"
+_R = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, os.path.join(_R, "python"))
 sys.path.insert(0, os.path.join(_R, "scripts", "defect_dynamics"))
 sys.argv = ["t", "u", "u"]
