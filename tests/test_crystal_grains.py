@@ -34,20 +34,28 @@ CRYSTALS = [("a15", 2), ("c15", 2), ("r", 2)]
 
 @lru_cache(maxsize=None)
 def _reference(name, m):
-    """(facets, refs, idx, ns_of) for a freshly built perfect crystal, matched
-    to itself so the perfect crystal develops at identity registry (100%)."""
+    """(facets, refs, idx, site_of) for a freshly built perfect crystal, matched
+    to itself so the perfect crystal develops at identity registry (100%).
+
+    site_of holds the VALIDATED translation-subgroup registry map (the orbits
+    `v % ns` stands for), not the raw atoms-per-cell integer."""
+    from discrete_differential_geometry import CrystalSymmetry
     facets = np.asarray(tr.build_t3_triangulation(name, m)[0])
     refs = {name: cg.build_struct(facets)}
-    return facets, refs, cg.ref_index(refs), {name: len(tr.STRUCTURES[name][1])}
+    sym = CrystalSymmetry.compute(facets)
+    site, note = cg.registry_site_map(sym, len(tr.STRUCTURES[name][1]),
+                                      refs[name]["V"])
+    assert site is not None, note
+    return facets, refs, cg.ref_index(refs), {name: site}
 
 
-def _defects(facets, refs, idx, ns_of):
+def _defects(facets, refs, idx, site_of):
     """Set of vertices NOT interior-crystalline (the defect set) for `facets`
     analyzed against `refs`. Vertex ids are the crystal's own dense labels."""
     st = cg.build_struct(np.asarray(facets))
     grain_of_tet, sig_of_tet, phase_of_grain = cg.find_grains(st, refs, idx)
     interior = cg.interior_vertices(st, grain_of_tet, sig_of_tet,
-                                    phase_of_grain, ns_of)
+                                    phase_of_grain, site_of)
     all_v = {int(v) for f in facets for v in f}
     return all_v - set(interior)
 
@@ -135,3 +143,48 @@ def test_phase_discrimination_correct_phase_dominates():
     _, r_refs, r_idx, r_ns = _reference("r", 2)
     wrong = V - len(_defects(c15, r_refs, r_idx, r_ns))        # interior vs R
     assert wrong < 0.25 * V
+
+
+# ---------------------------------------------------------------------------
+# registry site map (translation-subgroup orbits)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("name,m", CRYSTALS)
+def test_registry_site_map_is_a_translation_orbit_map(name, m):
+    """`v % ns` is only a registry map because tcp_reference labels vertices
+    v = cell*ns + site. registry_site_map must VERIFY that -- the site classes
+    have to be exactly the orbits of a translation subgroup of Aut, not merely
+    equal-sized buckets that arithmetic happens to produce."""
+    from discrete_differential_geometry import CrystalSymmetry
+    facets = np.asarray(tr.build_t3_triangulation(name, m)[0])
+    sym = CrystalSymmetry.compute(facets)
+    ns = len(tr.STRUCTURES[name][1])
+    V = sym.view.V
+    site, note = cg.registry_site_map(sym, ns, V)
+    assert site is not None, note
+    assert len(np.unique(site)) == ns
+    assert np.all(np.bincount(site, minlength=ns) == V // ns)
+    # the subgroup preserving the site label really is transitive on classes
+    T = [g for g in sym.elements if np.array_equal(site[g], site)]
+    assert len(T) == V // ns
+    for c in range(ns):
+        members = set(np.nonzero(site == c)[0].tolist())
+        v0 = min(members)
+        assert {int(g[v0]) for g in T} == members
+    # registry must be FINER than the Aut vertex orbits: quotienting by all of
+    # Aut would fuse rotationally distinct registries and miss grain boundaries
+    assert ns >= sym.n_orbits("vertex")
+
+
+@pytest.mark.parametrize("name,m", CRYSTALS)
+def test_registry_site_map_rejects_a_bad_cell_size(name, m):
+    """A wrong ns must come back as None + reason, never as plausible junk."""
+    from discrete_differential_geometry import CrystalSymmetry
+    facets = np.asarray(tr.build_t3_triangulation(name, m)[0])
+    sym = CrystalSymmetry.compute(facets)
+    V = sym.view.V
+    bad = next(k for k in range(2, V) if V % k == 0
+               and k != len(tr.STRUCTURES[name][1]))
+    site, note = cg.registry_site_map(sym, bad, V)
+    assert site is None and note

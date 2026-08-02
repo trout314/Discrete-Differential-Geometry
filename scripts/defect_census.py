@@ -78,22 +78,30 @@ def descriptors(facets):
     return vclass, adj, len(n6)
 
 
-def defect_cores(facets, ref_facets, ref_name, min_size):
+def defect_cores(facets, ref_facets, ref_name, min_size, ref_path=None):
     """Defect cores = vertices NOT in a translational-crystalline grain of
     >= min_size, via the crystal_grains covering map. Returns
     (dv, vclass, adj, V, grain_sizes)."""
     rst = cg.build_struct(ref_facets)
     refs = {ref_name: rst}
     idx = cg.ref_index(refs)
-    ns_of = {}                                            # translation-invariant site
-    if ref_name in STRUCTURES:
-        ns = len(STRUCTURES[ref_name][1])
-        if ns and rst["V"] % ns == 0:
-            ns_of[ref_name] = ns
+    # Validated translation-subgroup registry map (see
+    # crystal_grains.registry_site_map). A rejected map SKIPS the registry
+    # test rather than falling back to raw `% ns` arithmetic on a labelling
+    # that may not carry it.
+    site_of = {}
+    if ref_path and ref_name in STRUCTURES:
+        smap, note = cg.registry_site_map(
+            ref_path, len(STRUCTURES[ref_name][1]), rst["V"])
+        if smap is None:
+            print(f"  warn: {ref_name} registry site map rejected ({note}); "
+                  f"registry check SKIPPED")
+        else:
+            site_of[ref_name] = smap
     st = cg.build_struct(facets)
     grain_of_tet, sig_of_tet, phase_of_grain = cg.find_grains(st, refs, idx)
     interior = cg.interior_vertices(st, grain_of_tet, sig_of_tet,
-                                    phase_of_grain, ns_of)
+                                    phase_of_grain, site_of)
     crystalline = set()
     grain_sizes = []
     for _, verts in cg.grain_components(st, interior):
@@ -124,7 +132,8 @@ def main():
     for f in files:
         facets = np.asarray(ddg.Manifold.load(f, 3).facets())
         dv, vclass, adj, V, grain_sizes = defect_cores(
-            facets, ref_facets, args.ref, args.min_size)
+            facets, ref_facets, args.ref, args.min_size,
+            ref_path=CRYSTALS[args.ref])
         comp = Counter(N6_NAME.get(vclass(v), f"n6={vclass(v)}") for v in dv)
         sizes = patch_sizes(list(dv), adj)
         szh = Counter(sizes)

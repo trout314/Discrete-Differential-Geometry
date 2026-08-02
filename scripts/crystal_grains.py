@@ -47,6 +47,14 @@ Method (combinatorial covering map / "development"):
   is defect/boundary. `--min-size` drops coincidental sub-threshold grains
   (calibrate against a fully-melted null, which yields ~0 grains).
 
+  Registry is the orbit map of the reference's TRANSLATION subgroup, verified
+  as such rather than assumed from the `v = cell*ns + site` labelling (see
+  `registry_site_map`). Note it is the SUPERCELL translations only: a
+  centering translation (e.g. R's rhombohedral (2/3,1/3,1/3)) changes the site
+  index, so a development differing by one reads as a boundary. That is
+  conservative -- it under-reports crystallinity rather than over-reporting it
+  -- and matches the behaviour this detector has always had.
+
   Registry is tracked only into the finite reference torus (single-valued; no
   continuous positions). Dislocation-type defects, where local structure is
   perfect but global registry fails to close, correctly appear as grain
@@ -71,6 +79,7 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_ROOT, "python"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import discrete_differential_geometry as ddg
+from discrete_differential_geometry import CrystalSymmetry
 from discrete_differential_geometry.symmetry import TriView, develop_partial
 from fk_skeleton import edges_from_facets
 from dopant_pairs import vertex_classes
@@ -256,6 +265,66 @@ def find_grains(st, refs, idx):
     return grain_of_tet, sig_of_tet, phase_of_grain
 
 
+def registry_site_map(ref, ns, V):
+    """Validated map: reference vertex (relabelled id) -> registry site class.
+
+    `ref` is a path to the reference .mfd (symmetry is cached per file) or an
+    already-computed CrystalSymmetry.
+
+    The registry test asks whether the star tets place a vertex at the SAME
+    place in the reference crystal. Two developments that differ by a lattice
+    TRANSLATION are the sample torus wrapping differently and must be
+    accepted; anything else -- in particular a point-group rotation -- is a
+    genuine grain boundary and must be rejected. So the invariant needed here
+    is the orbit under the TRANSLATION SUBGROUP, not under all of Aut. (Full
+    Aut orbits are far too coarse: R has 159 site classes but only 11 vertex
+    orbits, so quotienting by Aut would silently accept rotational boundaries.)
+
+    `v % ns` is that translation-orbit map, but only because tcp_reference
+    labels vertices `v = cell*ns + site`; on any other labelling it is
+    meaningless arithmetic that still returns plausible-looking classes. This
+    verifies it instead of assuming it: the site classes must all have size
+    V/ns, the subgroup T of Aut preserving the site label must have order
+    V/ns, and T must act transitively on each class -- which together say
+    exactly "the site classes ARE the orbits of a translation subgroup".
+
+    Returns (site array indexed by relabelled ref vertex, note) or
+    (None, reason). A None must SUPPRESS the registry test, never fall back
+    to raw arithmetic.
+
+    (A label-free version is possible: the translations are the kernel of the
+    action of Aut on H_1(T^3) = Z^3, since a torus translation is homotopic to
+    the identity while a point-group element is not. That needs the induced
+    action on homology; the validated labelling shortcut is what is used here.)
+    """
+    if not ns or V % ns:
+        return None, f"V={V} is not a multiple of ns={ns}"
+    sym = (ref if isinstance(ref, CrystalSymmetry)
+           else CrystalSymmetry.for_manifold_path(ref))
+    view = sym.view
+    if view.V != V:
+        return None, f"symmetry view has {view.V} vertices, struct has {V}"
+    # ORIGINAL label mod ns -- build_struct and TriView both relabel by
+    # np.unique, so internal index i is original label view.labels[i]; going
+    # through labels makes the old code's contiguous-labelling assumption
+    # explicit instead of silent.
+    site = (view.labels % ns).astype(np.int64)
+    per = V // ns
+    if not np.all(np.bincount(site, minlength=ns) == per):
+        return None, "site classes are not all the same size"
+    T = [g for g in sym.elements if np.array_equal(site[g], site)]
+    if len(T) != per:
+        return None, (f"site-preserving subgroup has order {len(T)}, "
+                      f"expected {per}")
+    for c in range(ns):
+        members = np.nonzero(site == c)[0]
+        v0 = int(members[0])
+        if {int(g[v0]) for g in T} != set(members.tolist()):
+            return None, f"site class {c} is not a single T-orbit"
+    return site, (f"validated: {ns} classes of {per}, translation subgroup "
+                  f"|T| = {len(T)} acting transitively on each")
+
+
 def _locally_fk(st, v):
     """Does v sit in a clean Frank-Kasper coordination shell? True iff every spoke
     edge (v,w) has hinge degree 5 or 6 and EXACTLY twelve of them are 5.
@@ -275,7 +344,7 @@ def _locally_fk(st, v):
     return all(d in (5, 6) for d in deg) and deg.count(5) == 12
 
 
-def interior_vertices(st, grain_of_tet, sig_of_tet, phase_of_grain, ns_of):
+def interior_vertices(st, grain_of_tet, sig_of_tet, phase_of_grain, site_of):
     """v -> grain id for interior-crystalline vertices. Two conditions, the
     strict-seed / loose-heal pair:
 
@@ -293,10 +362,13 @@ def interior_vertices(st, grain_of_tet, sig_of_tet, phase_of_grain, ns_of):
     A single grain id suffices here because `find_grains` already un-labelled the
     redundant re-seed grains that would otherwise split one crystal across two
     frames (see `_drop_subsumed_grains`); what remains multi-grain at a vertex is
-    a genuine boundary. SITE = ref_vertex % ns (ns = atoms per cell) is
-    translation-invariant, so wrapping the sample torus to reference images
-    differing by a lattice translation (same site) is genuine crystal, not a
-    conflict; only a true stacking/phase inconsistency changes the site."""
+    a genuine boundary. SITE comes from `registry_site_map`, the orbit map of
+    the reference's TRANSLATION subgroup: wrapping the sample torus to
+    reference images differing by a lattice translation (same site) is genuine
+    crystal, not a conflict, while a rotational disagreement is a real
+    boundary. A phase whose site map failed validation has no entry in
+    `site_of`, and its registry test is SKIPPED (grain + FK gate still apply)
+    rather than silently falling back to raw `% ns` arithmetic."""
     tets_of = collections.defaultdict(list)
     for t, tv in enumerate(st["tets"]):
         for v in tv:
@@ -312,9 +384,9 @@ def interior_vertices(st, grain_of_tet, sig_of_tet, phase_of_grain, ns_of):
         if len(gids) != 1:
             continue                                       # straddles grains
         gid = gids.pop()
-        ns = ns_of.get(phase_of_grain[gid], 0)
-        sites = {sig_of_tet[t][v] % ns if ns else sig_of_tet[t][v]
-                 for t in assigned}
+        smap = site_of.get(phase_of_grain[gid])
+        sites = {(int(smap[sig_of_tet[t][v]]) if smap is not None
+                  else sig_of_tet[t][v]) for t in assigned}
         if len(sites) == 1:                                # consistent registry
             interior[v] = gid
     return interior
@@ -342,11 +414,11 @@ def grain_components(st, interior):
     return comps
 
 
-def analyze(facets, refs, idx, min_size, ns_of):
+def analyze(facets, refs, idx, min_size, site_of):
     st = build_struct(facets)
     grain_of_tet, sig_of_tet, phase_of_grain = find_grains(st, refs, idx)
     interior = interior_vertices(st, grain_of_tet, sig_of_tet,
-                                 phase_of_grain, ns_of)
+                                 phase_of_grain, site_of)
     comps = grain_components(st, interior)
     kept = [(g, c) for g, c in comps if len(c) >= min_size]
     by_phase = collections.Counter()
@@ -379,15 +451,17 @@ def main():
     print("references:", ", ".join(f"{n}" for n in ref_paths))
     refs = {n: build_struct(np.asarray(ddg.Manifold.load(p, 3).facets()))
             for n, p in ref_paths.items()}
-    # atoms per unit cell per phase -> translation-invariant registry site.
-    ns_of = {}
-    for n in ref_paths:
+    # translation-subgroup registry site map per phase, VALIDATED
+    site_of = {}
+    for n, p in ref_paths.items():
         ns = len(STRUCTURES[n][1]) if n in STRUCTURES else 0
-        if ns and refs[n]["V"] % ns == 0:
-            ns_of[n] = ns
+        smap, note = registry_site_map(p, ns, refs[n]["V"])
+        if smap is None:
+            print(f"  warn: {n} registry site map rejected ({note}); "
+                  f"registry check SKIPPED for this phase")
         else:
-            print(f"  warn: {n} vertex count {refs[n]['V']} not a multiple of "
-                  f"ns={ns}; registry check falls back to exact ref vertex")
+            site_of[n] = smap
+            print(f"  {n} registry: {note}")
     idx = ref_index(refs)
 
     files = []
@@ -396,7 +470,7 @@ def main():
     results = {}
     for f in files:
         facets = np.asarray(ddg.Manifold.load(f, 3).facets())
-        r = analyze(facets, refs, idx, args.min_size, ns_of)
+        r = analyze(facets, refs, idx, args.min_size, site_of)
         results[f] = r
         sizes = collections.Counter(r["grain_sizes"])
         pha = " ".join(f"{k}:{v}" for k, v in sorted(r["by_phase"].items()))
