@@ -352,9 +352,21 @@ class TransportContext:
     lift with the canonical per-line sign).
 
     facets: iterable of 4-tuples/lists of vertex labels.
+
+    seed_tet / seed_parity PIN THE ORIENTATION GAUGE. By default the
+    parity BFS starts at the sorted-minimum tet with parity 0, so the
+    gauge depends on the label of that one tet -- and a local move that
+    introduces a new minimum flips the parity of EVERY tet in the
+    complex. The canonical frames then differ by a reflection and Wilson
+    lines come back with mirrored axes, which silently corrupts any
+    comparison BETWEEN two complexes (before/after a Pachner move, two
+    snapshots of a chain, ...). Pass the same seed_tet -- any tet the two
+    complexes share, e.g. one outside the modified ball -- to both
+    contexts and the gauge is identical on every shared tet, because
+    parity is path-independent on an orientable complex.
     """
 
-    def __init__(self, facets):
+    def __init__(self, facets, *, seed_tet=None, seed_parity=0):
         self.tets = [tuple(sorted(int(v) for v in f)) for f in facets]
         tset = {frozenset(t) for t in self.tets}
         self.dual = {}
@@ -369,21 +381,35 @@ class TransportContext:
                         self.dual.setdefault(t, []).append(u)
         self.dual = {t: sorted(ns, key=sorted)
                      for t, ns in self.dual.items()}
-        self._orient(tset)
+        self._orient(tset, seed_tet, seed_parity)
 
-    def _orient(self, tset):
+    def _orient(self, tset, seed_tet=None, seed_parity=0):
         """Propagate a global orientation: parity[tet] = 1 iff the
         canonical order is sorted-with-last-two-swapped. Two adjacent
         tets are consistent iff they induce OPPOSITE orientations on
         the shared face; removing one vertex from a sorted tuple leaves
         a sorted (identity-permutation) face order, so the induced sign
-        is just (-1)^(index of the omitted vertex)."""
+        is just (-1)^(index of the omitted vertex).
+
+        The BFS visits seed_tet first (with parity seed_parity) when one
+        is given, pinning the gauge; any further components fall back to
+        sorted order at parity 0."""
         from collections import deque
+        order = sorted(tset, key=sorted)
+        seed = None
+        if seed_tet is not None:
+            seed = frozenset(int(v) for v in seed_tet)
+            if seed not in tset:
+                raise ValueError(f"seed_tet {sorted(seed)} is not a tet of "
+                                 "this complex")
+            if seed_parity not in (0, 1):
+                raise ValueError("seed_parity must be 0 or 1")
+            order = [seed] + [t for t in order if t != seed]
         self.parity = {}
-        for start in sorted(tset, key=sorted):
+        for start in order:
             if start in self.parity:
                 continue
-            self.parity[start] = 0
+            self.parity[start] = seed_parity if start is seed else 0
             q = deque([start])
             while q:
                 t = q.popleft()
