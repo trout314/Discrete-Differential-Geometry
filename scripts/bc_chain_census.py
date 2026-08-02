@@ -120,18 +120,46 @@ def minimg(d, m):
     return d - m * np.round(d / m)
 
 
-def validate_positions(rp, sym, m):
-    """Minimum-image resolves an edge correctly only if its true displacement
-    is under m/2 in EVERY fractional component; otherwise the wrap is
-    ambiguous and the summed winding is garbage. Returns (worst component
-    displacement, ok) -- the caller must suppress winding when not ok, never
-    report a number it cannot stand behind."""
+def validate_positions(rp, sym, m, tol=1e-9):
+    """Certify that minimum-image reconstructs the TRUE edge displacements.
+
+    Stored positions give each vertex's spot in the fundamental domain, not
+    which periodic image an edge runs to, so every displacement is
+    RECONSTRUCTED as the minimum image. That is correct only if the true
+    displacement already lies within (-m/2, m/2) componentwise; otherwise the
+    reconstruction is off by exactly m on that edge and the winding is off by
+    exactly +-1 -- still a tidy integer vector, just the wrong one.
+
+    Note that "the minimum image is under m/2" is NOT a test of this: minimg
+    returns components in that range by construction, so it would only ever
+    catch an exact tie. The real certificate is CLOSURE: the reconstructed
+    displacement is a 1-cochain, and the true one is closed, so if the
+    reconstruction sums to zero around every triangle it agrees with the truth
+    up to a cocycle -- and a single mis-wrapped edge breaks closure on every
+    triangle containing it. Returns (worst edge component, closure residual,
+    margin = (m/2)/worst, ok).
+
+    Closure alone leaves the theoretical loophole of a coherent mis-wrapped
+    CUT SURFACE (a nonzero cocycle), which is why the margin is reported too:
+    at margin >> 1 the alternative wrap would make an edge (m - worst) long,
+    many times the longest edge that actually occurs, so no such surface
+    exists.
+    """
     view, lab = sym.view, sym.view.labels
-    worst = 0.0
-    for (u, w) in view.edges:
-        d = minimg(rp[int(lab[w])] - rp[int(lab[u])], m)
-        worst = max(worst, float(np.abs(d).max()))
-    return worst, worst < m / 2.0
+    ext = lab.astype(np.int64)
+
+    eu = np.array([[ext[u], ext[w]] for (u, w) in view.edges])
+    de = minimg(rp[eu[:, 1]] - rp[eu[:, 0]], m)
+    worst = float(np.abs(de).max())
+
+    fa = np.array([[ext[a], ext[b], ext[c]] for (a, b, c) in view.faces])
+    cyc = (minimg(rp[fa[:, 1]] - rp[fa[:, 0]], m)
+           + minimg(rp[fa[:, 2]] - rp[fa[:, 1]], m)
+           + minimg(rp[fa[:, 0]] - rp[fa[:, 2]], m))
+    closure = float(np.abs(cyc).max())
+
+    margin = (m / 2.0) / worst if worst > 0 else float("inf")
+    return worst, closure, margin, (closure < tol and margin > 2.0)
 
 
 def chain_winding(sym, chain, rp, m):
@@ -266,16 +294,18 @@ def main(path, jsonout, no_cache):
 
     rp = reference_positions(struct, m, view.V) if struct else None
     if rp is not None:
-        worst, ok = validate_positions(rp, sym, m)
+        worst, closure, margin, ok = validate_positions(rp, sym, m)
         if not ok:
-            print(f"  WARNING: an edge spans {worst:.3f} cells >= m/2 = "
-                  f"{m/2:.1f} in some component, so minimum-image wrapping is "
-                  f"ambiguous; winding numbers SUPPRESSED rather than reported "
-                  f"wrong.")
+            print(f"  WARNING: displacement reconstruction NOT certified "
+                  f"(triangle-closure residual {closure:.2e}, wrap margin "
+                  f"{margin:.2f}x); winding numbers SUPPRESSED rather than "
+                  f"reported wrong.")
             rp = None
         else:
-            print(f"  positions: {struct} m={m} (worst edge component "
-                  f"{worst:.4f} < m/2 = {m/2:.1f} -- labelling validated)")
+            print(f"  positions: {struct} m={m} -- reconstruction certified: "
+                  f"triangle closure exact to {closure:.1e}, worst edge "
+                  f"{worst:.4f} vs wrap scale m/2 = {m/2:.1f} "
+                  f"({margin:.1f}x margin)")
     elif struct:
         print(f"  positions: unavailable for {struct} m={m}; winding suppressed")
     else:
