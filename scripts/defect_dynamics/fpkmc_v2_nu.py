@@ -37,6 +37,7 @@ for _p in ("../../python", "../../scripts", "../../tools", "."):
 import discrete_differential_geometry as ddg
 from discrete_differential_geometry._dlang import _lib
 import ctypes
+from chain_select import chain_for_run, add_chain_args
 from worm_helix import bc_orbit
 from cocycle_check import reference_frac_positions
 
@@ -65,12 +66,15 @@ def main():
                          "prediction exactly; frozen-rejected slides do NOT "
                          "count as tries (anyFrozen precedes valid=true).")
     ap.add_argument("--seed", type=int, default=7)
+    add_chain_args(ap, default=None)
     args = ap.parse_args()
 
     ddg.set_random_seed(args.seed)
     m0 = ddg.Manifold.load(args.ref, 3)
     F = np.asarray(m0.facets())
-    orb = bc_orbit(m0, [int(x) for x in F[0]])
+    _cc, _kcls, _seq, chain_prov = chain_for_run(
+        args.ref, F, args.chain_class, seed_tet=0)
+    orb = _seq
     k = args.window
     face = sorted(int(x) for x in orb[k + 1:k + 4])
     apx = sorted((int(orb[k]), int(orb[(k + 4) % len(orb)])))

@@ -83,10 +83,20 @@ def certify_positions(rp, sym, m, tol=1e-9):
     reconstruction is a 1-cochain and the truth is closed, so requiring the
     minimum images to sum to zero around every triangle pins it up to a
     cocycle, and one mis-wrapped edge breaks closure on every triangle
-    containing it. The wrap MARGIN is also required (> 2x), which rules out
-    the residual loophole of a coherent mis-wrapped cut surface.
+    containing it.
 
-    Returns (worst edge component, closure residual, margin, ok).
+    Closure leaves one loophole: a coherent mis-wrapped CUT SURFACE is a
+    nonzero cocycle and would close. The second test rules that out on
+    physical grounds. If the longest edge component actually occurring is
+    ``worst``, then choosing the other wrap for some edge would make it
+    ``m - worst`` long, i.e. ``(m - worst)/worst`` times longer than the
+    longest edge the crystal has. Requiring that ratio > 2 says no edge can
+    be mis-wrapped without being at least three times longer than anything
+    real. (Judging it against the actual edge-length scale is the point; a
+    fixed fraction of m/2 would be arbitrary, and would sit exactly on the
+    boundary for a legitimate crystal like A15 at m=2.)
+
+    Returns (worst edge component, closure residual, alt_ratio, ok).
     """
     view = sym.view
     ext = view.labels.astype(np.int64)
@@ -97,8 +107,8 @@ def certify_positions(rp, sym, m, tol=1e-9):
            + minimg(rp[fa[:, 2]] - rp[fa[:, 1]], m)
            + minimg(rp[fa[:, 0]] - rp[fa[:, 2]], m))
     closure = float(np.abs(cyc).max())
-    margin = (m / 2.0) / worst if worst > 0 else float("inf")
-    return worst, closure, margin, (closure < tol and margin > 2.0)
+    alt = (m - worst) / worst if worst > 0 else float("inf")
+    return worst, closure, alt, (closure < tol and alt > 2.0)
 
 
 def chain_winding(sym, chain, rp, m):
@@ -135,17 +145,18 @@ class ChainClasses:
                 self.position_note = (
                     f"no tcp_reference positions for {self.struct} m={self.m}")
             else:
-                worst, closure, margin, ok = certify_positions(rp, self.sym,
-                                                               self.m)
+                worst, closure, alt, ok = certify_positions(rp, self.sym,
+                                                            self.m)
                 if ok:
                     self.rp = rp
                     self.position_note = (
-                        f"certified (closure {closure:.1e}, margin "
-                        f"{margin:.1f}x)")
+                        f"certified (triangle closure {closure:.1e}; a "
+                        f"mis-wrapped edge would be {alt:.1f}x the longest "
+                        f"real one, {worst:.4f})")
                 else:
                     self.position_note = (
-                        f"REJECTED (closure {closure:.1e}, margin "
-                        f"{margin:.1f}x) -- winding unavailable")
+                        f"REJECTED (closure {closure:.1e}, alt-wrap ratio "
+                        f"{alt:.1f}x) -- winding unavailable")
         elif positions:
             self.position_note = "filename is not a tcp_reference crystal"
 
@@ -173,6 +184,20 @@ class ChainClasses:
         lab, view = self.view.labels, self.view
         return [int(lab[view.frame_window(int(f))[0]])
                 for f in self.chains[self.reps[k]]]
+
+    def vertices_from_frame(self, window):
+        """Cyclic vertex sequence starting at a GIVEN frame.
+
+        Identical to ``worm_helix.bc_orbit(manifold, window)`` but read off the
+        precomputed cycle instead of re-walking, so a legacy seed can be kept
+        bit-for-bit while its class is recorded.
+        """
+        w = tuple(self.view.index[int(x)] for x in window)
+        f0 = self.view.frame_id(w)
+        c = [int(x) for x in self.chains[int(self.chain_of[f0])]]
+        i = c.index(f0)
+        lab = self.view.labels
+        return [int(lab[self.view.frame_window(f)[0]]) for f in c[i:] + c[:i]]
 
     def class_of_frame(self, window):
         """Which class an ordered vertex 4-tuple lies on -- e.g. to record the
@@ -298,3 +323,34 @@ def resolve_chain(path, selector, verbose=True):
     if verbose:
         print(f"  {cc.summary_line(k)}")
     return cc, k, cc.vertices(k), cc.provenance(k)
+
+
+def chain_for_run(path, facets, selector=None, seed_tet=0, verbose=True):
+    """The BC chain a driver should walk, with its class recorded.
+
+    ``selector=None`` keeps the LEGACY behaviour exactly -- the chain through
+    ``facets[seed_tet]``, in that tet's stored vertex order, bit-for-bit what
+    ``bc_orbit(m, F[seed_tet])`` returns -- and merely reports which class it
+    landed in. Existing results are therefore unchanged; what changes is that
+    the arbitrary choice is now visible and citable. Pass a selector to choose
+    deliberately instead.
+
+    Returns (ChainClasses, class index, vertex sequence, provenance dict).
+    """
+    cc = ChainClasses(path)
+    if selector is None:
+        window = [int(x) for x in facets[seed_tet]]
+        k = cc.class_of_frame(window)
+        seq = cc.vertices_from_frame(window)
+        how = f"legacy seed_tet={seed_tet} (class not chosen, only recorded)"
+    else:
+        k = cc.select(selector)
+        seq = cc.vertices(k)
+        how = f"--chain-class {selector}"
+    prov = cc.provenance(k)
+    prov["selected_by"] = how
+    prov["chain_length_walked"] = len(seq)
+    if verbose:
+        print(f"  {cc.summary_line(k)}")
+        print(f"    selected by: {how}")
+    return cc, k, seq, prov

@@ -47,6 +47,7 @@ for _p in ("../../python", "../../scripts", "../../tools", "."):
 import discrete_differential_geometry as ddg
 import worm_slide as ws
 import worm_moves as wm
+from chain_select import chain_for_run, add_chain_args
 from worm_helix import bc_orbit, orbit_winding
 from cocycle_check import reference_frac_positions
 import defect_state as ds
@@ -129,11 +130,14 @@ def main():
     ap.add_argument("--lam", type=float, default=0.40,
                     help="reporting only: V is stored in lam=1 units")
     ap.add_argument("--out", default=None)
+    add_chain_args(ap, default=None)
     args = ap.parse_args()
 
     ref = ddg.Manifold.load(args.ref, 3)
     F = np.asarray(ref.facets())
-    chain = bc_orbit(ref, [int(x) for x in F[args.seed_tet]])
+    _cc, _kcls, _seq, chain_prov = chain_for_run(
+        args.ref, F, args.chain_class, seed_tet=args.seed_tet)
+    chain = [int(x) for x in _seq]
     L = len(chain)
     rp = np.asarray(reference_frac_positions("r", args.mcell))
     wind = orbit_winding(chain, rp, args.mcell)

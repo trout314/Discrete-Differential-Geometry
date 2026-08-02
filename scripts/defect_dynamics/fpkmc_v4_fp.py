@@ -44,6 +44,7 @@ import discrete_differential_geometry as ddg
 from discrete_differential_geometry import fpkmc
 from discrete_differential_geometry._sampler import SLIDE_SLOTS
 import worm_slide as ws
+from chain_select import chain_for_run, add_chain_args
 from worm_helix import bc_orbit
 
 
@@ -57,7 +58,9 @@ def make_knot(m, orb, w):
 def build(args):
     m = ddg.Manifold.load(args.ref, 3)
     F = np.asarray(m.facets())
-    orb = bc_orbit(m, [int(x) for x in F[0]])
+    _cc, _kcls, _seq, chain_prov = chain_for_run(
+        args.ref, F, args.chain_class, seed_tet=0)
+    orb = _seq
     wA = args.window
     wB = wA + 4 * args.sep_sites
     apxB, vertsB = make_knot(m, orb, wB)     # frozen target first
@@ -110,6 +113,7 @@ def main():
     ap.add_argument("--brute-runs", type=int, default=150)
     ap.add_argument("--seed", type=int, default=31)
     ap.add_argument("--out", default=None)
+    add_chain_args(ap, default=None)
     args = ap.parse_args()
 
     m, s, apxA, apxB, blocked = build(args)

@@ -47,6 +47,7 @@ for _p in ("../../python", "../../scripts", "../../tools", "."):
     sys.path.insert(0, os.path.join(_HERE, _p))
 import discrete_differential_geometry as ddg
 from cocycle_check import reference_frac_positions
+from chain_select import chain_for_run, add_chain_args
 from worm_helix import bc_orbit
 
 ROOT = os.path.join(_HERE, "..", "..")
@@ -58,7 +59,9 @@ MCELL = 2
 def main():
     m = ddg.Manifold.load(REF, 3)
     F = np.asarray(m.facets())
-    orb = [int(x) for x in bc_orbit(m, [int(x) for x in F[0]])]
+    _cc, _kcls, _seq, chain_prov = chain_for_run(
+        REF, F, None, seed_tet=0)
+    orb = [int(x) for x in _seq]
     L = len(orb)
     frac = np.asarray(reference_frac_positions("r", MCELL)) * MCELL
     box = float(MCELL)

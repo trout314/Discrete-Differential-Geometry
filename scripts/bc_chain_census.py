@@ -85,92 +85,16 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
 sys.path.insert(0, os.path.join(_ROOT, "python"))
 sys.path.insert(0, _HERE)
+sys.path.insert(0, os.path.join(_ROOT, "tools"))
 
 from discrete_differential_geometry import CrystalSymmetry
 from discrete_differential_geometry.development import (
     develop_chain, chain_step_quat)
-
-
-def parse_name(path):
-    """(structure, m) from a tcp_reference filename, or (None, None)."""
-    mm = re.match(r"T3_([A-Z0-9]+)_m(\d+)_N\d+\.mfd", os.path.basename(path))
-    return (mm.group(1).lower(), int(mm.group(2))) if mm else (None, None)
-
-
-def reference_positions(struct, m, nvert):
-    """Fractional torus coordinates (period m) per vertex id, or None.
-
-    Reproduces tcp_reference's site perturbation and id scheme exactly; see
-    cocycle_check.reference_frac_positions.
-    """
-    from tcp_reference import STRUCTURES
-    if struct not in STRUCTURES:
-        return None
-    L, sites, _, _ = STRUCTURES[struct]
-    ns = len(sites)
-    if ns * m ** 3 != nvert:
-        return None
-    rng = np.random.default_rng(12345)
-    sites = sites + 1e-6 * rng.standard_normal(sites.shape)
-    v = np.arange(nvert)
-    c = v // ns
-    return (sites[v % ns] + np.stack([c // (m * m), (c // m) % m, c % m],
-                                     axis=1)) % m
-
-
-def minimg(d, m):
-    return d - m * np.round(d / m)
-
-
-def validate_positions(rp, sym, m, tol=1e-9):
-    """Certify that minimum-image reconstructs the TRUE edge displacements.
-
-    Stored positions give each vertex's spot in the fundamental domain, not
-    which periodic image an edge runs to, so every displacement is
-    RECONSTRUCTED as the minimum image. That is correct only if the true
-    displacement already lies within (-m/2, m/2) componentwise; otherwise the
-    reconstruction is off by exactly m on that edge and the winding is off by
-    exactly +-1 -- still a tidy integer vector, just the wrong one.
-
-    Note that "the minimum image is under m/2" is NOT a test of this: minimg
-    returns components in that range by construction, so it would only ever
-    catch an exact tie. The real certificate is CLOSURE: the reconstructed
-    displacement is a 1-cochain, and the true one is closed, so if the
-    reconstruction sums to zero around every triangle it agrees with the truth
-    up to a cocycle -- and a single mis-wrapped edge breaks closure on every
-    triangle containing it. Returns (worst edge component, closure residual,
-    margin = (m/2)/worst, ok).
-
-    Closure alone leaves the theoretical loophole of a coherent mis-wrapped
-    CUT SURFACE (a nonzero cocycle), which is why the margin is reported too:
-    at margin >> 1 the alternative wrap would make an edge (m - worst) long,
-    many times the longest edge that actually occurs, so no such surface
-    exists.
-    """
-    view, lab = sym.view, sym.view.labels
-    ext = lab.astype(np.int64)
-
-    eu = np.array([[ext[u], ext[w]] for (u, w) in view.edges])
-    de = minimg(rp[eu[:, 1]] - rp[eu[:, 0]], m)
-    worst = float(np.abs(de).max())
-
-    fa = np.array([[ext[a], ext[b], ext[c]] for (a, b, c) in view.faces])
-    cyc = (minimg(rp[fa[:, 1]] - rp[fa[:, 0]], m)
-           + minimg(rp[fa[:, 2]] - rp[fa[:, 1]], m)
-           + minimg(rp[fa[:, 0]] - rp[fa[:, 2]], m))
-    closure = float(np.abs(cyc).max())
-
-    margin = (m / 2.0) / worst if worst > 0 else float("inf")
-    return worst, closure, margin, (closure < tol and margin > 2.0)
-
-
-def chain_winding(sym, chain, rp, m):
-    """Winding of ONE chain, in supercell periods (its class in H_1(T^3))."""
-    view, lab = sym.view, sym.view.labels
-    seq = [int(lab[view.frame_window(int(f))[0]]) for f in chain]
-    p = rp[seq]
-    d = minimg(np.roll(p, -1, axis=0) - p, m)
-    return d.sum(axis=0) / m
+# position / certification / winding helpers live in tools/chain_select.py so
+# the drivers and this census share ONE implementation
+from chain_select import (parse_ref_name as parse_name, reference_positions,
+                          certify_positions as validate_positions, minimg,
+                          chain_winding)
 
 
 def class_windings(sym, chains, member_ids, rp, m):
@@ -234,18 +158,17 @@ def main(path, jsonout, no_cache):
 
     rp = reference_positions(struct, m, view.V) if struct else None
     if rp is not None:
-        worst, closure, margin, ok = validate_positions(rp, sym, m)
+        worst, closure, alt, ok = validate_positions(rp, sym, m)
         if not ok:
             print(f"  WARNING: displacement reconstruction NOT certified "
-                  f"(triangle-closure residual {closure:.2e}, wrap margin "
-                  f"{margin:.2f}x); winding numbers SUPPRESSED rather than "
+                  f"(triangle-closure residual {closure:.2e}, alt-wrap ratio "
+                  f"{alt:.2f}x); winding numbers SUPPRESSED rather than "
                   f"reported wrong.")
             rp = None
         else:
-            print(f"  positions: {struct} m={m} -- reconstruction certified: "
-                  f"triangle closure exact to {closure:.1e}, worst edge "
-                  f"{worst:.4f} vs wrap scale m/2 = {m/2:.1f} "
-                  f"({margin:.1f}x margin)")
+            print(f"  positions: {struct} m={m} -- certified: triangle "
+                  f"closure {closure:.1e}; a mis-wrapped edge would be "
+                  f"{alt:.1f}x the longest real one ({worst:.4f})")
     elif struct:
         print(f"  positions: unavailable for {struct} m={m}; winding suppressed")
     else:

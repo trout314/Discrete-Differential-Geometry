@@ -21,6 +21,7 @@ for _p in ("../../python", "../../scripts", "../../tools", "."):
     sys.path.insert(0, os.path.join(_HERE, _p))
 import discrete_differential_geometry as ddg
 from discrete_differential_geometry.fpkmc import face_apex_maps
+from chain_select import chain_for_run, add_chain_args
 from worm_helix import bc_orbit
 from fp_dock_census_intrinsic import (chain_seq, stack_tets, connector,
                                       intrinsic_cos2)
@@ -33,7 +34,9 @@ REF = os.path.join(ROOT, "data", "tcp_reference", "T3_R_m2_N7248.mfd")
 def main():
     m = ddg.Manifold.load(REF, 3)
     F = np.asarray(m.facets())
-    orb = [int(x) for x in bc_orbit(m, [int(x) for x in F[0]])]
+    _cc, _kcls, _seq, chain_prov = chain_for_run(
+        REF, F, None, seed_tet=0)
+    orb = [int(x) for x in _seq]
     L = len(orb)
     _, face_of = face_apex_maps(m)
     dual = {}

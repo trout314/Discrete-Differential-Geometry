@@ -31,6 +31,7 @@ for _p in ("../../python", "../../scripts", "../../tools", "."):
     sys.path.insert(0, os.path.join(_HERE, _p))
 import discrete_differential_geometry as ddg
 import worm_slide as ws
+from chain_select import chain_for_run, add_chain_args
 from worm_helix import bc_orbit
 from knot_collider import make_knot, slide_along, census_str, ESTAR
 from crossing_collider import walk_stretch, chord_mid, tangent, minimg
@@ -101,13 +102,16 @@ def main():
     ap.add_argument("--three-body", type=int, default=2,
                     help="number of knot-C approach geometries to run")
     ap.add_argument("--out", default=None)
+    add_chain_args(ap, default=None)
     args = ap.parse_args()
 
     box = float(args.mcell)
     rp = np.asarray(reference_frac_positions("r", args.mcell))
     ref = ddg.Manifold.load(args.ref, 3)
     F = np.asarray(ref.facets())
-    chainA = bc_orbit(ref, [int(x) for x in F[args.seed_tet]])
+    _cc, _kcls, _seq, chain_prov = chain_for_run(
+        args.ref, F, args.chain_class, seed_tet=args.seed_tet)
+    chainA = [int(x) for x in _seq]
     LA = len(chainA)
     bA = args.windowA % LA
     em0 = ws.edeg_dict(ref)

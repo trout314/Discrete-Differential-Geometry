@@ -42,6 +42,7 @@ for _p in ("../../python", "../../scripts", "../../tools", "."):
 import discrete_differential_geometry as ddg
 from discrete_differential_geometry import fpkmc
 from discrete_differential_geometry._sampler import SLIDE_SLOTS
+from chain_select import chain_for_run, add_chain_args
 from worm_helix import bc_orbit
 from fpkmc_v4_fp import walk_back
 
@@ -49,7 +50,9 @@ from fpkmc_v4_fp import walk_back
 def build(args):
     m = ddg.Manifold.load(args.ref, 3)
     F = np.asarray(m.facets())
-    orb = [int(x) for x in bc_orbit(m, [int(x) for x in F[0]])]
+    _cc, _kcls, _seq, chain_prov = chain_for_run(
+        args.ref, F, args.chain_class, seed_tet=0)
+    orb = [int(x) for x in _seq]
     L = len(orb)
     jA = args.window
     jB = jA + 4 * args.sep_sites
@@ -124,6 +127,7 @@ def main():
     ap.add_argument("--burst-hits", type=int, default=200)
     ap.add_argument("--seed", type=int, default=41)
     ap.add_argument("--out", default=None)
+    add_chain_args(ap, default=None)
     args = ap.parse_args()
 
     s, orb, jA, jB, apxA, apxB, faceB, blocked = build(args)

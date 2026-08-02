@@ -45,13 +45,16 @@ for _p in ("../../python", "../../scripts", "../../tools", "."):
 import discrete_differential_geometry as ddg
 from discrete_differential_geometry import fpkmc
 import worm_slide as ws
+from chain_select import chain_for_run, add_chain_args
 from worm_helix import bc_orbit
 
 
 def build(ref, estar, lam, window=None):
     m = ddg.Manifold.load(ref, 3)
     F = np.asarray(m.facets())
-    orb = bc_orbit(m, [int(x) for x in F[0]])
+    _cc, _kcls, _seq, chain_prov = chain_for_run(
+        ref, F, None, seed_tet=0)
+    orb = _seq
     p = ddg.SamplerParams(
         num_facets_target=m.num_facets, num_facets_coef=0.1,
         hinge_degree_target=estar, num_hinges_coef=0.0,
