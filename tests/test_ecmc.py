@@ -285,3 +285,60 @@ def test_hop_never_returns_the_source():
     rungs2 = np.array([46, 50, 46, 50])           # exactly two 46s
     assert hop_target(rungs2, 0, +1, 1) == 2
     assert hop_target(rungs2, 0, +1, 2) is None   # would be the source again
+
+
+# ---------------------------------------------------------------------------
+# event chains and ell
+# ---------------------------------------------------------------------------
+
+
+def test_chain_runs_until_ell_events():
+    from discrete_differential_geometry.ecmc import run_event_chain
+    rungs = np.array([46, 50] * 40)          # every other site is same-rung
+    r = run_event_chain(rungs, 0, +1, np.random.default_rng(0),
+                        ell_events=3, blockers={10: "x", 30: "y", 50: "z"},
+                        policy="reflect", horizon=10**6)
+    assert len(r.events) == 3 and r.ended == "ell"
+
+
+def test_chain_without_ell_would_never_stop_is_bounded_by_horizon():
+    """No blockers and a fully free ray: only the horizon can end it, which is
+    exactly why ell is not optional."""
+    from discrete_differential_geometry.ecmc import run_event_chain
+    rungs = np.full(50, 46)
+    r = run_event_chain(rungs, 0, +1, np.random.default_rng(0),
+                        ell_events=10**6, horizon=37)
+    assert r.ended == "horizon" and r.events == []
+
+
+def test_pass_over_changes_whether_an_intervening_defect_is_an_event():
+    """The modelling choice: dS depends only on endpoints, so hopping OVER a
+    defect is legal; refusing to is what creates collisions."""
+    from discrete_differential_geometry.ecmc import run_event_chain
+    rungs = np.array([46, 52, 46, 52, 46, 52, 46, 52])
+    blk = {3: "between"}                      # off-rung site, never a target
+    over = run_event_chain(rungs, 0, +1, np.random.default_rng(0),
+                           ell_events=1, blockers=blk, pass_over=True,
+                           policy="reflect", horizon=100)
+    stop = run_event_chain(rungs, 0, +1, np.random.default_rng(0),
+                           ell_events=1, blockers=blk, pass_over=False,
+                           policy="reflect", horizon=100)
+    assert over.events == [] or over.events[0][2] != "between"
+    assert stop.events and stop.events[0][2] == "between"
+
+
+def test_handoff_ends_the_chain_because_we_are_no_longer_active():
+    from discrete_differential_geometry.ecmc import run_event_chain
+    rungs = np.array([46, 50] * 20)
+    r = run_event_chain(rungs, 0, +1, np.random.default_rng(0),
+                        ell_events=5, blockers={6: "otherchord"},
+                        policy="handoff_sigma", horizon=10**6)
+    assert len(r.events) == 1 and r.events[0][1] == "handoff_sigma"
+
+
+def test_stuck_when_the_rung_is_unique():
+    from discrete_differential_geometry.ecmc import run_event_chain
+    rungs = np.array([46, 50, 50, 50])
+    r = run_event_chain(rungs, 0, +1, np.random.default_rng(0),
+                        ell_events=1, policy="reflect", horizon=100)
+    assert r.hops == 0 and r.events and r.events[0][1] == "reflect"

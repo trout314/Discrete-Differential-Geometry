@@ -48,7 +48,8 @@ import numpy as np
 
 __all__ = ["face_rung", "chain_rungs", "uphill_staircase", "sample_flight",
            "FlightResult", "resolve_event", "EVENT_POLICIES",
-           "same_rung_positions", "hop_target", "hop_index"]
+           "same_rung_positions", "hop_target", "hop_index",
+           "run_event_chain", "ChainResult"]
 
 
 def _d(edeg, a, b):
@@ -323,3 +324,106 @@ def resolve_event(result, active, slot, rng, policy="handoff_sigma",
     if policy == "handoff_sigma":
         return result.blocker, slot, "handoff_sigma"
     return result.blocker, slot, "handoff_chain"
+
+
+# ---------------------------------------------------------------------------
+# event chains: many hops with persistent sigma, cut off by ell
+# ---------------------------------------------------------------------------
+
+
+class ChainResult:
+    """One event chain: the trajectory, its events, and why it ended."""
+
+    __slots__ = ("path", "events", "sigma", "ended", "hops", "displacement")
+
+    def __init__(self, path, events, sigma, ended, displacement):
+        self.path = path            # chain positions visited, path[0] = start
+        self.events = events        # list of (position, kind, blocker)
+        self.sigma = sigma          # direction on exit
+        self.ended = ended          # 'ell' | 'horizon' | 'stuck'
+        self.hops = len(path) - 1
+        self.displacement = displacement   # signed, in chain steps
+
+    def __repr__(self):
+        return (f"ChainResult(hops={self.hops}, events={len(self.events)}, "
+                f"disp={self.displacement:+d}, ended={self.ended!r})")
+
+
+def run_event_chain(rungs, start, sigma, rng, *, ell_events=1, k_max=1,
+                    blockers=None, pass_over=True, horizon=None,
+                    policy="handoff_sigma", reverse_slot=None,
+                    slot_choices=None):
+    """Run one event chain of same-rung hops holding sigma between events.
+
+    ELL IS THE PRIMARY CONTROL and it is not optional. A deterministic
+    "fly until blocked" rule collapses to a period-2 orbit between the two
+    blockers bounding a segment and never samples the interior -- the known
+    non-ergodicity of the Bouncy Particle Sampler without refreshment. Bounding
+    the chain by a number of EVENTS (with a step horizon as a rail) is what
+    restores ergodicity, and it is the knob whose variation is the actual
+    evidence that lifting works.
+
+    Measured guidance (lam = 0.35, R m4, ~2.2% defect vertices): the mean free
+    path to contact is 55-83 chain steps, so ell must reach that scale or the
+    chain terminates before nearly every collision and no handoff ever fires.
+
+    `blockers` maps chain position -> object. `pass_over` decides a MODELLING
+    question the maths does not: since dS depends only on the endpoints, a hop
+    may legitimately jump OVER another defect. pass_over=True is the fastest
+    correct sampler and produces NO collisions (hence no momentum transfer);
+    pass_over=False creates the collision structure the transport program
+    wants. Either way a blocked TARGET is always refused -- that one is forced,
+    because a target whose support touches another defect breaks factorization
+    and dS is no longer 0.
+    """
+    L = len(rungs)
+    pos = int(start) % L
+    path, events = [pos], []
+    disp = 0
+    nstep = 0
+    lim = L if horizon is None else int(horizon)
+    blockers = blockers or {}
+
+    while len(events) < int(ell_events):
+        k = 1 if k_max <= 1 else int(rng.integers(1, int(k_max) + 1))
+        tgt = hop_target(rungs, pos, sigma, k)
+
+        blocked = None
+        if tgt is None:
+            blocked = ("stuck", None)                 # no same-rung site at all
+        elif tgt in blockers:
+            blocked = ("blocker", blockers[tgt])      # forced: target unusable
+        elif not pass_over:
+            # optional: refuse to jump over an intervening defect
+            for j in range(1, L):
+                p = (pos + int(sigma) * j) % L
+                if p == tgt:
+                    break
+                if p in blockers:
+                    blocked = ("blocker", blockers[p])
+                    break
+
+        if blocked is not None:
+            kind, blk = blocked
+            fake = FlightResult(0, "blocker" if blk is not None else "washboard",
+                                pos, 0.0, blk)
+            active, sigma, ev = resolve_event(
+                fake, None, sigma, rng, policy=policy,
+                reverse_slot=reverse_slot or (lambda s: -s),
+                slot_choices=slot_choices)
+            events.append((pos, ev, blk))
+            if ev in ("handoff_sigma", "handoff_chain"):
+                break                     # the blocker is active now, not us
+            continue
+
+        steps = (tgt - pos) * int(sigma)
+        steps = steps % L if sigma > 0 else (pos - tgt) % L
+        nstep += steps
+        disp += int(sigma) * steps
+        pos = tgt
+        path.append(pos)
+        if nstep >= lim:
+            return ChainResult(path, events, sigma, "horizon", disp)
+
+    ended = "ell" if len(events) >= int(ell_events) else "stuck"
+    return ChainResult(path, events, sigma, ended, disp)
