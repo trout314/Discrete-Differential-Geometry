@@ -191,6 +191,54 @@ distance-independent cost). Phase 0 measurements first: chain-reach
 census + half-move type census. q_R = curvature, not "charge"
 (terminology note for CONVENTIONS.md pending user OK).
 
+**RE-VERIFIED POST-BUGFIX (2026-08-03, lam35r_snap15000, independent of
+wormEnumerate's own filters — everything re-derived from raw facet sets):**
+- LOCAL: a committed candidate changes exactly 10 facets (= 2->3 plus 3->2)
+  and 20 edge degrees, max chart distance among them 0.431 cells. Zero
+  action at a distance.
+- ESCAPES THE HINGE CAVITY: 255/255 candidates satisfy the D core's own
+  condition (some landing outside the anchor octahedron) AND the symmetric
+  end-state condition, checked independently. Strict readings: 84.3% have
+  EVERY born edge outside; 90.6% have the born PAIR outside the union of the
+  healed pair's octahedra (the fragment-as-unit reading — the right one for
+  k=2, which is 253/255 of candidates). The other 9.4% are in-cavity
+  rearrangements and are exactly the short-displacement tail (median 0.121
+  vs 0.216 cells) — filter on displacement if transport is the goal.
+  Iterated 4->4 flips are confined to one cavity, so outside = unreachable
+  by any number of hinge flips.
+- ROLLBACK EXACT: trial every candidate with commit=False, facet set
+  unchanged, 0 corruptions.
+- Sampler construction does not perturb labels (facet set and edge-degree
+  map identical to a plain Manifold.load).
+- **ITERATES BALLISTICALLY:** greedy directional march, 20 steps, dS = 0 at
+  every step, illegal multiset + f-vector preserved at every step:
+  net **7.27 cells** with path 7.68, **straightness 0.94-0.95** (2 of 4 tips
+  tested). Box is 4x4x4 cells, so it wrapped the torus ~twice; caged thermal
+  max is 1.26 cells/lifetime. Step size median 0.39 cells. This reproduces
+  and extends worm_walk's net 2.758 over 8 steps (~0.39*8*0.95 = 2.9).
+- The other 2 of 4 tips PING-PONG: net exactly 0.000 over 20 steps,
+  straightness 0.00, anchor alternating between two edges — the documented
+  k=1 immobile subclass. A directional driver must forbid returning to the
+  previous anchor.
+
+**MEASUREMENT GOTCHA (cost two wrong readings this session):** the midpoint
+of an edge straddling the periodic boundary is NOT (X[a]+X[b])/2 — that lands
+in the middle of the box and fabricates ~2-cell "jumps" (half of a 4x4x4 box
+= the maximum minimum-image distance, so it looks like a huge but plausible
+displacement). Correct form is mid = X[a] + 0.5*minimg(X[b]-X[a]), and net
+displacement must accumulate minimum-image STEP vectors in the covering
+space rather than wrapping the endpoint. worm_walk's ref-based `mid()` was
+always right; only the scratch checks were wrong. Chart itself is clean —
+all 68167 real edges are 0.10-0.46 cells, none over 0.5.
+
+**WORM AVAILABILITY MEASURED (2026-08-03, see [[lifted-ecmc-transport]]):**
+all worm candidates are dS = 0 EXACTLY under a pure edge action (forced:
+illegal-degree-map preservation + f-vector neutrality pins n5 and n6, so the
+whole degree multiset is preserved); INTERIOR deg-4 edges are 0% live
+(0/18 pooled) so the worm is strictly a TIP move; live fraction 20% (lam.35)
+/ 45% (lam.40), gated by graph distance to the nearest deg-3 catalyst
+(dist 1 -> 73-100% live, dist >=8 -> 0%).
+
 STILL AHEAD: event-chain lift (momentum sector); cocycle support if needed.
 
 Related: [[reaction-census-lam035-m4-results]] (lone deg-4 monomers are the

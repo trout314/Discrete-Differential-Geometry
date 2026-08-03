@@ -104,6 +104,88 @@ which is impossible. FIX AND LESSON: a dead walk must be an ERROR, not a value.
 Same shape as every other bug this session -- a silent degradation that
 produced a plausible number.
 
+## TRANSMIT/ABSORB CENSUS (2026-08-03) -- the blocker is almost always dead
+
+Rays walked through the MELT state's own face->apex map from crystalline seeds;
+first support touching a defective vertex is the CONTACT, the cluster it
+touches is the BLOCKER. Defective := imp>0 (edge degree <5 or >6) OR
+n6 not in {0,2,3,4}; verified 0 defective on the pristine R m4 reference.
+A blocker TRANSMITS iff it holds a deg-3 edge with >=1 free (dS=0) slide.
+
+                     lam=0.35 (2.2-2.7% def)   lam=0.40 (0.61% def)
+    transmit                14.5%                    28.1%
+    absorb                  81.7%                    47.4%
+    no contact               3.8%                    24.5%
+    mean free path         87 steps                 214 steps
+
+15000 / 7500 rays over 6 / 3 snapshots. Steps-to-contact at lam=0.35
+reproduces the independent earlier measurement (mean 87 vs 74-83, median 59
+vs 55-56, p10 9 vs 7-8) -- instrument cross-checked. NOTE lam is STIFFNESS:
+higher lam = FEWER defects (lam0.40 0.61%, lam0.35 2.2%, lam0.30 26%).
+
+Among rays that contact anything, transmit is 15% (lam.35) / 37% (lam.40), so
+expected handoffs before the current dies = 0.18 / 0.59: **the chain absorbs on
+its first collision either way.** Momentum persistence ~103 / ~340 chain steps.
+
+WHY -- a population imbalance: lam=0.35 R m4 has only **3-6 degree-3 edges**
+against ~230 defective vertices in ~24 clusters. Nearly every cluster is built
+purely of deg-4 edges (no deg-3, no deg>=7 anywhere). The recurring
+size-5/deg3=1/deg4=2 cluster is the (3,4,4) flicker knot; everything bigger is
+deg-4 scaffolding. The mobile species is a TRACE IMPURITY in an immobile deg-4
+matrix.
+
+Holding a deg-3 edge is NOT sufficient: the size-48 cluster at snap15000 has
+two and gives **0 free targets in 2880 trials**; at a 120-step scan still 0 in
+2880 while free chords scale linearly (22%->23%). Burial is complete, not a
+scan-window artifact. **Compounds are walls, not conductors** -- which kills the
+"through-compound handoff" (activity threading a cluster chord-by-chord, the
+way ECMC traverses dense phases): the internal relay needs each chord to have
+some free hop, and buried chords have none.
+
+Also measured: EVERY non-local slide is legal (360/360 per chord over 12 slots
+x 30 steps). There is no "illegal" blocking -- blocking is entirely dS != 0.
+
+CONSEQUENCE: the bottleneck is not the handoff rule, it is why the deg-4 matrix
+is immobile. See [[deg4-worm-design]] -- the deg-3-CATALYZED worm move is the
+one known deg-4 transport channel, and the colliding chord is itself a deg-3 in
+range, so a nominal "absorb" event may really be a worm event.
+
+## DEG-4 WORM AS THE ECMC RECIPIENT (2026-08-03 measurements)
+
+The worm channel ([[deg4-worm-design]]) is fully built: oracle
+`worm_deg4_slide.py`, walker `worm_walk.py`, D core `wormEnumerate`/
+`tryWormMove` + mcmcStep channel, Python `set_worm_prob` / `worm_stats` /
+`worm_enum` / `worm_at`. NOT cocycle-safe (gated off when a cocycle is
+attached).
+
+**EVERY worm candidate is dS = 0 EXACTLY** (472 on lam35r_snap15000, 506 on
+lam40_snap14000; all |dS| < 1e-9, none downhill). This is forced, not luck:
+the class preserves the illegal edge->degree MAP and is f-vector neutral, so
+n_edges and Sum(deg) = 6*n_tets are both fixed; with n5+n6 and 5n5+6n6 fixed,
+n5 and n6 are individually determined, so the WHOLE degree multiset is
+preserved and any multiset-function action is invariant. CAVEAT: per-vertex
+terms (n6 potential, m^2 clustering) are NOT multiset functions and DO break
+it -- worm_walk saw dS in {-0.42, 0, +0.42} under a richer action.
+
+Availability is gated two ways (lam35r_snap15000 / lam40_snap14000):
+
+    interior deg-4     0/15, 0/3     0% live      <-- NEVER moves
+    tip                21/78, 12/20  27% / 60%
+    lone               3/28, 3/10    11% / 30%
+    overall            24/121, 15/33 20% / 45%
+
+and by graph distance to the nearest deg-3 catalyst: dist 1 -> 73%/100% live,
+dist >= 8 -> 0% live. Matches the recorded "~74% of firings catalyst-gated".
+
+**The worm is strictly a TIP move.** Interior deg-4 edges are 0% live in both
+states -- consistent with the tip motif (1x deg-4 + 10x deg-5, charge 12).
+
+Causal test (plant one 2->3 on a face touching a dead anchor at catalyst
+distance >= 5, re-enumerate): opened only **4/56**. UNDER-POWERED -- it tried
+12 faces per anchor with one 2->3 each and did not restrict to tips or search
+catalyst placement. Treat as "a randomly placed catalyst rarely suffices",
+NOT as a refutation of catalysed handoff.
+
 ## State
 
 Built and tested (235 tests): `face_rung`, `chain_rungs`, `uphill_staircase`,
