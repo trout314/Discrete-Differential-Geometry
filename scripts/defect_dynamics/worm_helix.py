@@ -2,10 +2,18 @@
 """Worm-along-BC-helix: find an advancing move motif, propagate it around a
 torus-wrapping Boerdijk-Coxeter chain, and attempt a sector-changing closure.
 
-Background (2026-07-24): exhaustive search proved the r-phase legal manifold
-has NO nontrivial legal->legal worm cycle within 8 moves (any grammar) -- the
-spin-ice pattern where contractible worms are trivial and only torus-WRAPPING
-worms act (changing the web winding sector W). The deterministic BC chain
+Background (2026-07-24, CORRECTED 2026-08-02): the search behind this was
+NOT exhaustive. worm_cycles.py seeded one DFS per canon_sig bucket, and that
+signature fuses orbits -- 47 buckets for 102 face orbits on R, with follow-up
+move sets differing inside 28 of the 34 fused ones -- so 55 starting orbits
+were never explored. Re-verified with all 102 seeds: no nontrivial
+legal->legal worm cycle within SIX moves (any grammar). The eight-move bound
+is NOT established; walks-5 and walks-6 have yet to be re-run.
+
+That rigidity is what motivates this script -- the conjectured spin-ice
+pattern in which contractible worms are trivial and only torus-WRAPPING worms
+act (changing the web winding sector W). The conjecture is unaffected in
+spirit but now rests on a six-move bound, not eight. The deterministic BC chain
 (sliding window: drop oldest vertex, exit the opposite face, adopt the apex --
 after trout314/quantum-random-walks) closes into wrapping orbits in the
 crystal, providing the track. Those orbits are now ENUMERATED rather than
