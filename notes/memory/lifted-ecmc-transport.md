@@ -186,6 +186,62 @@ distance >= 5, re-enumerate): opened only **4/56**. UNDER-POWERED -- it tried
 catalyst placement. Treat as "a randomly placed catalyst rarely suffices",
 NOT as a refutation of catalysed handoff.
 
+## CARRIER SWITCH + CHAIN-FOLLOWING WORM (2026-08-03)
+
+The deg-3 chord is the WRONG carrier. It is a trace impurity (3-6 edges vs ~230
+defective vertices) whose free moves are conditional and rare, and the census
+above shows its momentum dies on the first collision. The deg-4 TIP is the
+right one: ~78 tips, and every worm candidate is dS = 0 unconditionally. The
+deg-3 chord is not a rival carrier but the CATALYST -- the quasiparticle is a
+deg-4 tip dressed with a deg-3 catalyst, which is why lifting the bare chord
+was doomed (it tracked half the object).
+
+**wormEnumerate is exhaustive local search, not construction.** Anchor
+octahedron (edge + link 4-cycle) -> stage-1 star of tets touching the anchor ->
+every legal 2->3 / 3->2 whose support touches the anchor -> commit m1 -> find
+disturbed vertices -> stage-2 star -> m2 of the opposite kind -> degree-
+bookkeeping class check (gone4/new4 <= 2 each, catalyst <= 1 each, everything
+else legal->legal) -> escape test. The ONLY spatial constraint anywhere is the
+escape test (leave the cavity). Nothing prefers near or far landings.
+
+**GREEDY MAX-DISPLACEMENT ANTI-SELECTS CHAIN ALIGNMENT.** Chain-aligned
+candidates have median displacement 0.237 cells, off-chain 0.357; at one anchor
+all 6 off-chain candidates ranked in the top 13 of 60 by displacement and the
+single longest was off-chain. So a greedy march leaves every chain at step one
+(chain-run 0 on 6/6 tips), while an undirected random march stays on 1-2 steps
+and goes nowhere (straightness 0.10-0.34).
+
+I concluded from that "chain-following and transport are in tension". **WRONG,
+and the user caught it** -- the random control was UNDIRECTED, so it tested
+nothing about small DIRECTED steps. Only a few tets of progress are needed if
+the pattern repeats.
+
+**CHAIN-FOLLOWING MARCH WORKS** (carry the frame; pick the candidate with the
+SMALLEST positive offset along that same frame and direction; never reverse):
+
+    offsets used across 46 steps:  {1: 42, 3: 3, 4: 1}   <- one tet at a time
+    steps sustained:  12,9,12,4,3,6 of 12   median 8   2/6 reach full length
+    net per flight:   0.34-1.36 cells       straightness 0.35-0.75
+    greedy for comparison: 12/12, net 4.34-4.93, straightness 0.89-0.96
+
+Reading: flights are FINITE and that is the EVENT condition, not a failure --
+"no candidate advances along my chain" is geometrically well defined, and
+median ~8 steps is the lifted walker's natural flight length. Sub-unity
+straightness is expected: a BC chain is a helix, so net is axial drift while
+path is arc length. One flight (~1 cell) already matches the caged thermal max
+of 1.26 cells per defect LIFETIME.
+
+TRADE: greedy gets ~0.36 cells/step net but is many-to-one with NO valid
+kernel and no sigma structure; chain-following gets ~0.1 cells/step but sigma
+is a discrete slot (frame + direction), reversal is exact (walk the chain
+backwards), and events are well defined. **Build the driver on chain-following**
+-- it also removes the cone, the chart and the cocycle-gating question.
+
+OPEN: (1) do flights compose across events (unbounded transport) or does the
+helix close a turn and circulate? 12 steps cannot distinguish ballistic from
+circulating -- needs NSTEP ~ 40 on the tips that sustain. (2) can the walker
+re-acquire a chain at an event and continue with a related direction?
+
 ## State
 
 Built and tested (235 tests): `face_rung`, `chain_rungs`, `uphill_staircase`,
