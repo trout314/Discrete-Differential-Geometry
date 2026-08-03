@@ -47,7 +47,8 @@ from __future__ import annotations
 import numpy as np
 
 __all__ = ["face_rung", "chain_rungs", "uphill_staircase", "sample_flight",
-           "FlightResult", "resolve_event", "EVENT_POLICIES"]
+           "FlightResult", "resolve_event", "EVENT_POLICIES",
+           "same_rung_positions", "hop_target", "hop_index"]
 
 
 def _d(edeg, a, b):
@@ -168,6 +169,75 @@ def sample_flight(rungs, start, sigma, rng, beta=1.0, c=0.34034,
 
     return FlightResult(j, reason, (int(start) + int(sigma) * j) % L,
                         float(lam[j]), blk)
+
+
+# ---------------------------------------------------------------------------
+# same-rung hops: free, rejection-free, directed
+# ---------------------------------------------------------------------------
+#
+# The non-local slide is NOT a traversal. It is a 3->2 at the source and a 2->3
+# at the target, so the manifold changes only at the endpoints and
+#
+#     dS = c * (Q_target - Q_source)
+#
+# depends on the endpoints ALONE -- whatever rungs lie between are never
+# visited and cost nothing. So `sample_flight` above, which integrates uphill
+# along the ray, models the LOCAL slide (which does step through) and NOT this
+# move. For the non-local move there is no barrier to climb: a hop to any
+# same-rung site is free at any distance.
+#
+# Verified against the sampler's own arithmetic
+# (scripts/defect_dynamics/samerung_validate.py, R m2): over 468 legal targets
+# max|dS - c*dQ| = 0 EXACTLY, and over the 124 same-rung targets max|dS| = 0,
+# i.e. acceptance 1.000000000000, at displacements of 1..15 chain steps.
+# Proposing uniformly gives mean acceptance 0.307; proposing same-rung gives
+# 1.000 -- which is the whole 4-22% acceptance story on real melts.
+
+
+def same_rung_positions(rungs, index):
+    """All chain positions sharing the rung of `index` (including it)."""
+    return np.nonzero(rungs == rungs[int(index) % len(rungs)])[0]
+
+
+def hop_target(rungs, start, sigma, k=1):
+    """The k-th same-rung site strictly downstream of `start` in direction
+    `sigma`, or None if the chain has no other site on that rung.
+
+    This is a BIJECTION with a deterministic inverse: the k-th same-rung site
+    downstream of the target in direction -sigma is `start` again, because by
+    construction exactly k-1 same-rung sites lie strictly between. So the
+    proposal is symmetric, and since dS = 0 the acceptance is exactly 1.
+    """
+    L = len(rungs)
+    q = rungs[int(start) % L]
+    seen = 0
+    # j < L: the chain is CYCLIC, so a full lap lands back on `start`; a hop
+    # to the source itself is not a move and must not be offered as one.
+    for j in range(1, L):
+        pos = (int(start) + int(sigma) * j) % L
+        if rungs[pos] == q:
+            seen += 1
+            if seen == int(k):
+                return int(pos)
+    return None
+
+
+def hop_index(rungs, start, target, sigma):
+    """The k for which `hop_target(rungs, start, sigma, k) == target`.
+
+    The inverse of :func:`hop_target`; used to price the reverse proposal when
+    checking skew detailed balance.
+    """
+    L = len(rungs)
+    q = rungs[int(start) % L]
+    seen = 0
+    for j in range(1, L):
+        pos = (int(start) + int(sigma) * j) % L
+        if rungs[pos] == q:
+            seen += 1
+            if pos == int(target) % L:
+                return seen
+    return None
 
 
 # ---------------------------------------------------------------------------

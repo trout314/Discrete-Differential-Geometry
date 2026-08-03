@@ -220,3 +220,68 @@ def test_unknown_policy_is_refused():
     with pytest.raises(ValueError, match="unknown policy"):
         resolve_event(_flight("blocker", "b"), "a", 1,
                       np.random.default_rng(0), policy="steer_to_free")
+
+
+# ---------------------------------------------------------------------------
+# same-rung hops
+# ---------------------------------------------------------------------------
+
+
+def test_hop_is_a_bijection_with_a_deterministic_inverse():
+    """T_sigma and T_-sigma are inverse, which is what makes the proposal
+    symmetric -- and with dS = 0 that gives acceptance exactly 1."""
+    from discrete_differential_geometry.ecmc import hop_target, hop_index
+    rng = np.random.default_rng(3)
+    rungs = rng.choice([46, 48, 50, 52], size=80)
+    for start in range(0, 80, 7):
+        for sigma in (+1, -1):
+            for k in (1, 2, 3, 5):
+                t = hop_target(rungs, start, sigma, k)
+                if t is None:
+                    continue
+                assert rungs[t] == rungs[start]          # same rung
+                assert hop_target(rungs, t, -sigma, k) == start % len(rungs)
+                assert hop_index(rungs, start, t, sigma) == k
+
+
+def test_hop_skips_intervening_off_rung_sites():
+    """The hop passes OVER barriers rather than through them -- it never
+    visits the intermediate sites, so they cost nothing."""
+    from discrete_differential_geometry.ecmc import hop_target
+    rungs = np.array([46, 52, 52, 52, 52, 46, 50, 50, 46])
+    assert hop_target(rungs, 0, +1, 1) == 5      # jumps the four 52s
+    assert hop_target(rungs, 0, +1, 2) == 8
+    assert hop_target(rungs, 5, -1, 1) == 0
+
+
+def test_hop_returns_none_when_the_rung_is_unique():
+    from discrete_differential_geometry.ecmc import hop_target
+    rungs = np.array([46, 50, 50, 50])
+    assert hop_target(rungs, 0, +1, 1) is None   # the only 46 on the chain
+
+
+def test_same_rung_positions_on_a_real_chain(r_chain):
+    """On R every rung is well populated, so a hop always has targets."""
+    from discrete_differential_geometry.ecmc import (
+        same_rung_positions, hop_target)
+    verts, edeg, _ = r_chain
+    q = chain_rungs(verts, edeg)
+    for idx in (0, 17, 101):
+        pos = same_rung_positions(q, idx)
+        assert len(pos) > 10 and idx % len(q) in set(pos.tolist())
+        for sigma in (+1, -1):
+            t = hop_target(q, idx, sigma, 1)
+            assert t is not None and q[t] == q[idx % len(q)]
+
+
+def test_hop_never_returns_the_source():
+    """The chain is cyclic, so a full lap lands back on the start -- a hop to
+    the source is not a move and must never be proposed as one."""
+    from discrete_differential_geometry.ecmc import hop_target
+    rungs = np.array([46, 50, 50, 50])
+    for sigma in (+1, -1):
+        for k in range(1, 6):
+            assert hop_target(rungs, 0, sigma, k) is None
+    rungs2 = np.array([46, 50, 46, 50])           # exactly two 46s
+    assert hop_target(rungs2, 0, +1, 1) == 2
+    assert hop_target(rungs2, 0, +1, 2) is None   # would be the source again
