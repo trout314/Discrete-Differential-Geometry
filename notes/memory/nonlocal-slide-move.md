@@ -95,12 +95,40 @@ VALIDATION (R m2, one spiral L=105, single (3,4,4), pure edge-degree action):
 - MIXING: tau_int(position) = 158.4 (local +-4) vs 2.4 (non-local) = ~66x, and
   since local is diffusive (tau~L^2) the win GROWS with L (762,1626 -> 100s-1000s).
 
-USE IT FOR EQUILIBRIUM SAMPLING ONLY. For real dynamics/transport (FPKMC,
-worldlines, non-equilibrium) keep it LOCAL (max-step=4): the 3->2 annihilates
-the defect to vacuum, so a distant redo is re-nucleation, not motion -- breaks
-the worldline, gives infinite D, no caging. Plan: max-step knob interpolates
-(4 = dynamics limit, large = fast sampler). User wants equilibrium now,
-dynamics later.
+**CORRECTED 2026-08-02 (user).** The earlier claim here -- "a distant redo is
+re-nucleation, not motion; breaks the worldline" -- was too strong, and it
+conflated *distant* with *arbitrary*.
+
+A redo at an unrelated face is indeed re-nucleation. But a redo at window n+k
+of a NAMED BC chain, reached along a specified segment, is a parameterised
+path: the trajectory is (chain C, position n(t)) and the worldline is intact
+by construction. The segment is the identity-carrier; the object label plus
+the ray define "the same defect" perfectly well.
+
+This matters because **annihilate-here / materialise-there IS the ECMC
+scheme**, not a shortcut around it. Event-driven MC never simulates the
+intermediate positions: it integrates the event rate, solves for where the
+active object stops, and places it there in one operation. That is the whole
+efficiency gain, not an approximation.
+
+WHAT SURVIVES of the original caveat, and it is a real design constraint: the
+jump is only equivalent to a walk if you cannot jump PAST a blocker. The event
+integral must therefore include every blocking condition along the segment --
+other defects (contact), rung barriers, and any window where the recreating
+2->3 is invalid or changes species. Include them all and you always stop at
+the FIRST event, so no tunnelling; omit one and the move teleports through an
+obstacle and the worldline really does break.
+
+Note the no-halo theorem makes this unusually clean: V = 0 beyond contact, so
+the event rate is (static washboard) + (hard contacts) -- exactly the
+hard-sphere ECMC structure the method was designed for.
+
+Separately true and unaffected: physical TIME under ECMC is not the sampler's
+attempt count, so FPKMC-style rate extraction needs its own time
+reparameterisation. That is about the clock, not about identity.
+
+Plan: max-step knob interpolates (4 = strict local limit, large = ballistic
+segment).
 
 TODO / caveats: detailed balance needs a SYMMETRIC proposal (pin the spiral
 deterministically from chord+orientation so fwd/reverse walk the same loop) and,
