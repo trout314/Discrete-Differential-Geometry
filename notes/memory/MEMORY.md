@@ -1,0 +1,62 @@
+# Project memory index
+
+- [Bilocal program saga](bilocal-program-saga.md) — MASTER NARRATIVE: two carriers, what was refuted and why (5 structural impossibility results), measured constants, bug taxonomy, full script inventory
+- [Percolation A/B test](percolation-ab-test.md) — RESULT: chord channel does NOT accelerate relaxation (1.6x worse on total work = pure overhead; plain-work effect ~0); episodes don't increment totalTried
+- [Pair carrier calibration](pair-carrier-calibration.md) — BOTH bilocal carriers conserve f₀ exactly; role-signed umbrella + calib_zeta2 got roundtrips balanced; transport still blocked by the flat off-tube umbrella
+- [f₀ surgery](f0-surgery.md) — f₀ ensemble parameter UNFROZEN: D-side scheme-C worm channel commits exact MH f₀ transitions; f-adaptive single-orbit tube (pin part analytic, validated 1e-13); two-sided free-energy runs favor gap-closed
+- [m²-only gas](m2-only-gas.md) — minimal action (global pins + m² anti-clustering, no legality terms) holds a mobile defect gas on R & C15; 3-species simplification; glassy bistability; flat target 2π/arccos(1/3)
+- [Maximalist recording](maximalist-recording.md) — ALWAYS use record_run flight-recorder for sampler scripts; recording unconditional, certification is post-processing; bare s.run() is a smell
+- [Embedded GC rt_init bug](embedded-gc-rt-init.md) — RESOLVED: dlopen'd D lib never ran rt_init, GC.collect was a no-op, every D allocation leaked under Python; ddg_runtime_init added; keep hot paths allocation-free
+- [Ridge bookkeeping bug](ridge-bookkeeping-bug.md) — RESOLVED: unsorted center/coCenter through C API vs sorted-merge productUnion; canonicalize at boundaries; knot-slide unblocked
+
+- [Crystal symmetry group](crystal-symmetry-group.md) — symmetry.py gives EXACT Aut(K)/orbits/stabilizers/BC-chain classes cheaply; Aut(K) may legitimately EXCEED the physical crystal's space group; WL bucketing was fusing 5 real classes; chain-class provenance hole still open
+
+- [Reporting conventions](reporting-conventions.md) — notation/terminology/report rules in notes/CONVENTIONS.md + CLAUDE.md; follow in every report and figure
+- [Cocycle detachment bug](cocycle-detachment-bug.md) — RESOLVED as phantom: save-path label skew (canonicalize before save_cocycle!); all pairs repaired; no D-core bug
+
+- [Build state & gotchas](build-state.md) — D core builds; macOS unittest link FIXED (GNU-only -rpath= spelling), meson test now passes 12/12
+- [R/C15 TCP defect work](tcp-r-c15-defect-state.md) — where the crystal-defect campaign stood at the 2026-07-20 resume
+- [Regenerating gitignored data](regenerate-tcp-references.md) — reference crystals & seeds are gitignored; how to rebuild them
+- [TCP provenance wiring](tcp-provenance-wiring.md) — tcp_reference/tcp_melt now stamp crystal-rooted history; siblings still don't
+- [crystal_grains.py tool](crystal-grains-tool.md) — covering-map registry-aware crystalline-grain detector; the single authoritative defect identifier
+- [C15+Z14 doping ensemble](c15-z14-dope-ensemble.md) — working dilute-doping regime + finding: elementary excitation is a Z15 pair, not a lone Z14
+- [VDV/HDV conflicts with TCP](vdv-hdv-conflicts-with-tcp.md) — leave degree-variance penalties OFF (=0) for any FK/TCP n6-potential run; defaults are ON
+- [5-illegal knot](five-illegal-knot.md) — the elementary illegal defect: exact (3,4,4)-edge positive-disclination knot; + two-sided certification infra (use quantized_split_rhat, don't hand-roll R-hat)
+- [Run scripts with caffeinate](run-scripts-with-caffeinate.md) — ALWAYS wrap launches in `caffeinate -i`; machine idle-sleep kills background runs
+- [Hyperuniformity refactor](hyperuniformity-refactor.md) — S(k)/field/estimator code unified into one package library; branch refactor-hyperuniformity
+- [Curvature length-scale law](curvature-length-scale.md) — curvature fluctuations ~ 1/R² (class-I HU) in constrained states; needs REAL Euclidean balls, graph proxy blind to it
+- [run5h defect kinetics](defect-kinetics-run5h.md) — (3,4,4)-knot monomers blink, fused multimers immortal; Q≈−5/knot; centroid-protocol gotchas
+- [FK→FK move search](fk-move-search.md) — constraint-surface block moves; core validated; move detection is enumeration not bucketing; glass producer ready
+- [Mobile-gas liquid](mobile-gas-liquid.md) — constrained knot liquid at λ=0.40 (m4): walker transport exists, layered dielectric screening measured; carrier inversion vs frozen
+- [Cert campaign & EDQ ladder](cert-campaign-and-edq-ladder.md) — crash-resume checkpoint; stiff EDQ rungs freeze (no mobile-legal window); 8 cert chains relaunched from snapshots
+- [Worm sampler program](worm-sampler-program.md) — KNOT-SLIDE DELIVERED: 4-move directed transport verified (50 steps + exact restore); thermal: 100% knots mobile, ~50% acceptance at lam0.4; rigidity bound RETRACTED to 6 moves (was 8; the search seeded 47 of 102 orbits) + BC-helix motif
+- [Six-web emergent gauge](six-web-gauge.md) — web closure = Gauss law MEASURED (L/T 0.60±0.04 frozen, monopole-screened); n6 = line-closure/Bianchi term, necessary (EDQ-only fails); next: budgeted-illegality sampler
+- [Cocycle vertex lift](cocycle-vertex-lift.md) — positions maintained O(1) in D, gauge fixed (no glitch filtering); vertex labels are RECYCLED across 4->1/1->4
+- [Flicker background](flicker-background.md) — the (3,4,4) knot IS one 2->3 on pristine crystal (f=(5,10,9,3) always, 47 species); ~95% of lam=0.40 births are that; long-lived defects are sparse/curve-like
+- [Harvest collider plan C](harvest-collider-planC.md) — knot vs REAL thermal targets: V=0.00 exactly at range in thermal background; free association (V=0, unfuses) with 9-mer/curve-string/knot; pristine S-matrix TRANSFERS
+- [FPKMC M1 status](fpkmc-m1-status.md) — M0 proofs pass; chain_walk+site_survey in D (1ms/site, 1e-9 validated); V1 census: slide channel = degree-12 GRAPH, most chain transport species-changing; graph formulation is main path
+- [FPKMC design](fpkmc-design.md) — notes/FPKMC_DESIGN.md written; sweep KILLED pending D-side optimization; D-first policy; HB->FP->EC milestones; verify I1 + nu first
+- [S-matrix sweep STOPPED](smatrix-sweep-running.md) — killed 2026-07-25 after <1 day (~3/680 classes); its relkey dedup was WRONG BOTH WAYS, now on exact Aut keys (680→271 classes); --start-class numbering CHANGED, old partials unusable
+- [Crossing collider phase 2](crossing-collider-phase2.md) — V=0 at ALL angles until touch; contact chemistry angular: chord-sharing repels +4.4, angled touch FREE (V=0, 10-vertex compounds = decamer family); all reversible
+- [Knot collider phase 1](knot-collider-phase1.md) — V(s)=0 to 1e-14 until s=4 contact; contact repulsive (+4.4..+12.8) & reversible; WASHBOARD 17-51 measured (explains caging); merged (9,23,23,8) is NOT the decamer
+- [No-halo verdict](no-halo-verdict.md) — DECISIVE: melt = pristine crystal EXACTLY beyond 0.4 cells; knot dQ_cx = exactly one flicker quantum; NO screening cloud (HU = dilution + volume pin, revised); static two-knot potential rigorously zero beyond contact
+- [Species interactions](species-interactions.md) — lam=0.40 string-vacuum coupling is CONTACT-ONLY: g_bs flat, directional NULL at 0.5-1.5%, growth = absorbing adjacent births; string-string sector unmeasured (needs two-knot experiment)
+- [Statics & HU verdict](statics-hu-verdict.md) — lam=0.40 melt's TOTAL curvature field is crystal-grade class-I HU (exp 1.98 vs 2.01) despite clustered sources; screening ~complete; C_QQ/P2 need 10x snapshots
+- [Defect travel](defect-travel.md) — lam=0.40 no-slide: range monotone in size but ALL caged (max 1.26 cells, subdiffusive, exponent 0.63); knots die at birth site; long-lived RETURN home (net^2 exponent negative)
+- [Lifetime vs charge](lifetime-vs-charge.md) — NO monotone charge->lifetime law; SigmaZ=70 rung anomalously short-lived+reactive; Q_c exactly conserved along a fixed-shape knot worldline
+- [FP kinetics findings](fp-kinetics-findings.md) — lam-independent D_slide via flat directions; BC-chain precession period 8; isotropic dock angles; P(rec)=0.70 with aligned-dock excess
+- [QRW Dirac connection](qrw-dirac-connection.md) — user's SEPARATE quantum-random-walks repo builds a Dirac walk on the BC helix; shares DDG's EXACT primitives (Quat(1,0,1,2) twist, reflect(), Swierczkowski); 3D coin = emergent-gravity coupling; do 600-cell first
+- [Reaction census campaign](reaction-census-campaign.md) — 8h run launched 2026-07-27: thermal merge/split chemistry (new instrument) + FP recombination statistics; how to analyse; the e* stiffness gotcha
+- [Reaction census lam035 m4 RESULTS](reaction-census-lam035-m4-results.md) — 8 chains done+audit-clean; clean chemistry (K≈0.98, reaction-limited, universal compound survival) on a NON-stationary melting substrate (all drift up)
+- [Strict chord channel](strict-chord-channel.md) — balanced within-sector (up/down rates equal to ~5%), auto zeta2+p_close in closed form, Δf census; CONSERVES f0 exactly (two-sided tests must use same-f0 starts)
+- [Flicker catalysis](flicker-catalysis.md) — RETRACTED: no evidence of catalysis; net dS is blind to it and the strict channel (U≡0, per-move Metropolis) cannot lower a barrier; the real mechanism needs BUNDLING into one acceptance
+- [Bilocal factorization](bilocal-factorization.md) — MEASURED: exact factorization iff supports vertex-disjoint (not a distance); conserving pairs are pin-free & often exactly free; BC-chain index is NOT a separation coordinate
+- [Deg-4 worm design](deg4-worm-design.md) — universal tip motif (1×deg4+10×deg5, charge 12); endpoint-congruence design; retract NOT found depth≤6 at first targets; sweep+deep probe running; flicker-assisted fallback
+- [Defect viewer tools](defect-viewer-tools.md) — defect_viewer.py (3D plotly scenes, decorated) + defect_catalog.py (sortable table + links); needs plotly + cocycle snapshot
+- [Intrinsic geometry](intrinsic-geometry.md) — development module (exact rational); dock census quantizes to 61 cos² classes (3^a·5^b denominators); holonomy exact: same-chain ambient transport gives (3/5)²
+- [Non-local slide move](nonlocal-slide-move.md) — undo 2→3 + redo 2→3 down the spiral; ported to D + native mcmcStep channel (1/n₃ + n₃-factor, maintained deg-3 set); validated Boltzmann; witness-cache fixed O(N)→O(1); equilibrium-only
+- [EDQ-only melting](edq-only-melting.md) — EDQ-only R crystal: first-order pristine↔dense-liquid; m² clustering penalty does NOT cure it at λ=0.35 (formal gate + scan: bigger m² WIDENS coexistence, empties crystal side); complexes live only in liquid branch; certify liquid below spinodal
+- [2→3 rung ladder & free-slide web](bc-washboard-not-free-spirals.md) — 2→3 excitation has EXACT integer 4-rung cost ladder Q∈{46,48,50,52}; slide dS=c·ΔQ exact; free⟺same rung (~40%); per-rung free network: Q46/Q50 one crystal-spanning web, Q48/Q52 fragment; GOTCHA SamplerParams codim3_var/num_hinges defaults were ON (the ~1e-3 residual, not FK term)
+- [Defect boundary map](defect-boundary-map.md) — 2→3 is a LENS not a shortcut; exact λ=2√6/3 anisotropic scaling + double-image caustic; universal table + validated tool
+- [PL geodesic permeability](pl-geodesic-permeability.md) — only degree≥6 edges carry minimizers (= the FK six-edge net); exactness limits and the Lipschitz-dual certificate
+- [Defect site classes](defect-site-classes.md) — C15 has 4 inequivalent 2→3 sites, R exactly 102 (6 ledgers); but optics are IDENTICAL at all of them (ball is convex); global-field statistic is source-noise dominated

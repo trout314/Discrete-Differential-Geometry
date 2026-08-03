@@ -57,8 +57,10 @@ seeds/
 /data/
 /seeds_*/
 
-# Claude Code local memory store
-memory/
+# Claude Code project memory is TRACKED, at notes/memory/ (a symlink from
+# ~/.claude/projects/<slug>/memory points at it -- see tools/link_memory.sh).
+# It used to be ignored by a bare `memory/` rule; that silently excluded the
+# whole store from commits while leaving `git status` clean.
 
 # D build artifacts
 bin/
@@ -80,3 +82,6 @@ notes/*.out
 notes/*.synctex.gz
 notes/*.toc
 .DS_Store
+
+# Claude Code per-machine settings (permissions etc.)
+.claude/settings.local.json
