@@ -1349,7 +1349,7 @@ Nullable!(HingeMove!Vertex) tryProposeHingeMove(Vertex)(
         return typeof(return).init;
 
     // Find a start vertex (any facet vertex not in the edge)
-    Vertex startVertex = void;
+    Vertex startVertex;
     foreach (v; facet)
         if (v != edge[0] && v != edge[1]) { startVertex = v; break; }
 
@@ -1598,14 +1598,14 @@ void recordBistellar(Vertex)(ref GeometryLedger!Vertex g,
             bump(g.edgeRoles[ERole.e14Created], mkEdge(v, coCenter[0]));
         g.tetsDestroyed[0]++;
         {
-            Vertex[4] t = void;
+            Vertex[4] t;
             foreach (i; 0 .. 4) t[i] = center[i];
             tetDestroy(g, t);
         }
         g.tetsCreated[0] += 4;
         foreach (skip; 0 .. 4)
         {
-            Vertex[4] t = void; size_t n = 0;
+            Vertex[4] t; size_t n = 0;
             foreach (i, v; center) if (i != skip) t[n++] = v;
             t[3] = coCenter[0];
             tetCreate(g, t);
@@ -1630,7 +1630,7 @@ void recordBistellar(Vertex)(ref GeometryLedger!Vertex g,
         g.tetsCreated[1] += 3;
         foreach (skip; 0 .. 3)
         {
-            Vertex[4] t = void; size_t n = 0;
+            Vertex[4] t; size_t n = 0;
             foreach (i, v; center) if (i != skip) t[n++] = v;
             t[2] = coCenter[0]; t[3] = coCenter[1];
             tetCreate(g, t);
@@ -1649,7 +1649,7 @@ void recordBistellar(Vertex)(ref GeometryLedger!Vertex g,
         g.tetsDestroyed[2] += 3;
         foreach (skip; 0 .. 3)
         {
-            Vertex[4] t = void; size_t n = 0;
+            Vertex[4] t; size_t n = 0;
             foreach (i, v; coCenter) if (i != skip) t[n++] = v;
             t[2] = center[0]; t[3] = center[1];
             tetDestroy(g, t);
@@ -1672,14 +1672,14 @@ void recordBistellar(Vertex)(ref GeometryLedger!Vertex g,
         g.tetsDestroyed[3] += 4;
         foreach (skip; 0 .. 4)
         {
-            Vertex[4] t = void; size_t n = 0;
+            Vertex[4] t; size_t n = 0;
             foreach (i, v; coCenter) if (i != skip) t[n++] = v;
             t[3] = center[0];
             tetDestroy(g, t);
         }
         g.tetsCreated[3]++;
         {
-            Vertex[4] t = void;
+            Vertex[4] t;
             foreach (i; 0 .. 4) t[i] = coCenter[i];
             tetCreate(g, t);
         }
@@ -2999,8 +2999,8 @@ private int collectStar(Vertex)(ref Manifold!(3, Vertex) mfd, Vertex v,
     seed[].sort();
     immutable int s0 = findOrAppend(seed);
     if (s0 < 0) return n;
-    int[512] queue = void;
-    int[512] visited = void;
+    int[512] queue;
+    int[512] visited;
     int qh = 0, qt = 0, nv = 0;
     bool seen(int idx)
     {
@@ -3069,7 +3069,7 @@ int wormEnumerate(Vertex)(ref Manifold!(3, Vertex) mfd,
     }
 
     // stage-1 star: tets around anchor[0] and anchor[1]
-    Vertex[4][160] star1 = void;
+    Vertex[4][160] star1;
     int n1 = 0;
     foreach (i; 0 .. 4)
     {
@@ -3090,7 +3090,7 @@ int wormEnumerate(Vertex)(ref Manifold!(3, Vertex) mfd,
         Vertex[3] f;      // face (2->3 center / 3->2 link)
         Vertex[2] p;      // pair (2->3 apexes / 3->2 edge)
     }
-    Mv[384] m1s = void;
+    Mv[384] m1s;
     int nM1 = 0;
 
     void gatherMoves(scope Vertex[4][] tets, int nT,
@@ -3098,7 +3098,7 @@ int wormEnumerate(Vertex)(ref Manifold!(3, Vertex) mfd,
                      ref Mv[384] outM, ref int nM)
     {
         // 2->3 on faces of the tets
-        Vertex[3][2048] seenF = void;
+        Vertex[3][2048] seenF;
         int nSF = 0;
         foreach (ti; 0 .. nT)
         {
@@ -3131,7 +3131,7 @@ int wormEnumerate(Vertex)(ref Manifold!(3, Vertex) mfd,
             }
         }
         // 3->2 on degree-3 edges among the tets' pairs
-        Vertex[2][1024] seenE = void;
+        Vertex[2][1024] seenE;
         int nSE = 0;
         foreach (ti; 0 .. nT)
         {
@@ -3216,7 +3216,7 @@ int wormEnumerate(Vertex)(ref Manifold!(3, Vertex) mfd,
         mfd.doMove(bm1);
 
         // disturbed vertices: anchor + endpoints of changed pairs
-        Vertex[16] dist = void;
+        Vertex[16] dist;
         int nD = 0;
         void addD(Vertex v)
         {
@@ -3229,7 +3229,7 @@ int wormEnumerate(Vertex)(ref Manifold!(3, Vertex) mfd,
             { addD(origE[oi][0]); addD(origE[oi][1]); }
 
         // stage-2 stars around the disturbed vertices
-        Vertex[4][768] star2 = void;
+        Vertex[4][768] star2;
         int n2 = 0;
         // seed tets: added tets of m1
         Vertex[4][3] added1;
@@ -3276,7 +3276,7 @@ int wormEnumerate(Vertex)(ref Manifold!(3, Vertex) mfd,
                 foreach (i; 0 .. nD) if (dist[i] == v) return true;
             return false;
         }
-        Mv[384] m2s = void;
+        Mv[384] m2s;
         int nM2 = 0;
         gatherMoves(star2[], n2, &touchesDist, m2s, nM2);
 
@@ -3300,7 +3300,7 @@ int wormEnumerate(Vertex)(ref Manifold!(3, Vertex) mfd,
             mfd.doMove(bm2);
 
             // ---- class check ----------------------------------------------
-            Vertex[2][2] g4 = void, w4 = void;
+            Vertex[2][2] g4, w4;
             int nG4 = 0, nW4 = 0;
             Vertex[2] g3 = -1, w3 = -1;
             int nG3 = 0, nW3 = 0;
@@ -3669,7 +3669,7 @@ bool tryWormMove(Vertex, P)(
     }
     {
         // reconcile the live degree sets over everything the pair touched
-        Vertex[12] sup = void;
+        Vertex[12] sup;
         int nS = 0;
         void addS(Vertex v)
         {
@@ -4038,14 +4038,14 @@ bool mcmcStep(Vertex, P)(
             Vertex[2] edge = [center[0], center[1]];
 
             // Find a start vertex (any facet vertex not in the edge)
-            Vertex startVertex = void;
+            Vertex startVertex;
             foreach (v; facet)
                 if (v != edge[0] && v != edge[1]) { startVertex = v; break; }
 
             auto hm = mfd.hingeMove(edge, startVertex, uniform(0, 2));
 
             // Support = the 6 vertices whose stars the move touches.
-            Vertex[6] hingeSupport = void;
+            Vertex[6] hingeSupport;
             hingeSupport[0 .. 2] = hm.removedEdge[];
             hingeSupport[2 .. 6] = hm.linkCycle[];
             if (counters !is null)
@@ -4132,7 +4132,7 @@ bool mcmcStep(Vertex, P)(
             continue;
 
         // Support = the 5 vertices of the bistellar ball (one glued 4-simplex).
-        Vertex[nVerts + 1] ballBuf = void;
+        Vertex[nVerts + 1] ballBuf;
         Vertex[] ball;
         {
             size_t nb = 0;
@@ -4817,9 +4817,9 @@ private int wf0EnumH(Vertex)(ref Manifold!(3, Vertex) mfd, Vertex v,
     scope Vertex[4][] tets, int nT, WF0Cand!Vertex[] outC)
 {
     int n = 0;
-    Vertex[3][160] seenF = void;
+    Vertex[3][160] seenF;
     int nSF = 0;
-    Vertex[2][160] seenE = void;
+    Vertex[2][160] seenE;
     int nSE = 0;
     foreach (ti; 0 .. nT)
     {
@@ -4890,10 +4890,10 @@ double wormF0DebugU(Vertex)(ref Manifold!(3, Vertex) mfd,
     Vertex[4] seed;
     bool ok = mfd.someFacetContaining(v, seed);
     if (!ok) return double.nan;
-    Vertex[4][96] tets = void;
+    Vertex[4][96] tets;
     int nT = 0;
-    Vertex[48] lk = void;
-    size_t[48] degs = void;
+    Vertex[48] lk;
+    size_t[48] degs;
     immutable z = wf0Star(mfd, v, seed, tets[], nT, lk[], degs[]);
     if (z < 0) return double.nan;
     return wf0U(cfg, degs[0 .. z]);
@@ -4959,10 +4959,10 @@ bool wormF0Episode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
     }
 
     // -- head star / H-class cache --------------------------------------
-    Vertex[4][96] starT = void;
+    Vertex[4][96] starT;
     int nStar = 0;
-    Vertex[48] lk = void;
-    size_t[48] degs = void;
+    Vertex[48] lk;
+    size_t[48] degs;
     int z = 0;
     double uCur = 0.0;
     static WF0Cand!Vertex[512] hBuf;
@@ -4971,7 +4971,7 @@ bool wormF0Episode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
     Vertex[4] headSeed;
     // vertices whose state the H cache depends on ({v} u lk u apexes):
     // a move whose support misses this set cannot invalidate the cache
-    Vertex[160] hDep = void;
+    Vertex[160] hDep;
     int nDep = 0;
 
     bool refreshHead()
@@ -4998,13 +4998,13 @@ bool wormF0Episode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
 
     // exact-restore snapshot of the head cache (rejected H proposals
     // restore the state bit-for-bit, so the cache is restored too)
-    Vertex[4][96] snapT = void;
+    Vertex[4][96] snapT;
     int snapNStar, snapZ, snapNH, snapNDep;
-    Vertex[48] snapLk = void;
-    size_t[48] snapDegs = void;
+    Vertex[48] snapLk;
+    size_t[48] snapDegs;
     double snapU;
     static WF0Cand!Vertex[512] snapH;
-    Vertex[160] snapDep = void;
+    Vertex[160] snapDep;
     Vertex[4] snapSeed;
 
     void saveCache()
@@ -5164,7 +5164,7 @@ bool wormF0Episode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
             Vertex[4] newSeed = headSeed;
             {
                 // post tets of the move that contain the head
-                Vertex[5] sup = void;
+                Vertex[5] sup;
                 int nsup = 0;
                 foreach (x; c.f) sup[nsup++] = x;
                 foreach (x; c.p) sup[nsup++] = x;
@@ -6457,7 +6457,7 @@ bool wormChordPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
     Vertex bA, bB;
     wf0Deg3Scan(mfd, uniform(0, n3), &bA, &bB);
     Vertex[2] chordB = bA < bB ? [bA, bB] : [bB, bA];
-    Vertex[16] lkB = void;
+    Vertex[16] lkB;
     immutable int nlkB = wf0EdgeLink(mfd, chordB[0], chordB[1], lkB[]);
     if (nlkB != 3) return false;
 
@@ -6587,7 +6587,7 @@ bool wormChordPairEpisode(Vertex, P)(ref Manifold!(3, Vertex) mfd,
         // both heads must be back at the state a 2->3 creates: degree 3
         if (mfd.degreeOrZero!1(chordA[]) != 3) continue;
         if (mfd.degreeOrZero!1(chordB[]) != 3) continue;
-        Vertex[16] lk = void;
+        Vertex[16] lk;
         immutable int nlk = wf0EdgeLink(mfd, chordB[0], chordB[1], lk[]);
         if (nlk != 3) continue;
         Vertex[3] tri = [lk[0], lk[1], lk[2]];
