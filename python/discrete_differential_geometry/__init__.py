@@ -14,7 +14,7 @@ from .convergence import (
     weighted_ess,
 )
 from . import (vertex_fields, structure_factor, graph_hyperuniformity, cocycle,
-               symmetry)
+               symmetry, ecmc)
 from .vertex_fields import FIELDS
 from .cocycle import torus_positions
 from .symmetry import CrystalSymmetry
@@ -83,6 +83,7 @@ __all__ = [
     "graph_hyperuniformity",
     "cocycle",
     "symmetry",
+    "ecmc",
     "CrystalSymmetry",
     "FIELDS",
     "torus_positions",
