@@ -53,6 +53,11 @@ from itertools import combinations
 
 from .development import _SEED, develop_path, _sub, _dot, _cross
 
+def _perms3(xs):
+    from itertools import permutations
+    return tuple(permutations(xs))
+
+
 A, B, C, P, Q = 0, 1, 2, 3, 4
 
 TETS_R = ((A, B, C, P), (A, B, C, Q))
@@ -60,6 +65,23 @@ TETS_D = ((A, B, P, Q), (A, C, P, Q), (B, C, P, Q))
 BOUNDARY = ((A, B, P), (A, C, P), (B, C, P),
             (A, B, Q), (A, C, Q), (B, C, Q))
 VERTEX_NAMES = {A: "A", B: "B", C: "C", P: "P", Q: "Q"}
+
+#: the configuration's own symmetry group: S3 on the shared face (A,B,C)
+#: times S2 on the apexes (P,Q), order 12. Every element preserves TETS_R,
+#: TETS_D and BOUNDARY setwise, so the intrinsic distance maps must be
+#: EQUIVARIANT under it: d(gx, gy) == d(x, y) exactly, for both configs. That
+#: is a free and rather sharp correctness check on the whole development --
+#: an error in a strip placement, a chord test, or the node grid would almost
+#: certainly break it -- and `defect_boundary_map.validate` asserts it.
+#:
+#: These are the same 12 relabellings `move_site_census` canonicalises a 2->3
+#: site over. Note the distinction: there the group acts on a site embedded in
+#: a host, where it is only part of the story (the host's Aut decides which
+#: sites are equivalent); here the ball is the whole world, so the group is
+#: the complete symmetry of the object.
+CONFIG_SYMMETRY = tuple(
+    {A: fp[0], B: fp[1], C: fp[2], P: ap[0], Q: ap[1]}
+    for fp in _perms3((A, B, C)) for ap in ((P, Q), (Q, P)))
 
 #: squared edge length of the development embedding (unit edge -> divide by 2)
 EMBED_EDGE_SQ = Fraction(2)
@@ -207,6 +229,16 @@ class BallBoundaryMap:
 
     def index(self, w):
         return self._index[node_key(w)]
+
+    def node_permutation(self, g):
+        """Index permutation induced on the boundary grid by a relabelling.
+
+        `g` maps vertex -> vertex (an element of CONFIG_SYMMETRY). The grid is
+        defined by barycentric weights, so relabelling a node's weights lands
+        on another grid node of the same order -- the permutation is total.
+        """
+        return [self.index({g[v]: w for v, w in nd.items()})
+                for nd in self.nodes]
 
     def dist_sq(self, wx, wy):
         """Exact squared intrinsic distance through B, or None if every

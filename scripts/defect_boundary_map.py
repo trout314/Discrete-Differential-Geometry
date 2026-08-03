@@ -28,7 +28,7 @@ sys.path.insert(0, os.path.join(_ROOT, "python"))
 from discrete_differential_geometry.ball_boundary import (
     BallBoundaryMap, BOUNDARY, VERTEX_NAMES, boundary_surface_lengths,
     node_key, node_name, node_faces, face_name, steiner_interior,
-    A, B, C, P, Q)
+    CONFIG_SYMMETRY, A, B, C, P, Q)
 
 SQ83 = float(Fraction(8, 3)) ** 0.5          # apex-apex chord in R
 
@@ -70,6 +70,23 @@ def validate(mR, MR, MD, missR, missD, order):
     for nm, M in (("R", MR), ("D", MD)):
         tri = (M[:, :, None] + M[None, :, :] - M[:, None, :]).min()
         check(f"triangle inequality in {nm}", tri > -1e-12, f"min slack {tri:+.2e}")
+
+    # EQUIVARIANCE under the configuration's own symmetry group (S3 on the
+    # face x S2 on the apexes, order 12). The ball is the whole world here, so
+    # this group is an exact symmetry of the object and the distance map must
+    # commute with it. Independent of every other check: a wrong strip
+    # placement, chord test or node index would break it.
+    # one permutation table serves both configs: build() asserts the two
+    # boundary grids coincide (mR.keys == mD.keys), which is what lets d^D-d^R
+    # be taken entrywise at all.
+    perms = [mR.node_permutation(g) for g in CONFIG_SYMMETRY]
+    for nm, M in (("R", MR), ("D", MD)):
+        worst = 0.0
+        for perm in perms:
+            worst = max(worst, float(np.abs(M - M[np.ix_(perm, perm)]).max()))
+        check(f"{nm}: equivariant under all {len(CONFIG_SYMMETRY)} "
+              f"S3xS2 relabellings", worst == 0.0,
+              f"max |d(x,y) - d(gx,gy)| = {worst:.2e} (must be EXACTLY 0)")
 
     S, _ = boundary_surface_lengths(order)
     for nm, M in (("R", MR), ("D", MD)):

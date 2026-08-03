@@ -393,3 +393,42 @@ def test_anchored_key_has_no_residual_freedom():
     for f in range(0, nF, max(1, nF // 40)):
         seen.setdefault(sym.config_key([a, f]), []).append(f)
     assert all(len(v) == 1 for v in seen.values())
+
+
+# ---------------------------------------------------------------------------
+# the 2->3 ball's own symmetry (ball_boundary), distinct from a host's Aut
+# ---------------------------------------------------------------------------
+
+
+def test_ball_config_symmetry_preserves_the_configuration():
+    """S3 on the face x S2 on the apexes must fix TETS_R, TETS_D and BOUNDARY
+    setwise -- otherwise it is not a symmetry of the ball at all."""
+    from discrete_differential_geometry import ball_boundary as bb
+    assert len(bb.CONFIG_SYMMETRY) == 12
+    for name in ("TETS_R", "TETS_D", "BOUNDARY"):
+        ref = {tuple(sorted(t)) for t in getattr(bb, name)}
+        for g in bb.CONFIG_SYMMETRY:
+            assert {tuple(sorted(g[v] for v in t))
+                    for t in getattr(bb, name)} == ref, name
+
+
+@pytest.mark.parametrize("config", ["R", "D"])
+def test_ball_boundary_map_is_equivariant(config):
+    """d(gx, gy) == d(x, y) EXACTLY. The ball is the whole world here, so this
+    is an exact symmetry of the object, and it is independent of the other
+    checks: a wrong strip placement, chord test or node index would break it."""
+    from discrete_differential_geometry import ball_boundary as bb
+    m = bb.BallBoundaryMap(config, 3)
+    M, missing = m.matrix()
+    assert not missing
+    for g in bb.CONFIG_SYMMETRY:
+        perm = m.node_permutation(g)
+        assert np.array_equal(M, M[np.ix_(perm, perm)])
+
+
+def test_ball_node_permutation_is_a_permutation():
+    from discrete_differential_geometry import ball_boundary as bb
+    m = bb.BallBoundaryMap("D", 3)
+    for g in bb.CONFIG_SYMMETRY:
+        p = m.node_permutation(g)
+        assert sorted(p) == list(range(len(m.nodes)))

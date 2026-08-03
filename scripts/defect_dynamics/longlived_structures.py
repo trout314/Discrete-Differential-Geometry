@@ -6,6 +6,21 @@ induced-shape f-vector + coordination).  Structures come from the gas
 snapshots via DefectState: per complex the EXACT decorated-isomorphism class
 (canonical_key of the induced subcomplex, ecolor = ambient edge degree,
 vcolor = n6), joined to the track species by (f-vector, coord).
+
+CERTIFICATION.  canonical_key returns (key, exact).  Only exact=True makes the
+key a canonical form, where key equality <=> isomorphism BOTH ways.  When the
+search is truncated the minimum is taken over a prefix of orderings that
+depends on the input vertex LABELS, so the key stops being a function of the
+isomorphism class: equal keys still prove isomorphism, but two isomorphic
+complexes can get DIFFERENT keys and be counted as two classes.  A table of
+"decorated-isomorphism classes" built from truncated keys therefore
+OVER-SPLITS and its class count is meaningless.
+
+So uncertified complexes are excluded from the class table and reported
+separately rather than silently inflating it, and the script exits non-zero
+when any occur.  Raise the cap with DDG_CANON_LIMIT to try to certify them
+(the cost is factorial in the size of the largest colour class).  Measured
+2026-08-02 on both gas snapshots: 44 complexes, 0 uncertified.
 """
 import glob, json, os, sys
 from collections import Counter, defaultdict
@@ -39,7 +54,10 @@ for p in sorted(glob.glob(os.path.join(_ROOT, "data/rxn_lam035_m4/c?.tracks.json
                 cens[k] += 1
 
 # ---- Part B: decorated structures from the snapshots -----------------------
-classes = {}    # canonical key -> dict(count, sig, f, coord, nodes, exemplar, exact)
+KEY_LIMIT = int(os.environ.get("DDG_CANON_LIMIT", 200000))
+
+classes = {}      # canonical key -> dict(count, sig, f, coord, nodes, key)
+uncertified = []  # complexes whose key was truncated -- NOT isomorphism classes
 for snap in SNAPS:
     m = ddg.Manifold.load(snap, 3)
     st = ds.DefectState(m)
@@ -49,10 +67,14 @@ for snap in SNAPS:
         coord = int(st.total_coordination(cx.verts))
         fac = st.induced_facets(cx.verts)
         vc, ec = st.decorations(cx.verts)
-        key, exact = ds.canonical_key(fac, vc, ec)
+        key, exact = ds.canonical_key(fac, vc, ec, limit=KEY_LIMIT)
+        if not exact:
+            uncertified.append(dict(nv=len(cx.verts), sig=cx.sig, f=f,
+                                    coord=coord,
+                                    snap=os.path.basename(snap)))
+            continue
         c = classes.setdefault(key, dict(
-            count=0, sig=cx.sig, nodes=cx.nodes, f=f, coord=coord,
-            exact=exact, key=key))
+            count=0, sig=cx.sig, nodes=cx.nodes, f=f, coord=coord, key=key))
         c["count"] += 1
 
 # ---- join + report ---------------------------------------------------------
@@ -68,9 +90,20 @@ def mx(x): return float(np.max(x)) if x else float("nan")
 # order by species median lifetime (then count)
 rows.sort(key=lambda r: (-(med(r[1]) if r[1] else -1), -r[0]["count"]))
 
-print(f"{len(classes)} decorated-isomorphism classes across "
+print(f"{len(classes)} CERTIFIED decorated-isomorphism classes across "
       f"{sum(c['count'] for c in classes.values())} complexes "
-      f"({', '.join(os.path.basename(s) for s in SNAPS)})\n")
+      f"({', '.join(os.path.basename(s) for s in SNAPS)})")
+if uncertified:
+    print(f"\n  !! {len(uncertified)} complex(es) EXCLUDED: canonical_key "
+          f"truncated at limit={KEY_LIMIT}, so their keys are not functions "
+          f"of the\n     isomorphism class and would over-split the table "
+          f"below. Sizes: "
+          f"{sorted(u['nv'] for u in uncertified)}")
+    print(f"     Re-run with a larger DDG_CANON_LIMIT to certify them "
+          f"(cost is factorial in the largest colour class).")
+else:
+    print(f"  all complexes certified (exact isomorphism keys)")
+print()
 print(f"{'#':>3s} {'cnt':>4s} {'sig (illegal degs)':22s} {'f-vector':14s} "
       f"{'Z':>4s} {'n6 nodes':10s} {'tracks':>7s} {'med life':>9s} "
       f"{'max life':>9s} {'alive@end':>9s}")
@@ -88,6 +121,9 @@ for i, (c, lv) in enumerate(rows[:10]):
     ill = [f"{u}-{w}:{d}*" for (u, w), d in rel_e if d not in (5, 6)]
     leg = [f"{u}-{w}:{d}" for (u, w), d in rel_e if d in (5, 6)]
     print(f"\n[{i}] x{c['count']}  sig={c['sig']}  f={c['f']}  "
-          f"n6(vertices)={list(rel_v)}  exact_iso={c['exact']}")
+          f"n6(vertices)={list(rel_v)}  [certified]")
     print(f"    illegal: {' '.join(ill) if ill else '(none)'}")
     print(f"    legal:   {' '.join(leg)}")
+
+if uncertified:
+    sys.exit(1)          # a truncated key must not pass silently in a pipeline
