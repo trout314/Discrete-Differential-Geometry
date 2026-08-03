@@ -164,3 +164,59 @@ def test_rung_is_constant_on_aut_face_orbits(r_chain):
     assert all(len(v) == 1 for v in by_orbit.values()), \
         "Q differs within an Aut face orbit -- impossible if Q is a face function"
     assert set().union(*by_orbit.values()) <= {46, 48, 50, 52}
+
+
+# ---------------------------------------------------------------------------
+# pluggable event resolution
+# ---------------------------------------------------------------------------
+
+
+def _flight(reason, blocker=None, stop=3):
+    from discrete_differential_geometry.ecmc import FlightResult
+    return FlightResult(3, reason, stop, 0.0, blocker)
+
+
+def test_horizon_always_refreshes_whatever_the_policy():
+    """A horizon stop is not an event: nothing to reflect off or hand to, and
+    reflecting there would trap a 2-cycle."""
+    from discrete_differential_geometry.ecmc import resolve_event, EVENT_POLICIES
+    rng = np.random.default_rng(0)
+    for pol in EVENT_POLICIES:
+        a, s, kind = resolve_event(_flight("horizon"), "chordA", 3, rng,
+                                   policy=pol, reverse_slot=lambda s: -s,
+                                   refresh=lambda r: ("fresh", 7))
+        assert (a, s, kind) == ("fresh", 7, "refresh"), pol
+
+
+def test_policies_dispatch_distinctly():
+    from discrete_differential_geometry.ecmc import resolve_event
+    rng = np.random.default_rng(0)
+    rev = lambda s: -s
+    fl = _flight("blocker", blocker="chordB")
+    assert resolve_event(fl, "chordA", 3, rng, "reflect", reverse_slot=rev) \
+        == ("chordA", -3, "reflect")
+    assert resolve_event(fl, "chordA", 3, rng, "handoff_sigma") \
+        == ("chordB", 3, "handoff_sigma")
+    assert resolve_event(fl, "chordA", 3, rng, "handoff_chain") \
+        == ("chordB", 3, "handoff_chain")
+    a, s, k = resolve_event(fl, "chordA", 3, rng, "rotate_slot",
+                            reverse_slot=rev,
+                            slot_choices=lambda a, i: [1, 2, 3, 4])
+    assert a == "chordA" and s in (1, 2, 4) and k == "rotate_slot"
+
+
+def test_washboard_stop_cannot_hand_off():
+    """No blocker exists at a washboard stop, so even a handoff policy must
+    reflect rather than invent one."""
+    from discrete_differential_geometry.ecmc import resolve_event
+    rng = np.random.default_rng(0)
+    a, s, kind = resolve_event(_flight("washboard"), "chordA", 3, rng,
+                               policy="handoff_sigma", reverse_slot=lambda s: -s)
+    assert (a, s, kind) == ("chordA", -3, "reflect")
+
+
+def test_unknown_policy_is_refused():
+    from discrete_differential_geometry.ecmc import resolve_event
+    with pytest.raises(ValueError, match="unknown policy"):
+        resolve_event(_flight("blocker", "b"), "a", 1,
+                      np.random.default_rng(0), policy="steer_to_free")

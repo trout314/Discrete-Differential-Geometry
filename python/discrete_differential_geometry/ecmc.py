@@ -47,7 +47,7 @@ from __future__ import annotations
 import numpy as np
 
 __all__ = ["face_rung", "chain_rungs", "uphill_staircase", "sample_flight",
-           "FlightResult"]
+           "FlightResult", "resolve_event", "EVENT_POLICIES"]
 
 
 def _d(edeg, a, b):
@@ -168,3 +168,88 @@ def sample_flight(rungs, start, sigma, rng, beta=1.0, c=0.34034,
 
     return FlightResult(j, reason, (int(start) + int(sigma) * j) % L,
                         float(lam[j]), blk)
+
+
+# ---------------------------------------------------------------------------
+# event resolution -- deliberately pluggable
+# ---------------------------------------------------------------------------
+
+#: What may happen when a flight stops. The choice is a physics question, not
+#: a detail, so it is a parameter rather than a hard-coded rule.
+#:
+#:   reflect        sigma -> -sigma, same chord stays active. Correct and
+#:                  simple, but it destroys the transport chain and with it the
+#:                  only momentum-like object in the sampler.
+#:   handoff_sigma  the blocker becomes active, keeping the direction --
+#:                  hard-sphere ECMC, a Newton's-cradle momentum transfer.
+#:   handoff_chain  the blocker becomes active on the SAME chain. Differs from
+#:                  handoff_sigma exactly when the two chords ride different
+#:                  chains through one contact, which is the generic case.
+#:   rotate_slot    the same chord stays active but takes a different slot.
+#:                  The velocity space here is 12 SLOTS, not +-1, so this is a
+#:                  lifting move that reflect cannot express: it changes chain
+#:                  without reversing, and it is how a chord reaches the
+#:                  crystal-spanning free web (which lives ACROSS chains).
+#:   refresh        redraw the lifting variables entirely. Always balance-safe
+#:                  (it is just velocity resampling) and what a horizon stop
+#:                  should do -- reflecting at a non-event would pair a forward
+#:                  flight with an equal backward one and trap a 2-cycle.
+EVENT_POLICIES = ("reflect", "handoff_sigma", "handoff_chain", "rotate_slot",
+                  "refresh")
+
+
+def resolve_event(result, active, slot, rng, policy="handoff_sigma",
+                  reverse_slot=None, slot_choices=None, refresh=None):
+    """Decide the next (active object, slot) after a flight stops.
+
+    Pure bookkeeping over the lifting variables -- the caller supplies the
+    problem-specific maps, so this stays testable without a sampler:
+
+      reverse_slot(slot)  -> the slot walking the same chain backwards
+      slot_choices(active, stop_index) -> slots available at the stop site
+      refresh(rng)        -> a fresh (active, slot)
+
+    A horizon stop always refreshes regardless of `policy`: it is not an
+    event, so there is nothing to reflect off or hand to.
+
+    BALANCE WARNING. Whatever policy you pick must pair with the involution
+    sigma -> -sigma, or skew detailed balance fails and pi moves. In
+    particular a rule that PREFERS cheap continuations (say, "pick a dS-free
+    slot if one exists") is not automatically reversible, because freeness of
+    the step out of a site is not symmetric under negating the direction. That
+    is the same trap as putting selectivity in a closure criterion. Verify any
+    new policy with a two-sided test before trusting it.
+    """
+    if policy not in EVENT_POLICIES:
+        raise ValueError(f"unknown policy {policy!r}; choose from "
+                         f"{EVENT_POLICIES}")
+    if result.reason == "horizon":
+        if refresh is None:
+            raise ValueError("a horizon stop must refresh; supply refresh=")
+        return (*refresh(rng), "refresh")
+
+    if policy == "refresh":
+        if refresh is None:
+            raise ValueError("policy 'refresh' needs refresh=")
+        return (*refresh(rng), "refresh")
+
+    if policy == "reflect" or result.reason == "washboard":
+        # a washboard stop has no blocker to hand anything to
+        if reverse_slot is None:
+            raise ValueError("reflection needs reverse_slot=")
+        return active, reverse_slot(slot), "reflect"
+
+    if policy == "rotate_slot":
+        if slot_choices is None:
+            raise ValueError("policy 'rotate_slot' needs slot_choices=")
+        opts = [s for s in slot_choices(active, result.stop_index) if s != slot]
+        if not opts:
+            return active, reverse_slot(slot), "reflect"
+        return active, opts[rng.integers(len(opts))], "rotate_slot"
+
+    # handoff_sigma / handoff_chain: the blocker takes over
+    if result.blocker is None:
+        raise ValueError("handoff policy but the flight reported no blocker")
+    if policy == "handoff_sigma":
+        return result.blocker, slot, "handoff_sigma"
+    return result.blocker, slot, "handoff_chain"
