@@ -10,6 +10,7 @@
 - [Ridge bookkeeping bug](ridge-bookkeeping-bug.md) — RESOLVED: unsorted center/coCenter through C API vs sorted-merge productUnion; canonicalize at boundaries; knot-slide unblocked
 
 - [Memory lives in the repo](memory-lives-in-repo.md) — memories are TRACKED at notes/memory/ (symlink from ~/.claude); run tools/link_memory.sh on a new machine; repo is PUBLIC; commit them with the code they describe
+- [Lifted/ECMC transport](lifted-ecmc-transport.md) — same-rung hops are EXACTLY free (no traversal, so no barrier); rung landscape short-correlated; mean free path to contact 55-83 steps at lam=0.35 so ell must be ~50-150; passing OVER a defect is allowed, stopping is a modelling choice
 - [Crystal symmetry group](crystal-symmetry-group.md) — symmetry.py gives EXACT Aut(K)/orbits/stabilizers/BC-chain classes cheaply; Aut(K) may legitimately EXCEED the physical crystal's space group; WL bucketing was fusing 5 real classes; chain-class provenance hole still open
 
 - [Reporting conventions](reporting-conventions.md) — notation/terminology/report rules in notes/CONVENTIONS.md + CLAUDE.md; follow in every report and figure

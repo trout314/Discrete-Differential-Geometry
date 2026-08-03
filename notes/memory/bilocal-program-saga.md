@@ -189,6 +189,12 @@ The catalysis physics is real but only reachable with an oracle the
 channel does not have.
 
 Open threads:
+- LIFTING is now being built -- see [[lifted-ecmc-transport]]. Key result so
+  far: same-rung non-local hops are EXACTLY free (acceptance 1.000000000000,
+  validated against the D core), because the move does not traverse, so dS
+  depends on the endpoints alone and there is no barrier between them. That is
+  a rejection-free directed transport primitive, which is what this whole
+  program was looking for.
 - BUNDLING is the one untried mechanism the structure permits (item 4).
 - The pure-f0 composite E = vertex - 3*chord is unbuilt.
 - The vertex carrier needs its adopted-ball seed biased toward
