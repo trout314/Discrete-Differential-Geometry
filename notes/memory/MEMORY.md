@@ -9,6 +9,7 @@
 - [Embedded GC rt_init bug](embedded-gc-rt-init.md) — RESOLVED: dlopen'd D lib never ran rt_init, GC.collect was a no-op, every D allocation leaked under Python; ddg_runtime_init added; keep hot paths allocation-free
 - [Ridge bookkeeping bug](ridge-bookkeeping-bug.md) — RESOLVED: unsorted center/coCenter through C API vs sorted-merge productUnion; canonicalize at boundaries; knot-slide unblocked
 
+- [Memory lives in the repo](memory-lives-in-repo.md) — memories are TRACKED at notes/memory/ (symlink from ~/.claude); run tools/link_memory.sh on a new machine; repo is PUBLIC; commit them with the code they describe
 - [Crystal symmetry group](crystal-symmetry-group.md) — symmetry.py gives EXACT Aut(K)/orbits/stabilizers/BC-chain classes cheaply; Aut(K) may legitimately EXCEED the physical crystal's space group; WL bucketing was fusing 5 real classes; chain-class provenance hole still open
 
 - [Reporting conventions](reporting-conventions.md) — notation/terminology/report rules in notes/CONVENTIONS.md + CLAUDE.md; follow in every report and figure
