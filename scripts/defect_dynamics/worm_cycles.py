@@ -273,6 +273,18 @@ def main():
         with tick("classify"):
             net = ov.net()
             if not net:
+                # "identity" must mean the STATE is unchanged, not merely that
+                # every edge degree came back. fdiff is the exact facet-level
+                # diff vs the crystal, so assert against it rather than trust
+                # the degree overlay as a proxy: a genuine legal->legal move
+                # that happened to preserve all edge degrees would otherwise be
+                # silently filed as a do-nothing -- i.e. the search would hide
+                # exactly what it exists to find. (Measured 2026-08-02: never
+                # fires through 5 interleaved moves / 6 single-worm moves.)
+                assert not fdiff, (
+                    "legal endpoint has zero edge-degree diff but a NONZERO "
+                    f"facet diff ({len(fdiff)} tets) -- this is a nontrivial "
+                    "legal->legal move being misclassified as the identity")
                 legal_cycles.append(dict(path=list(pathdesc), n_changed=0,
                                          dS=0.0, net6=0, sig=("identity",)))
                 return
