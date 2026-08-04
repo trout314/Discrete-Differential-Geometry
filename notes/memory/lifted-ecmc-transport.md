@@ -282,6 +282,67 @@ The transmit/absorb census's 82% absorb was exactly the second class, so the
 worm is genuinely needed -- but the pristine heads I marched were the FIRST
 class, which already had a better channel. Do not test the worm on flickers.
 
+## THREE-MOVE FLIGHT DESIGN + THE HOP IS BALANCED (2026-08-04)
+
+Design converged with the user to three move types on a deg-3 chord:
+
+    1 EXIT   dS-gated: leave a complex onto the crystal washboard at rung Q
+    2 TRAVEL dS = 0 same-rung hops at CONSTANT Q -- free, no attrition
+    3 ENTER  dS-gated: into the next complex; bounce (sigma -> -sigma) if rejected
+
+The rung is CONSERVED during free flight, so Q acts as a carried kinetic
+energy: exit onto a high rung and you arrive at the next complex still high,
+where more entries are downhill. Only the endpoints are gated.
+
+**User caught a reversibility BUG in an earlier version:** the inverse of every
+uphill ENTRY is a downhill EXIT, and a travel rule restricted to dS = 0 can
+never propose a downhill move. Entries would have had no reverse and the chain
+would pump flickers into complexes -- a broken stationary distribution, not
+slow mixing. Fixed by keeping EXIT as an explicit move type (1 <-> 3 pair,
+2 pairs with itself). Symptom the user spotted first: "it never stops in the
+crystal".
+
+Why travel must stay dS = 0: under the general factorized-Metropolis rule every
+uphill step charges, Lambda accumulates ~0.32/step (c = 0.34034, Q in
+{46,48,50,52}), so against E ~ Exp(1) a flight dies after **~3 steps** against
+a mean free path of 87. Correct and useless. dS = 0 travel has no attrition and
+the Q46/Q50 free webs are crystal-spanning (Q48/Q52 fragment) -- so transport
+is RUNG-DEPENDENT, two conducting energies and two localised ones.
+
+Also measured: restricting the entry 2->3 to the sigma-ray vs allowing any of
+the 4 faces containing the target deg-4 edge. Along the ray, 1 of 480 slides
+converts, at dS = +10. Over all containing faces: 24 legal, 20 convert, dS on
+an exact ladder {0,2,4,6,8,10}, **2 of them FREE**. The BC walk was landing on
+the worst face -- the cost was an artifact of the restriction. CAVEAT: that
+chord was planted ADJACENT to the bundle (its link triangle shared bundle
+vertices, so supports are not disjoint and the rung formula does not apply);
+an arriving chord may behave differently.
+
+**SLOT STRUCTURE AND BALANCE (pristine R m2, steps = 1, 4 sites):**
+
+    12 slots -> 6 distinct 1-step targets, multiplicity EXACTLY 2 each
+    24 ordered pairs (C0 -> C1): fwd slots 2, rev slots 2, mismatches 0
+    dS exactly antisymmetric: max |dS_fwd + dS_rev| = 0.000e+00
+    dS ladder: exact even integers {0, +-2, +-4, +-6}
+
+The 2-fold degeneracy is the TRAILING-LINK TRANSPOSITION: swapping u2 <-> u3 in
+the window [u0,u1,u2,u3] leaves face (u1,u2,u3) unchanged as a set, so the
+1-step target is identical -- but the window differs, so the rays diverge from
+step 2 on.
+
+CONSEQUENCE, and it splits two ways:
+  * VALIDITY -- the degeneracy is symmetric (2 vs 2), cancels in the proposal
+    ratio, no Hastings factor. The atomic hop satisfies detailed balance as is.
+  * PERSISTENCE -- sigma must be the 4-vertex FRAME, not the slot. Holding a
+    slot does NOT hold a ray; a flight carrying only the slot forks every hop
+    and drifts onto a different chain. nextChainWindow is a bijection on
+    frames, so continuation is unique there. (I first stated this as a validity
+    requirement; it is only a persistence one.)
+
+STILL OPEN: skew-DB for the LIFTED chain (the above is detailed balance of the
+unlifted atomic hop); the concrete flip involution ("which frame is -sigma");
+entry/exit balance at a real complex.
+
 ## State
 
 Built and tested (235 tests): `face_rung`, `chain_rungs`, `uphill_staircase`,
