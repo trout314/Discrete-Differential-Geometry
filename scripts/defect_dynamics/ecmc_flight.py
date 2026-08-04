@@ -29,10 +29,18 @@ inverse). Target selection is WALK-based (face_rung + defect-vertex test),
 never legality-based, so forward and reverse select the same sites; a slide
 that turns out illegal at k* is a rejection (flip) on both sides.
 
-Momentum handoff: DEFAULT rule -- the activity always follows the slide's own
-arrival chord (the axis of the 2->3). A conversion (target face containing a
-bundle deg-4) frees that edge to deg-3 as debris but the activity flies on.
-The freed-edge handoff is a separate, not-yet-designed channel.
+Momentum handoff (--p-hand): after a CONVERSION the axis chord C1 and the
+freed edge e4 are INTERLOCKED (each partner locally recognizable: e4's link
+contains both endpoints of C1, C1's link is the face containing e4). With
+probability p an interlocked ACTIVE edge hands to its partner BEFORE the scan
+(source-hand), and an interlocked ARRIVAL hands AFTER acceptance
+(arrival-hand). Frames map through the equivariant bijection h (axis->freed;
+h(F(w)) = F(h(w)) verified 20/20 sites) or its inverse (freed->axis), so
+source-hands pair with arrival-hands of the reverse composite and the move
+stays skew-balanced. p-hand = 0 recovers the default rule, under which the
+heavy sector is PROVABLY frozen (the background is invariant under every
+slide); the handoff is the only coupling. Carried Q passes through hands
+unchanged.
 
 Q is conserved for the whole run (no Q-refresh yet), so one run samples one
 rung sector; ergodicity across rungs needs a Q-resample move, deliberately
@@ -82,8 +90,9 @@ def minus_flier(ed, chord, link):
 
 class Flight:
     def __init__(self, sampler, chord, frame, kscan=60, audit=True,
-                 beta=1.0):
+                 beta=1.0, p_hand=0.0):
         self.beta = float(beta)
+        self.p_hand = float(p_hand)
         self.s = sampler
         self.C = chord
         self.w = frame
@@ -150,6 +159,92 @@ class Flight:
         e2 = self.C[1] if self.w[0] == self.C[0] else self.C[0]
         self.w = (e2, self.w[3], self.w[2], self.w[1])
 
+    # -- interlock detection + the equivariant handoff ------------------------
+    def _link_edge(self, e):
+        """Link vertices of edge e in the LIVE manifold (any degree)."""
+        F = np.asarray(self.s.manifold.facets())
+        lk = set()
+        for t in F:
+            t = [int(x) for x in t]
+            if e[0] in t and e[1] in t:
+                lk |= {v for v in t if v not in e}
+        return sorted(lk)
+
+    def partner(self):
+        """The interlocked partner of the ACTIVE edge, or None.
+
+        Interlock relation: a deg-3 edge P formed by two of my link vertices,
+        whose own link contains both of my endpoints. The configuration is
+        SYMMETRIC under (active <-> partner, x <-> n) -- both edges are deg-3
+        with triangle links sharing one tet -- so there is no axis/freed role
+        to distinguish, and the handoff map below is SELF-INVERSE under the
+        exchange (verified: applying the same formula from the partner's side
+        recovers the original frame exactly).
+        """
+        E, L = self.C, self.link
+        for i in range(3):
+            for j in range(i + 1, 3):
+                cand = tuple(sorted((L[i], L[j])))
+                if self.s.manifold.degree([cand[0], cand[1]]) == 3 \
+                        and set(E) <= set(self._link_edge(cand)):
+                    return cand
+        return None
+
+    def _hand_map(self, E, Elink, P, Plink):
+        """The equivariant bijection h: frames(E) -> frames(P).
+
+        x = singleton of E's link w.r.t. P; n = singleton of P's link w.r.t.
+        E. h encodes (first-of-P-in-perm -> lead, position of x -> position
+        of n, lead -> order of E's endpoints): 12 -> 12, flip-equivariant
+        (h(F(w)) = F(h(w))), and the same formula from P's side is h^-1.
+        """
+        a1, b1 = E
+        u, v = P
+        x = next(z for z in Elink if z not in P)
+        n = next(z for z in Plink if z not in E)
+        def h(w):
+            e = w[0]
+            pi = w[1:4]
+            ep = b1 if e == a1 else a1
+            i = pi.index(x)
+            f = next(z for z in pi if z in (u, v))
+            rem = [q for q in range(3) if q != i]
+            sig = [None] * 3
+            sig[i] = n
+            sig[rem[0]] = e
+            sig[rem[1]] = ep
+            return (f,) + tuple(sig)
+        return h
+
+    def try_hand(self, rng, when):
+        """With prob p_hand, hand the activity to the interlocked partner."""
+        if self.p_hand <= 0:
+            return False
+        P = self.partner()
+        if P is None:
+            return False
+        if rng.random() >= self.p_hand:
+            return False
+        Plink = tuple(self._link_edge(P))
+        h = self._hand_map(self.C, self.link, P, Plink)
+        wnew = h(self.w)
+        if self.audit:
+            # flip-equivariance at use time: h(F(w)) == F(h(w))
+            e2 = self.C[1] if self.w[0] == self.C[0] else self.C[0]
+            wf = (e2, self.w[3], self.w[2], self.w[1])
+            p2 = P[1] if wnew[0] == P[0] else P[0]
+            wnf = (p2, wnew[3], wnew[2], wnew[1])
+            if h(wf) != wnf:
+                self.events["HAND_EQUIVARIANCE_FAIL"] += 1
+            # self-inverse under exchange: the partner's map returns w
+            hb = self._hand_map(P, Plink, self.C, self.link)
+            if hb(wnew) != self.w:
+                self.events["HAND_INVERSE_FAIL"] += 1
+        self.C, self.w = P, wnew
+        self._rebuild_background()
+        self.events[f"hand_{when}"] += 1
+        return True
+
     # -- proposal scan (pure walk, no legality) -------------------------------
     def scan(self, w):
         """First special site along w: ('free'|'contact', k, arrival, face)."""
@@ -186,6 +281,7 @@ class Flight:
 
     # -- one kernel step ------------------------------------------------------
     def step(self, rng):
+        self.try_hand(rng, "src")
         prop = self.scan(self.w)
         if prop is None:
             self.events["stuck_flip"] += 1
@@ -243,6 +339,7 @@ class Flight:
             if self.audit and abs(dS) > TOL:
                 self._audit_reverse(old)
             self.log.append((label, k, dS, self.C))
+            self.try_hand(rng, "arr")
         else:
             self.events[f"reject_{kind}_flip"] += 1
             self.flip()
@@ -270,6 +367,9 @@ def main():
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--kscan", type=int, default=60)
     ap.add_argument("--no-audit", action="store_true")
+    ap.add_argument("--p-hand", type=float, default=0.0,
+                    help="handoff probability at interlocked configurations "
+                         "(0 = default rule, heavy sector provably frozen)")
     ap.add_argument("--beta", type=float, default=1.0,
                     help="inverse temperature for the gated moves (the scan "
                          "knob; target distribution becomes pi^beta)")
@@ -323,9 +423,10 @@ def main():
     s = ManifoldSampler(m, SamplerParams(**par))
     w0 = (C[0], g[0], g[1], g[2])
     fl = Flight(s, C, w0, kscan=args.kscan, audit=not args.no_audit,
-                beta=args.beta)
+                beta=args.beta, p_hand=args.p_hand)
     print(f"launch chord {C} on face {g}, carried Q = {fl.Q}, "
-          f"bundle verts {len(BV)}, beta = {args.beta}")
+          f"bundle verts {len(BV)}, beta = {args.beta}, "
+          f"p_hand = {args.p_hand}")
 
     for step in range(args.nstep):
         fl.step(rng)
@@ -342,6 +443,15 @@ def main():
           f"gated accepts {len(gated)} "
           f"{sorted(collections.Counter((g_[0], round(g_[2], 1)) for g_ in gated).items())}")
     print(f"final chord {fl.C}, carried Q {fl.Q}")
+    # THE coupling metric: has the heavy sector changed, final vs initial?
+    # (step-to-step comparison misses it: a handoff legitimately swaps which
+    # edge is background, so the commit happens invisibly to that check)
+    ill0 = {e for e, d in edB.items() if d < 5 or d > 6}
+    ill1 = fl.ill_snapshot
+    gained = sorted(ill1 - ill0)
+    lost = sorted(ill0 - ill1)
+    print(f"HEAVY SECTOR final vs initial: lost {lost}  gained {gained}"
+          f"{'   <== COUPLED' if (gained or lost) else '   (unchanged)'}")
 
 
 if __name__ == "__main__":

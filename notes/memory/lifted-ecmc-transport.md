@@ -421,9 +421,41 @@ is NOT unique -- composing with any equivariant permutation of the freed
 frames stays valid, so alignment is optimisable later without touching
 validity.
 
-REMAINING: wire h into ecmc_flight as the branch at conversions (branch prob
-p, audits extended to handoffs), then the first run where bundle_changed CAN
-fire: does the bundle move under flicker bombardment with the coupling on?
+## FIRST COUPLING (2026-08-05): the heavy sector MOVED
+
+Handoff wired into ecmc_flight (--p-hand): with prob p an interlocked active
+edge hands to its partner BEFORE the scan (source-hand) and an interlocked
+ARRIVAL hands after acceptance (arrival-hand); source-hands pair with
+arrival-hands of the reverse composite. DISCOVERED EN ROUTE: the interlocked
+configuration is SYMMETRIC under (C1 <-> e4, x <-> n) -- both deg-3 with
+triangle links sharing one tet -- so there is no axis/freed role to
+distinguish, and the SAME h formula applied from the partner's side is
+exactly h^-1 (self-inverse under the exchange). One symmetric rule, no role
+bookkeeping.
+
+Seed 3 (Q52, beta 0.5, p_hand 0.5, 2000 steps):
+
+    HEAVY SECTOR final vs initial:
+      lost   (0,334), (163,358), (201,334)   -- 3 of 5 bundle deg-4 edges
+      gained (0,201)
+    drift 0.000e+00, 0 audit failures, 0 equivariance/inverse failures
+    11 handoffs (8 src / 3 arr -- the pair ping-pongs before committing)
+
+Full chain executed: travel -> conversion -> handoff -> freed edge flies ->
+bundle permanently restructured, activity exiting at Q = 52. First time in
+the whole bilocal/lifted program that the momentum channel moved the heavy
+sector. The default-rule theorem said impossible without the handoff; with
+it, first Q52 seed, 2000 steps.
+
+INSTRUMENTATION GOTCHA: step-to-step background comparison MISSES the
+coupling -- a handoff legitimately swaps which edge is background, so the
+commit is invisible to it. The metric is final-vs-initial illegal sets
+(now printed as HEAVY SECTOR).
+
+NEXT: statistics (many seeds/rungs: coupling rate vs Q, p_hand, beta);
+alignment-optimised h within the equivariant class; then the actual physics
+target -- momentum current through a defect gas and whether relaxation
+accelerates (the original ADM motivation).
 
 ## State
 
