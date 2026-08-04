@@ -339,9 +339,38 @@ CONSEQUENCE, and it splits two ways:
     frames, so continuation is unique there. (I first stated this as a validity
     requirement; it is only a persistence one.)
 
-STILL OPEN: skew-DB for the LIFTED chain (the above is detailed balance of the
-unlifted atomic hop); the concrete flip involution ("which frame is -sigma");
-entry/exit balance at a real complex.
+**ALL THREE CLOSED (2026-08-04 late):**
+
+FLIP INVOLUTION, concrete:  F(e, p0 p1 p2) = (e', p2 p1 p0) -- swap chord
+endpoint, reverse link order. Derived by conjugating the sliding-window map;
+verified through the D core: M(F(M(C,w))) = F(C,w) **18/18 PASS** (6 sites x 3
+frames, hop lengths k = 1..20, every dS exactly 0, every committed arrival
+matching the frame walk). This IS the lifted skew-DB check for the
+deterministic travel kernel; with the 2-vs-2 proposal balance the travel phase
+is validity-complete. Rung antisymmetry is why the return hop stops exactly at
+the start: intermediate positions are off-rung both ways.
+
+ENTRY/EXIT AT A REAL COMPLEX, ARRIVING CHORD (pristine R m2 + CREATE_SEQ
+bundle; launches created >= 3 from the bundle, flights 20-43 steps into
+contact): 4/4 BALANCED. Every entry has EXACTLY ONE reverse (slot, k)
+recreating the source chord, same k, dS exactly antisymmetric (max |dS_e +
+dS_x| = 0.00e+00). No Hastings factor survives. The pristine 2-vs-2 slot
+degeneracy splits to 1-vs-1 near the defect -- but symmetrically.
+
+TWO STRUCTURAL FINDINGS:
+  * FIRST CONTACT IS DOCKING, NOT CONVERSION. All four entries landed the
+    chord ADJACENT to the bundle (arrival shares one bundle vertex), dS in
+    {-4,-2,+4}; no bundle deg-4 changed degree. Faces containing a bundle
+    deg-4 lie DEEPER than first contact, so entry is "dock", with "convert" a
+    subsequent move from the docked position.
+  * RUNG-DEPENDENCE IS DRAMATIC: one launch had ZERO free sites in 23 steps
+    (isolated high rung -- travel cannot move that chord along that frame at
+    all); another had 24/43 free. The Q48/Q52-fragment story visible in a
+    single flight profile. Exit-rung selection will strongly shape transport.
+
+REMAINING for a running channel: the assembled driver (flights with ell,
+bounce on rejection, dock->convert sequencing) and the momentum handoff rule
+at conversions.
 
 ## State
 
