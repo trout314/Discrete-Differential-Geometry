@@ -325,6 +325,80 @@ retro-explains why the chain-following march moved at all
 ([[lifted-ecmc-transport]]): its no-backtrack rule was a 1-step memory, i.e. a
 crude sigma smuggled in.
 
+**COURSE CORRECTION (2026-08-04, user caught it): THE WORM IS THE WRONG TOOL
+FOR ANYTHING A SINGLE 2->3 MAKES.**
+
+Every object created by one 2->3 carries a deg-3 AXIS edge, and a 3->2 on that
+axis undoes the whole 2->3 -- deg-4 edges and tip motifs included. So
+"annihilate here, recreate down the spiral" is already exactly
+`nonlocal_slide_at(x, y, slot, steps)`. Measured on all four C15 site classes
+(12 slots x 40 steps = 480 trials each, pure edge action):
+
+    orbit 0  {4:2, 3:1}      480/480 legal   172 FREE (dS=0)   steps 1..40
+    orbit 1  {4:3, 7:1, 3:1} 480/480 legal   186 FREE          steps 1..40
+    orbit 2  {4:3, 7:2, 3:1} 480/480 legal   120 FREE          steps 2..40
+    orbit 3  {4:3, 3:1}      480/480 legal    54 FREE          steps 1..31
+
+Each verified: after a free slide the species is IDENTICAL (same illegal
+edge-degree multiset) and the new deg-4 set is vertex-DISJOINT from the source.
+**Orbits 1, 2, 3 have ZERO worm mobility (0 usable rays of 96, 0 displacing
+candidates) yet are fully mobile under the deg-3 slide** -- orbit 1 is the most
+mobile of the four despite having no worm candidates at all.
+
+The C15 orbit-0 "worm head" marched all session has signature {3:1, 4:2} --
+it IS the (3,4,4) flicker knot, and it already had a longer-range, exactly
+free, D-core-validated channel. Comparison:
+
+              deg-3 slide                        deg-4 worm
+    range     arbitrary (50-200 measured)        ONE tet
+    cost      dS = c*dQ exact, 0 on same rung    dS == 0
+    slots     12, hop_target/hop_index inverse   96 rays, no inverse worked out
+    status    D core, MH-validated, acc = 1      enumeration only
+
+**THE WORM'S ACTUAL DOMAIN is deg-3-FREE deg-4 structure**, which no 3->2 can
+annihilate: the long-lived bundle sector (no deg-3 anywhere -- the recorded
+reason the deg-3 slide cannot equilibrate it) and the 82%-absorbing blockers of
+the transmit/absorb census. Pristine worm tests must therefore plant the
+CREATE_SEQ cluster (signature [4,4,4,4,4], NO deg-3), NOT a flicker.
+
+Consequence for the lift: the carrier splits by SPECIES rather than being
+chosen once. The deg-3 slide is an unusually good ECMC substrate for the
+flicker sector (12 slots, symmetric proposal, acceptance exactly 1 on same
+rung); the worm is the only option for the bundles.
+
+**THE CATALYST IS REQUIRED FOR TRANSPORT (2026-08-04, on the worm's actual
+domain).** Tested on the CREATE_SEQ object -- signature {4:5}, ZERO deg-3, four
+genuine TIP MOTIFS at v = 0, 28, 44, 163 (stars {4:1, 5:10, 6:k}):
+
+    anchor (0,334)   0 candidates   0 displacing   0/96 rays
+    anchor (28,358)  2 candidates   0 displacing   0/96 rays
+    anchor (44,201)  0 candidates   0 displacing   0/96 rays
+    anchor (163,358) 2 candidates   0 displacing   0/96 rays
+    anchor (201,334) 0 candidates   0 displacing   0/96 rays
+
+**A deg-3-free deg-4 bundle is COMPLETELY IMMOBILE**, tip motifs and all -- the
+few candidates that exist are pivots. Planting ONE deg-3 next to it (2->3 on
+face (0,163,1075), giving deg-3 (942,1248)) takes it from **0 to 40 DISPLACING
+moves** out of 115 committing candidates.
+
+RETRACTS my earlier "the catalyst is OPTIONAL" note from the same day. Correct
+statement:
+  * catalyst NOT needed for a worm move to EXIST (pivots exist without one)
+  * catalyst REQUIRED for a DISPLACING one
+
+This vindicates the original "needs a deg-3 dipole in range (fired at 8/8 such
+tips)" and the measured availability-vs-catalyst-distance gradient (dist 1 ->
+73-100% live, dist >= 8 -> 0%), and explains why worm_walk succeeded on thermal
+melts: flickers are present there.
+
+PHYSICAL PICTURE: deg-4 bundles are immobile in isolation and move ONLY by
+CATALYSIS FROM A PASSING FLICKER. Bundle mobility is slaved to flicker density
+and position -- a two-body process, not single-carrier transport. That is
+exactly the 82%-absorb result of the transmit/absorb census seen from the other
+side. Design consequence: lift the FLICKER (deg-3 slide -- 12 slots, exact
+inverse, acceptance 1 on same rung), and let bundles be scatterers that step
+when a flicker passes, rather than trying to lift the bundle itself.
+
 STILL AHEAD: event-chain lift (momentum sector); cocycle support if needed.
 
 Related: [[reaction-census-lam035-m4-results]] (lone deg-4 monomers are the

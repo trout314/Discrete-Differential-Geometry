@@ -264,6 +264,24 @@ the local data cannot. Minimal sigma is ~one bit (which end is the front). This
 also explains why the chain-following march moved: its no-backtrack rule was a
 1-step memory acting as a crude sigma. Details in [[deg4-worm-design]].
 
+## CARRIER SPLITS BY SPECIES (2026-08-04 correction)
+
+I switched the carrier wholesale from deg-3 chord to deg-4 tip above. That was
+too broad. Anything a single 2->3 creates has a deg-3 AXIS edge whose 3->2
+undoes the entire excitation, so `nonlocal_slide_at` already annihilates the
+whole object and rebuilds it arbitrarily far down a BC chain -- and does it
+better than the worm (arbitrary range vs one tet; 12 slots with an exact
+inverse; acceptance exactly 1 on same rung). Measured: all four C15 site
+classes are 480/480 legal with 54-186 free slides, relocating the species
+intact and vertex-disjoint. See [[deg4-worm-design]].
+
+    flickers / anything one 2->3 makes  ->  deg-3 non-local slide (built)
+    deg-3-FREE deg-4 bundles            ->  worm (the only option)
+
+The transmit/absorb census's 82% absorb was exactly the second class, so the
+worm is genuinely needed -- but the pristine heads I marched were the FIRST
+class, which already had a better channel. Do not test the worm on flickers.
+
 ## State
 
 Built and tested (235 tests): `face_rung`, `chain_rungs`, `uphill_staircase`,
