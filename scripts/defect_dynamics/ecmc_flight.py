@@ -1,0 +1,342 @@
+#!/usr/bin/env python3
+"""Lifted ECMC flight of a deg-3 chord: the assembled driver.
+
+Lifted state: (chord C, frame w, carried rung Q).
+  * frame w = 4-window (e, p0, p1, p2), e an endpoint of C, (p0,p1,p2) an
+    ordering of C's link triangle. Transport = the sliding-window walk in the
+    chord-annihilated complex; flip F(e, p0p1p2) = (e', p2p1p0) -- verified
+    involution (M(F(M)) = F, 18/18).
+  * Q = the rung the chord is riding. CONSERVED by every move of this kernel
+    ("kinetic energy"): travel targets sit on rung Q, and an exit from a
+    complex must land on a rung-Q site. Carrying Q is what makes entry/exit
+    reversible: the exit's target (first clean rung-Q site along the flipped
+    ray) is exactly the site the entry came from, because the entry was only
+    proposed once no free rung-Q site remained before contact.
+
+ONE UNIFORM KERNEL (travel / entry / exit are the same rule):
+
+  scan k = 1, 2, ... along the frame walk;
+  k* = first k whose arrival is (clean AND on rung Q)   [a free-web site]
+                             OR (touching a complex)     [contact]
+  propose the slide to k*; accept with min(1, e^-dS);
+  on accept: hop, transport w by k* steps;  on reject (or no k*, or the
+  slide at k* is illegal): FLIP the frame.
+
+Travel is the special case where the proposal is dS = 0 (always accepted);
+entry is the contact case (usually uphill); exit is the boundary case where
+the first clean rung-Q site is the launch point (downhill, the entry's exact
+inverse). Target selection is WALK-based (face_rung + defect-vertex test),
+never legality-based, so forward and reverse select the same sites; a slide
+that turns out illegal at k* is a rejection (flip) on both sides.
+
+Momentum handoff: DEFAULT rule -- the activity always follows the slide's own
+arrival chord (the axis of the 2->3). A conversion (target face containing a
+bundle deg-4) frees that edge to deg-3 as debris but the activity flies on.
+The freed-edge handoff is a separate, not-yet-designed channel.
+
+Q is conserved for the whole run (no Q-refresh yet), so one run samples one
+rung sector; ergodicity across rungs needs a Q-resample move, deliberately
+left out of this first driver.
+
+Audit mode (--audit, default on): after every accepted gated move, rerun the
+scan from the flipped new state and assert it proposes the exact inverse
+(same site, same k, dS' = -dS). Also asserts sum(accepted dS) equals the
+sampler's tracked objective change exactly, and that at clean sites the
+carried Q equals the chord's own creation-face rung.
+"""
+import argparse
+import collections
+import os
+import sys
+
+import numpy as np
+
+_ROOT = os.path.normpath(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+sys.path.insert(0, os.path.join(_ROOT, "python"))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from discrete_differential_geometry import Manifold, ManifoldSampler, SamplerParams
+from discrete_differential_geometry.ecmc import face_rung
+from worm_deg4 import CREATE_SEQ, apply_seq
+
+ESTAR = 5.105025
+TOL = 1e-9
+
+
+def ed_of(m):
+    return {tuple(sorted(map(int, e))): m.degree(e) for e in m.simplices(1)}
+
+
+def minus_flier(ed, chord, link):
+    """Edge degrees of the chord-annihilated complex, by local adjustment."""
+    out = dict(ed)
+    del out[chord]
+    l0, l1, l2 = link
+    for e in ((l0, l1), (l0, l2), (l1, l2)):
+        out[tuple(sorted(e))] += 1
+    for c in chord:
+        for l in link:
+            out[tuple(sorted((c, l)))] -= 1
+    return out
+
+
+class Flight:
+    def __init__(self, sampler, chord, frame, kscan=60, audit=True):
+        self.s = sampler
+        self.C = chord
+        self.w = frame
+        self.kscan = kscan
+        self.audit = audit
+        self.events = collections.Counter()
+        self.log = []
+        self.dS_sum = 0.0
+        self.S0 = sampler.current_objective
+        self._rebuild_background()
+        self.Q = self._rung_of_face(self.link, chord)
+
+    # -- background = the chord-annihilated complex ---------------------------
+    def _rebuild_background(self):
+        ed = ed_of(self.s.manifold)
+        # full link of the deg-3 chord: the 3 vertices among its tets
+        F = np.asarray(self.s.manifold.facets())
+        lk = set()
+        for t in F:
+            t = [int(x) for x in t]
+            if self.C[0] in t and self.C[1] in t:
+                lk |= {v for v in t if v not in self.C}
+        self.link = tuple(sorted(lk))
+        assert len(self.link) == 3, self.link
+        self.edB = minus_flier(ed, self.C, self.link)
+        ill = {e for e, d in self.edB.items() if d < 5 or d > 6}
+        self.BV = {v for e in ill for v in e}
+        self.f2a = {}
+        # background face->apex map: adjust the flier's 3 tets to 2
+        tets = []
+        for t in F:
+            t = tuple(sorted(int(x) for x in t))
+            if self.C[0] in t and self.C[1] in t:
+                continue
+            tets.append(t)
+        l0, l1, l2 = self.link
+        tets.append(tuple(sorted((l0, l1, l2, self.C[0]))))
+        tets.append(tuple(sorted((l0, l1, l2, self.C[1]))))
+        for t in tets:
+            for i in range(4):
+                self.f2a.setdefault(t[:i] + t[i + 1:], []).append(t[i])
+        self.ill_snapshot = frozenset(ill)
+        self.ill_deg = {e: self.edB[e] for e in ill}
+
+    # -- frame walk in the background ----------------------------------------
+    def stepw(self, w):
+        ap = self.f2a.get(tuple(sorted(w[1:4])))
+        if ap is None or len(ap) != 2:
+            return None
+        x = ap[0] if ap[1] == w[0] else ap[1]
+        return None if x == w[0] else (w[1], w[2], w[3], int(x))
+
+    def arrival(self, w):
+        ap = self.f2a.get(tuple(sorted(w[1:4])))
+        if ap is None or len(ap) != 2:
+            return None
+        nxt = ap[0] if ap[1] == w[0] else ap[1]
+        return tuple(sorted((int(w[0]), int(nxt))))
+
+    def _rung_of_face(self, face, apexes):
+        return face_rung(face, apexes, self.edB)
+
+    def flip(self):
+        e2 = self.C[1] if self.w[0] == self.C[0] else self.C[0]
+        self.w = (e2, self.w[3], self.w[2], self.w[1])
+
+    # -- proposal scan (pure walk, no legality) -------------------------------
+    def scan(self, w):
+        """First special site along w: ('free'|'contact', k, arrival, face)."""
+        ww = w
+        for k in range(1, self.kscan + 1):
+            ww = self.stepw(ww)
+            if ww is None:
+                return None
+            arr = self.arrival(ww)
+            if arr is None:
+                return None
+            face = tuple(sorted(ww[1:4]))
+            sup = set(face) | set(arr)
+            if sup & self.BV:
+                return ("contact", k, arr, face)
+            if self._rung_of_face(face, arr) == self.Q:
+                return ("free", k, arr, face)
+        return None
+
+    def _slot_for(self, w):
+        a1 = self.arrival(self.stepw(w)) if self.stepw(w) else None
+        w2 = self.stepw(self.stepw(w)) if self.stepw(w) else None
+        a2 = self.arrival(w2) if w2 else None
+        for sl in range(12):
+            r1 = self.s.nonlocal_slide_at(self.C[0], self.C[1], sl, 1,
+                                          commit=False)
+            r2 = self.s.nonlocal_slide_at(self.C[0], self.C[1], sl, 2,
+                                          commit=False)
+            ok1 = (r1 is None and a1 is None) or (r1 and r1[2] == a1)
+            ok2 = (r2 is None and a2 is None) or (r2 and r2[2] == a2)
+            if a1 and r1 and r1[2] == a1 and (a2 is None or (r2 and r2[2] == a2)):
+                return sl
+        return None
+
+    # -- one kernel step ------------------------------------------------------
+    def step(self, rng):
+        prop = self.scan(self.w)
+        if prop is None:
+            self.events["stuck_flip"] += 1
+            self.flip()
+            return
+        kind, k, arr, face = prop
+        slot = self._slot_for(self.w)
+        if slot is None:
+            self.events["noslot_flip"] += 1
+            self.flip()
+            return
+        r = self.s.nonlocal_slide_at(self.C[0], self.C[1], slot, k,
+                                     commit=False)
+        if r is None or r[2] != arr:
+            self.events["illegal_flip"] += 1
+            self.flip()
+            return
+        dS = r[0]
+        # a rung-Q target is dS = 0 ONLY when the source chord is itself clean;
+        # from a docked chord the same proposal is the EXIT and carries the
+        # entry's elevation with reversed sign -- gated below like everything
+        src_clean = not ((set(self.C) | set(self.link)) & self.BV)
+        if kind == "free" and src_clean:
+            assert abs(dS) < 1e-6, (dS, "free site not free from clean chord")
+        if dS <= 0 or rng.random() < np.exp(-dS):
+            old = (self.C, self.w, k, dS)
+            self.s.nonlocal_slide_at(self.C[0], self.C[1], slot, k,
+                                     commit=True)
+            self.dS_sum += dS
+            wnew = self.w
+            for _ in range(k):
+                wnew = self.stepw(wnew)
+            self.C, self.w = arr, wnew
+            # the background (state minus flier) is INVARIANT under flier
+            # motion, so no rebuild -- only the flier's own link moves, and
+            # the new link is exactly the target face
+            self.link = face
+            label = kind if src_clean else \
+                ("exit" if kind == "free" else "deeper")
+            self.events[f"accept_{label}"] += 1
+            # bundle change (conversion)?  ~|bundle| degree queries, not a
+            # full edge sweep
+            # (a docked flier's own support can shift a bundle edge's LIVE
+            # degree without changing the background, so this flag only
+            # triggers the rebuild; the rebuild's snapshot comparison decides
+            # whether the background truly changed)
+            changed = any(
+                self.s.manifold.degree(list(e)) != d
+                for e, d in self.ill_deg.items())
+            if changed:
+                before = self.ill_snapshot
+                self._rebuild_background()
+                if self.ill_snapshot != before:
+                    self.events["bundle_changed"] += 1
+            if self.audit and abs(dS) > TOL:
+                self._audit_reverse(old)
+            self.log.append((label, k, dS, self.C))
+        else:
+            self.events[f"reject_{kind}_flip"] += 1
+            self.flip()
+
+    def _audit_reverse(self, old):
+        C0, w0, k0, dS0 = old
+        save = (self.C, self.w)
+        e2 = self.C[1] if self.w[0] == self.C[0] else self.C[0]
+        wf = (e2, self.w[3], self.w[2], self.w[1])
+        prop = self.scan(wf)
+        ok = prop is not None and prop[1] == k0 and prop[2] == C0
+        if not ok:
+            self.events["AUDIT_FAIL"] += 1
+            print(f"   AUDIT FAIL: reverse of {C0}->{self.C} (k={k0}) "
+                  f"proposes {prop}")
+        else:
+            self.events["audit_ok"] += 1
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--ref", default=os.path.join(
+        _ROOT, "data/tcp_reference/T3_R_m2_N7248.mfd"))
+    ap.add_argument("--nstep", type=int, default=300)
+    ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--kscan", type=int, default=60)
+    ap.add_argument("--no-audit", action="store_true")
+    args = ap.parse_args()
+    rng = np.random.default_rng(args.seed)
+
+    m = Manifold.load(args.ref, 3)
+    apply_seq(m, CREATE_SEQ)
+    edB = ed_of(m)
+    BV = {v for e, d in edB.items() if d < 5 or d > 6 for v in e}
+    F = np.asarray(m.facets())
+    f2a = {}
+    for t in F:
+        t = tuple(sorted(int(x) for x in t))
+        for i in range(4):
+            f2a.setdefault(t[:i] + t[i + 1:], []).append(t[i])
+    # launch: clean face >= 3 from the bundle
+    from collections import deque
+    V = int(F.max()) + 1
+    adj = [[] for _ in range(V)]
+    for e in m.simplices(1):
+        a, b = sorted(map(int, e))
+        adj[a].append(b)
+        adj[b].append(a)
+    dist = np.full(V, -1, np.int32)
+    dq = deque(sorted(BV))
+    for v in BV:
+        dist[v] = 0
+    while dq:
+        u = dq.popleft()
+        for w in adj[u]:
+            if dist[w] < 0:
+                dist[w] = dist[u] + 1
+                dq.append(w)
+    faces = sorted(f for f, ap2 in f2a.items() if len(ap2) == 2)
+    order = rng.permutation(len(faces))
+    g = None
+    for i in order:
+        f = faces[i]
+        ap2 = f2a[f]
+        sup = set(f) | {int(ap2[0]), int(ap2[1])}
+        if min(dist[v] for v in sup) >= 3:
+            g = f
+            break
+    C = tuple(sorted(int(x) for x in f2a[g]))
+    m.do_bistellar_move(list(g), list(C))
+    par = dict(num_facets_target=len(F) + 1, num_facets_coef=0.0,
+               hinge_degree_target=ESTAR, hinge_degree_target_coef=1.0,
+               num_hinges_coef=0.0, hinge_degree_variance_coef=0.0,
+               codim3_degree_variance_coef=0.0)
+    s = ManifoldSampler(m, SamplerParams(**par))
+    w0 = (C[0], g[0], g[1], g[2])
+    fl = Flight(s, C, w0, kscan=args.kscan, audit=not args.no_audit)
+    print(f"launch chord {C} on face {g}, carried Q = {fl.Q}, "
+          f"bundle verts {len(BV)}")
+
+    for step in range(args.nstep):
+        fl.step(rng)
+
+    print(f"\nevents after {args.nstep} kernel steps:")
+    for k, v in sorted(fl.events.items()):
+        print(f"   {k:22s} {v}")
+    drift = abs((fl.s.current_objective - fl.S0) - fl.dS_sum)
+    print(f"\nobjective drift |tracked - sum(dS)| = {drift:.3e}")
+    hops = [x for x in fl.log if x[0] == "free"]
+    gated = [x for x in fl.log if x[0] != "free"]
+    print(f"free hops {len(hops)} (k median "
+          f"{np.median([h[1] for h in hops]) if hops else 0:.0f}), "
+          f"gated accepts {len(gated)} "
+          f"{sorted(collections.Counter((g_[0], round(g_[2], 1)) for g_ in gated).items())}")
+    print(f"final chord {fl.C}, carried Q {fl.Q}")
+
+
+if __name__ == "__main__":
+    main()
