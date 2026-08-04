@@ -81,7 +81,9 @@ def minus_flier(ed, chord, link):
 
 
 class Flight:
-    def __init__(self, sampler, chord, frame, kscan=60, audit=True):
+    def __init__(self, sampler, chord, frame, kscan=60, audit=True,
+                 beta=1.0):
+        self.beta = float(beta)
         self.s = sampler
         self.C = chord
         self.w = frame
@@ -208,7 +210,7 @@ class Flight:
         src_clean = not ((set(self.C) | set(self.link)) & self.BV)
         if kind == "free" and src_clean:
             assert abs(dS) < 1e-6, (dS, "free site not free from clean chord")
-        if dS <= 0 or rng.random() < np.exp(-dS):
+        if dS <= 0 or rng.random() < np.exp(-self.beta * dS):
             old = (self.C, self.w, k, dS)
             self.s.nonlocal_slide_at(self.C[0], self.C[1], slot, k,
                                      commit=True)
@@ -268,6 +270,9 @@ def main():
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--kscan", type=int, default=60)
     ap.add_argument("--no-audit", action="store_true")
+    ap.add_argument("--beta", type=float, default=1.0,
+                    help="inverse temperature for the gated moves (the scan "
+                         "knob; target distribution becomes pi^beta)")
     args = ap.parse_args()
     rng = np.random.default_rng(args.seed)
 
@@ -317,9 +322,10 @@ def main():
                codim3_degree_variance_coef=0.0)
     s = ManifoldSampler(m, SamplerParams(**par))
     w0 = (C[0], g[0], g[1], g[2])
-    fl = Flight(s, C, w0, kscan=args.kscan, audit=not args.no_audit)
+    fl = Flight(s, C, w0, kscan=args.kscan, audit=not args.no_audit,
+                beta=args.beta)
     print(f"launch chord {C} on face {g}, carried Q = {fl.Q}, "
-          f"bundle verts {len(BV)}")
+          f"bundle verts {len(BV)}, beta = {args.beta}")
 
     for step in range(args.nstep):
         fl.step(rng)

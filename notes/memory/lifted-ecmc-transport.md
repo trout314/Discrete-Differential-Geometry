@@ -368,9 +368,62 @@ TWO STRUCTURAL FINDINGS:
     all); another had 24/43 free. The Q48/Q52-fragment story visible in a
     single flight profile. Exit-rung selection will strongly shape transport.
 
-REMAINING for a running channel: the assembled driver (flights with ell,
-bounce on rejection, dock->convert sequencing) and the momentum handoff rule
-at conversions.
+## DRIVER BUILT + THE HANDOFF IS THE ONLY COUPLING (2026-08-04/05)
+
+`scripts/defect_dynamics/ecmc_flight.py` (commit eeb261e): ONE uniform kernel
+-- scan the frame walk for the first site that is clean-and-on-rung-Q or
+touching a complex; propose the slide there; Metropolis; flip on rejection.
+Travel/entry/exit/deeper are all this one rule. Validated 6 seeds x 1500
+steps: drift exactly 0, 62/62 live reverse audits, full event repertoire.
+Rung-dependence at driver level: Q46 seed flew 1491/1500 with 5 bounces; the
+Q52 seed 75/1500 with 1414. Assembly bug fixed: rung-Q proposals from a DOCKED
+chord are the EXIT and legitimately carry dS != 0; the dS = 0 assertion
+applies only to clean sources.
+
+**BETA SCAN (1.0 / 0.5 / 0.25, x3 seeds): temperature opens penetration
+(deeper accepts 7 -> 145 -> 200; bounces 1414 -> 888 -> 221) but
+bundle_changed = 0 ALWAYS -- and that is a THEOREM, not a statistic.** The
+background (state minus flier) is invariant under every slide (that is also
+the driver's caching optimisation), so under the default handoff (activity
+follows the axis chord) a conversion is transient: the freed edge returns to
+deg-4 the moment the flier slides on. The heavy sector is EXACTLY frozen at
+any temperature. The freed-edge handoff is not an enhancement -- it is the
+ONLY mechanism by which this channel can move bundles. (The user's original
+"convert the next deg-4 and transfer momentum to it" was the unique coupling
+all along.)
+
+## THE HANDOFF RULE (2026-08-05): equivariant bijection, chosen not discovered
+
+Post-conversion INTERLOCK, verified 20/20 sites on the CREATE_SEQ bundle:
+freed edge e4 = (u,v) has link {a1,b1,n} containing BOTH endpoints of the
+axis chord C1 = (a1,b1); C1's link is Ft = (u,v,x) containing e4. Mutual
+local recognizability -> the kernel can branch (slide vs handoff) reversibly
+with no memory.
+
+Corridor geometry UNDERDETERMINES the rule: 1-3 of 12 freed-edge frames
+continue into the outgoing corridor, unique for only 8-11 of 12, stable at
+depths 3/5/8; greedy tie-breaks break bijectivity AND flip-equivariance at
+every site. Unlike the flip, the handoff cannot be read off the geometry.
+
+The interlock's matching distinguished structure ({u,v} pair + x singleton
+vs {a1,b1} pair + n singleton) gives a canonical algebraic rule:
+
+    h(e, pi) = (first of {u,v} in pi,  sigma)
+    sigma: n at the position x held in pi; e at the lower remaining
+           position, e' at the higher            (2 x 3 x 2 = 12 -> 12)
+
+**Verified 20/20 sites: bijective, flip-equivariant h(F(w1)) = F(h(w1)).**
+Reverse handoff g = F h^-1 F, so conversion+handoff is skew-balanced with
+deterministic proposals. Physics quality: ZERO backscatter (0/240 h-images
+meet the incoming corridor -- not automatic, backscattering frames exist) but
+only 14% direct forward alignment (mostly lateral). The equivariant bijection
+is NOT unique -- composing with any equivariant permutation of the freed
+frames stays valid, so alignment is optimisable later without touching
+validity.
+
+REMAINING: wire h into ecmc_flight as the branch at conversions (branch prob
+p, audits extended to handoffs), then the first run where bundle_changed CAN
+fire: does the bundle move under flicker bombardment with the coupling on?
 
 ## State
 
