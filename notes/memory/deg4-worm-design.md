@@ -239,6 +239,92 @@ whole degree multiset is preserved); INTERIOR deg-4 edges are 0% live
 / 45% (lam.40), gated by graph distance to the nearest deg-3 catalyst
 (dist 1 -> 73-100% live, dist >=8 -> 0%).
 
+**PRISTINE-CRYSTAL CONSTRUCTION + LOCAL TEMPLATE (2026-08-04).**
+
+A worm head can be built on pristine crystal by ONE 2->3, and which object you
+get is decided by the face's edge degrees:
+
+    face with TWO deg-5 edges  -> those two drop to 4 -> OPEN 2-edge deg-4
+                                  path, 2 TIPS -> MOBILE
+    face with THREE deg-5 edges -> all three drop -> CLOSED deg-4 TRIANGLE,
+                                  0 tips -> IMMOBILE (1 step then ping-pong,
+                                  under greedy AND chain-following alike)
+
+Consistent with loop closure being favourable and rings being tipless/stable.
+Site-class censuses over EXACT Aut face orbits (not sampled):
+
+    C15 m3  |Aut|=5184, 4 orbits (exhaustive):
+      orbit 0  face (0,1,69) degrees [6,5,5] -> 2 deg-4 + 1 deg-3, 2 tips,
+               95 candidates/anchor, greedy 25/25          <- the mobile one
+      orbits 1,2  triangles, 0 candidates, 0 steps
+      orbit 3     triangle, 6 candidates, 1 step
+    R m2  102 orbits:  tips=2 & full march 32 | tips=2 & none 5 |
+                       tips=0 & full 8 | tips=0 & partial 42 | tips=0 & none 15
+      => 37/102 open-path, 40/102 march the full 25 steps
+
+CORRECTION to the earlier "strictly a TIP move": 8 TIPLESS R orbits still march
+the full 25 steps and 42 more march partially. Tips strongly predict mobility
+but are NOT required. Also LIVENESS != MOBILITY -- the pristine triangle has
+candidates at all three edges yet every landing leads back.
+
+CREATE_SEQ still passes post-bugfix: 5 deg-4 edges, signature [4,4,4,4,4], as
+TWO open paths (44-201-334-0 and 28-358-163) with 4 tips and NO deg-3. Two of
+its five edges are live anyway, so **the catalyst is OPTIONAL in the move
+class** (nG3 == nW3 permits 0 = 0); the earlier distance-to-catalyst
+correlation was empirical, not a hard gate.
+
+**WHAT THE CANDIDATE COUNT MEANS** (C15 orbit-0 anchor, 95 candidates):
+
+    95 enumerated (m1,m2) PAIRS
+    -> 65 distinct END STATES     (35 states from 1 pair, 30 from 2)
+    -> of those 65:  6 share 2 head vertices (edge swap)
+                    35 share 1   (PIVOT about a retained vertex)
+                    24 share 0   (true DISPLACEMENT)
+    -> |Stab(face)| = 2  =>  24 displacements = **12 up to symmetry**,
+       the same count as SLIDE_SLOTS = 12 for the deg-3 chord
+
+Only 41 distinct *reported* landings among 95 -- 93/95 are k=2 and the landing
+label is arbitrary between the two born edges (known gotcha, reconfirmed).
+63% of end states retain a vertex, which is exactly why any undirected rule
+shuffles in place instead of moving.
+
+**SELF-SIMILARITY (the rigidity that makes a template possible):** decorated
+patch canonical key (canonical_key_exact, edge degrees as colours) is preserved
+by **95/95** candidates on C15 orbit 0 -- the head is a RIGID species that
+translates and rotates but never changes shape. On R m2 orbit 1 only 26/75.
+This is the "clean-tip sub-library" the earlier TEMPLATE CENSUS explicitly
+carved out when it declared template distillation dead for the thermal gas.
+Necessary but VACUOUS as a selector: iterating "first fresh candidate" gives
+30/30 steps, key constant, graph distance 0 throughout.
+
+**THE LOCAL TEMPLATE.** Local frame = anchor deg-4 edge (a,b) + its link
+4-CYCLE c0 c1 c2 c3. The deg-3 catalyst sits ON one edge of that cycle. Rays
+named symbolically by (c_i, c_{i+1}, a, b): the catalyst's own link edge NEVER
+reaches a displaced destination; the other three do, at offset **k = 1** (one
+tet along the ray), in both directions. Fully local -- no chart, no distance,
+no chain id.
+
+**BUT NO LOCAL RULE CAN MARCH -- and the stabilizer says why.** All three
+link-edge rules (opposite/next/prev x +-) run 40/40 steps with composition
+exactly preserved and **graph distance 0 at every step**: a PERIOD-2 ORBIT.
+Adding a displacement filter (refuse landings sharing a vertex with the current
+head -- still purely combinatorial) leaves prev/- running 40/40, still distance
+0, because a 2-cycle A->B->A is vertex-disjoint at each step.
+
+The reason is forced: |Stab| = 2, and that element must fix the unique deg-6
+edge (0,1), hence fix 69 and **swap 0<->1 -- exchanging the two ends of the
+head**. The head is locally REVERSAL-SYMMETRIC, so "forward" is not a function
+of the local decorated data, and any deterministic rule reading only local data
+is reversal-symmetric and therefore period-2.
+
+    => the template supplies WHICH MOVE;  sigma must supply WHICH WAY.
+
+Minimal sigma is about one bit -- which end of the head is the front,
+equivalently a choice between the two frames the stabilizer exchanges. This
+retro-explains why the chain-following march moved at all
+([[lifted-ecmc-transport]]): its no-backtrack rule was a 1-step memory, i.e. a
+crude sigma smuggled in.
+
 STILL AHEAD: event-chain lift (momentum sector); cocycle support if needed.
 
 Related: [[reaction-census-lam035-m4-results]] (lone deg-4 monomers are the

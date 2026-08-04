@@ -242,6 +242,28 @@ helix close a turn and circulate? 12 steps cannot distinguish ballistic from
 circulating -- needs NSTEP ~ 40 on the tips that sustain. (2) can the walker
 re-acquire a chain at an event and continue with a related direction?
 
+## WHY THE LIFT NEEDS SIGMA -- proved, not assumed (2026-08-04)
+
+On pristine C15 the worm head is a rigid species (95/95 candidates preserve its
+decorated patch key) and admits a fully LOCAL move template: anchor (a,b) plus
+its link 4-cycle c0..c3, with the deg-3 catalyst on one link edge; the other
+three link edges name BC rays that reach a displaced destination at offset
+k = 1, both directions. No chart, no distance, no chain id.
+
+**Every such rule is a period-2 orbit.** All three link-edge choices x both
+directions run 40/40 steps with composition preserved and graph distance 0
+throughout; adding a vertex-disjointness filter does not help, since a 2-cycle
+A->B->A is disjoint at each step. Forced by symmetry: |Stab| = 2 and that
+element swaps the head's two ends, so the head is locally reversal-symmetric
+and "forward" is not a function of local data.
+
+    template -> WHICH MOVE        sigma -> WHICH WAY
+
+So carrying sigma is not a convenience, it is the only way to break a symmetry
+the local data cannot. Minimal sigma is ~one bit (which end is the front). This
+also explains why the chain-following march moved: its no-backtrack rule was a
+1-step memory acting as a crude sigma. Details in [[deg4-worm-design]].
+
 ## State
 
 Built and tested (235 tests): `face_rung`, `chain_rungs`, `uphill_staircase`,
