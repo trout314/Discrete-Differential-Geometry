@@ -185,6 +185,57 @@ def defect_charge_field(dq, defect):
     return w
 
 
+def rigid_complex_sk(PH, w, lab, ncomp, rng=None, ncheck=0):
+    """S(k) of the defect population under RIGID-COMPLEX relocation -- each
+    complex moved as a whole to a random place, internal structure intact.
+
+    This is the null that answers 'are the complexes ARRANGED with
+    correlation?'. Relocating individual vertex charges (reloc_null_power)
+    instead destroys the intra-complex +/- cancellation, so it measures how
+    neutral a complex is, not where the complexes are.
+
+    With F_i(k) = sum_{v in i} w_v exp(i k . x_v) the complex's own amplitude
+    and independent uniform torus translations t_i, every cross term carries
+    E[exp(i k . (t_i - t_j))] = 0 at nonzero commensurate k, so the null is
+    ANALYTIC:
+        obs(k)  = |sum_i F_i(k)|^2
+        null(k) = sum_i |F_i(k)|^2
+    Each complex's form factor AND net charge divide out; only the relative
+    PHASES of the complexes -- i.e. their arrangement -- survive. As k -> 0,
+    F_i -> Q_i and the ratio becomes the charge-weighted centroid S(k).
+
+    Complexes are translated, NOT reoriented: the crystal locks defect
+    orientation (the P2 null is +0.118, not 0), so this asks about positional
+    arrangement alone.
+
+    ncheck > 0 runs the Monte-Carlo self-test -- apply actual random phase
+    shifts and confirm the mean recovers the analytic null.
+    """
+    Fi = np.empty((ncomp, PH.shape[1]), complex)
+    for i in range(ncomp):
+        m = lab == i
+        Fi[i] = w[m] @ PH[m]
+    obs = np.abs(Fi.sum(axis=0)) ** 2
+    null = (np.abs(Fi) ** 2).sum(axis=0)
+    mc = None
+    if ncheck:
+        acc = np.zeros(PH.shape[1])
+        for _ in range(ncheck):
+            ph = np.exp(2j * np.pi * rng.random((ncomp, 1)))   # per-complex phase
+            acc += np.abs((Fi * ph).sum(axis=0)) ** 2
+        mc = acc / ncheck
+    return obs, null, mc, Fi
+
+
+def complex_charges(dq, lab, ncomp, defect):
+    """Net charge Q_i = sum_{v in i} dq_v per complex, and the neutrality
+    fraction |Q_i| / sum_{v in i} |dq_v| (0 = perfectly neutral multipole,
+    1 = all vertices the same sign)."""
+    Q = np.array([dq[lab == i].sum() for i in range(ncomp)])
+    A = np.array([np.abs(dq[lab == i]).sum() for i in range(ncomp)])
+    return Q, np.where(A > 0, np.abs(Q) / np.maximum(A, 1e-300), 0.0)
+
+
 def reloc_null_power(PH, vals, rng, nshuf):
     """Relocation null for the defect charge field: the SAME multiset of
     anomalous values placed on uniformly random sites, zero elsewhere.
@@ -268,6 +319,31 @@ def measure(mfd, nmax, rng, nshuf, control=False):
     r = point_process_sk(PH, defect, V, F2)
     out["vertex_lowk"] = float(np.mean(r[0][low] / r[1][low])) if r else None
 
+    # --- 4b. RIGID-COMPLEX relocation: the arrangement question, charge- and
+    #         size-weighted. Internal structure of each complex is preserved.
+    if ncomp >= 2:
+        wdq = defect_charge_field(dq, defect)
+        obs, nul, mc, _ = rigid_complex_sk(PH, wdq, lab, ncomp, rng, nshuf)
+        out["rigid_charge_lowk"] = float(np.mean(obs[low] / nul[low]))
+        out["rigid_charge_shells"] = shells(kmag, obs / nul, nmax)
+        # self-test of the analytic null against actual random translations
+        out["rigid_mc_check"] = float(np.mean(mc[low] / nul[low]))
+
+        ind = defect.astype(float)
+        obs, nul, _, _ = rigid_complex_sk(PH, ind, lab, ncomp)
+        out["rigid_count_lowk"] = float(np.mean(obs[low] / nul[low]))
+
+        Q, neut = complex_charges(dq, lab, ncomp, defect)
+        out["Q_mean"] = float(Q.mean())
+        out["Q_std"] = float(Q.std())
+        out["Q_frac_negative"] = float((Q < 0).mean())
+        out["neutrality_frac"] = float(neut.mean())
+    else:
+        for k in ("rigid_charge_lowk", "rigid_count_lowk", "rigid_mc_check",
+                  "Q_mean", "Q_std", "Q_frac_negative", "neutrality_frac"):
+            out[k] = None
+        out["rigid_charge_shells"] = None
+
     # --- 4. complex-centroid point process (form-factor free)
     if cen is not None:
         r = points_sk(cen, nvec, V, F2)
@@ -334,7 +410,9 @@ def main():
         s = {"n_snapshots": len(rows)}
         for k in ("n_defect", "n_complex", "mean_size", "form_factor",
                   "s2_frac_defect", "charge_permnull_lowk",
-                  "charge_relocnull_lowk", "vertex_lowk", "centroid_lowk"):
+                  "charge_relocnull_lowk", "vertex_lowk", "centroid_lowk",
+                  "rigid_charge_lowk", "rigid_count_lowk", "rigid_mc_check",
+                  "Q_mean", "Q_std", "Q_frac_negative", "neutrality_frac"):
             s[k], s[k + "_sem"] = pooled(rows, k)
         summary[label] = s
         print(f"\n=== {label}  ({len(rows)} snapshots) ===")
@@ -349,6 +427,18 @@ def main():
               f" +/- {s['charge_relocnull_lowk_sem']:.3f}   (1 = arrangement does nothing)")
         print(f"  DEFECT vertices S(k0)  {s['vertex_lowk']:.2f}"
               f" +/- {s['vertex_lowk_sem']:.2f}   (1 = Poisson)")
+        if s["rigid_charge_lowk"] is not None:
+            print(f"  --- rigid-complex relocation (whole defects shuffled) ---")
+            print(f"  net charge Q_i         {s['Q_mean']:+.3f} +/- {s['Q_std']:.3f}"
+                  f"   ({100*s['Q_frac_negative']:.0f}% negative)")
+            print(f"  neutrality |Q|/sum|dq| {s['neutrality_frac']:.3f}"
+                  f"   (0 = perfect multipole, 1 = one-signed)")
+            print(f"  RIGID charge-weighted  {s['rigid_charge_lowk']:.3f}"
+                  f" +/- {s['rigid_charge_lowk_sem']:.3f}   (1 = Poisson arrangement)")
+            print(f"  RIGID count-weighted   {s['rigid_count_lowk']:.3f}"
+                  f" +/- {s['rigid_count_lowk_sem']:.3f}")
+            print(f"  [self-test] MC vs analytic null = {s['rigid_mc_check']:.3f}"
+                  f" (must be 1.000)")
         if s["centroid_lowk"] is not None:
             print(f"  COMPLEX centroids S(k0){s['centroid_lowk']:.2f}"
                   f" +/- {s['centroid_lowk_sem']:.2f}   (form-factor free)")

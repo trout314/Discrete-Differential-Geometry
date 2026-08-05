@@ -1,6 +1,6 @@
 ---
 name: defect-density-hu
-description: "RETRACTION + RESULT: the 'crystal-grade HU' headline is a normalization artifact (the old estimator calls RANDOMISED defects hyperuniform too); the defect complex arrangement is exactly POISSON, and the source-charge suppression 0.515 is intra-complex neutrality, not order"
+description: "RETRACTION + RESULT: the 'crystal-grade HU' headline is a normalization artifact (the old estimator calls RANDOMISED defects hyperuniform too); shuffling WHOLE DEFECTS rigidly gives 0.999+-0.026 = exactly Poisson; complexes carry residual NEGATIVE charge Q=-0.97, 77% negative"
 metadata:
   type: project
 ---
@@ -12,10 +12,11 @@ measurement. Tools: `scripts/defect_dynamics/defect_density_hu.py` (+
 `_figure.py`). Data: `data/defect_hu/*.json`, figure
 `data/figs/defect_density_hu.png`. R m4 crystal on T^3, V=10176, box 4 cells.
 
-    ensemble                   snaps  n_cplx   perm-null  reloc-null  vertex  centroid
-    lam=0.40 (8 chains)          55     9.3    0.0015     0.515       7.31    1.07+-0.04
-    lam=0.35 (3 chains)          18    21.3    0.0038     0.548       8.20    0.93+-0.04
-    CONTROL defects randomised   55    60.5    0.0213     0.997       1.02    0.92+-0.03
+    ensemble                  snaps n_cplx perm-null vtx-reloc vertex centroid RIGID-Q RIGID-n
+    lam=0.40 (8 chains)         55    9.3   0.0015    0.523     7.31   1.07   0.999   1.003
+    lam=0.35 (3 chains)         18   21.3   0.0038    0.546     8.20   0.93   0.958   0.865
+    CONTROL defects randomised  55   60.6   0.0215    0.988     1.03   0.95   0.971   0.947
+    sem                                     .0001-.0013 .03-.07  .03-.4  .03-.04 .026-.053
 
 ## 1. THE RETRACTION -- the old estimator is normalization-limited
 
@@ -37,32 +38,71 @@ hyperuniform", on a configuration with no arrangement at all.
 
 ## 2. THE RESULT -- defect complexes are POISSON
 
-Form-factor-free complex-centroid point process (one point per connected
-defect complex, circular torus mean, vs the random-crystal-site null), flat
-at every accessible shell:
+The right null (user's, 2026-08-05): shuffle WHOLE DEFECTS rigidly, not the
+individual vertex charges. With F_i(k) = sum_{v in i} w_v exp(ik.x_v) the
+complex's own amplitude and independent uniform torus translations t_i,
+every cross term carries E[exp(ik.(t_i - t_j))] = 0 at nonzero commensurate
+k, so the null is ANALYTIC:
 
-    |k|          1.0    2.0    3.0    4.0    5.0
-    lam=0.40   1.055  1.022  1.026  0.994  0.980   (+-0.05 .. +-0.01)
-    lam=0.35   0.971  0.906  0.985  0.948  0.983
+    S_obs/S_null = |sum_i F_i(k)|^2 / sum_i |F_i(k)|^2
 
-No hyperuniformity (that would fall toward 0), no clustering. Taking the
-control's 0.92 as the estimator's residual scale, the honest statement is
-**S_centroid(k->0) = 1.0 +- 0.1 = Poisson**. This CORRECTS
-[[statics-hu-verdict]]'s "sources cluster, super-Poisson 1.14" -- with 6x
-the data and a form-factor-free estimator there is no clustering; the old
-g(r) shell at 1-1.4 cells is short-range packing/merge structure, not a
-long-wavelength effect.
+Each complex's form factor AND net charge divide out; only the relative
+PHASES -- the arrangement -- survive. As k->0, F_i -> Q_i, so it becomes
+the charge-weighted centroid S(k). Complexes are translated, NOT reoriented
+(the crystal locks defect orientation; the P2 null is +0.118, not 0), so
+this is positional arrangement alone. Validated by an MC self-test that
+applies actual random translations: 0.997 (must be 1.000).
 
-## 3. The one real signal, and why it is NOT order
+**lam=0.40: 0.999 +/- 0.026 charge-weighted, 1.003 +/- 0.030
+count-weighted.** Flat across every shell. The defect arrangement is
+EXACTLY POISSON -- not hyperuniform, not clustered. lam=0.35 gives 0.958
++/- 0.053 and 0.865 +/- 0.039 against a control baseline of 0.971/0.947,
+so at most a ~2 sigma hint of mild suppression, consistent with hard-core
+exclusion between complexes; not a claim.
 
-Defect SOURCE charge (anomalous dq on impurity vertices, zero elsewhere) vs
-the matched relocation null: **0.515 +- 0.029** (lam=0.40) and 0.548 +-
-0.069 (lam=0.35), control 0.997 +- 0.039. A genuine 12-sigma factor-2
-suppression that reproduces across densities.
+charge- and count-weighting agree at lam=0.40 (0.999 vs 1.003), so there is
+no charge-position coupling either -- big-|Q| complexes are not placed
+differently from small ones.
 
-But the positions are Poisson (sec 2), so it cannot be spatial order. The
+This also CORRECTS [[statics-hu-verdict]]'s "sources cluster, super-Poisson
+1.14": with 6x the data and a form-factor-free estimator there is no
+clustering. The old g(r) shell at 1-1.4 cells is short-range packing/merge
+structure, not a long-wavelength effect.
+
+## 2b. COMPLEXES CARRY RESIDUAL NEGATIVE CURVATURE (user's prediction, confirmed)
+
+Net charge per complex Q_i = sum_{v in i} dq_v:
+
+    lam=0.40   Q = -0.965 +/- 1.347   77% negative   |Q|/sum|dq| = 0.308
+    lam=0.35   Q = -0.895 +/- 1.706   70% negative   |Q|/sum|dq| = 0.301
+    CONTROL    Q = -0.148 +/- 0.945   52% negative   |Q|/sum|dq| = 0.988
+
+So ~2/3 of a complex's per-vertex charge magnitude cancels internally, but a
+definite one-signed NEGATIVE residual survives -- the user's reasoning that
+defects persist in order to satisfy the mean-edge-degree pin, and so must
+carry residual negative curvature. The control decomposes it: scattering the
+SAME charges into singletons gives mean -0.148 per defect vertex and 52%
+negative, and -0.148 x <m>=6.9 = -1.02 ~ the measured -0.965. The complex
+residual is the per-vertex bias accumulated over ~7 vertices; the 77%-negative
+consistency at complex level is that weak per-vertex bias aggregating.
+
+Consequence: the defect gas is a population of LIKE-CHARGED objects whose
+total is (softly) pinned by the action. That is exactly the setting in which
+hyperuniformity could have appeared -- and it does not. The pin fixes the
+total charge without inducing any spatial correlation.
+
+## 3. The per-VERTEX relocation number, and what it actually measures
+
+Defect SOURCE charge vs a PER-VERTEX relocation null: **0.523 +- 0.030**
+(lam=0.40), 0.546 +- 0.070 (lam=0.35), control 0.988 +- 0.034.
+
+This is NOT an arrangement measurement -- scattering individual vertex
+charges destroys the intra-complex +/- cancellation as well as the
+positions, so it measures how NEUTRAL a complex is (cf. sec 2b: neutrality
+fraction 0.31, and 0.31 ~ 0.52 in power-like units). Reported for the
+record; the rigid shuffle (sec 2) is the arrangement estimator. The
 mechanism is INTRA-COMPLEX charge cancellation: the same estimator on the
-indicator field (all values = 1) gives 7.31, on the signed charge 0.515 --
+indicator field (all values = 1) gives 7.31, on the signed charge 0.523 --
 a factor 14 apart on identical positions. Each complex is a partially
 neutral multipole; the null scatters its +/- vertices to independent sites
 and destroys the cancellation. **Local neutrality alone suppresses low-k
