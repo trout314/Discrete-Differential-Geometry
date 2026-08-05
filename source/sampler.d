@@ -461,7 +461,7 @@ unittest
 //   m(v)  = # incident edges with degree not in {5, 6} ("impurity valence")
 // Energy per vertex:
 //   U(n6) = zlegCoef * dist^2(n6, {0,2,3,4}) + tilt[n6] (tilt only for n6 <= 4)
-//   V(m)  = impCoef * max(0, m - impOffset)^2
+//   V(m)  = impLinCoef * m + impCoef * max(0, m - impOffset)^2
 // Physics: by the link sum rule (sum over incident edges of (6 - deg) = 12,
 // link = S^2), a vertex with m = 0 and n6 in {0,2,3,4} is EXACTLY a
 // Frank-Kasper coordination (Z12/Z14/Z15/Z16); n6 = 1 is combinatorially
@@ -469,11 +469,27 @@ unittest
 // analytic tail — n6 is unbounded, a clamped table would leave hubs with no
 // restoring force), the tilts are chemical potentials selecting AMONG the
 // legal classes (phase selection: A15-type vs Laves-type stoichiometry), and
-// V penalizes defect CLUSTERING at a vertex. It must be strictly convex to do
-// so at all: a linear-in-m term is an edge-level penalty in disguise, since
-// sum_v m(v) = 2 * #impure-edges exactly, so it depends on HOW MANY impure
-// edges exist and not at all on where they are. The quadratic makes an
-// octahedral vertex, m = 6, cost 36 rather than 6.
+// The two impurity terms do DIFFERENT jobs, and separating them is the point.
+//
+// impLinCoef is a pure CHEMICAL POTENTIAL on impure edges: sum_v m(v) =
+// 2 * #impure-edges exactly, so a linear term depends on how many impure
+// edges exist and not at all on where they are. Zero arrangement dependence
+// is a feature here -- it controls concentration without charging anything
+// for two defects touching, so a move that leaves the impure-edge COUNT
+// unchanged is exactly free under it.
+//
+// impCoef is the CLUSTERING term, and must be strictly convex to be one at
+// all. It makes an octahedral vertex, m = 6, cost 36 rather than 6.
+//
+// Measured caveat on the clustering term (notes/memory/): m saturates. Over
+// 73 dispersed-gas snapshots AND 6 fully percolated ones, m is 1 or 2 at
+// ~97% of defect vertices with max 4, in EVERY class from an isolated
+// flicker to a 3,600-vertex giant component -- the complexes are curve-like
+// and extend rather than thicken. So the m-distribution barely differs
+// between the dispersed and percolated phases, no function of m alone
+// separates them, and sum_v m^2 = 2*n_impure + 2*P acts mostly through its
+// concentration part. Prefer impLinCoef for concentration and reach for
+// impCoef only when genuine convexity is wanted.
 //
 // impOffset shifts the quadratic's foot: V(m) = impCoef * max(0, m - off)^2 is
 // FLAT for m <= off and steep beyond. The point is that sum_v m^2 =
@@ -491,12 +507,13 @@ struct VertexPot
 {
     real zlegCoef = 0;
     real impCoef = 0;
+    real impLinCoef = 0;
     long impOffset = 0;
     real[5] tilt = [0, 0, 0, 0, 0];
 
     bool enabled() const pure nothrow @nogc @safe
     {
-        if (zlegCoef != 0 || impCoef != 0) return true;
+        if (zlegCoef != 0 || impCoef != 0 || impLinCoef != 0) return true;
         foreach (t; tilt) if (t != 0) return true;
         return false;
     }
@@ -513,9 +530,10 @@ struct VertexPot
 
     real V(long m) const pure nothrow @nogc @safe
     {
+        real e = impLinCoef * cast(real) m;          // V(0) = 0 still
         immutable long d = m - impOffset;
-        if (d <= 0) return 0;              // flat foot; V(0) = 0 for any off >= 0
-        return impCoef * cast(real)(d * d);
+        if (d > 0) e += impCoef * cast(real)(d * d); // flat foot below off
+        return e;
     }
 }
 
@@ -542,6 +560,19 @@ unittest
     assert(bare.V(3) - bare.V(2) == 2.5);
     assert(p.V(3) - p.V(2) == 0.5);
     assert(p.V(6) - p.V(5) == 3.5);       // burial still steep
+
+    // The linear term is a pure chemical potential: sum_v m = 2*#impure
+    // edges, so it charges per impure edge and nothing for arrangement. It
+    // superposes on the quadratic, and V(0) = 0 must survive (the counter
+    // state assumes an absent vertex contributes V(0)).
+    VertexPot lin;
+    lin.impLinCoef = 0.75;
+    assert(lin.V(0) == 0);
+    foreach (m; 0 .. 8) assert(lin.V(m) == 0.75 * m);
+    lin.impCoef = 0.5;
+    lin.impOffset = 2;
+    assert(lin.V(0) == 0 && lin.V(2) == 1.5);          // linear only, foot flat
+    assert(lin.V(4) == 0.75 * 4 + 0.5 * 4);            // both terms beyond
 }
 
 /// Per-vertex counter state for the vertex potential. Only nonzero counters

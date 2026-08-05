@@ -4370,10 +4370,12 @@ extern(C) int ddg_sampler_worm_f0_episode(void* sampler_handle,
 /// impurity valence; see sampler.VertexPot). dim=3 samplers only. tilt5 may be
 /// null (all-zero tilts). Passing all-zero coefficients disables the term.
 /// imp_offset shifts the impurity quadratic's foot: V(m) = imp_coef *
-/// max(0, m - imp_offset)^2. 0 reproduces the bare quadratic.
+/// max(0, m - imp_offset)^2 + imp_lin_coef * m. 0 reproduces the bare
+/// quadratic. imp_lin_coef is a pure chemical potential on impure edges
+/// (sum_v m = 2 * #impure edges), with no arrangement dependence.
 extern(C) int ddg_sampler_set_n6_potential(void* sampler_handle,
     double zleg_coef, double imp_coef, const(double)* tilt5,
-    long imp_offset) nothrow
+    long imp_offset, double imp_lin_coef) nothrow
 {
     clearError();
     try
@@ -4389,6 +4391,7 @@ extern(C) int ddg_sampler_set_n6_potential(void* sampler_handle,
         state.vertexPot.impCoef = cast(real) imp_coef;
         if (imp_offset < 0) { setError("imp_offset must be >= 0"); return -1; }
         state.vertexPot.impOffset = imp_offset;
+        state.vertexPot.impLinCoef = cast(real) imp_lin_coef;
         if (tilt5 !is null)
             foreach (i; 0 .. 5)
                 state.vertexPot.tilt[i] = cast(real) tilt5[i];

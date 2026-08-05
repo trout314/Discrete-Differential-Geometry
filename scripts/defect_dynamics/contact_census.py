@@ -64,9 +64,12 @@ REF = os.path.join(_ROOT, "data/tcp_reference/T3_C15_m3_N3672.mfd")
 class CensusFlight(Flight):
     """Flight that records the anatomy of every rejected contact."""
 
-    def __init__(self, *a, hscan=40, sink=None, sw=0, cimp=0.5, **kw):
+    def __init__(self, *a, hscan=40, sink=None, sw=0, cimp=0.5,
+                 imp_offset=0, imp_lin=0.0, **kw):
         super().__init__(*a, **kw)
         self.cimp = float(cimp)
+        self.imp_offset = int(imp_offset)
+        self.imp_lin = float(imp_lin)
         self.hscan = hscan
         self.sink = sink if sink is not None else []
         self.sw = sw
@@ -176,17 +179,18 @@ class CensusFlight(Flight):
         # RUN is not a control -- the state degenerates (rungs run negative
         # and the walk dies), because the m^2 term is what holds the gas.
         dS_pins = None
-        if self.cimp:
+        if self.cimp or self.imp_lin:
             slot = self._slot_for(self.w)
             if slot is not None:
-                self.s.set_n6_potential(0.0, 0.0)
+                self.s.set_n6_potential(0.0, 0.0, None, self.imp_offset, 0.0)
                 try:
                     r0 = self.s.nonlocal_slide_at(self.C[0], self.C[1],
                                                   slot, k, commit=False)
                     if r0 is not None:
                         dS_pins = float(r0[0])
                 finally:
-                    self.s.set_n6_potential(0.0, self.cimp)
+                    self.s.set_n6_potential(0.0, self.cimp, None,
+                                            self.imp_offset, self.imp_lin)
 
         n_d3_bg = sum(1 for d in self.edB.values() if d == 3)
         self.sink.append({
@@ -215,7 +219,8 @@ def run_chain(seed, cfg):
         hinge_degree_target=estar, num_hinges_coef=cfg["k1"],
         hinge_degree_variance_coef=0.0, codim3_degree_variance_coef=0.0,
         hinge_degree_target_coef=0.0))
-    s.set_n6_potential(0.0, cfg["cimp"])
+    s.set_n6_potential(0.0, cfg["cimp"], None, cfg.get("imp_offset", 0),
+                       cfg.get("imp_lin", 0.0))
 
     sink, eps = [], []
     nchunks = cfg["sweeps"] // cfg["chunk"]
@@ -242,7 +247,9 @@ def run_chain(seed, cfg):
                                   kscan=cfg["kscan"], audit=False,
                                   beta=1.0, p_hand=0.0, expect_free=False,
                                   hscan=cfg["hscan"], sink=sink, sw=sw,
-                                  cimp=cfg["cimp"])
+                                  cimp=cfg["cimp"],
+                                  imp_offset=cfg.get("imp_offset", 0),
+                                  imp_lin=cfg.get("imp_lin", 0.0))
                 fl.refresh_frame(rng)
                 for i in range(cfg["ep_steps"]):
                     if cfg["refresh_every"] and i and i % cfg["refresh_every"] == 0:
@@ -324,6 +331,10 @@ def main():
     ap.add_argument("--k-fliers", type=int, default=12)
     ap.add_argument("--radius", type=int, default=4)
     ap.add_argument("--cimp", type=float, default=0.5)
+    ap.add_argument("--imp-lin", type=float, default=0.0,
+                    help="pure chemical potential on impure edges (imp_lin*m)")
+    ap.add_argument("--imp-offset", type=int, default=0,
+                    help="flat foot: V(m) = cimp * max(0, m - offset)^2")
     ap.add_argument("--nfc", type=float, default=30.0)
     ap.add_argument("--k1", type=float, default=1.0)
     ap.add_argument("--out", default=None)

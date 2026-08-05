@@ -949,14 +949,15 @@ class ManifoldSampler:
         self._params.codim3_degree_target = target
 
     def set_n6_potential(self, zleg_coef: float, imp_coef: float = 0.0,
-                         tilt=None, imp_offset: int = 0) -> None:
+                         tilt=None, imp_offset: int = 0,
+                         imp_lin: float = 0.0) -> None:
         """Configure the vertex 6-valence potential (dim=3 only; 0,0,None = off).
 
         Per-vertex energy on n6 = #incident edges with degree >= 6 and
         m = #incident edges with degree outside {5, 6}:
 
             U(n6) = zleg_coef * dist^2(n6, {0,2,3,4}) + tilt[n6]  (tilt: n6 <= 4)
-            V(m)  = imp_coef * max(0, m - imp_offset)^2
+            V(m)  = imp_lin * m + imp_coef * max(0, m - imp_offset)^2
 
         ``imp_offset`` shifts the impurity quadratic's foot: V is FLAT for
         m <= imp_offset and steep beyond. 0 (the default) reproduces the bare
@@ -968,6 +969,15 @@ class ManifoldSampler:
         isolated defect already carries lets a defect pay nothing for its own
         structure, and two defects touch cheaply, while deep burial stays
         forbidden.
+
+        ``imp_lin`` is a pure CHEMICAL POTENTIAL on impure edges: sum_v m(v)
+        = 2 * #impure-edges exactly, so it charges per impure edge with zero
+        arrangement dependence -- a move leaving the impure-edge count
+        unchanged is exactly free under it. Use it for concentration control.
+        (Measured: m saturates at 1-2 with max 4 in every regime from an
+        isolated flicker to a percolated melt, so no function of m alone
+        separates dispersed from percolated; the quadratic acts mostly
+        through its own concentration part.)
 
         By the link sum rule, zero energy <=> the vertex is exactly a
         Frank-Kasper coordination (Z12/Z14/Z15/Z16). ``tilt`` (length-5
@@ -985,9 +995,10 @@ class ManifoldSampler:
         self._recorded_n6_potential = {
             "zleg_coef": float(zleg_coef), "imp_coef": float(imp_coef),
             "tilt": [float(x) for x in (tilt if tilt is not None else [0.0] * 5)],
-            "imp_offset": int(imp_offset)}
+            "imp_offset": int(imp_offset), "imp_lin": float(imp_lin)}
         _lib.ddg_sampler_set_n6_potential(
-            self._handle, zleg_coef, imp_coef, tilt_ptr, int(imp_offset))
+            self._handle, zleg_coef, imp_coef, tilt_ptr, int(imp_offset),
+            float(imp_lin))
 
     # -- Statistics --
 

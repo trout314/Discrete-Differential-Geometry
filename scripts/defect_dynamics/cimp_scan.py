@@ -216,7 +216,8 @@ def run_one(start, cimp, seed, cfg):
         hinge_degree_target=estar, num_hinges_coef=cfg["k1"],
         hinge_degree_variance_coef=0.0, codim3_degree_variance_coef=0.0,
         hinge_degree_target_coef=0.0))
-    s.set_n6_potential(0.0, cimp, None, cfg.get("imp_offset", 0))
+    s.set_n6_potential(0.0, cimp, None, cfg.get("imp_offset", 0),
+                       cfg.get("imp_lin", 0.0))
     s.set_nonlocal_slide_prob(cfg["nslide_prob"], cfg["nslide_max_step"])
 
     series = [{"sw": 0, **observe(s.manifold)}]
@@ -245,6 +246,10 @@ def main():
     ap.add_argument("--k-fliers", type=int, default=12)
     ap.add_argument("--radius", type=int, default=4)
     ap.add_argument("--min-sep", type=int, default=4)
+    ap.add_argument("--imp-lin", type=float, default=0.0,
+                   help="pure chemical potential on impure edges: adds "
+                        "imp_lin*m, i.e. 2*imp_lin per impure edge, with NO "
+                        "arrangement dependence")
     ap.add_argument("--imp-offset", type=int, default=0,
                    help="flat foot of the impurity quadratic: "
                         "V(m) = cimp * max(0, m - offset)^2. 0 = bare quadratic.")
@@ -257,7 +262,7 @@ def main():
     cfg = vars(args)
 
     out = {}
-    print(f"[V(m) = cimp * max(0, m - {args.imp_offset})^2]")
+    print(f"[V(m) = {args.imp_lin}*m + cimp*max(0, m - {args.imp_offset})^2]")
     print(f"{'cimp':>6} {'start':>10} {'ncomp':>7} {'top1':>7} {'max_ed':>7} "
           f"{'mean_sep':>9} {'m2':>7} {'n_ill':>7}")
     for cimp in args.cimps:
