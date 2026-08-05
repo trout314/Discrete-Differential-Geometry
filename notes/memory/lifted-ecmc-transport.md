@@ -486,10 +486,55 @@ C15 COUPLING (seed 3, beta 0.25, p_hand 0.5, refresh 50, 6000 steps):
 At beta 0.5 the triangle resisted for 2000 steps (interlocks formed and
 ping-ponged back); the immobile species needs the hotter gate to commit.
 
+## SPIRAL GEOMETRY OF THE HANDOFF + THE CHIRALITY RULE (2026-08-05)
+
+User conjectures, both VERIFIED in the ideal development (screw axes of all
+24 frames through one tet; glue = Swierczkowski reflection; screw angle
+arccos(-2/3) = 131.81 deg as check):
+
+  * The handoff pair (C1, e4) are OPPOSITE EDGES of one tet T = (a1,b1,u,v)
+    -- skew-perpendicular lines -- and T is created by the conversion itself.
+  * 12 spiral axes through each tet (6 R + 6 L); axis-pair |cos| quantizes to
+    {0, 1/5, 2/5, 3/5, 4/5}; EXACTLY 6 orthogonal pairs, perfectly pairing
+    the 12, and EVERY pair is R-with-L. The orthogonal partner = the passage
+    with hinge and opposite edge EXCHANGED, handedness flipped. Each axis
+    lies arccos(3/sqrt10) = 18.4 deg off its opposite edge (so a spiral runs
+    along the opposite edge of its hinge): spirals hinged on C1 run ~parallel
+    to e4 and vice versa.
+  * HANDEDNESS IS COMBINATORIAL: window parity w.r.t. a coherent orientation
+    of the manifold (all 12 even frames one hand, all 12 odd the other;
+    verified against explicit screws). Chirality costs nothing to evaluate.
+    It is a PSEUDOSCALAR: needs an orientation, Aut+ not Aut territory.
+
+Orthogonal handoff is NOT standard ECMC (hard-sphere/factorized ECMC keeps a
+global fixed direction; Newtonian variants use momentum-conserving collision
+rules); here the extended lattice-locked carrier makes direction turning a
+geometric question.
+
+CHIRALITY MEASUREMENT (all 44 C15 interlock configs, 528 arrival frames):
+
+    FWD sets: (1,(L)) x114  (1,(R)) x114  (2,(L,R)) x300
+    -- EVERY 2-candidate set splits {R,L}; chirality-match is never ambiguous
+    chirality-matched: unique 432, empty 96 (18%), multi 0
+    partial map: injective 44/44; equivariant pairs 352 ok / 0 BAD;
+                 domain F-closed 0/44 (FWD is direction-sensitive)
+    TOTAL fallback (allow lone anti-chiral): bijective 0/44, equivariant 0/44
+    -- mixing hands STRUCTURALLY breaks the family; chirality conservation
+       is not optional. The user's "same spiral" rule is exactly right where
+       the same spiral continues (82% of arrivals); the other 18% only offer
+       the orthogonal (anti-chiral) partner -- a DIFFERENT channel (potential
+       R<->L conversion), not a fallback.
+
+DESIGN: round-trip-gated chirality handoff -- R(E,w,P) = the unique FWD +
+same-hand partner frame; propose the hand only if R(P, F(R(E,w,P)), E) ==
+F(w) (the gate is symmetric, so skew-DB holds by construction); else no hand
+(stay on axis, the valid default). Estimated coverage ~2/3 of arrivals, with
+every fired handoff a genuine same-spiral continuation (vs the algebraic h's
+14% alignment).
+
 NEXT: statistics (many seeds/rungs: coupling rate vs Q, p_hand, beta);
-alignment-optimised h within the equivariant class; then the actual physics
-target -- momentum current through a defect gas and whether relaxation
-accelerates (the original ADM motivation).
+then the actual physics target -- momentum current through a defect gas and
+whether relaxation accelerates (the original ADM motivation).
 
 ## State
 
