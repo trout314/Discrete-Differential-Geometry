@@ -8,6 +8,15 @@ metadata:
   modified: 2026-07-25T22:22:29.154Z
 ---
 
+> **SUPERSEDED IN PART (2026-08-05) -- see [[defect-density-hu]].** The
+> "crystal-grade hyperuniform" headline below is a NORMALIZATION artifact:
+> the crystal carries 97.7-99.2% of sum dq^2 and contributes nothing
+> sub-Bragg, and the same estimator calls randomly-relocated defects
+> hyperuniform too (0.0213 +/- 0.0011). The "sources cluster / super-Poisson
+> 1.14" sub-claim is also corrected: a form-factor-free complex-centroid
+> estimator over 6x the data finds the arrangement to be exactly POISSON.
+> The screening reading may still be right, but nothing below establishes it.
+
 Measured 2026-07-25. Tools: `scripts/defect_dynamics/defect_statics.py`
 (complex-level pair stats + ball variance by flicker attribution) and
 `curvature_balls.py` (full vertex-field ball variance with pristine + shuffled
