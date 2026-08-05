@@ -90,10 +90,15 @@ def minus_flier(ed, chord, link):
 
 class Flight:
     def __init__(self, sampler, chord, frame, kscan=60, audit=True,
-                 beta=1.0, p_hand=0.0, hand_rule="alg"):
+                 beta=1.0, p_hand=0.0, hand_rule="alg", expect_free=True):
         self.beta = float(beta)
         self.p_hand = float(p_hand)
         self.hand_rule = hand_rule
+        # expect_free: under the pure EDQ action a rung-Q hop from a clean
+        # chord has dS = 0 exactly, and we assert it. Under other actions
+        # (e.g. pins + c_imp*m^2) a same-rung hop between different Aut face
+        # orbits carries a legitimate cost; set False to gate it instead.
+        self.expect_free = bool(expect_free)
         self.s = sampler
         self.C = chord
         self.w = frame
@@ -456,8 +461,10 @@ class Flight:
         # from a docked chord the same proposal is the EXIT and carries the
         # entry's elevation with reversed sign -- gated below like everything
         src_clean = not ((set(self.C) | set(self.link)) & self.BV)
-        if kind == "free" and src_clean:
-            assert abs(dS) < 1e-6, (dS, "free site not free from clean chord")
+        if kind == "free" and src_clean and abs(dS) > 1e-6:
+            if self.expect_free:
+                raise AssertionError((dS, "free site not free from clean chord"))
+            self.events["free_not_free"] += 1
         if dS <= 0 or rng.random() < np.exp(-self.beta * dS):
             old = (self.C, self.w, k, dS)
             self.s.nonlocal_slide_at(self.C[0], self.C[1], slot, k,

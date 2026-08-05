@@ -1,5 +1,6 @@
 # Project memory index
 
+- [ECMC blob A/B](ecmc-blob-ab.md) — RESULT: blob dispersal is transport-limited and nonlocal moves win 16-43x, but the LIFT loses — unlifted diffusive slide beats the flight 6-9x at matched budget; + false-stationarity warning
 - [Bilocal program saga](bilocal-program-saga.md) — MASTER NARRATIVE: two carriers, what was refuted and why (5 structural impossibility results), measured constants, bug taxonomy, full script inventory
 - [Percolation A/B test](percolation-ab-test.md) — RESULT: chord channel does NOT accelerate relaxation (1.6x worse on total work = pure overhead; plain-work effect ~0); episodes don't increment totalTried
 - [Pair carrier calibration](pair-carrier-calibration.md) — BOTH bilocal carriers conserve f₀ exactly; role-signed umbrella + calib_zeta2 got roundtrips balanced; transport still blocked by the flat off-tube umbrella
