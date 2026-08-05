@@ -638,7 +638,7 @@ _lib.ddg_sampler_set_codim3_degree_target.errcheck = _check_int
 
 _lib.ddg_sampler_set_n6_potential.argtypes = [
     ctypes.c_void_p, ctypes.c_double, ctypes.c_double,
-    ctypes.POINTER(ctypes.c_double)]
+    ctypes.POINTER(ctypes.c_double), ctypes.c_long]
 _lib.ddg_sampler_set_n6_potential.restype = ctypes.c_int
 _lib.ddg_sampler_set_n6_potential.errcheck = _check_int
 

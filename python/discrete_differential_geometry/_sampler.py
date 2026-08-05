@@ -949,14 +949,25 @@ class ManifoldSampler:
         self._params.codim3_degree_target = target
 
     def set_n6_potential(self, zleg_coef: float, imp_coef: float = 0.0,
-                         tilt=None) -> None:
+                         tilt=None, imp_offset: int = 0) -> None:
         """Configure the vertex 6-valence potential (dim=3 only; 0,0,None = off).
 
         Per-vertex energy on n6 = #incident edges with degree >= 6 and
         m = #incident edges with degree outside {5, 6}:
 
             U(n6) = zleg_coef * dist^2(n6, {0,2,3,4}) + tilt[n6]  (tilt: n6 <= 4)
-            V(m)  = imp_coef * m^2
+            V(m)  = imp_coef * max(0, m - imp_offset)^2
+
+        ``imp_offset`` shifts the impurity quadratic's foot: V is FLAT for
+        m <= imp_offset and steep beyond. 0 (the default) reproduces the bare
+        quadratic exactly, so existing runs are unaffected. It exists because
+        sum_v m^2 = 2*n_impure + 2*P (P = pairs of impure edges sharing a
+        vertex), so a bare quadratic charges ONE coefficient to both the
+        concentration of defects and their adjacency -- and much of P is
+        internal to a single defect. Setting the offset to the largest m an
+        isolated defect already carries lets a defect pay nothing for its own
+        structure, and two defects touch cheaply, while deep burial stays
+        forbidden.
 
         By the link sum rule, zero energy <=> the vertex is exactly a
         Frank-Kasper coordination (Z12/Z14/Z15/Z16). ``tilt`` (length-5
@@ -973,9 +984,10 @@ class ManifoldSampler:
             tilt_ptr = (ctypes.c_double * 5)(*vals)
         self._recorded_n6_potential = {
             "zleg_coef": float(zleg_coef), "imp_coef": float(imp_coef),
-            "tilt": [float(x) for x in (tilt if tilt is not None else [0.0] * 5)]}
+            "tilt": [float(x) for x in (tilt if tilt is not None else [0.0] * 5)],
+            "imp_offset": int(imp_offset)}
         _lib.ddg_sampler_set_n6_potential(
-            self._handle, zleg_coef, imp_coef, tilt_ptr)
+            self._handle, zleg_coef, imp_coef, tilt_ptr, int(imp_offset))
 
     # -- Statistics --
 

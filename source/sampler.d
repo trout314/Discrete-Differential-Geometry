@@ -461,7 +461,7 @@ unittest
 //   m(v)  = # incident edges with degree not in {5, 6} ("impurity valence")
 // Energy per vertex:
 //   U(n6) = zlegCoef * dist^2(n6, {0,2,3,4}) + tilt[n6] (tilt only for n6 <= 4)
-//   V(m)  = impCoef * m^2
+//   V(m)  = impCoef * max(0, m - impOffset)^2
 // Physics: by the link sum rule (sum over incident edges of (6 - deg) = 12,
 // link = S^2), a vertex with m = 0 and n6 in {0,2,3,4} is EXACTLY a
 // Frank-Kasper coordination (Z12/Z14/Z15/Z16); n6 = 1 is combinatorially
@@ -469,15 +469,29 @@ unittest
 // analytic tail — n6 is unbounded, a clamped table would leave hubs with no
 // restoring force), the tilts are chemical potentials selecting AMONG the
 // legal classes (phase selection: A15-type vs Laves-type stoichiometry), and
-// V(m) = m^2 penalizes defect CLUSTERING at a vertex (nonlinear on purpose: a
-// linear-in-m term is just an edge-level penalty in disguise since
-// sum_v m(v) = 2 * #impure-edges; the quadratic makes an octahedral vertex,
-// m = 6, cost 36 rather than 6). Zero coefficients = disabled, zero overhead.
+// V penalizes defect CLUSTERING at a vertex. It must be strictly convex to do
+// so at all: a linear-in-m term is an edge-level penalty in disguise, since
+// sum_v m(v) = 2 * #impure-edges exactly, so it depends on HOW MANY impure
+// edges exist and not at all on where they are. The quadratic makes an
+// octahedral vertex, m = 6, cost 36 rather than 6.
+//
+// impOffset shifts the quadratic's foot: V(m) = impCoef * max(0, m - off)^2 is
+// FLAT for m <= off and steep beyond. The point is that sum_v m^2 =
+// 2*n_impure + 2*P (P = pairs of impure edges sharing a vertex), so a bare
+// quadratic charges one coefficient to BOTH the concentration of defects and
+// their adjacency -- and much of P is INTERNAL to a single defect (an
+// isolated (3,4,4) flicker's own impure edges share vertices). With off set
+// to the largest m an isolated defect already carries, a defect pays nothing
+// for its own structure and two defects touch cheaply, while deep burial
+// (large m) stays forbidden. off = 0 reproduces the bare quadratic exactly.
+//
+// Zero coefficients = disabled, zero overhead.
 
 struct VertexPot
 {
     real zlegCoef = 0;
     real impCoef = 0;
+    long impOffset = 0;
     real[5] tilt = [0, 0, 0, 0, 0];
 
     bool enabled() const pure nothrow @nogc @safe
@@ -499,8 +513,35 @@ struct VertexPot
 
     real V(long m) const pure nothrow @nogc @safe
     {
-        return impCoef * cast(real)(m * m);
+        immutable long d = m - impOffset;
+        if (d <= 0) return 0;              // flat foot; V(0) = 0 for any off >= 0
+        return impCoef * cast(real)(d * d);
     }
+}
+
+unittest
+{
+    // impOffset = 0 must reproduce the bare quadratic EXACTLY: every existing
+    // run and published number used that form.
+    VertexPot p;
+    p.impCoef = 0.5;
+    foreach (m; 0 .. 8) assert(p.V(m) == 0.5 * m * m);
+
+    // A flat foot up to the offset, quadratic beyond, and V(0) = 0 always --
+    // the state machinery assumes a vertex absent from the counter maps
+    // contributes V(0) (see VertexPotState.recompute).
+    p.impOffset = 2;
+    assert(p.V(0) == 0 && p.V(1) == 0 && p.V(2) == 0);
+    assert(p.V(3) == 0.5 && p.V(4) == 2.0 && p.V(6) == 8.0);
+
+    // The point of the offset: the FIRST unit past the foot is cheap, while
+    // deep burial stays expensive. Bare quadratic charges 2m+1 to go m -> m+1
+    // from m = 2 (i.e. 5); with the foot at 2 the same step costs 1.
+    VertexPot bare;
+    bare.impCoef = 0.5;
+    assert(bare.V(3) - bare.V(2) == 2.5);
+    assert(p.V(3) - p.V(2) == 0.5);
+    assert(p.V(6) - p.V(5) == 3.5);       // burial still steep
 }
 
 /// Per-vertex counter state for the vertex potential. Only nonzero counters
