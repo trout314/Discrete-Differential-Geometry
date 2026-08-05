@@ -174,9 +174,19 @@ def measure(view, center):
 # the lifted episode (arm B)
 # ---------------------------------------------------------------------------
 
-def run_episode(s, rng, nstep, kscan, beta, p_hand, hand_rule, audit):
+def run_episode(s, rng, nstep, kscan, beta, p_hand, hand_rule, audit,
+                refresh_every=10):
     """One flight episode from a uniformly chosen deg-3 chord. Returns a
-    summary dict; 'd_calls' counts nonlocal_slide_at invocations (work)."""
+    summary dict; 'd_calls' counts nonlocal_slide_at invocations (work).
+
+    refresh_every caps the lift's persistence: the direction is resampled
+    every that many steps (0 = never within an episode -- the episode
+    boundary is then the only refresh, since each episode starts from a fresh
+    chord and a uniform frame). It was hardcoded to 10 through the
+    2026-08-05 A/B, which put a HARD 10-step ceiling on persistence and so on
+    any ballistic (t^2) signal -- with contacts reflecting ~42% of steps the
+    realised persistence was ~2.4. Keep 10 to reproduce those runs; raise it
+    (or 0) for the MSD diagnostic."""
     from ecmc_flight import Flight
     pairs, degs = s.manifold.illegal_edges()
     pairs = np.asarray(pairs).reshape(-1, 2)
@@ -204,9 +214,9 @@ def run_episode(s, rng, nstep, kscan, beta, p_hand, hand_rule, audit):
         fl = Flight(s, C, (C[0],) + tuple(sorted(lk)), kscan=kscan,
                     audit=audit, beta=beta, p_hand=p_hand,
                     hand_rule=hand_rule, expect_free=False)
-        fl.refresh_frame(rng)
+        fl.refresh_frame(rng)          # initial direction draw
         for i in range(nstep):
-            if i and i % 10 == 0:
+            if refresh_every and i and i % refresh_every == 0:
                 fl.refresh_frame(rng)
             fl.step(rng)
         return {"chord0": list(C), "chord1": list(fl.C),
@@ -274,7 +284,7 @@ def run_chain(arm, sidx, seed, cfg, out_dir):
             for _ in range(cfg["eps_per_chunk"]):
                 r = run_episode(s, rng, cfg["ep_steps"], cfg["kscan"],
                                 cfg["beta"], cfg["p_hand"], cfg["hand_rule"],
-                                cfg["audit"])
+                                cfg["audit"], cfg.get("refresh_every", 10))
                 work_ep += 2 * r["d_calls"]
                 ep_ev.update(r.get("events", {}))
                 if "failed" in r:
@@ -324,6 +334,11 @@ def main():
     p.add_argument("--eps-per-chunk", type=int, default=2)
     p.add_argument("--ep-steps", type=int, default=40)
     p.add_argument("--kscan", type=int, default=60)
+    p.add_argument("--refresh-every", type=int, default=10,
+                   help="resample the lift direction every N kernel steps "
+                        "(0 = never within an episode). 10 reproduces the "
+                        "2026-08-05 A/B, where it was hardcoded and capped "
+                        "persistence at 10 steps.")
     p.add_argument("--beta", type=float, default=1.0)
     p.add_argument("--p-hand", type=float, default=0.0)
     p.add_argument("--hand-rule", choices=("alg", "chir"), default="alg")
@@ -338,6 +353,7 @@ def main():
                cimp=args.cimp, nfc=args.nfc, k1=args.k1, sweeps=args.sweeps,
                chunk=args.chunk, eps_per_chunk=args.eps_per_chunk,
                ep_steps=args.ep_steps, kscan=args.kscan, beta=args.beta,
+               refresh_every=args.refresh_every,
                p_hand=args.p_hand, hand_rule=args.hand_rule,
                audit=not args.no_audit, nslide_prob=args.nslide_prob,
                nslide_max_step=args.nslide_max_step)
