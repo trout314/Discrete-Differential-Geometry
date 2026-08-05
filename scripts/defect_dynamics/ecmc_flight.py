@@ -90,9 +90,10 @@ def minus_flier(ed, chord, link):
 
 class Flight:
     def __init__(self, sampler, chord, frame, kscan=60, audit=True,
-                 beta=1.0, p_hand=0.0):
+                 beta=1.0, p_hand=0.0, hand_rule="alg"):
         self.beta = float(beta)
         self.p_hand = float(p_hand)
+        self.hand_rule = hand_rule
         self.s = sampler
         self.C = chord
         self.w = frame
@@ -216,6 +217,121 @@ class Flight:
             return (f,) + tuple(sig)
         return h
 
+    # -- chirality machinery for the round-trip-gated rule --------------------
+    @staticmethod
+    def _parity(seq):
+        s2 = list(seq)
+        p2 = 1
+        for i in range(len(s2)):
+            j = min(range(i, len(s2)), key=lambda k: s2[k])
+            if j != i:
+                s2[i], s2[j] = s2[j], s2[i]
+                p2 = -p2
+        return p2
+
+    def _bg_of(self, edge, elink):
+        """(tets, f2a) of the state with `edge` (deg-3) annihilated."""
+        F = np.asarray(self.s.manifold.facets())
+        tets = []
+        for t in F:
+            t = tuple(sorted(int(x) for x in t))
+            if edge[0] in t and edge[1] in t:
+                continue
+            tets.append(t)
+        l0, l1, l2 = elink
+        tets.append(tuple(sorted((l0, l1, l2, edge[0]))))
+        tets.append(tuple(sorted((l0, l1, l2, edge[1]))))
+        f2a = {}
+        for t in tets:
+            for i in range(4):
+                f2a.setdefault(t[:i] + t[i + 1:], []).append(t[i])
+        return tets, f2a
+
+    @staticmethod
+    def _orient(tets, f2a, refT):
+        """Coherent orientation sign per (sorted) tet, BFS from refT."""
+        import collections as _c
+        sig = {refT: 1}
+        q = _c.deque([refT])
+        while q:
+            t = q.popleft()
+            for i in range(4):
+                face = t[:i] + t[i + 1:]
+                ap = f2a[face]
+                other = ap[0] if ap[1] == t[i] else ap[1]
+                t2 = tuple(sorted(face + (other,)))
+                if t2 in sig:
+                    continue
+                j = t2.index(other)
+                sig[t2] = -sig[t] * (-1) ** i * (-1) ** j
+                q.append(t2)
+        return sig
+
+    def _corr(self, w, f2a, n=3):
+        out = set()
+        ww = w
+        for _ in range(n):
+            ap = f2a.get(tuple(sorted(ww[1:4])))
+            if ap is None or len(ap) != 2:
+                break
+            x = ap[0] if ap[1] == ww[0] else ap[1]
+            if x == ww[0]:
+                break
+            ww = (ww[1], ww[2], ww[3], int(x))
+            out.add(tuple(sorted(ww)))
+        return out
+
+    def _chir_choice(self, E, Elink, wE, f2aE, sigE, P, Plink, f2aP, sigP):
+        """R(E, w, P): unique FWD + same-hand frame on P, or None."""
+        H1 = sigE[tuple(sorted(wE))] * self._parity(wE) \
+            if tuple(sorted(wE)) in sigE else None
+        if H1 is None:
+            return None
+        corE = self._corr(wE, f2aE)
+        cands = []
+        for f in P:
+            for pm in __import__("itertools").permutations(Plink):
+                we = (f,) + pm
+                t = tuple(sorted(we))
+                if t not in sigP:
+                    continue
+                if sigP[t] * self._parity(we) != H1:
+                    continue
+                if self._corr(we, f2aP) & corE:
+                    cands.append(we)
+        return cands[0] if len(cands) == 1 else None
+
+    def hand_chir(self, P):
+        """Round-trip-gated chirality handoff choice, or None.
+
+        R(E,w,P) = the unique forward-continuing same-hand frame on P;
+        propose only if R(P, F(choice), E) == F(w). The gate is symmetric,
+        so the composite is skew-balanced by construction."""
+        E, wE, Elink = self.C, self.w, self.link
+        Plink = tuple(self._link_edge(P))
+        tetsE, f2aE = self._bg_of(E, Elink)   # == current background
+        tetsP, f2aP = self._bg_of(P, Plink)
+        site = set(E) | set(P) | set(Elink) | set(Plink)
+        common = set(tetsE) & set(tetsP)
+        refT = next(t for t in sorted(common) if not (set(t) & site))
+        sigE = self._orient(tetsE, f2aE, refT)
+        sigP = self._orient(tetsP, f2aP, refT)
+        we = self._chir_choice(E, Elink, wE, f2aE, sigE,
+                               P, Plink, f2aP, sigP)
+        if we is None:
+            self.events["chir_nofwd"] += 1
+            return None
+        # round trip: the same rule from P's side at the flipped frame must
+        # reproduce the flipped origin
+        wf = (P[1] if we[0] == P[0] else P[0], we[3], we[2], we[1])
+        back = self._chir_choice(P, Plink, wf, f2aP, sigP,
+                                 E, Elink, f2aE, sigE)
+        eflip = (E[1] if wE[0] == E[0] else E[0], wE[3], wE[2], wE[1])
+        if back != eflip:
+            self.events["chir_gate_fail"] += 1
+            return None
+        return we
+
     def try_hand(self, rng, when):
         """With prob p_hand, hand the activity to the interlocked partner."""
         if self.p_hand <= 0:
@@ -225,6 +341,16 @@ class Flight:
             return False
         if rng.random() >= self.p_hand:
             return False
+        if self.hand_rule == "chir":
+            wnew = self.hand_chir(P)
+            if wnew is None:
+                return False
+            Plink = tuple(self._link_edge(P))
+            self.C, self.w = P, wnew
+            self._rebuild_background()
+            self.events[f"hand_{when}"] += 1
+            self.events["hand_chir"] += 1
+            return True
         Plink = tuple(self._link_edge(P))
         h = self._hand_map(self.C, self.link, P, Plink)
         wnew = h(self.w)
@@ -414,6 +540,11 @@ def main():
                          "(0 = off). Needed for ergodicity: with no gated "
                          "events the flight is a deterministic closed "
                          "circuit.")
+    ap.add_argument("--hand-rule", choices=("alg", "chir"), default="alg",
+                    help="handoff frame rule: 'alg' = the equivariant "
+                         "algebraic bijection (total, 14%% aligned); 'chir' "
+                         "= round-trip-gated chirality-conserving same-"
+                         "spiral continuation (partial, fully aligned)")
     ap.add_argument("--p-hand", type=float, default=0.0,
                     help="handoff probability at interlocked configurations "
                          "(0 = default rule, heavy sector provably frozen)")
@@ -485,7 +616,8 @@ def main():
     s = ManifoldSampler(m, SamplerParams(**par))
     w0 = (C[0], g[0], g[1], g[2])
     fl = Flight(s, C, w0, kscan=args.kscan, audit=not args.no_audit,
-                beta=args.beta, p_hand=args.p_hand)
+                beta=args.beta, p_hand=args.p_hand,
+                hand_rule=args.hand_rule)
     print(f"launch chord {C} on face {g}, carried Q = {fl.Q}, "
           f"bundle verts {len(BV)}, beta = {args.beta}, "
           f"p_hand = {args.p_hand}")

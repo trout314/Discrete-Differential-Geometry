@@ -532,6 +532,14 @@ F(w) (the gate is symmetric, so skew-DB holds by construction); else no hand
 every fired handoff a genuine same-spiral continuation (vs the algebraic h's
 14% alignment).
 
+IMPLEMENTED (--hand-rule chir, head-to-head vs alg at seed 3 / beta 0.25 /
+p_hand 0.5 / 6000 steps): chir fired 77 handoffs with only 7% gate rejections
+(3 nofwd + 3 round-trip -- coverage FAR above the ~67% estimate, the gate is
+nearly transparent in practice), lost 3 heavy edges including the triangle's
+own axis (11,30) and left 21 debris; alg fired 18, lost 1, left 5. Drift
+0.000e+00 and zero failures on both. Every chir handoff is a same-spiral
+continuation by construction, and the coupling is ~4x stronger.
+
 NEXT: statistics (many seeds/rungs: coupling rate vs Q, p_hand, beta);
 then the actual physics target -- momentum current through a defect gas and
 whether relaxation accelerates (the original ADM motivation).
