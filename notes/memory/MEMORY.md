@@ -1,6 +1,7 @@
 # Project memory index
 
 - [Defect-density HU](defect-density-hu.md) — RETRACTION + RESULT: old "crystal-grade HU" is a normalization readout (calls RANDOMISED defects hyperuniform too); shuffling WHOLE DEFECTS rigidly gives 0.999±0.026 = exactly Poisson; complexes carry residual NEGATIVE charge (77% negative)
+- [Flight contact barrier](flight-contact-barrier.md) — DECISIVE: the wall stopping a flicker entering a complex is 100% the m² term we chose (pins+geometry = EXACTLY 0); receiver is a background deg-4 edge the flier's own 2→3 makes deg-3; Q-refresh line retracted
 - [ECMC blob A/B](ecmc-blob-ab.md) — RESULT: blob dispersal is transport-limited and nonlocal moves win 16-43x, but the LIFT loses — unlifted diffusive slide beats the flight 6-9x at matched budget; + false-stationarity warning
 - [Bilocal program saga](bilocal-program-saga.md) — MASTER NARRATIVE: two carriers, what was refuted and why (5 structural impossibility results), measured constants, bug taxonomy, full script inventory
 - [Percolation A/B test](percolation-ab-test.md) — RESULT: chord channel does NOT accelerate relaxation (1.6x worse on total work = pure overhead; plain-work effect ~0); episodes don't increment totalTried

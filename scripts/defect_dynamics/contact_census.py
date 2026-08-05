@@ -64,8 +64,9 @@ REF = os.path.join(_ROOT, "data/tcp_reference/T3_C15_m3_N3672.mfd")
 class CensusFlight(Flight):
     """Flight that records the anatomy of every rejected contact."""
 
-    def __init__(self, *a, hscan=40, sink=None, sw=0, **kw):
+    def __init__(self, *a, hscan=40, sink=None, sw=0, cimp=0.5, **kw):
         super().__init__(*a, **kw)
+        self.cimp = float(cimp)
         self.hscan = hscan
         self.sink = sink if sink is not None else []
         self.sw = sw
@@ -168,6 +169,25 @@ class CensusFlight(Flight):
                     resume_k = j
                     break
 
+        # Decompose the barrier: how much of dS is the m^2 anti-clustering
+        # term we CHOSE (V(m) = cimp * m^2, m = #incident edges of degree
+        # outside {5,6}), versus the pins + geometry? Re-price the same
+        # proposal with cimp temporarily zeroed. Setting cimp=0 for the whole
+        # RUN is not a control -- the state degenerates (rungs run negative
+        # and the walk dies), because the m^2 term is what holds the gas.
+        dS_pins = None
+        if self.cimp:
+            slot = self._slot_for(self.w)
+            if slot is not None:
+                self.s.set_n6_potential(0.0, 0.0)
+                try:
+                    r0 = self.s.nonlocal_slide_at(self.C[0], self.C[1],
+                                                  slot, k, commit=False)
+                    if r0 is not None:
+                        dS_pins = float(r0[0])
+                finally:
+                    self.s.set_n6_potential(0.0, self.cimp)
+
         n_d3_bg = sum(1 for d in self.edB.values() if d == 3)
         self.sink.append({
             "sw": self.sw, "k": int(k), "dS": float(dS), "Q": int(self.Q),
@@ -176,6 +196,8 @@ class CensusFlight(Flight):
             "blk_has_d3": bool(blk_d3), "blk_n_d3": len(blk_d3),
             "n_d3_bg": n_d3_bg,
             "d3_dist": self.dist_to_nearest_d3(sup, blk),
+            "dS_pins": dS_pins,
+            "dS_m2": None if dS_pins is None else float(dS) - dS_pins,
             "resume_k": resume_k,
         })
         return False        # census only: still reverse, as production does
@@ -219,7 +241,8 @@ def run_chain(seed, cfg):
                 fl = CensusFlight(s, C, (C[0],) + tuple(sorted(lk)),
                                   kscan=cfg["kscan"], audit=False,
                                   beta=1.0, p_hand=0.0, expect_free=False,
-                                  hscan=cfg["hscan"], sink=sink, sw=sw)
+                                  hscan=cfg["hscan"], sink=sink, sw=sw,
+                                  cimp=cfg["cimp"])
                 fl.refresh_frame(rng)
                 for i in range(cfg["ep_steps"]):
                     if cfg["refresh_every"] and i and i % cfg["refresh_every"] == 0:
@@ -269,6 +292,21 @@ def report(rows, label):
           f"   median {out['resume_k_median']} walk steps  <- ceiling for pass-through")
     print(f"  (c) rejected dS: median {out['dS_median']:.2f}, q10 {out['dS_q10']:.2f}, "
           f"frac<1 = {100*out['dS_frac_lt_1']:.1f}%, frac<3 = {100*out['dS_frac_lt_3']:.1f}%")
+    dec = [r for r in rows if r.get("dS_pins") is not None]
+    if dec:
+        pin = np.array([r["dS_pins"] for r in dec])
+        m2 = np.array([r["dS_m2"] for r in dec])
+        tot = pin + m2
+        out["dS_pins_median"] = float(np.median(pin))
+        out["dS_m2_median"] = float(np.median(m2))
+        out["m2_share"] = float(np.median(m2 / np.where(tot != 0, tot, np.nan)))
+        out["frac_pins_lt_3"] = float((pin < 3.0).mean())
+        print(f"      decomposed (n={len(dec):,}): pins+geometry median "
+              f"{out['dS_pins_median']:.2f}, m^2 term median "
+              f"{out['dS_m2_median']:.2f}  -> m^2 is "
+              f"{100*out['m2_share']:.0f}% of the barrier")
+        print(f"      WITHOUT the m^2 term, {100*out['frac_pins_lt_3']:.1f}% "
+              f"of these contacts would cost < 3")
     return out
 
 
