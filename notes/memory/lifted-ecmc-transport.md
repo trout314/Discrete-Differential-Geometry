@@ -452,6 +452,40 @@ coupling -- a handoff legitimately swaps which edge is background, so the
 commit is invisible to it. The metric is final-vs-initial illegal sets
 (now printed as HEAVY SECTOR).
 
+## C15 IS THE DEFAULT CRYSTAL (user decision, 2026-08-05)
+
+ecmc_flight now defaults to C15 m3 with the orbit-3 triangle as background
+(--bg "face:8,9,10"; --bg createseq recovers the R m2 bundle). h's three
+requirements MACHINE-CHECKED exhaustively: C15 44/44 interlocked configs
+(every 2nd 2->3 on every deg-4 of every site class), R m2 1076/1076 --
+bijective, flip-equivariant, exchange-inverse everywhere; the interlock
+ALWAYS forms (0 configs without). Naturality is now verified fact, not
+argument.
+
+TWO BUGS THE C15 SWITCH EXPOSED (both fixed, commit pending):
+
+1. ERGODICITY GAP: with no gated events the kernel is fully deterministic,
+   so a flier rides a CLOSED same-rung circuit forever -- 8/8 C15 seeds
+   coasted 2000 steps without ever contacting the 5-vertex triangle (on R
+   the webs happened to cross the bigger bundle, masking it). Fix:
+   refreshment (--refresh-every N, uniform frame resample, self-paired).
+   With it: 8/8 seeds contact, 2 fire handoffs.
+
+2. FRAME DESYNC NEAR COMPLEXES: two DIFFERENT faces near a defect can share
+   the same apex pair, so matching D-slot arrivals at steps 1-2 does not pin
+   the window (it provably does on pristine -- that is why all R runs were
+   clean). The walked frame silently became fiction: trailing {3,8,11} vs
+   live link {3,9,11} at chord (30,76). Acceptance was still exact (dS from
+   the D trial); only the carried frame corrupted. Fix: slot-match at steps
+   1..3, take the new link from the LIVE manifold always, and treat any
+   residual mismatch as a counted refresh (frame_resync).
+
+C15 COUPLING (seed 3, beta 0.25, p_hand 0.5, refresh 50, 6000 steps):
+    lost (8,9) -- an edge of the IMMOBILE triangle species -- gained 5
+    debris edges; drift 0.000e+00, 18 handoffs, 0 failures, 0 resyncs.
+At beta 0.5 the triangle resisted for 2000 steps (interlocks formed and
+ping-ponged back); the immobile species needs the hotter gate to commit.
+
 NEXT: statistics (many seeds/rungs: coupling rate vs Q, p_hand, beta);
 alignment-optimised h within the equivariant class; then the actual physics
 target -- momentum current through a defect gas and whether relaxation

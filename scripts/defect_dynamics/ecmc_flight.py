@@ -265,21 +265,47 @@ class Flight:
         return None
 
     def _slot_for(self, w):
-        a1 = self.arrival(self.stepw(w)) if self.stepw(w) else None
-        w2 = self.stepw(self.stepw(w)) if self.stepw(w) else None
-        a2 = self.arrival(w2) if w2 else None
+        # match the D slot to the frame by arrivals at steps 1..3. On
+        # pristine crystal steps 1-2 pin the window uniquely; near a complex
+        # two DIFFERENT faces can share an apex pair, so two different
+        # windows can share arrivals at small k -- deeper matching shrinks
+        # (but cannot eliminate) that; the residual is caught by the
+        # frame-resync check after commit.
+        preds = []
+        ww = w
+        for _ in range(3):
+            ww = self.stepw(ww) if ww else None
+            preds.append(self.arrival(ww) if ww else None)
+        if preds[0] is None:
+            return None
         for sl in range(12):
-            r1 = self.s.nonlocal_slide_at(self.C[0], self.C[1], sl, 1,
-                                          commit=False)
-            r2 = self.s.nonlocal_slide_at(self.C[0], self.C[1], sl, 2,
-                                          commit=False)
-            ok1 = (r1 is None and a1 is None) or (r1 and r1[2] == a1)
-            ok2 = (r2 is None and a2 is None) or (r2 and r2[2] == a2)
-            if a1 and r1 and r1[2] == a1 and (a2 is None or (r2 and r2[2] == a2)):
+            ok = True
+            for k, a in enumerate(preds, start=1):
+                if a is None:
+                    break
+                r = self.s.nonlocal_slide_at(self.C[0], self.C[1], sl, k,
+                                             commit=False)
+                if not (r and r[2] == a):
+                    ok = False
+                    break
+            if ok:
                 return sl
         return None
 
     # -- one kernel step ------------------------------------------------------
+    def refresh_frame(self, rng):
+        """Uniform frame resample at the current chord -- the ECMC
+        refreshment move. Uniform -> uniform is self-paired, state unchanged,
+        so it is trivially valid; without it a run with no gated events is a
+        DETERMINISTIC closed circuit on one rung web (measured on C15: 8/8
+        seeds coasted forever without ever contacting the defect)."""
+        perms = [(self.link[i], self.link[j], self.link[k])
+                 for (i, j, k) in ((0, 1, 2), (0, 2, 1), (1, 0, 2),
+                                   (1, 2, 0), (2, 0, 1), (2, 1, 0))]
+        e = self.C[int(rng.integers(2))]
+        self.w = (e,) + perms[int(rng.integers(6))]
+        self.events["refresh"] += 1
+
     def step(self, rng):
         self.try_hand(rng, "src")
         prop = self.scan(self.w)
@@ -316,9 +342,19 @@ class Flight:
                 wnew = self.stepw(wnew)
             self.C, self.w = arr, wnew
             # the background (state minus flier) is INVARIANT under flier
-            # motion, so no rebuild -- only the flier's own link moves, and
-            # the new link is exactly the target face
-            self.link = face
+            # motion, so no rebuild. The new link is taken from the LIVE
+            # manifold, not the walk: near a complex the D slot's walk can
+            # cross a DIFFERENT face sharing the same apex pair, in which
+            # case the walked frame is fiction -- detect and refresh.
+            self.link = tuple(self._link_edge(arr))
+            if set(wnew[1:4]) != set(self.link):
+                self.events["frame_resync"] += 1
+                perms = [(self.link[i], self.link[j], self.link[k2])
+                         for (i, j, k2) in ((0, 1, 2), (0, 2, 1), (1, 0, 2),
+                                            (1, 2, 0), (2, 0, 1), (2, 1, 0))]
+                wnew = (arr[int(rng.integers(2))],) + \
+                    perms[int(rng.integers(6))]
+                self.w = wnew
             label = kind if src_clean else \
                 ("exit" if kind == "free" else "deeper")
             self.events[f"accept_{label}"] += 1
@@ -362,11 +398,22 @@ class Flight:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ref", default=os.path.join(
-        _ROOT, "data/tcp_reference/T3_R_m2_N7248.mfd"))
+        _ROOT, "data/tcp_reference/T3_C15_m3_N3672.mfd"))
+    ap.add_argument("--bg", default="face:8,9,10",
+                    help="background defect complex: 'face:a,b,c[;a,b,c...]' "
+                         "(2->3 on each face) or 'createseq' (the R m2 "
+                         "CREATE_SEQ bundle). Default: the C15 orbit-3 "
+                         "triangle -- tipless, immobile, a clean stationary "
+                         "target.")
     ap.add_argument("--nstep", type=int, default=300)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--kscan", type=int, default=60)
     ap.add_argument("--no-audit", action="store_true")
+    ap.add_argument("--refresh-every", type=int, default=0,
+                    help="uniform frame resample every N kernel steps "
+                         "(0 = off). Needed for ergodicity: with no gated "
+                         "events the flight is a deterministic closed "
+                         "circuit.")
     ap.add_argument("--p-hand", type=float, default=0.0,
                     help="handoff probability at interlocked configurations "
                          "(0 = default rule, heavy sector provably frozen)")
@@ -376,8 +423,23 @@ def main():
     args = ap.parse_args()
     rng = np.random.default_rng(args.seed)
 
+    def build_background(mm):
+        if args.bg == "createseq":
+            apply_seq(mm, CREATE_SEQ)
+        else:
+            assert args.bg.startswith("face:"), args.bg
+            Fm = np.asarray(mm.facets())
+            fa = {}
+            for t in Fm:
+                t = tuple(sorted(int(x) for x in t))
+                for i in range(4):
+                    fa.setdefault(t[:i] + t[i + 1:], []).append(t[i])
+            for spec in args.bg[5:].split(";"):
+                f = tuple(sorted(int(x) for x in spec.split(",")))
+                mm.do_bistellar_move(list(f), list(fa[f]))
+
     m = Manifold.load(args.ref, 3)
-    apply_seq(m, CREATE_SEQ)
+    build_background(m)
     edB = ed_of(m)
     BV = {v for e, d in edB.items() if d < 5 or d > 6 for v in e}
     F = np.asarray(m.facets())
@@ -429,6 +491,8 @@ def main():
           f"p_hand = {args.p_hand}")
 
     for step in range(args.nstep):
+        if args.refresh_every and step and step % args.refresh_every == 0:
+            fl.refresh_frame(rng)
         fl.step(rng)
 
     print(f"\nevents after {args.nstep} kernel steps:")
