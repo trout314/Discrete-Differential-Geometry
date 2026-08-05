@@ -511,7 +511,18 @@ class Flight:
             self.try_hand(rng, "arr")
         else:
             self.events[f"reject_{kind}_flip"] += 1
+            # Seam for the rejected-move lift. In factorized/soft ECMC a
+            # rejected move does not reverse the lift -- it hands it to the
+            # partner that caused the rejection. Subclasses hook here (see
+            # contact_census.py); the default reverses, as before.
+            if self.on_reject(kind, k, arr, face, dS, rng):
+                return
             self.flip()
+
+    def on_reject(self, kind, k, arr, face, dS, rng):
+        """Called on every rejected proposal, before the flip. Return True to
+        signal the lift was re-routed (caller must NOT flip). Default: no."""
+        return False
 
     def _audit_reverse(self, old):
         C0, w0, k0, dS0 = old
