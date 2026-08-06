@@ -222,6 +222,52 @@ def relax(args):
         print("WARNING: nothing left to relax -- raise --prep-extra")
 
     logs = {}
+    if args.native:
+        # NATIVE contract/split channel (validated to exact detailed
+        # balance): one continuous sampler per branch, NO guard -- f0 is a
+        # genuine equilibrium observable under the quenched action.
+        for branch in ("A", "B"):
+            lab0, inv0 = np.unique(F0, return_inverse=True)
+            mfd = ddg.Manifold(3, inv0.reshape(F0.shape).tolist())
+            s = make_sampler(mfd, f3_ref, args.cimp)
+            if branch == "B":
+                s.set_contract_split(args.csprob, 6)
+            log = []
+            t0 = time.time()
+            prev = (0, 0, 0, 0, 0)
+            for cyc in range(args.cycles):
+                s.run(sweeps=args.sweeps)
+                F = np.asarray(s.manifold.dup().facets(), np.int64)
+                ctx = CrystalContext(F)
+                f3, f1, sm2, n_ill = state_terms(ctx)
+                f0 = len(np.unique(F))
+                st = (s.contract_split_stats() if branch == "B"
+                      else (0, 0, 0, 0, 0))
+                dacc = (st[1] - prev[1]) + (st[3] - prev[3])
+                prev = st
+                log.append(dict(cycle=cyc, f0=f0, f1=f1, f3=f3,
+                                sum_m2=sm2, n_ill=n_ill,
+                                S=action(f3, f1, sm2, f3_ref, args.cimp),
+                                cs_accepted=dacc))
+                if cyc % 10 == 0 or cyc == args.cycles - 1:
+                    print(f"  [{branch}] cyc {cyc:3d}: f0={f0} f3={f3} "
+                          f"n_ill={n_ill} S={log[-1]['S']:.1f} "
+                          f"(+{dacc} cs moves)")
+            logs[branch] = log
+            ct, ca, sp, sa, nv = prev
+            print(f"[{branch}] done: f0 {log[0]['f0']} -> {log[-1]['f0']} "
+                  f"(crystal {f0_ref}), S -> {log[-1]['S']:.1f}, "
+                  f"channel contract {ca}/{ct} split {sa}/{sp} "
+                  f"noValid {nv}, {time.time()-t0:.0f}s")
+        out = os.path.join(_ROOT, "data", "grafts",
+                           f"quench_native_c{args.cimp}_p{args.csprob}.json")
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        with open(out, "w") as fh:
+            json.dump(dict(f0_ref=f0_ref, f3_ref=f3_ref,
+                           args=vars(args), logs=logs), fh, indent=1)
+        print(f"log -> {out}")
+        return
+
     for branch in ("A", "B"):
         F = F0.copy()
         log = []
@@ -291,6 +337,11 @@ def main():
     ap.add_argument("--sweeps", type=int, default=20)
     ap.add_argument("--attempts", type=int, default=200)
     ap.add_argument("--temp", type=float, default=1.0)
+    ap.add_argument("--native", action="store_true",
+                    help="use the D-side contract/split channel (exact "
+                         "detailed balance, no guard) instead of Python "
+                         "contraction surgery")
+    ap.add_argument("--csprob", type=float, default=0.1)
     ap.add_argument("--seed", type=int, default=7)
     args = ap.parse_args()
     if args.demo:

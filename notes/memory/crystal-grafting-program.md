@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 1fc2ced4-2271-4a60-ba17-bc68ad6d30ad
-  modified: 2026-08-06T17:44:15.876Z
+  modified: 2026-08-06T18:04:38.649Z
 ---
 
 **Goal (Aaron, 2026-08-06):** graft a piece of one TCP crystal into another by
@@ -183,6 +183,25 @@ pass):**
   (pool seeded from fVector[0]) — graceful reject added (was a release-mode
   corruption risk); pair-test perf: cache the start Manifold, sampler
   copies it (~1.3 ms/trial).
+
+**FIRST UNGUARDED QUENCH (native channel, c15 m3, cimp 3.0, committed
+cb5d139):** prep at f3_ref+150/cimp 0.2 → quench. Channel OFF: frozen at
+f0=653 (5 above crystal) for 1600 sweeps, S≈3950 static. Channel ON
+(prob 0.1, NO guard): 45 accepted moves in the first cycle, overshoot to
+f0=628, then detailed balance brings it back UP 628→634 with two-way
+traffic (74 contract/51 split accepts) — no ratchet. S=2481 (37% below
+control), n_ill 337 vs 368. **500-cycle run
+(10k sweeps, prob 0.02): the quenched glass at cimp 3.0 PREFERS
+f0 ≈ 635-636, THIRTEEN BELOW crystal 648** — f3 rides the volume target
+exactly; S = 1979 vs frozen control's 3310 (40% lower), n_ill ~297 vs 335;
+plateau flat for 200+ cycles with sparse two-way traffic (58 contract/41
+split accepts over 727k proposals ≈ 1.4e-4 acceptance). PROVISIONAL
+(single chain; f0 dynamics itself may be glassy-slow at this coupling) —
+certification needs multi-chain R̂ on f0 per conventions. COST NOTE: thermal
+links are non-catalog so every split proposal pays the ~0.5 ms DFS; at
+prob 0.1 the channel dominated runtime (321 s vs 18 s) — prob 0.02 is
+still acceptance-limited and ~5× cheaper; catalog fast path only pays in
+near-crystal states.
 
 **Next steps:** cross-library graft compatibility matrix beyond the Laves
 family (a15, sigma, z, mu, p, delta, r — expect the vertex-density/web
