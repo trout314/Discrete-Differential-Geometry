@@ -173,6 +173,17 @@ def main():
                          "flat-pin line f0*(f3) = f3(6/e* - 1) is reachable "
                          "at any volume -- the question is what STRUCTURE "
                          "a non-native volume forces in the fixed box.")
+    ap.add_argument("--track", action="store_true",
+                    help="per-chunk worldline record to <out>.ts.jsonl in the "
+                         "established knot_migration schema (sweep, "
+                         "n_illegal, sizes, members, cents, sigs) consumed "
+                         "by the pass1/pass3/mgas kinematics analyses. "
+                         "Centroids come from the MAINTAINED vertex lift "
+                         "(vertex_positions) -- gauge-fixed, so the "
+                         "tree-rebuild glitches pass1 filters cannot occur. "
+                         "Requires --cocycle (channel-safe: the lift follows "
+                         "contract/split). Use a small --chunk (e.g. 10) so "
+                         "motion is resolved.")
     ap.add_argument("--out", required=True)
     ap.add_argument("--cocycle", action="store_true",
                     help="attach the harmonic cocycle at sweep 0 (needed for "
@@ -201,10 +212,15 @@ def main():
         s.set_contract_split(args.contract_split, 6)
     v = s.manifold
 
+    if args.track and not args.cocycle:
+        raise SystemExit("--track requires --cocycle (positions come from "
+                         "the maintained vertex lift)")
     if args.cocycle:
         edges = np.asarray(v.simplices(1))
         s.enable_cocycle(edges, coc.build_from_positions(
             edges, reference_frac_positions(args.crystal, mcell), mcell))
+        if args.track:
+            s.enable_cocycle_positions(1_000_000 * mcell)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)) or ".",
                 exist_ok=True)
@@ -220,6 +236,16 @@ def main():
                    extra_meta=meta)
     obs = open(args.out + ".obs.jsonl", "w")
     obs.write(json.dumps({"kind": "header", **meta}) + "\n")
+    ts = None
+    if args.track:
+
+        ts = open(args.out + ".ts.jsonl", "w")
+        ts.write(json.dumps({"kind": "header", **meta,
+                             "centroid_protocol":
+                             "maintained lift (vertex_positions), min-imaged "
+                             "about each complex's first member; gauge-fixed "
+                             "for the whole run (no tree-rebuild glitches)"})
+                 + "\n")
 
     t0 = time.time()
     prev = None
@@ -240,6 +266,45 @@ def main():
             d["cs"] = list(s.contract_split_stats())
         obs.write(json.dumps(d) + "\n")
         obs.flush()
+        if ts is not None:
+            # Worldline frame in the .ts.jsonl schema the kinematics
+            # analyses consume, with complexes on the ILLEGAL-EDGE GRAPH
+            # (vertex_components -- the same definition as this scan's own
+            # census and the catalog's --narrow). The vertex-adjacency
+            # definition percolates at strain-gas densities (~40% of
+            # vertices touch an illegal edge) and fuses every worldline
+            # into one blob. Centroids from the MAINTAINED lift.
+            pairs, degs = v.illegal_edges()
+            pairs = np.asarray(pairs).reshape(-1, 2)
+            degs = np.asarray(degs)
+            comps = [sorted(int(x) for x in c)
+                     for c in vertex_components(pairs)]
+            sigs = []
+            if len(pairs):
+                cidx = {}
+                for k, cc in enumerate(comps):
+                    for x in cc:
+                        cidx[x] = k
+                per = [[] for _ in comps]
+                for (a, b), dg in zip(pairs.tolist(), degs.tolist()):
+                    per[cidx[a]].append(int(dg))
+                sigs = [sorted(x) for x in per]
+            cents = []
+            pbox = 1.0e6 * mcell
+            for cc in comps:
+                pos = s.vertex_positions(cc).astype(float)
+                p0 = pos[0]
+                rel = (pos - p0 + pbox / 2) % pbox - pbox / 2
+                cents.append([round(float(x), 1)
+                              for x in (p0 + rel.mean(0)) % pbox])
+            ts.write(json.dumps(
+                {"sweep": rec.sw, "n_illegal": d["n_ill"],
+                 "sizes": [len(c) for c in comps], "members": comps,
+                 "cents": cents, "sigs": sigs, "mean_edeg": d["e_mean"],
+                 "f0": int(v.f_vector[0])}) + "\n")
+            ts.flush()
+            if rec.nchunk % 50 == 0:
+                s.check_cocycle_positions()     # lift audit, cheap O(E)
 
     path = rec.finish()
     obs.write(json.dumps({"kind": "final", "path": path,
