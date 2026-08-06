@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 1fc2ced4-2271-4a60-ba17-bc68ad6d30ad
-  modified: 2026-08-06T19:30:03.197Z
+  modified: 2026-08-06T19:40:16.508Z
 ---
 
 **Experiment (Aaron, 2026-08-06 night):** volume pins ≠ native volume with
@@ -41,8 +41,21 @@ bistellar 4→1s (loop current: the 1↔4 pair's known uncorrected proposal
 asymmetry ≈ anti-vertex potential ln2 — the exact channel fights it;
 measured f0 equilibria are the MIXED chain's).
 
-**Control launched:** a15 −5% channel OFF (seed 99, a15_v0.95_nocs) — does
-f0-freedom keep the strain gas dispersed?
+**CONTROLS (channel OFF, both crystals −5%): ABSOLUTE RIGIDITY.** f3 frozen
+at native (a15: 288, c15: 435 above target), f0 exact, ZERO illegal edges
+all 12k sweeps, full volume penalty eaten (obj 8376 / 18997 vs 666 / 733
+with channel). Mechanism: a pristine over-volume crystal has NO legal
+first move downhill — 3→2 needs a deg-3 edge, 4→1 a CN-4 vertex, and any
+path starts with a 2→3 costing +0.2·Δf3 in the volume term (+58 / +87),
+so not even thermal flickers nucleate (they exist only at native volume);
+the barrier GROWS with the strain it must relieve. Contraction tunnels it
+in one composite step (Δf3 ≈ −5). ["c15 leaks via its thermal flickers"
+hypothesis falsified.]
+
+**FINAL 4-cell table (channel on):** c15 −5%: n_ill 609±19 top1 12; c15
++5%: 671±22, 15; a15 −5%: 506±12, 15; a15 +5%: 519±22, 24. Tension ~10%
+denser than compression in both hosts (more deg-3); per-tet the a15 gas
+is DENSER (0.09 vs 0.073/tet) despite the smaller absolute counts.
 
 All single chains, uncertified. Related: [[a15-positive-gas]],
 [[crystal-library-gas-campaign]].
