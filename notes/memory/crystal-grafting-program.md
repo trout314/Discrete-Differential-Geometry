@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 1fc2ced4-2271-4a60-ba17-bc68ad6d30ad
-  modified: 2026-08-06T18:04:38.649Z
+  modified: 2026-08-06T18:23:24.920Z
 ---
 
 **Goal (Aaron, 2026-08-06):** graft a piece of one TCP crystal into another by
@@ -202,6 +202,20 @@ links are non-catalog so every split proposal pays the ~0.5 ms DFS; at
 prob 0.1 the channel dominated runtime (321 s vs 18 s) — prob 0.02 is
 still acceptance-limited and ~5× cheaper; catalog fast path only pays in
 near-crystal states.
+
+**c_imp SCAN (native A/B quenches, c15 m3, 6k sweeps, committed 53235ef):**
+two-tier stuckness. Tier 1 (surplus shedding above crystal): A relaxes
+fully at c_imp 1.6, strands +2 at 2.0/2.4, +4 at 3.0 — wall opens below
+~2. Tier 2 (crystal → vertex-poor): B's equilibrium f0 ≈ 635-638 at EVERY
+coupling 1.6-3.0, unreachable by A at any c_imp (needs contraction of
+pristine regions). **KEY IDENTITY: f1 = f0 + f3 (Euler, closed 3-mfd), so
+at pinned f3 the flat pin IS an f0 pin with optimum f0* = f3(6/e* − 1) ≈
+643.7 — the crystal's 648 exceeds it by exactly the pin-gap debt (4.3):
+the channel pays the forced-defect debt by DELETING VERTICES instead of
+holding defect structure.** Equilibrium lands ~8 BELOW f0* (636 vs 644):
+defect-gas/entropy correction beyond the naive pin optimum. S_B vs S_A:
+1230/1733 (1.6), 1606/1969 (2.0), 1497/2828 (2.4), 1979/3310 (3.0).
+Single chains, uncertified.
 
 **Next steps:** cross-library graft compatibility matrix beyond the Laves
 family (a15, sigma, z, mu, p, delta, r — expect the vertex-density/web
