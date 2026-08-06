@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 1fc2ced4-2271-4a60-ba17-bc68ad6d30ad
-  modified: 2026-08-06T18:32:06.312Z
+  modified: 2026-08-06T18:46:50.211Z
 ---
 
 **Question (Aaron, 2026-08-06 late):** find a regime where A15 supports a
@@ -55,6 +55,18 @@ the cell):**
 - 0.50: stationary but sparse (debt largely unpaid, n_ill ~20).
 Trade-off axis: paid-but-coarsening (≤0.40) vs dilute-but-underpaid
 (≥0.50); 0.45 pays ~a third of the quota as a dispersed gas.
+
+**SPECIES LADDER (HTML catalogs, defect_catalog --narrow — REQUIRED on a15:
+vertex-adjacency complex definitions percolate at 46% defect-vertex
+density):** the elementary quantum is a SINGLE deg-4 edge (Q=+1); the
+population is a deg-4 multimer ladder (0.45: 54/23/9/6 monomer/dimer/
+trimer/tetramer of 126; 0.50-dilute: 21/12/5/2 of 43). Deg-3 species rare;
+the lone deg-7 in the 0.50 box is CAGED inside a 3⁸4·7 cluster (screened
+negative grain). Catalogs: data/viz/a15_c0.45_narrow/index.html and
+data/viz/a15_c0.50_dilute/index.html (+ standalone_cx*.html self-contained
+scenes). 0.45XL certification: late slope +0.21±0.10/obs — NOT yet
+stationary at 16k sweeps (n_ill ~560 and creeping); 0.45 equilibrium
+resembles 0.40's (mid-clusters); strictly-dilute-stationary is ~0.50.
 
 Related: [[crystal-grafting-program]] (contract/split channel: the split
 direction is a15's debt-payer — an f0-unpinned a15 gas run is the natural
