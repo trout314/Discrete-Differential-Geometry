@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 1fc2ced4-2271-4a60-ba17-bc68ad6d30ad
-  modified: 2026-08-06T14:38:27.842Z
+  modified: 2026-08-06T14:50:46.063Z
 ---
 
 **Goal (Aaron, 2026-08-06):** graft a piece of one TCP crystal into another by
@@ -62,6 +62,22 @@ Z12:Z16 = 896:448 = 2:1 → a new 7616-tet mixed-stacking Laves polytope-box,
 saved data/grafts/T3_C36m4_graftC14_0.8905-1.6405_f37616.mfd (+ summary JSON
 c36_control_m4.json). ~1.5 min/crystal census, single core.
 
-**Next steps:** C15 needs (111) cuts (layer coordinate u = (x+y+z) mod m, cubic
-box); then cross-library graft compatibility matrix; then thermal stability of
-a grafted seam under the minimal 3-term action; mixed-sign pin-gap composite.
+**C15 CROSS RESULT (graft_c15_cross.py):** epitaxy arithmetic: the (111) wrap
+of a cubic m-box is a 2m x 2m hex torus of the Laves net, so **c15 m=2 is the
+epitaxial partner of c14/c36 m=4**. c15 m2 (111): 12 slabs → 4 L3 classes.
+Cross joins: c15×c14 L3=216 (L1=344), c15×c36 L3=432 (L1=688) — first case
+where **L1 > L3**: some surfaces match topologically but NOT with decorations
+(would be defective if glued; c36↔c14 basal had L1=L3). Grafted a cubic C15
+(111) slab into BOTH hex hosts, first φ each: all {5,6}, 0 broken lines,
+χ=0, orientable, Z12:Z16=2:1. Both grafts CHANGE total V by −192
+(768→576 c14 host; 1536→1344 c36 host) with a zero-defect seam —
+**vertex-count-changing grafts do NOT force non-FK seam vertices** (Aaron's
+suspicion refuted within the Laves family; thickness-changing slab swaps
+change V freely at L3). Saved: data/grafts/T3_C14m4_graftC15m2_f33264.mfd,
+T3_C36m4_graftC15m2_f37616.mfd, c15_cross.json.
+
+**Next steps:** cross-library graft compatibility matrix beyond the Laves
+family (a15, sigma, z, mu, p, delta, r — expect the vertex-density/web
+obstruction to appear as NON-EXISTENCE of shared L3 surfaces, degrading to
+L2/L1 with quantifiable seam debt); thermal stability of a grafted seam under
+the minimal 3-term action; mixed-sign pin-gap composite.

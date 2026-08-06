@@ -46,9 +46,9 @@ from graft_signature import (CrystalContext, SurfaceError, lump_signature,
 EPS = 3.3e-5  # nudge cuts off exact centroid ties
 
 
-def z_cuts(pos, m, gap=0.02):
-    """Cut positions between consecutive atomic z-planes (period m)."""
-    z = np.sort(pos[:, 2] % m)
+def z_cuts(uvals, m, gap=0.02):
+    """Cut positions between consecutive atomic layer-planes (period m)."""
+    z = np.sort(uvals % m)
     brk = np.nonzero(np.diff(z) > gap)[0]
     centers = []
     start = 0
@@ -64,25 +64,33 @@ def z_cuts(pos, m, gap=0.02):
     return ((centers + nxt) / 2 + EPS) % m
 
 
-def tet_layer_coord(F, pos, m):
-    """Unwrap-consistent centroid z (mod m) per tet."""
-    z = pos[:, 2] % m
+def tet_layer_coord(F, uvals, m):
+    """Unwrap-consistent centroid layer coordinate (mod m) per tet."""
+    z = uvals % m
     zt = z[F]                                   # (nt, 4)
     z0 = zt[:, :1]
     d = (zt - z0 + m / 2) % m - m / 2
     return (z0[:, 0] + d.mean(axis=1)) % m
 
 
-def slab_census(name, m, kmin, kmax):
-    """Signatures of all basal slabs of one crystal."""
+def slab_census(name, m, kmin, kmax, normal=(0, 0, 1)):
+    """Signatures of all layer slabs of one crystal, cut along `normal`.
+
+    normal is an integer plane normal in fractional coordinates; the layer
+    coordinate u = frac . normal is well-defined mod m on the torus, and
+    unit-cell translations shift u by integers, so base cuts are deduped to
+    u0 in [0,1).  (0,0,1) = basal for the hex phases; (1,1,1) = the Laves
+    stacking direction of cubic c15.
+    """
     t0 = time.time()
     fac, nv = build_t3_triangulation(name, m)
     ctx = CrystalContext(fac, f"{name}m{m}")
     pos = reference_frac_positions(name, m)
-    cuts = np.sort(z_cuts(pos, m))
-    zc = tet_layer_coord(ctx.F, pos, m)
-    print(f"[{name} m{m}] V={nv} tets={len(fac)} cuts/box={len(cuts)} "
-          f"({time.time()-t0:.1f}s build)")
+    uvals = pos @ np.asarray(normal, float)
+    cuts = np.sort(z_cuts(uvals, m))
+    zc = tet_layer_coord(ctx.F, uvals, m)
+    print(f"[{name} m{m} n={normal}] V={nv} tets={len(fac)} "
+          f"cuts/box={len(cuts)} ({time.time()-t0:.1f}s build)")
 
     slabs = {}
     skipped = 0
