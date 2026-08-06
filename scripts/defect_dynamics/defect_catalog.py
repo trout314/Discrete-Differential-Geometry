@@ -111,6 +111,13 @@ def main():
                          "couplings, host -- CONVENTIONS sec 2)")
     ap.add_argument("--max-canon", type=int, default=60,
                     help="skip canonical-class hashing above this size")
+    ap.add_argument("--narrow", action="store_true",
+                    help="use the historical complex definition (illegal-"
+                         "edge incidence only, components(broad=False)). "
+                         "On hosts with a dense native disclination network "
+                         "(a15, sigma) the broad definition percolates "
+                         "through n6-anomalous vertices and fuses every "
+                         "complex into one.")
     args = ap.parse_args()
 
     base = os.path.basename(args.snap)[:-4]
@@ -120,7 +127,43 @@ def main():
     m = ddg.Manifold.load(args.snap, 3)
     fac = np.asarray(m.facets())
     st = dsm.DefectState(m)
-    comps = sorted(st.components(), key=lambda c: -len(c.verts))
+    if args.narrow:
+        # Components of the ILLEGAL-EDGE GRAPH (edges linked by shared
+        # vertices) -- the gas-scan census definition. At high defect-vertex
+        # density (a15-like hosts) any vertex-adjacency definition
+        # percolates; edge-graph clustering is what "dilute" refers to.
+        e2i = {}
+        parent = list(range(len(st.ill_edges)))
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        ill = sorted(st.ill_edges)
+        for i, e in enumerate(ill):
+            for v in e:
+                if v in e2i:
+                    r1, r2 = find(i), find(e2i[v])
+                    if r1 != r2:
+                        parent[r1] = r2
+                else:
+                    e2i[v] = i
+        groups = defaultdict(list)
+        for i, e in enumerate(ill):
+            groups[find(i)].append(e)
+        comps = []
+        for edges in groups.values():
+            cv = sorted({v for e in edges for v in e})
+            cvs = set(cv)
+            sig = sorted(st.edeg[e] for e in edges)
+            nodes = sorted(st.n6[v] for v in cv
+                           if st.imp[v] == 0 and st.n6[v] not in dsm.FK_N6)
+            comps.append(dsm.Complex(cv, tuple(sig), tuple(nodes)))
+        comps.sort(key=lambda c: -len(c.verts))
+    else:
+        comps = sorted(st.components(), key=lambda c: -len(c.verts))
     X, P = dv.positions(args.snap, fac)
     q = st.vertex_charges()
     qb = st.qbar(q)
