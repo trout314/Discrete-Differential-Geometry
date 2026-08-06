@@ -337,3 +337,64 @@ bool hasValidHingeMove(Vertex, int dim)(
 {
     return !manifold.contains(move.addedEdge[]);
 }
+
+/******************************************************************************
+Edge contraction on a 3-manifold: remove the closed stars of the two ends of
+an edge (u,v) and glue back the cone over the boundary sphere from the single
+surviving vertex u -- equivalently, delete the tets containing both u and v
+and relabel v -> u in the rest of star(v).
+
+Valid precisely under the classical LINK CONDITION,
+    link(u) * link(v) = link(uv)   (as complexes, not vertex sets),
+checked at three levels by hasValidContractMove. The result is then a
+manifold PL-homeomorphic to the original, with one fewer vertex.
+
+removedFacets/addedFacets are filled by doContractMove so undoContractMove
+can restore the exact labeled state.
+**/
+struct ContractMove(Vertex = int)
+{
+    Vertex u;                   /// surviving vertex
+    Vertex v;                   /// removed vertex (star deleted / relabeled)
+    Vertex[4][] removedFacets;  /// filled by doContractMove
+    Vertex[4][] addedFacets;    /// ditto
+
+    string toString()() const
+    {
+        return "contract move: (" ~ u.to!string ~ "," ~ v.to!string
+            ~ ") -> " ~ u.to!string;
+    }
+}
+
+/******************************************************************************
+Vertex split on a 3-manifold: the inverse of edge contraction. Given a
+vertex w and a simple cycle gamma in the 1-skeleton of link(w), gamma
+separates the link sphere into two triangulated discs; replace star(w) by
+
+    (w * D_keep)  +  (fresh * D_fresh)  +  belt tets {w, fresh, a, b}
+                                            for each gamma edge (a, b),
+
+which creates the edge (w, fresh) with deg = |gamma| and link = gamma.
+Always valid when gamma is a simple cycle in link(w) and fresh is unused
+(no link condition -- only the contraction direction can fail).
+
+Side convention: the two disc sides are ordered by their lexicographically
+smallest face; side 0 is the one containing it. freshSide0 says whether the
+fresh vertex cones side 0 (else side 1). The special case where gamma
+bounds a single face on the fresh side is exactly a Pachner 1 -> 4 move.
+**/
+struct SplitMove(Vertex = int)
+{
+    Vertex w;                   /// vertex being split (keeps one side)
+    Vertex fresh;               /// new vertex (cones the other side)
+    Vertex[] gamma;             /// splitting cycle in link(w), cyclic order
+    bool freshSide0;            /// fresh cones side 0 (see convention above)
+    Vertex[4][] removedFacets;  /// filled by doSplitMove
+    Vertex[4][] addedFacets;    /// ditto
+
+    string toString()() const
+    {
+        return "split move: " ~ w.to!string ~ " along " ~ gamma.to!string
+            ~ " new vertex " ~ fresh.to!string;
+    }
+}

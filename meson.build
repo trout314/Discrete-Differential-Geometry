@@ -30,6 +30,7 @@ lib_sources = files(
   'source/development.d',
   'source/factoring.d',
   'source/hashmap.d',
+  'source/link_cycles.d',
   'source/manifold.d',
   'source/manifold_examples.d',
   'source/manifold_moves.d',

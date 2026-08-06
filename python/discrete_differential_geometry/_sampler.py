@@ -726,6 +726,35 @@ class ManifoldSampler:
         while the non-local channel is enabled and a run has started."""
         return int(_lib.ddg_sampler_deg3_count(self._handle))
 
+    def set_contract_split(self, prob: float, max_ring: int = 6) -> None:
+        """Enable the contract/split channel (dim = 3 only).
+
+        Each MCMC step proposes it with probability ``prob``, choosing with
+        a fair coin between EDGE CONTRACTION (delete the closed stars of an
+        edge's two ends, cone the boundary sphere from one surviving vertex:
+        f0 -> f0 - 1) and its inverse VERTEX SPLIT (cut a vertex's star
+        along a uniformly drawn simple cycle of length <= ``max_ring`` in
+        its link: f0 -> f0 + 1). This is the only channel that changes the
+        vertex count without needing a degree-4 vertex; detailed balance is
+        carried by exact Hastings factors built on link-cycle counts
+        (FK-catalog tables for Z12/Z14/Z15/Z16 links, bounded DFS
+        otherwise). ``max_ring`` caps BOTH directions and must be in [3, 8].
+        0 disables the channel (the default). The channel is automatically
+        inert while a cocycle is attached or six-flip logging is on."""
+        self._recorded_contract_split = (prob, max_ring)
+        _lib.ddg_sampler_set_contract_split(
+            self._handle, float(prob), int(max_ring))
+
+    def contract_split_stats(self) -> tuple[int, int, int, int, int]:
+        """``(contract_tries, contract_accepts, split_tries, split_accepts,
+        no_valid)`` for the contract/split channel. Tries count proposals
+        that reached Metropolis; ``no_valid`` counts proposals rejected by
+        validity/geometry gates (link condition, ring cap, frozen region)."""
+        vals = [ctypes.c_long() for _ in range(5)]
+        _lib.ddg_sampler_contract_split_stats(
+            self._handle, *[ctypes.byref(v) for v in vals])
+        return tuple(int(v.value) for v in vals)
+
     def slide_at(self, a: int, b: int, slot: int,
                  commit: bool = False) -> "float | None":
         """Attempt the knot slide at chord ``(a, b)`` in slot ``slot``.

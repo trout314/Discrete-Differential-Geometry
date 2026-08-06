@@ -789,6 +789,176 @@ real potentialHingeDelta(Vertex)(
 }
 
 // ---------------------------------------------------------------------------
+// Generic block-move deltas (dim = 3)
+// ---------------------------------------------------------------------------
+//
+// The contract/split channel (and any future block move) replaces an
+// arbitrary set of tets with another; its penalty deltas are driven by the
+// PLANNED facet lists rather than a per-move-type formula. Per-proposal AA
+// allocations here are amortized by the channel's small proposal
+// probability; revisit if a profile ever says otherwise.
+
+/// Edge/vertex degree deltas induced by (removedFacets, addedFacets).
+private void blockDegreeDeltas(Vertex)(
+    const(Vertex[4])[] removedFacets,
+    const(Vertex[4])[] addedFacets,
+    out int[Vertex[2]] eDelta,
+    out int[Vertex] vDelta)
+{
+    static immutable int[2][6] pairIdx =
+        [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]];
+    void tally(const(Vertex[4])[] facets, int sign)
+    {
+        foreach (ref t; facets)
+        {
+            foreach (ref pi; pairIdx)
+            {
+                Vertex[2] e = [t[pi[0]], t[pi[1]]];
+                if (e[0] > e[1])
+                {
+                    immutable tmp = e[0];
+                    e[0] = e[1];
+                    e[1] = tmp;
+                }
+                eDelta[e] = eDelta.get(e, 0) + sign;
+            }
+            foreach (v; t)
+                vDelta[v] = vDelta.get(v, 0) + sign;
+        }
+    }
+    tally(removedFacets, -1);
+    tally(addedFacets, +1);
+}
+
+/// Base-objective delta of a planned block move (speculative: reads pre-move
+/// degrees, no mutation). Same contract as speculativeBistellarDelta.
+real speculativeBlockDelta(Vertex, P)(
+    const ref Manifold!(3, Vertex) mfd,
+    const(Vertex[4])[] removedFacets,
+    const(Vertex[4])[] addedFacets,
+    real currentObjective,
+    P params)
+{
+    enum dim = 3;
+    int[Vertex[2]] eDelta;
+    int[Vertex] vDelta;
+    blockDegreeDeltas!Vertex(removedFacets, addedFacets, eDelta, vDelta);
+
+    long f3 = cast(long) mfd.fVector[dim]
+        + cast(long) addedFacets.length - cast(long) removedFacets.length;
+    long f1 = cast(long) mfd.fVector[1];
+    long f0 = cast(long) mfd.fVector[0];
+    long sqE = cast(long) mfd.totalSquareDegree(1);
+    long sqV = cast(long) mfd.totalSquareDegree(0);
+
+    foreach (e, d; eDelta)
+    {
+        if (d == 0)
+            continue;
+        immutable long old = cast(long) mfd.degreeOrZero!1(e[]);
+        immutable long nw = old + d;
+        assert(nw >= 0, "block move drives an edge degree negative");
+        if (old == 0 && nw > 0) ++f1;
+        if (old > 0 && nw == 0) --f1;
+        sqE += nw * nw - old * old;
+    }
+    foreach (v, d; vDelta)
+    {
+        if (d == 0)
+            continue;
+        Vertex[1] vs = [v];
+        immutable long old = cast(long) mfd.degreeOrZero!0(vs[]);
+        immutable long nw = old + d;
+        assert(nw >= 0, "block move drives a vertex degree negative");
+        if (old == 0 && nw > 0) ++f0;
+        if (old > 0 && nw == 0) --f0;
+        sqV += nw * nw - old * old;
+    }
+
+    auto newPen = penaltiesFromValues!dim(f3, f1, cast(ulong) sqE,
+                                          f0, cast(ulong) sqV, params);
+    return objectiveFromPenalty(newPen, params) - currentObjective;
+}
+
+/// Vertex-potential delta of a planned block move. Same contract as
+/// potentialBistellarDelta (pre-move reads; commit updates the counter
+/// state). createdVerts/removedVerts get the created/destroyed-vertex energy
+/// semantics (old resp. new energy is zero).
+real potentialBlockDelta(Vertex)(
+    const ref Manifold!(3, Vertex) mfd,
+    const(Vertex[4])[] removedFacets,
+    const(Vertex[4])[] addedFacets,
+    const(Vertex)[] createdVerts,
+    const(Vertex)[] removedVerts,
+    ref VertexPotState!Vertex st,
+    const ref VertexPot pot,
+    bool commit)
+{
+    import std.algorithm : canFind;
+
+    int[Vertex[2]] eDelta;
+    int[Vertex] vDelta;
+    blockDegreeDeltas!Vertex(removedFacets, addedFacets, eDelta, vDelta);
+
+    int[Vertex] dn6;
+    int[Vertex] dm;
+    foreach (e, d; eDelta)
+    {
+        if (d == 0)
+            continue;
+        immutable long old = cast(long) mfd.degreeOrZero!1(e[]);
+        immutable long nw = old + d;
+        immutable d6 = (ind6(nw) ? 1 : 0) - (ind6(old) ? 1 : 0);
+        immutable dI = (indImp(nw) ? 1 : 0) - (indImp(old) ? 1 : 0);
+        if (d6 == 0 && dI == 0)
+            continue;
+        foreach (v; e)
+        {
+            dn6[v] = dn6.get(v, 0) + d6;
+            dm[v] = dm.get(v, 0) + dI;
+        }
+    }
+
+    bool[Vertex] affected;
+    foreach (v, d; dn6) affected[v] = true;
+    foreach (v, d; dm) affected[v] = true;
+    foreach (v; createdVerts) affected[v] = true;
+    foreach (v; removedVerts) affected[v] = true;
+
+    real dS = 0;
+    foreach (v, _; affected)
+    {
+        immutable isCreated = createdVerts.canFind(v);
+        immutable isRemoved = removedVerts.canFind(v);
+        immutable long oldN6 = st.n6.get(v, 0);
+        immutable long oldM = st.mImp.get(v, 0);
+        immutable real oldE = isCreated ? 0 : pot.U(oldN6) + pot.V(oldM);
+        immutable long newN6 = oldN6 + dn6.get(v, 0);
+        immutable long newM = oldM + dm.get(v, 0);
+        immutable real newE = isRemoved ? 0 : pot.U(newN6) + pot.V(newM);
+        dS += newE - oldE;
+
+        if (commit)
+        {
+            if (isRemoved)
+            {
+                st.n6.remove(v);
+                st.mImp.remove(v);
+            }
+            else
+            {
+                if (newN6 != 0) st.n6[v] = cast(int) newN6;
+                else st.n6.remove(v);
+                if (newM != 0) st.mImp[v] = cast(int) newM;
+                else st.mImp.remove(v);
+            }
+        }
+    }
+    if (commit) st.total += dS;
+    return dS;
+}
+
+// ---------------------------------------------------------------------------
 // Disclination-network observables (dim = 3)
 // ---------------------------------------------------------------------------
 //
@@ -2092,6 +2262,30 @@ struct NonlocalSlideConfig
     int maxStep = 8;
     ulong tries;
     ulong accepts;
+}
+
+/// Contract/split channel (dim=3): edge contraction (u,v) -> u paired with
+/// its inverse, vertex split along a cycle in the link -- the only channel
+/// that changes f0 by +-1 in one accepted move (1<->4 needs a degree-4
+/// vertex; this needs only the link condition). maxRing caps BOTH deg(uv)
+/// on the contract side and |gamma| on the split side -- the pair must be
+/// capped together or detailed balance breaks. Proposals: contract = random
+/// facet + random edge (prob deg(uv)/(6 f3)); split = random facet + random
+/// vertex (prob deg3(w)/(4 f3)), a uniform splitting cycle of length <=
+/// maxRing in link(w) (FK-catalog table + transported cycle list when the
+/// link is a Z12/Z14/Z15/Z16 polyhedron, bounded DFS otherwise), and a fair
+/// coin for which side keeps w. Hastings factors follow ../notes: the
+/// reverse of a contraction needs the cycle count of the MERGED link,
+/// counted by DFS on the planned (not yet applied) state.
+struct ContractSplitConfig
+{
+    real prob = 0.0L;
+    int maxRing = 6;
+    ulong contractTries;      // proposals reaching Metropolis
+    ulong contractAccepts;
+    ulong splitTries;
+    ulong splitAccepts;
+    ulong noValid;            // failed validity/geometry gates
 }
 
 /// A live set of the degree-3 edges (defect chords) for the 1/n_3 proposal:
@@ -3899,6 +4093,397 @@ standard Pachner move logic.
 This avoids a separate hinge move probability parameter — hinge moves are
 proposed at the natural rate determined by how many degree-4 edges exist.
 */
+/// One contract/split proposal (see ContractSplitConfig). Returns true iff
+/// a move was accepted. Proposal and Hastings bookkeeping:
+///   contract x->y, merging (u,v) -> u (u < v):
+///     q_fwd = 1/2 * deg(uv) / (6 f3(x))
+///     q_rev = 1/2 * [deg3_y(u) / (4 f3(y))] * [1 / N_L(link_y(u))] * 1/2
+///   split x->y at (w, gamma, side):
+///     q_fwd = 1/2 * [deg3(w) / (4 f3(x))] * [1 / N_L(link(w))] * 1/2
+///     q_rev = 1/2 * |gamma| / (6 f3(y))
+/// where N_L counts simple cycles of length <= maxRing in the named link
+/// (FK-catalog table when it matches, bounded DFS otherwise -- for the
+/// merged link of a contraction it is always DFS on the PLANNED state).
+/// The 1/2 direction factors cancel; the extra 1/2 is the side coin.
+private bool tryContractSplit(Vertex, P)(
+    ref Manifold!(3, Vertex) mfd,
+    ref real currentObjective,
+    ref Vertex[] unusedVertices,
+    P params,
+    ref ContractSplitConfig cs,
+    VertexPotState!Vertex* potState,
+    const(VertexPot)* pot,
+    Deg3Set!Vertex* deg3Set,
+    Deg3Set!Vertex* deg4Set)
+{
+    import link_cycles : CatalogClass, adjFromFaces, catalog, countCycles,
+        kthCycle, matchCatalog, maxCycleLen, maxLinkVerts;
+    import std.math : log;
+
+    enum dim = 3;
+    enum STAR_CAP = 96;
+
+    immutable bool doContract = uniform(0, 2) == 0;
+    auto facetR = mfd.randomFacetOfDim(dim);
+    Vertex[4] facet;
+    foreach (i; 0 .. 4)
+        facet[i] = facetR[i];
+    immutable long f3x = cast(long) mfd.fVector[dim];
+    real baseObj = currentObjective
+        - (potState !is null ? potState.total : 0.0L);
+
+    // local-index link building shared by both directions
+    Vertex[] linkVerts;
+    int[Vertex] lidx;
+    ubyte[3][] lfaces;
+    bool linkOverflow = false;
+    void addLinkFace(Vertex apex, Vertex[4] t)
+    {
+        ubyte[3] lf;
+        int n = 0;
+        foreach (x; t)
+            if (x != apex)
+            {
+                auto p = x in lidx;
+                int li;
+                if (p is null)
+                {
+                    li = cast(int) linkVerts.length;
+                    if (li >= maxLinkVerts)
+                    {
+                        linkOverflow = true;
+                        return;
+                    }
+                    lidx[x] = li;
+                    linkVerts ~= x;
+                }
+                else
+                    li = *p;
+                lf[n++] = cast(ubyte) li;
+            }
+        assert(n == 3);
+        lf[].sort();
+        lfaces ~= lf;
+    }
+
+    if (doContract)
+    {
+        static immutable int[2][6] pairIdx =
+            [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]];
+        immutable pi = pairIdx[uniform(0, 6)];
+        Vertex u = facet[pi[0]];
+        Vertex v = facet[pi[1]];
+        if (u > v)
+        {
+            immutable t = u;
+            u = v;
+            v = t;
+        }
+        Vertex[2] uv = [u, v];
+        immutable long rl = cast(long) mfd.degreeOrZero!1(uv[]);
+        if (rl < 3 || rl > cs.maxRing)
+        {
+            cs.noValid++;
+            return false;
+        }
+
+        Vertex[4][STAR_CAP] starBuf;
+        immutable int nU = collectStar(mfd, u, facet, starBuf[], 0);
+        immutable int nAll = collectStar(mfd, v, facet, starBuf[], nU);
+        if (nAll >= STAR_CAP)
+        {
+            cs.noValid++;
+            return false;
+        }
+
+        // classify: star(u), star(v) (collectStar dedups shared tets)
+        Vertex[4][STAR_CAP] svBuf;
+        int nSV = 0;
+        Vertex[4][STAR_CAP] suBuf;
+        int nSU = 0;
+        foreach (i; 0 .. nAll)
+        {
+            bool hasU = false, hasV = false;
+            foreach (x; starBuf[i])
+            {
+                hasU |= x == u;
+                hasV |= x == v;
+            }
+            if (hasU)
+                suBuf[nSU++] = starBuf[i];
+            if (hasV)
+                svBuf[nSV++] = starBuf[i];
+        }
+
+        // support = every vertex of star(u) + star(v); frozen rejection
+        Vertex[] sup;
+        foreach (i; 0 .. nAll)
+            foreach (x; starBuf[i])
+                if (!sup.canFind(x))
+                    sup ~= x;
+        if (mfd.anyFrozen(sup))
+        {
+            cs.noValid++;
+            return false;
+        }
+
+        // link condition, locally: (a) common neighbours = ring vertices
+        Vertex[] nbrsU, nbrsV, ringV;
+        bool[Vertex[2]] ringEdges;
+        foreach (i; 0 .. nSU)
+            foreach (x; suBuf[i])
+                if (x != u && !nbrsU.canFind(x))
+                    nbrsU ~= x;
+        foreach (i; 0 .. nSV)
+            foreach (x; svBuf[i])
+                if (x != v && !nbrsV.canFind(x))
+                    nbrsV ~= x;
+        foreach (i; 0 .. nSV)
+        {
+            bool hasU = false;
+            foreach (x; svBuf[i])
+                hasU |= x == u;
+            if (!hasU)
+                continue;
+            Vertex[2] opp;
+            int no = 0;
+            foreach (x; svBuf[i])
+                if (x != u && x != v)
+                    opp[no++] = x;
+            assert(no == 2);
+            if (opp[0] > opp[1])
+            {
+                immutable t = opp[0];
+                opp[0] = opp[1];
+                opp[1] = t;
+            }
+            ringEdges[opp] = true;
+            foreach (x; opp)
+                if (!ringV.canFind(x))
+                    ringV ~= x;
+        }
+        nbrsU.sort();
+        nbrsV.sort();
+        ringV.sort();
+        auto common = setIntersection(nbrsU, nbrsV).array;
+        if (common != ringV)
+        {
+            cs.noValid++;
+            return false;
+        }
+        // (b) common link edges = ring edges exactly
+        foreach (i; 0 .. common.length)
+            foreach (j; i + 1 .. common.length)
+            {
+                immutable a = common[i], b = common[j];
+                Vertex[3] tu = [u, a, b];
+                tu[].sort();
+                Vertex[3] tv = [v, a, b];
+                tv[].sort();
+                immutable bothTri = mfd.contains(tu[]) && mfd.contains(tv[]);
+                Vertex[2] ab = [a, b];
+                if (bothTri != ((ab in ringEdges) !is null))
+                {
+                    cs.noValid++;
+                    return false;
+                }
+            }
+        // (c) no common link triangles
+        foreach (i; 0 .. common.length)
+            foreach (j; i + 1 .. common.length)
+                foreach (k; j + 1 .. common.length)
+                {
+                    Vertex[4] tu = [u, common[i], common[j], common[k]];
+                    tu[].sort();
+                    Vertex[4] tv = [v, common[i], common[j], common[k]];
+                    tv[].sort();
+                    if (mfd.contains(tu[]) && mfd.contains(tv[]))
+                    {
+                        cs.noValid++;
+                        return false;
+                    }
+                }
+
+        auto move = ContractMove!Vertex(u, v);
+        mfd.planContractMove(move, svBuf[0 .. nSV]);
+
+        // merged link of u on the PLANNED state: u-only old tets + added
+        foreach (i; 0 .. nSU)
+        {
+            bool hasV = false;
+            foreach (x; suBuf[i])
+                hasV |= x == v;
+            if (!hasV)
+                addLinkFace(u, suBuf[i]);
+        }
+        foreach (ref t; move.addedFacets)
+        {
+            Vertex[4] tt = t;
+            addLinkFace(u, tt);
+        }
+        if (linkOverflow)
+        {
+            cs.noValid++;
+            return false;
+        }
+        uint[maxLinkVerts] adjY;
+        adjFromFaces(lfaces, adjY);
+        immutable long NY =
+            countCycles(adjY[0 .. linkVerts.length], cs.maxRing)
+            .total(cs.maxRing);
+        assert(NY >= 1, "merged link lost its ring cycle");
+        immutable long deg3yU = cast(long) lfaces.length;
+        immutable long f3y = f3x + cast(long) move.addedFacets.length
+            - cast(long) move.removedFacets.length;
+
+        immutable real logQ =
+            log(cast(real) deg3yU) - log(4.0L * f3y) - log(cast(real) NY)
+            - log(2.0L) - (log(cast(real) rl) - log(6.0L * f3x));
+
+        real dS = mfd.speculativeBlockDelta(move.removedFacets,
+                                            move.addedFacets, baseObj, params);
+        Vertex[1] removedV = [v];
+        if (potState !is null)
+            dS += mfd.potentialBlockDelta(move.removedFacets,
+                move.addedFacets, [], removedV[], *potState, *pot, false);
+
+        cs.contractTries++;
+        immutable real logAlpha = -dS + logQ;
+        if (logAlpha >= 0 || uniform01 <= exp(logAlpha))
+        {
+            if (potState !is null)
+                mfd.potentialBlockDelta(move.removedFacets, move.addedFacets,
+                    [], removedV[], *potState, *pot, true);
+            mfd.commitPlannedMove(move);
+            unusedVertices ~= v;
+            currentObjective += dS;
+            cs.contractAccepts++;
+            if (deg3Set !is null)
+                reconcileDeg3(mfd, *deg3Set, sup);
+            if (deg4Set !is null)
+                reconcileDegSet(mfd, *deg4Set, 4, sup);
+            return true;
+        }
+        return false;
+    }
+    else
+    {
+        immutable Vertex w = facet[uniform(0, 4)];
+        Vertex[4][STAR_CAP] starBuf;
+        immutable int nT = collectStar(mfd, w, facet, starBuf[], 0);
+        if (nT >= STAR_CAP)
+        {
+            cs.noValid++;
+            return false;
+        }
+        foreach (i; 0 .. nT)
+            addLinkFace(w, starBuf[i]);
+        if (linkOverflow)
+        {
+            cs.noValid++;
+            return false;
+        }
+        immutable int nL = cast(int) linkVerts.length;
+
+        Vertex[] sup = linkVerts.dup;
+        sup ~= w;
+        if (mfd.anyFrozen(sup))
+        {
+            cs.noValid++;
+            return false;
+        }
+
+        uint[maxLinkVerts] adjX;
+        adjFromFaces(lfaces, adjX);
+        long NX;
+        ubyte[maxCycleLen] cbuf;
+        int clen = 0;
+        ubyte[maxLinkVerts] perm;
+        immutable ci = matchCatalog(nL, lfaces, perm);
+        if (ci >= 0)
+        {
+            // FK-catalog fast path: O(1) count + transported cycle list
+            const cat = &catalog(cast(CatalogClass) ci);
+            NX = cat.counts.total(cs.maxRing);
+            version (ExpensiveAsserts)
+                assert(NX == countCycles(adjX[0 .. nL], cs.maxRing)
+                    .total(cs.maxRing));
+            immutable long k = uniform(0L, NX);
+            auto cyc = cat.cycles[cast(size_t) k];
+            clen = cast(int) cyc.length;
+            foreach (i; 0 .. clen)
+                cbuf[i] = perm[cyc[i]];
+        }
+        else
+        {
+            NX = countCycles(adjX[0 .. nL], cs.maxRing).total(cs.maxRing);
+            if (NX == 0)
+            {
+                cs.noValid++;
+                return false;
+            }
+            immutable long k = uniform(0L, NX);
+            clen = kthCycle(adjX[0 .. nL], cs.maxRing, k, cbuf);
+            assert(clen >= 3);
+        }
+        Vertex[] gamma;
+        foreach (i; 0 .. clen)
+            gamma ~= linkVerts[cbuf[i]];
+        immutable bool freshSide0 = uniform(0, 2) == 0;
+
+        if (unusedVertices.empty)
+            unusedVertices ~= mfd.fVector[0].to!Vertex;
+        immutable Vertex fresh = unusedVertices.back;
+        Vertex[1] freshV = [fresh];
+        if (mfd.contains(freshV[]))
+        {
+            // label-pool head collides with a live vertex (possible when the
+            // pool was seeded from fVector[0] on a label-holey manifold);
+            // graceful reject, mirroring hasValidMove's 1->4 path
+            cs.noValid++;
+            return false;
+        }
+
+        auto move = SplitMove!Vertex(w, fresh, gamma, freshSide0);
+        mfd.planSplitMove(move, starBuf[0 .. nT]);
+        immutable long f3y = f3x + cast(long) move.addedFacets.length
+            - cast(long) move.removedFacets.length;
+
+        immutable real logQ =
+            log(cast(real) clen) - log(6.0L * f3y)
+            - (log(cast(real) nT) - log(4.0L * f3x)
+               - log(cast(real) NX) - log(2.0L));
+
+        real dS = mfd.speculativeBlockDelta(move.removedFacets,
+                                            move.addedFacets, baseObj, params);
+        Vertex[1] createdV = [fresh];
+        if (potState !is null)
+            dS += mfd.potentialBlockDelta(move.removedFacets,
+                move.addedFacets, createdV[], [], *potState, *pot, false);
+
+        cs.splitTries++;
+        immutable real logAlpha = -dS + logQ;
+        if (logAlpha >= 0 || uniform01 <= exp(logAlpha))
+        {
+            if (potState !is null)
+                mfd.potentialBlockDelta(move.removedFacets, move.addedFacets,
+                    createdV[], [], *potState, *pot, true);
+            mfd.commitPlannedMove(move);
+            unusedVertices.popBack;
+            unusedVertices.assumeSafeAppend;
+            currentObjective += dS;
+            cs.splitAccepts++;
+            sup ~= fresh;
+            if (deg3Set !is null)
+                reconcileDeg3(mfd, *deg3Set, sup);
+            if (deg4Set !is null)
+                reconcileDegSet(mfd, *deg4Set, 4, sup);
+            return true;
+        }
+        return false;
+    }
+}
+
 bool mcmcStep(Vertex, P)(
     ref Manifold!(3, Vertex) mfd,
     ref real currentObjective,
@@ -3918,7 +4503,8 @@ bool mcmcStep(Vertex, P)(
     NonlocalSlideConfig* nlSlide = null,
     Deg3Set!Vertex* deg3Set = null,
     WormConfig* worm = null,
-    Deg3Set!Vertex* deg4Set = null)
+    Deg3Set!Vertex* deg4Set = null,
+    ContractSplitConfig* contractSplit = null)
 {
     enum dim = 3;
     enum nVerts = dim + 1;
@@ -4083,6 +4669,18 @@ bool mcmcStep(Vertex, P)(
         else
             worm.noCands++;
         return ok;
+    }
+
+    // --- Contract/split channel (dim=3) ---------------------------------
+    // The only channel that changes f0 without a degree-4 vertex. Not
+    // cocycle-safe (a vertex disappears; the lift cannot follow) and not
+    // six-flip-safe -- gated off under both, like the worm channel.
+    if (contractSplit !is null && contractSplit.prob > 0 && cocycle is null
+        && !(ledger !is null && ledger.logSixFlips)
+        && uniform01 < contractSplit.prob)
+    {
+        return tryContractSplit(mfd, currentObjective, unusedVertices,
+            params, *contractSplit, potState, pot, deg3Set, deg4Set);
     }
 
     // Unified proposal loop
@@ -4342,6 +4940,195 @@ unittest
     auto actualObj = mfd.objective(params);
     assert(isClose(currentObj, actualObj, 1e-4),
         "objective drift: tracked=%s actual=%s".format(currentObj, actualObj));
+}
+
+/// Contract/split channel integration: mixed MCMC with the channel enabled
+/// (and the vertex potential on) must keep the manifold valid, keep the
+/// tracked objective and potential counters drift-free, move f0 through
+/// both channel directions, and roundtrip the vertex-label pool.
+unittest
+{
+    struct TestParams
+    {
+        int numFacetsTarget = 30;
+        real hingeDegreeTarget = 4.8;
+        real numFacetsCoef = 0.05;
+        real numHingesCoef = 0.02;
+        real hingeDegreeVarianceCoef = 0.05;
+        real coDim3DegreeVarianceCoef = 0.02;
+        real hingeDegreeTargetCoef = 0.0;
+        real coDim3DegreeTargetCoef = 0.0;
+        real coDim3DegreeTarget = 0.0;
+    }
+
+    alias BM = BistellarMove!3;
+    auto mfd = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+    auto params = TestParams();
+    mfd.doMove(BM([0,1,2,3], [5]));
+    mfd.doMove(BM([0,1,2,4], [6]));
+
+    VertexPot pot;
+    pot.zlegCoef = 0.1;
+    pot.impCoef = 0.2;
+    VertexPotState!int potState;
+    mfd.recomputeVertexPotState(potState, pot);
+
+    auto currentObj = mfd.objective(params) + potState.total;
+    int[] unusedVertices = [7];
+    ulong hingeTries, hingeAccepts;
+    ulong[4] bTries, bAccepts;
+    ContractSplitConfig cs;
+    cs.prob = 0.5;
+    cs.maxRing = 6;
+
+    int accepted = 0;
+    foreach (step; 0 .. 3000)
+    {
+        if (mfd.mcmcStep(currentObj, unusedVertices, params, 0.5,
+                hingeTries, hingeAccepts, bTries, bAccepts,
+                null, null, &potState, &pot, null, null, null, null, null,
+                null, &cs))
+            accepted++;
+    }
+
+    assert(cs.contractTries > 0, "no contract proposals reached Metropolis");
+    assert(cs.splitTries > 0, "no split proposals reached Metropolis");
+    assert(cs.contractAccepts + cs.splitAccepts > 0,
+        "contract/split channel never accepted");
+
+    assert(mfd.findProblems.length == 0,
+        "manifold has problems after contract/split MCMC: "
+        ~ mfd.findProblems.to!string);
+
+    // objective and potential-counter consistency (no drift)
+    VertexPotState!int freshState;
+    mfd.recomputeVertexPotState(freshState, pot);
+    assert(isClose(potState.total, freshState.total, 1e-6, 1e-9),
+        "potential drift: tracked=%s actual=%s"
+        .format(potState.total, freshState.total));
+    foreach (v, n6; freshState.n6)
+        assert(potState.n6.get(v, 0) == n6, "n6 counter drift");
+    foreach (v, m; freshState.mImp)
+        assert(potState.mImp.get(v, 0) == m, "impurity counter drift");
+    auto actualObj = mfd.objective(params) + potState.total;
+    assert(isClose(currentObj, actualObj, 1e-4),
+        "objective drift: tracked=%s actual=%s".format(currentObj, actualObj));
+}
+
+/// Contract/split Hastings quantities: the contract branch estimates the
+/// reverse-split's inputs (merged-link cycle count, post-move vertex tet
+/// degree, post-move f3) on the PLANNED state; verify them against ground
+/// truth computed on the committed state, for every valid contraction of a
+/// churned sphere.
+unittest
+{
+    import link_cycles : adjFromFaces, countCycles, maxLinkVerts;
+    alias BM = BistellarMove!3;
+
+    auto mfd = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+    mfd.doMove(BM([0,1,2,3], [5]));
+    mfd.doMove(BM([0,1,2,4], [6]));
+    mfd.doMove(BM([0,1,2], [5,6]));
+
+    int nChecked = 0;
+    foreach (ePair; mfd.simplices(1).map!array.array)
+    {
+        immutable int u = ePair[0], v = ePair[1];
+        if (!mfd.hasValidContractMove(u, v))
+            continue;
+
+        // planned-state estimates, as tryContractSplit computes them
+        auto move = ContractMove!int(u, v);
+        mfd.planContractMove(move);
+        int[] linkVerts;
+        int[int] lidx;
+        ubyte[3][] lfaces;
+        void addLinkFace(int[4] t)
+        {
+            ubyte[3] lf;
+            int n = 0;
+            foreach (x; t)
+                if (x != u)
+                {
+                    auto p = x in lidx;
+                    int li;
+                    if (p is null)
+                    {
+                        li = cast(int) linkVerts.length;
+                        lidx[x] = li;
+                        linkVerts ~= x;
+                    }
+                    else
+                        li = *p;
+                    lf[n++] = cast(ubyte) li;
+                }
+            lf[].sort();
+            lfaces ~= lf;
+        }
+        foreach (f; mfd.star([u]))
+        {
+            int[4] t;
+            int n = 0;
+            foreach (x; f)
+                t[n++] = x;
+            bool hasV = false;
+            foreach (x; t)
+                hasV |= x == v;
+            if (!hasV)
+                addLinkFace(t);
+        }
+        foreach (ref t; move.addedFacets)
+            addLinkFace(t);
+        assert(linkVerts.length <= maxLinkVerts);
+        uint[maxLinkVerts] adjP;
+        adjFromFaces(lfaces, adjP);
+        immutable plannedN =
+            countCycles(adjP[0 .. linkVerts.length], 6).total(6);
+        immutable plannedDeg = cast(long) lfaces.length;
+        immutable plannedF3 = cast(long) mfd.fVector[3]
+            + cast(long) move.addedFacets.length
+            - cast(long) move.removedFacets.length;
+
+        // ground truth on the committed state
+        mfd.commitPlannedMove(move);
+        int[] lv2;
+        int[int] lidx2;
+        ubyte[3][] lf2;
+        foreach (f; mfd.star([u]))
+        {
+            ubyte[3] lf;
+            int n = 0;
+            foreach (x; f)
+                if (x != u)
+                {
+                    auto p = x in lidx2;
+                    int li;
+                    if (p is null)
+                    {
+                        li = cast(int) lv2.length;
+                        lidx2[x] = li;
+                        lv2 ~= x;
+                    }
+                    else
+                        li = *p;
+                    lf[n++] = cast(ubyte) li;
+                }
+            lf[].sort();
+            lf2 ~= lf;
+        }
+        uint[maxLinkVerts] adjA;
+        adjFromFaces(lf2, adjA);
+        immutable actualN = countCycles(adjA[0 .. lv2.length], 6).total(6);
+        assert(plannedDeg == cast(long) lf2.length,
+            "planned deg3_y mismatch: %s vs %s".format(plannedDeg, lf2.length));
+        assert(plannedN == actualN,
+            "planned merged-link cycle count mismatch: %s vs %s"
+            .format(plannedN, actualN));
+        assert(plannedF3 == cast(long) mfd.fVector[3], "planned f3 mismatch");
+        mfd.undoContractMove(move);
+        ++nChecked;
+    }
+    assert(nChecked > 0, "no valid contractions found to check");
 }
 
 /// Six-flip stream + disclination census: the flip records must exactly

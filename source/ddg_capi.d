@@ -1645,6 +1645,11 @@ private struct SamplerState
     WormConfig wormCfg;
     Deg3Set!int deg4Edges;
 
+    // Contract/split channel (dim=3 only): edge contraction + vertex split,
+    // the f0-changing block-move pair. See sampler.ContractSplitConfig /
+    // tryContractSplit. Not cocycle-safe (gated off in mcmcStep).
+    ContractSplitConfig csCfg;
+
     // f0 worm channel (scheme C; dim=3 only): extended-ensemble vertex
     // removal/insertion with a frozen umbrella table. See sampler.wormF0Episode.
     // Not cocycle- or ledger-safe (gated in the episode entry point).
@@ -1963,7 +1968,8 @@ private long runSamplerDim3(SamplerState* s, long numMoves,
                     (s.dim == 3 && s.nlSlideCfg.prob > 0) ? &s.nlSlideCfg : null,
                     (s.dim == 3 && s.nlSlideCfg.prob > 0) ? &s.deg3Chords : null,
                     (s.dim == 3 && s.wormCfg.prob > 0) ? &s.wormCfg : null,
-                    (s.dim == 3 && s.wormCfg.prob > 0) ? &s.deg4Edges : null))
+                    (s.dim == 3 && s.wormCfg.prob > 0) ? &s.deg4Edges : null,
+                    (s.dim == 3 && s.csCfg.prob > 0) ? &s.csCfg : null))
             {
                 accepted++;
                 acceptedSinceWriteback++;
@@ -2977,6 +2983,57 @@ extern(C) long ddg_sampler_deg3_count(void* sampler_handle) nothrow
     if (sampler_handle is null) { setError("null handle"); return -1; }
     auto s = cast(SamplerState*) sampler_handle;
     return cast(long) s.deg3Chords.length;
+}
+
+/******************************************************************************
+Enable the contract/split channel (dim = 3 only): each mcmcStep proposes it
+with probability `prob`, choosing edge contraction or vertex split with a
+fair coin. max_ring caps deg(uv) on the contract side and the splitting
+cycle length |gamma| on the split side (the pair must be capped together for
+detailed balance); pass max_ring <= 0 to keep the current value (default 6).
+The channel is automatically inert while a cocycle is attached or six-flip
+logging is on. Set prob = 0 (default) to disable. See
+sampler.ContractSplitConfig / tryContractSplit.
+*/
+extern(C) int ddg_sampler_set_contract_split(void* sampler_handle,
+    double prob, int max_ring) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto s = cast(SamplerState*) sampler_handle;
+    if (!(prob >= 0.0 && prob <= 1.0))
+    { setError("contract/split probability must be in [0, 1]"); return -1; }
+    if (s.dim != 3 && prob > 0)
+    { setError("the contract/split channel is dim=3 only"); return -1; }
+    if (max_ring > 0 && (max_ring < 3 || max_ring > 8))
+    { setError("contract/split max_ring must be in [3, 8]"); return -1; }
+    s.csCfg.prob = cast(real) prob;
+    if (max_ring > 0) s.csCfg.maxRing = max_ring;
+    return 0;
+}
+
+/// Contract/split counters: per-direction proposals that reached Metropolis,
+/// accepts, and proposals that failed validity/geometry gates. All pointers
+/// optional.
+extern(C) int ddg_sampler_contract_split_stats(void* sampler_handle,
+    long* out_contract_tries, long* out_contract_accepts,
+    long* out_split_tries, long* out_split_accepts,
+    long* out_no_valid) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto s = cast(SamplerState*) sampler_handle;
+    if (out_contract_tries !is null)
+        *out_contract_tries = cast(long) s.csCfg.contractTries;
+    if (out_contract_accepts !is null)
+        *out_contract_accepts = cast(long) s.csCfg.contractAccepts;
+    if (out_split_tries !is null)
+        *out_split_tries = cast(long) s.csCfg.splitTries;
+    if (out_split_accepts !is null)
+        *out_split_accepts = cast(long) s.csCfg.splitAccepts;
+    if (out_no_valid !is null)
+        *out_no_valid = cast(long) s.csCfg.noValid;
+    return 0;
 }
 
 /******************************************************************************

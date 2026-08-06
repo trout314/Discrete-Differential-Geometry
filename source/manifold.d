@@ -2490,6 +2490,439 @@ pure @safe unittest
     assert(origOld == rtOld);
 }
 
+/******************************************************************************
+Link condition for contracting edge (u,v): link(u) * link(v) = link(uv) as
+COMPLEXES. Checked at all three simplex levels:
+  (a) common neighbor vertices of u and v = the vertices of link(uv);
+  (b) common link edges (pairs (a,b) with both (u,a,b) and (v,a,b) faces)
+      = exactly the edges of the link(uv) cycle;
+  (c) no common link triangles (no (a,b,c) with both (u,a,b,c) and
+      (v,a,b,c) tets) -- equivalently no tet collapses onto an existing one.
+When this holds, the contraction produces a combinatorial manifold
+PL-homeomorphic to the original (with one fewer vertex).
+*/
+bool hasValidContractMove(Vertex)(
+    const ref Manifold!(3, Vertex) mfd, Vertex u, Vertex v)
+{
+    import std.algorithm : setIntersection;
+
+    Vertex[2] uv = [u, v];
+    uv[].sort();
+    if (u == v || !mfd.contains(uv[]))
+        return false;
+
+    auto nbrsU = mfd.findCoCenter([u]);
+    auto nbrsV = mfd.findCoCenter([v]);
+    auto common = setIntersection(nbrsU, nbrsV).array;
+    auto ringVerts = mfd.findCoCenter(uv[]);
+    if (common != ringVerts)
+        return false;                                   // (a)
+
+    bool[Vertex[2]] ringEdge;
+    foreach (lk; mfd.link(uv[]))
+    {
+        Vertex[2] e;
+        int n = 0;
+        foreach (x; lk)
+            e[n++] = x;
+        assert(n == 2);
+        e[].sort();
+        ringEdge[e] = true;
+    }
+
+    foreach (i; 0 .. common.length)
+        foreach (j; i + 1 .. common.length)
+        {
+            immutable a = common[i], b = common[j];
+            Vertex[3] tu = [u, a, b];
+            tu[].sort();
+            Vertex[3] tv = [v, a, b];
+            tv[].sort();
+            immutable bothTri = mfd.contains(tu[]) && mfd.contains(tv[]);
+            Vertex[2] ab = [a, b];
+            immutable isRing = (ab in ringEdge) !is null;
+            if (bothTri != isRing)
+                return false;                           // (b)
+        }
+
+    foreach (i; 0 .. common.length)
+        foreach (j; i + 1 .. common.length)
+            foreach (k; j + 1 .. common.length)
+            {
+                Vertex[4] tu = [u, common[i], common[j], common[k]];
+                tu[].sort();
+                Vertex[4] tv = [v, common[i], common[j], common[k]];
+                tv[].sort();
+                if (mfd.contains(tu[]) && mfd.contains(tv[]))
+                    return false;                       // (c)
+            }
+    return true;
+}
+
+/******************************************************************************
+Plan an edge contraction (u,v) -> u WITHOUT mutating the manifold: fill
+move.removedFacets (= star(v)) and move.addedFacets (tets that contained v
+but not u, with v relabeled to u; tets containing both disappear). The
+planned lists drive speculative penalty deltas; commitPlannedMove applies.
+`starV` may supply the facets of star(v) (any order) to avoid the O(N)
+star() scan; pass null to collect them here.
+*/
+void planContractMove(Vertex)(const ref Manifold!(3, Vertex) mfd,
+                              ref ContractMove!Vertex move,
+                              const(Vertex[4])[] starV = null)
+{
+    move.removedFacets.length = 0;
+    move.addedFacets.length = 0;
+
+    void handle(Vertex[4] t)
+    {
+        t[].sort();
+        move.removedFacets ~= t;
+        bool hasU = false;
+        foreach (x; t)
+            if (x == move.u)
+                hasU = true;
+        if (!hasU)
+        {
+            Vertex[4] s = t;
+            foreach (ref x; s)
+                if (x == move.v)
+                    x = move.u;
+            s[].sort();
+            move.addedFacets ~= s;
+        }
+    }
+
+    if (starV !is null)
+        foreach (t; starV)
+            handle(t);
+    else
+        foreach (f; mfd.star([move.v]))
+        {
+            Vertex[4] t;
+            int n = 0;
+            foreach (x; f)
+                t[n++] = x;
+            assert(n == 4);
+            handle(t);
+        }
+}
+
+/// Apply a planned block move (remove old facets, insert new ones).
+void commitPlannedMove(Vertex, Move)(ref Manifold!(3, Vertex) mfd,
+                                     const ref Move move)
+{
+    foreach (ref t; move.removedFacets)
+        mfd.removeFacet(t[]);
+    foreach (ref t; move.addedFacets)
+        mfd.insertFacet(t[]);
+}
+
+/******************************************************************************
+Execute an edge contraction (u,v) -> u (plan + commit). See planContractMove.
+*/
+void doContractMove(Vertex)(ref Manifold!(3, Vertex) mfd,
+                            ref ContractMove!Vertex move)
+{
+    assert(mfd.hasValidContractMove(move.u, move.v),
+        "contract move violates the link condition");
+    mfd.planContractMove(move);
+    mfd.commitPlannedMove(move);
+}
+
+/// Restore the exact pre-contraction labeled state.
+void undoContractMove(Vertex)(ref Manifold!(3, Vertex) mfd,
+                              const ref ContractMove!Vertex move)
+{
+    foreach (ref t; move.addedFacets)
+        mfd.removeFacet(t[]);
+    foreach (ref t; move.removedFacets)
+        mfd.insertFacet(t[]);
+}
+
+/******************************************************************************
+Plan a vertex split of w along the simple cycle move.gamma in link(w),
+introducing move.fresh, WITHOUT mutating the manifold. The gamma cycle
+separates the link-sphere faces into two sides; side 0 is the one containing
+the lexicographically smallest face, and move.freshSide0 selects which side
+the fresh vertex cones (the other stays with w). Adds the belt tets
+{w, fresh, a, b} over gamma edges. Fills move.removedFacets /
+move.addedFacets; commitPlannedMove applies. `starW` may supply the facets
+of star(w) to avoid the O(N) star() scan.
+*/
+void planSplitMove(Vertex)(const ref Manifold!(3, Vertex) mfd,
+                           ref SplitMove!Vertex move,
+                           const(Vertex[4])[] starW = null)
+{
+    immutable w = move.w;
+    immutable fresh = move.fresh;
+    auto g = move.gamma;
+    immutable size_t glen = g.length;
+
+    assert(glen >= 3, "splitting cycle needs at least 3 vertices");
+    assert(!mfd.contains([fresh]), "fresh vertex already in manifold");
+    foreach (i; 0 .. glen)
+    {
+        foreach (j; i + 1 .. glen)
+            assert(g[i] != g[j], "splitting cycle vertices must be distinct");
+        Vertex[3] tri = [w, g[i], g[(i + 1) % glen]];
+        tri[].sort();
+        assert(mfd.contains(tri[]),
+            "consecutive gamma vertices must span a link edge of w");
+    }
+
+    // link faces of w
+    Vertex[3][] faces;
+    if (starW !is null)
+        foreach (t; starW)
+        {
+            Vertex[3] lf;
+            int n = 0;
+            foreach (x; t)
+                if (x != w)
+                    lf[n++] = x;
+            assert(n == 3);
+            lf[].sort();
+            faces ~= lf;
+        }
+    else
+        foreach (f; mfd.star([w]))
+        {
+            Vertex[3] lf;
+            int n = 0;
+            foreach (x; f)
+                if (x != w)
+                    lf[n++] = x;
+            assert(n == 3);
+            lf[].sort();
+            faces ~= lf;
+        }
+
+    bool[Vertex[2]] gammaEdge;
+    foreach (i; 0 .. glen)
+    {
+        Vertex[2] e = [g[i], g[(i + 1) % glen]];
+        e[].sort();
+        gammaEdge[e] = true;
+    }
+
+    // partition faces into the two sides of gamma: BFS across shared link
+    // edges that are NOT gamma edges
+    size_t[2][Vertex[2]] edgeFaces;
+    ubyte[Vertex[2]] edgeCount;
+    foreach (fi, ref lf; faces)
+        foreach (i; 0 .. 3)
+            foreach (j; i + 1 .. 3)
+            {
+                Vertex[2] e = [lf[i], lf[j]];
+                e[].sort();
+                immutable c = edgeCount.get(e, cast(ubyte) 0);
+                assert(c < 2, "link of w is not a closed surface");
+                edgeFaces.require(e)[c] = fi;
+                edgeCount[e] = cast(ubyte)(c + 1);
+            }
+
+    auto comp = new int[faces.length];
+    comp[] = -1;
+    int nComp = 0;
+    foreach (seed; 0 .. faces.length)
+    {
+        if (comp[seed] >= 0)
+            continue;
+        auto stack = [seed];
+        comp[seed] = nComp;
+        while (stack.length > 0)
+        {
+            immutable fi = stack[$ - 1];
+            stack.length -= 1;
+            auto lf = faces[fi];
+            foreach (i; 0 .. 3)
+                foreach (j; i + 1 .. 3)
+                {
+                    Vertex[2] e = [lf[i], lf[j]];
+                    e[].sort();
+                    if ((e in gammaEdge) !is null)
+                        continue;
+                    foreach (gi; edgeFaces[e][])
+                        if (comp[gi] < 0)
+                        {
+                            comp[gi] = nComp;
+                            stack ~= gi;
+                        }
+                }
+        }
+        ++nComp;
+    }
+    assert(nComp == 2,
+        "gamma must separate link(w) into exactly two discs");
+
+    // side 0 = the component containing the lexicographically smallest face
+    size_t minIdx = 0;
+    foreach (fi; 1 .. faces.length)
+        if (faces[fi] < faces[minIdx])
+            minIdx = fi;
+    immutable side0 = comp[minIdx];
+    immutable freshComp = move.freshSide0 ? side0 : 1 - side0;
+
+    move.removedFacets.length = 0;
+    move.addedFacets.length = 0;
+    foreach (fi, ref lf; faces)
+    {
+        if (comp[fi] != freshComp)
+            continue;                   // stays with w, untouched
+        Vertex[4] told = [w, lf[0], lf[1], lf[2]];
+        told[].sort();
+        move.removedFacets ~= told;
+        Vertex[4] tnew = [fresh, lf[0], lf[1], lf[2]];
+        tnew[].sort();
+        move.addedFacets ~= tnew;
+    }
+    foreach (i; 0 .. glen)
+    {
+        Vertex[4] belt = [w, fresh, g[i], g[(i + 1) % glen]];
+        belt[].sort();
+        move.addedFacets ~= belt;
+    }
+}
+
+/******************************************************************************
+Execute a vertex split (plan + commit). See planSplitMove.
+*/
+void doSplitMove(Vertex)(ref Manifold!(3, Vertex) mfd,
+                         ref SplitMove!Vertex move)
+{
+    mfd.planSplitMove(move);
+    mfd.commitPlannedMove(move);
+}
+
+/// Restore the exact pre-split labeled state.
+void undoSplitMove(Vertex)(ref Manifold!(3, Vertex) mfd,
+                           const ref SplitMove!Vertex move)
+{
+    foreach (ref t; move.addedFacets)
+        mfd.removeFacet(t[]);
+    foreach (ref t; move.removedFacets)
+        mfd.insertFacet(t[]);
+}
+
+/// Contracting any edge of the boundary of the 4-simplex must be rejected
+/// (level (c) of the link condition): the 4-vertex "sphere" does not exist.
+pure @safe unittest
+{
+    auto mfd = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+    foreach (i; 0 .. 5)
+        foreach (j; i + 1 .. 5)
+            assert(!mfd.hasValidContractMove(i, j));
+}
+
+/// Contraction inverts a 1 -> 4 move exactly, and undo restores the exact
+/// labeled state; the split with a triangle gamma IS the 1 -> 4 move.
+pure @safe unittest
+{
+    alias BM = BistellarMove!3;
+
+    auto orig = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+    auto mfd = Manifold!3(orig.facets);
+    mfd.doMove(BM([0,1,2,3], [5]));
+    auto inflated = mfd.facets.map!array.array.sort.array;
+
+    // contract (0,5): valid, and result == the original sphere
+    assert(mfd.hasValidContractMove(0, 5));
+    auto cm = ContractMove!int(0, 5);
+    mfd.doContractMove(cm);
+    assert(mfd.facets.map!array.array.sort.array
+        == orig.facets.map!array.array.sort.array);
+    assert(mfd.findProblems.empty);
+
+    // undo: exact labeled state comes back
+    mfd.undoContractMove(cm);
+    assert(mfd.facets.map!array.array.sort.array == inflated);
+
+    // split of 0 along triangle gamma [1,2,3] with fresh vertex 6, fresh
+    // coning the single-face side, is exactly a 1 -> 4 move on [0,1,2,3]
+    auto mfd2 = Manifold!3(orig.facets);
+    auto expect = Manifold!3(orig.facets);
+    expect.doMove(BM([0,1,2,3], [6]));
+
+    // whichever side flag puts fresh on the single-face side: try both
+    auto sm = SplitMove!int(0, 6, [1, 2, 3], true);
+    auto probe = Manifold!3(orig.facets);
+    probe.doSplitMove(sm);
+    if (probe.facets.map!array.array.sort.array
+        != expect.facets.map!array.array.sort.array)
+    {
+        sm = SplitMove!int(0, 6, [1, 2, 3], false);
+        mfd2.doSplitMove(sm);
+        assert(mfd2.facets.map!array.array.sort.array
+            == expect.facets.map!array.array.sort.array);
+    }
+    assert(sm.removedFacets.length == 1 || sm.removedFacets.length == 3);
+}
+
+/// Split-then-contract roundtrips on a thermalized-ish sphere: for every
+/// vertex w and every short cycle in link(w), splitting and then contracting
+/// the created edge restores the exact labeled state, and the intermediate
+/// state is a valid manifold with one more vertex.
+@system unittest
+{
+    import link_cycles : adjFromFaces, countCycles, kthCycle, maxCycleLen,
+        maxLinkVerts;
+    alias BM = BistellarMove!3;
+
+    auto mfd = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+    mfd.doMove(BM([0,1,2,3], [5]));
+    mfd.doMove(BM([0,1,2], [4,5]));      // a 2 -> 3 to roughen the links
+    const before = mfd.facets.map!array.array.sort.array;
+    immutable nBefore = mfd.fVector[0];
+
+    foreach (sv; mfd.simplices(0).map!array.array)
+    {
+        immutable int w = sv[0];
+        // build link(w) adjacency with local indexing
+        int[] lkVerts = mfd.findCoCenter([w]);
+        int[int] localIdx;
+        foreach (li, x; lkVerts)
+            localIdx[x] = cast(int) li;
+        ubyte[3][] lkFaces;
+        foreach (f; mfd.star([w]))
+        {
+            ubyte[3] lf;
+            int n = 0;
+            foreach (x; f)
+                if (x != w)
+                    lf[n++] = cast(ubyte) localIdx[x];
+            lf[].sort();
+            lkFaces ~= lf;
+        }
+        uint[maxLinkVerts] adj;
+        adjFromFaces(lkFaces, adj);
+        immutable counts = countCycles(adj[0 .. lkVerts.length], 4);
+        foreach (k; 0 .. counts.total(4))
+        {
+            ubyte[maxCycleLen] buf;
+            immutable len = kthCycle(adj[0 .. lkVerts.length], 4, k, buf);
+            assert(len >= 3);
+            int[] gamma;
+            foreach (i; 0 .. len)
+                gamma ~= lkVerts[buf[i]];
+
+            foreach (freshSide0; [true, false])
+            {
+                auto sm = SplitMove!int(w, 99, gamma.dup, freshSide0);
+                mfd.doSplitMove(sm);
+                assert(mfd.fVector[0] == nBefore + 1);
+                assert(mfd.findProblems.empty);
+                assert(mfd.degree([min(w, 99), max(w, 99)]) == len);
+                assert(mfd.hasValidContractMove(w, 99));
+
+                // contract the created edge: exact roundtrip
+                auto cm = ContractMove!int(w, 99);
+                mfd.doContractMove(cm);
+                assert(mfd.facets.map!array.array.sort.array == before);
+            }
+        }
+    }
+}
 
 @system unittest
 {

@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 1fc2ced4-2271-4a60-ba17-bc68ad6d30ad
-  modified: 2026-08-06T16:00:49.850Z
+  modified: 2026-08-06T17:44:15.876Z
 ---
 
 **Goal (Aaron, 2026-08-06):** graft a piece of one TCP crystal into another by
@@ -115,6 +115,74 @@ the reverse (vertex-split) channel is needed for equilibrium; guard
 + splitting cycle in link; detailed balance needs per-vertex cycle counts
 (bounded-length cycle enumeration in links, or restrict both channels to
 deg(uv) ≤ L).
+
+**D-SIDE CONTRACT/SPLIT CHANNEL (built 2026-08-06 late, all meson tests
+pass):**
+- `source/link_cycles.d`: bounded simple-cycle DFS on adjacency bitmasks
+  (allocation-free countCycles + rank-select kthCycle for uniform sampling
+  without enumeration), FK-catalog (Z12/14/15/16 canonical polyhedra
+  embedded; counts cross-validated vs independent Python enumeration: Z12
+  5-cycles 72, 6-cycles 240, total<=8 2702 etc.), cycle lists length-sorted
+  (prefix property → O(1) draws under a cap), exact face-based dart-
+  propagation matchCatalog with vertex perm for cycle transport.
+- `manifold_moves.d/manifold.d`: ContractMove/SplitMove; hasValidContractMove
+  = full 3-level link condition (vertex/edge/triangle — vertex sets alone are
+  NOT sufficient); plan/commit split (planContractMove/planSplitMove fill
+  removed/addedFacets with NO mutation → speculative deltas; commitPlannedMove
+  applies; undo exact). Split side convention: side 0 = component containing
+  lexicographically smallest link face; freshSide0 flag. Tests: ∂Δ⁴ rejects
+  all contractions (level c); contraction inverts 1→4 exactly; split w/
+  triangle γ = the 1→4; exhaustive split→contract roundtrips.
+- `sampler.d`: generic block-move deltas (speculativeBlockDelta /
+  potentialBlockDelta driven by planned facet lists — reusable for ANY block
+  move); tryContractSplit with exact Hastings (contract fwd deg(uv)/(6f3),
+  reverse needs cycle count of MERGED link by DFS on planned state; split fwd
+  deg3(w)/(4f3)·1/N_L·1/2side, catalog fast path + transported cycles);
+  channel gate in mcmcStep (new trailing ContractSplitConfig* param), gated
+  off under cocycle/six-flips like the worm. maxRing caps BOTH directions
+  (must be capped together or DB breaks). Label pool: contract pushes v,
+  split pops (mirrors 1↔4).
+- capi `ddg_sampler_set_contract_split(prob, max_ring)` +
+  `..._contract_split_stats`; Python `set_contract_split` /
+  `contract_split_stats`. Integration unittest: 3000 mixed steps with
+  potential on — zero objective/counter drift, both directions accept.
+- Smoke on c15 m3 @ cimp 0.5: 30 sweeps, contract 4/2678, split 1/2690
+  accepts, f0 648→645, manifold valid.
+- `scripts/validate_contract_split.py`: VALIDATION-DESIGN SAGA (three traps,
+  all diagnosed):
+  (1) The naive A/B equilibrium test (channel off/on) is INVALID: the
+  sampler's own 1↔4 bistellar pair carries an uncorrected O(1) proposal
+  asymmetry (factor ~2 — THAT's why run_exact and importance_weight exist),
+  so baseline A does not sample exp(−S); mixing in a CORRECT channel shifts
+  B anyway. A/B "FAIL" ≠ channel bug.
+  (2) Pair test with a weak invariant key (degree profiles) AGGREGATES
+  isomorphism classes: many distinct γ's → key-equal targets, measured
+  Σ P(x→y′) vs single reverse mimics a "missing 1/N" violation with
+  aggregated forward rate EXCEEDING the true single-transition proposal
+  bound (the 25× tell). Forensics variant-table (predict absolute rates per
+  candidate mis-formula) exposed this.
+  (3) EXACT test: labeled pair test on split-forward pairs — X labels
+  0..n−1 compact, split creates fresh = n deterministically, reverse
+  contraction of (w,n) keeps w<n and restores X BIT-FOR-BIT, so
+  sorted-facet-bytes keys give single-transition rates. 150k-trial run:
+  ratio tests pass (z −0.25 clean, +3.9 borderline); absolute rates exceed
+  single-path theory by ~4× → (4) PROPOSAL MULTIPLICITY, the final piece:
+  a labeled transition can be realized by SEVERAL (w,γ,side) paths (1→4-
+  type splits by 4, one per tet vertex), each in BIJECTION with a reverse
+  contract-edge path — and the per-path acceptance pairs exactly the
+  corresponding reverse path, so each sub-kernel satisfies DB individually
+  (composite-kernel MH, saturation included) ⇒ THE CHANNEL IS EXACT AS
+  IMPLEMENTED. The multiplicity only makes single-path rate predictions
+  underestimates; ratios are unaffected. Forensics counts labeled path
+  multiplicity. **FINAL VERDICT (4 pairs × 150k trials, power-aware pair
+  selection = smallest |dS| among trafficked probe targets): ALL PASS,
+  z = −0.05, +1.06, −0.13, −0.19; multiplicity = 4 confirmed in each.
+  Channel validated to exact detailed balance. All meson tests + graft
+  selftest green.**
+  Also fixed en route: split fresh-label collision on label-holey manifolds
+  (pool seeded from fVector[0]) — graceful reject added (was a release-mode
+  corruption risk); pair-test perf: cache the start Manifold, sampler
+  copies it (~1.3 ms/trial).
 
 **Next steps:** cross-library graft compatibility matrix beyond the Laves
 family (a15, sigma, z, mu, p, delta, r — expect the vertex-density/web
