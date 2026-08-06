@@ -111,6 +111,17 @@ def main():
                          "couplings, host -- CONVENTIONS sec 2)")
     ap.add_argument("--max-canon", type=int, default=60,
                     help="skip canonical-class hashing above this size")
+    ap.add_argument("--layout", choices=("harmonic", "mds"),
+                    default="harmonic",
+                    help="vertex positions for the 3D scenes: 'harmonic' "
+                         "needs a .cocycle.npz sidecar; 'mds' computes a "
+                         "per-complex classical-MDS layout from graph "
+                         "distances of the closed-star region -- use for "
+                         "states without a maintained cocycle (e.g. "
+                         "contract/split-channel runs, where the lift "
+                         "cannot follow vertex creation/deletion). "
+                         "COMBINATORIAL layout: local shape faithful, no "
+                         "global chart, gyration radii in graph units.")
     ap.add_argument("--narrow", action="store_true",
                     help="use the historical complex definition (illegal-"
                          "edge incidence only, components(broad=False)). "
@@ -164,7 +175,47 @@ def main():
         comps.sort(key=lambda c: -len(c.verts))
     else:
         comps = sorted(st.components(), key=lambda c: -len(c.verts))
-    X, P = dv.positions(args.snap, fac)
+    if args.layout == "harmonic":
+        X, P = dv.positions(args.snap, fac)
+    else:
+        # per-complex MDS layout, filled lazily before each render; the huge
+        # period makes the viewer's min-imaging inert
+        X = np.zeros((int(fac.max()) + 1, 3))
+        P = np.array([1e9, 1e9, 1e9])
+
+    def fill_mds(region_verts, edges_in_region):
+        """Classical MDS of the region's graph metric into X (in place)."""
+        verts = sorted(region_verts)
+        idx = {v: i for i, v in enumerate(verts)}
+        n = len(verts)
+        adj = [[] for _ in range(n)]
+        for a, b in edges_in_region:
+            adj[idx[a]].append(idx[b])
+            adj[idx[b]].append(idx[a])
+        D = np.full((n, n), np.inf)
+        for s in range(n):
+            D[s, s] = 0
+            frontier = [s]
+            d = 0
+            while frontier:
+                d += 1
+                nxt = []
+                for u in frontier:
+                    for w in adj[u]:
+                        if D[s, w] == np.inf:
+                            D[s, w] = d
+                            nxt.append(w)
+                frontier = nxt
+        D[~np.isfinite(D)] = D[np.isfinite(D)].max() + 1
+        D2 = D ** 2
+        J = np.eye(n) - np.ones((n, n)) / n
+        B = -0.5 * J @ D2 @ J
+        w_, V_ = np.linalg.eigh(B)
+        order = np.argsort(w_)[::-1][:3]
+        coords = V_[:, order] * np.sqrt(np.maximum(w_[order], 1e-12))
+        for v, i in idx.items():
+            X[v] = coords[i]
+
     q = st.vertex_charges()
     qb = st.qbar(q)
     n_ill_tot = len(st.ill_edges)
@@ -174,8 +225,18 @@ def main():
     for i, cx in enumerate(comps):
         V = set(cx.verts)
         scene = f"cx{i}.html"
+        chart = ("harmonic lift chart" if args.layout == "harmonic"
+                 else "combinatorial MDS layout")
         title = (f"{base} complex {i}: n={len(cx.verts)} sig={cx.sig} "
-                 f"nodes={cx.nodes} [harmonic lift chart]")
+                 f"nodes={cx.nodes} [{chart}]")
+        if args.layout == "mds":
+            star_tets = st.star(V)
+            region = {v for t in star_tets for v in t}
+            eir = set()
+            for t in star_tets:
+                for a, b in combinations(sorted(t), 2):
+                    eir.add((a, b))
+            fill_mds(region, eir)
         dv.render(st, cx, X, P, os.path.join(out_dir, scene), title,
                   plotlyjs="directory")
 
