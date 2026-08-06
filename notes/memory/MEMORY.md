@@ -65,3 +65,5 @@
 - [Defect boundary map](defect-boundary-map.md) — 2→3 is a LENS not a shortcut; exact λ=2√6/3 anisotropic scaling + double-image caustic; universal table + validated tool
 - [PL geodesic permeability](pl-geodesic-permeability.md) — only degree≥6 edges carry minimizers (= the FK six-edge net); exactness limits and the Lipschitz-dual certificate
 - [Defect site classes](defect-site-classes.md) — C15 has 4 inequivalent 2→3 sites, R exactly 102 (6 ledgers); but optics are IDENTICAL at all of them (ball is convex); global-field statistic is source-noise dominated
+- [Crystal library gas campaign](crystal-library-gas-campaign.md) — ALL 10 TCP crystals under the minimal 3-term action; pin gap is an EXTENSIVE forced-defect debt, its SIGN splits the library; R is the flat crystal (debt ~0)
+- [Crystal grafting program](crystal-grafting-program.md) — graft lumps between TCP crystals via exact decorated-boundary matching; L3 match = zero-cost invisible seam; graft_signature.py validated, C36↔C14 control
