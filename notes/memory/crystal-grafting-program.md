@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 1fc2ced4-2271-4a60-ba17-bc68ad6d30ad
-  modified: 2026-08-06T14:50:46.063Z
+  modified: 2026-08-06T16:00:49.850Z
 ---
 
 **Goal (Aaron, 2026-08-06):** graft a piece of one TCP crystal into another by
@@ -75,6 +75,46 @@ where **L1 > L3**: some surfaces match topologically but NOT with decorations
 suspicion refuted within the Laves family; thickness-changing slab swaps
 change V freely at L3). Saved: data/grafts/T3_C14m4_graftC15m2_f33264.mfd,
 T3_C36m4_graftC15m2_f37616.mfd, c15_cross.json.
+
+**BALL-GRAFT SEARCH (Aaron's ask: dV != 0 ball grafts, e.g. 3-vertex star
+union → 2-interior filling).** Reuses the FK-move-search formalism
+([[fk-move-search]]): ball graft = pair of FK-legal fillings of one FRAMED
+boundary (= L2 decoration on S²) with different V_int. New
+`scripts/graft_ball_search.py`: best-first refilling enumeration =
+enumerate_fillings.py moves + the missing 1→4/4→1 channel (vertex-preserving
+flips can NEVER change V_int) + exact framing bookkeeping (the old filler's
+2→3 can silently change boundary-edge framing — my acceptance requires
+frame_dev==0; NOTE this means enumerate_fillings.py itself may collect
+framing-broken "fillings"). Lazy priorities: children scored by exact delta
+bookkeeping, analyze only on pop. Acceptance = L2-exact; full L3/Z check by
+validate_facets on the performed graft.
+**c15 m3 results (max_bad 12, grow 12):** first flip out of a pristine
+crystal filling costs ~8 (block-scale echo of "no single Pachner move
+preserves FK"). Vertex stars (Z12, Z16) and edge cavities (edge1/2):
+search EXHAUSTED → provably UNIQUE FK filling in radius. Face cavities
+(V_int=3, 47-62 tets): cap-limited (100k pops); no dV hit yet, but best
+V_int=2 filling reached total violation 3 (face2). Deep runs (400k
+bad-first; 200k vfirst) launched 2026-08-06 evening.
+
+**EDGE-CONTRACTION MOVE (Aaron's donor-free scheme, 2026-08-06 evening).**
+"Delete two adjacent stars, cone the boundary from one new vertex" = EDGE
+CONTRACTION (u,v)→w; validity = link condition = lump_boundary's pinch check.
+`scripts/contract_relax.py`: exact local delta bookkeeping (verified vs full
+recompute), apply, and A/B relaxation driver. **Measured on c15 m3:**
+contracting a Z12-Z12 deg-5 edge costs remarkably little — CN(w)=17 with ALL
+17 edges legal (m(w)=0, a pure-{5,6} "Z17", n6=5), just 3 ring edges go
+deg-4; Δ(f0,f1,f3) = (−1,−6,−5), Σm² +10. Deg-6 ring edges drop to LEGAL 5.
+**A/B verdicts:** (1) at c_imp≤0.5 the gas isn't f0-stuck (sampler sheds
+inserted vertices in <100 sweeps; at 0.2 equilibrium f0 < crystal). (2) at
+c_imp=3.0 f0 is FROZEN: prep-at-inflated-f3-target then quench → sampler
+stuck at f0=650; +contraction channel reaches exactly 648 instantly (guard),
+BUT its debris can't heal at 3.0 (S_B > S_A). (3) UNGUARDED contraction
+ratchets BELOW crystal f0 (volume pin pays for it) and strands defect-rich —
+the reverse (vertex-split) channel is needed for equilibrium; guard
+(f0 > f0_ref) is the annealing stopgap. D-port design: split = choose vertex
++ splitting cycle in link; detailed balance needs per-vertex cycle counts
+(bounded-length cycle enumeration in links, or restrict both channels to
+deg(uv) ≤ L).
 
 **Next steps:** cross-library graft compatibility matrix beyond the Laves
 family (a15, sigma, z, mu, p, delta, r — expect the vertex-density/web

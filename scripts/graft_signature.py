@@ -66,6 +66,13 @@ class CrystalContext:
         np.add.at(n6, six[:, 1], 1)
         self.cn = cn
         self.n6 = n6
+        # impurity valence m(v) = # incident edges with degree not in {5,6}
+        # (matches the D-side n6-potential clustering term, source/sampler.d)
+        m = np.zeros(nv, np.int64)
+        bad = eu[(cnt < 5) | (cnt > 6)]
+        np.add.at(m, bad[:, 0], 1)
+        np.add.at(m, bad[:, 1], 1)
+        self.m = m
 
     def star_of_vertex(self, v):
         """Tet indices containing vertex v (a closed-star lump)."""
