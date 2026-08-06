@@ -167,6 +167,12 @@ def main():
                          "MCMC step (0 = off). Unpins f0: the flat pin's "
                          "gap can then be paid in vertices instead of "
                          "defects (f1 = f0 + f3).")
+    ap.add_argument("--vol-scale", type=float, default=1.0,
+                    help="volume-pin target as a multiple of the native "
+                         "f3_ref (1.0 = native). With the channel on, the "
+                         "flat-pin line f0*(f3) = f3(6/e* - 1) is reachable "
+                         "at any volume -- the question is what STRUCTURE "
+                         "a non-native volume forces in the fixed box.")
     ap.add_argument("--out", required=True)
     ap.add_argument("--cocycle", action="store_true",
                     help="attach the harmonic cocycle at sweep 0 (needed for "
@@ -180,10 +186,11 @@ def main():
     ddg.set_random_seed(args.seed)
     ref = ddg.Manifold.load(cell, 3)
     f3_ref = ref.num_facets
+    f3_target = int(round(f3_ref * args.vol_scale))
     mfd = ddg.Manifold.load(cell, 3)
 
     params = ddg.SamplerParams(
-        num_facets_target=f3_ref, num_facets_coef=0.1,
+        num_facets_target=f3_target, num_facets_coef=0.1,
         hinge_degree_target=E_FLAT, num_hinges_coef=1.0,
         # everything else OFF: the defaults are ON and fight an FK pin
         hinge_degree_variance_coef=0.0, codim3_degree_variance_coef=0.0,
@@ -205,7 +212,8 @@ def main():
             "mcell": mcell, "cimp": args.cimp, "e_flat": E_FLAT,
             "e_native": e_nat, "pin_gap_f1": gap, "n_forced_moves": n_forced,
             "burn": args.burn, "span": args.span, "f3_ref": f3_ref,
-            "contract_split": args.contract_split}
+            "contract_split": args.contract_split,
+            "vol_scale": args.vol_scale, "f3_target": f3_target}
     rec = Recorder(s, args.out, chunk=args.chunk, census_every=1,
                    snap_mid=False,
                    cocycle_box=mcell if args.cocycle else None,
