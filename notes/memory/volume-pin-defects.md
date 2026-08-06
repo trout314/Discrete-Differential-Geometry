@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 1fc2ced4-2271-4a60-ba17-bc68ad6d30ad
-  modified: 2026-08-06T21:18:38.028Z
+  modified: 2026-08-06T22:36:40.870Z
 ---
 
 **Experiment (Aaron, 2026-08-06 night):** volume pins ≠ native volume with
@@ -66,5 +66,22 @@ ensemble, independent of host and driving force. All six deg-7-bearing
 complexes show the CAGED-MONOPOLE motif (deg-7 wrapped in a deg-3/4
 shell), same as a15's lone deg-7 — free negative curvature does not occur.
 
-All single chains, uncertified. Related: [[a15-positive-gas]],
-[[crystal-library-gas-campaign]].
+**MULTI-CHAIN CERTIFICATION ATTEMPT (4 chains/cell, 12k sweeps,
+certify_strain_gas.py, 436f32d): NOT CERTIFIED at R̂<1.01 but
+REPRODUCIBLE** — pooled n_ill 624±38 / 688±41 / 506±22 / 508±19
+(c15∓5%, a15∓5%), f0 SD <1 vertex on the flat line everywhere. R̂(n_ill)
+1.2-2.2: chains sit at offset density levels (between 30-40 vs within
+10-20, slopes z≈2-3) — the strain gas anneals slower than 12k sweeps.
+Certification needs ~3-4× longer chains; multi-chain spread = honest
+error bar meanwhile.
+
+**COCYCLE LIFT FOLLOWS THE CHANNEL (27924eb):** cocycleContract (new edge
+values forced by closedness through the deleted vertex, lift needs no
+assignment) + cocycleSplit (1→4-mirror gauge: fresh AT w, zero spoke).
+Unit-audited every 250 steps of 50%-channel churn; end-to-end: strained
+c15 run with cocycle attached (f0 1536→1599), harmonic positions clean →
+FIRST harmonic-chart catalog of a channel state:
+data/viz/c15_v1.05_harmonic/index.html (largest complex now a deg-3-rich
+21-edge cluster; caged-deg-7 motif persists in the true chart).
+
+Related: [[a15-positive-gas]], [[crystal-library-gas-campaign]].
