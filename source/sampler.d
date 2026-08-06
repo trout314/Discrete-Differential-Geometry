@@ -1485,6 +1485,58 @@ void cocycleHinge(Vertex)(ref CocycleState!Vertex st,
     st.omega.remove(mkEdge(hm.removedEdge[0], hm.removedEdge[1]));
 }
 
+/// Contraction (u,v) -> u: every new edge (u,x) replaces the path u-v-x, so
+/// its value is FORCED by closedness: omega(u->x) = omega(u->v) + omega(v->x).
+/// Pre-existing edges (u,x) need no change -- the pre-move cochain was closed
+/// on the triangle (u,v,x), which says exactly that its value already equals
+/// the path value. All edges at v die. The lift needs no assignment: u keeps
+/// its position and the new-edge values telescope (pos(x) - pos(u) =
+/// [pos(v)-pos(u)] + [pos(x)-pos(v)] mod boxM). Reads only pre-move edges;
+/// run BEFORE the move commits. nbrsV = v's neighbours (excluding v,
+/// including u).
+void cocycleContract(Vertex)(ref CocycleState!Vertex st,
+    Vertex u, Vertex v, scope const(Vertex)[] nbrsV)
+{
+    immutable int[3] uv = cocGet(st, u, v);
+    foreach (x; nbrsV)
+    {
+        if (x == u)
+            continue;
+        if ((mkEdge(u, x) in st.omega) is null)
+        {
+            int[3] val = uv;
+            val[] += cocGet(st, v, x)[];
+            cocSet(st, u, x, val);
+        }
+    }
+    foreach (x; nbrsV)
+        st.omega.remove(mkEdge(v, x));
+    if (st.posEnabled)
+        st.pos.remove(v);
+}
+
+/// Split (w, gamma) -> fresh: the mirror of the 1->4 rule. Gauge places
+/// fresh exactly at w (omega(w->fresh) = 0, pos[fresh] = pos[w]); every
+/// fresh spoke copies the corresponding w spoke (omega(fresh->x) =
+/// omega(w->x), forced by closedness through the zero edge); w loses its
+/// edges into the fresh disc's interior. Reads only pre-move edges; run
+/// BEFORE the move commits. freshNbrs = fresh's post-move neighbours
+/// (may include w, skipped); wLost = the fresh-disc interior vertices.
+void cocycleSplit(Vertex)(ref CocycleState!Vertex st,
+    Vertex w, Vertex fresh, scope const(Vertex)[] freshNbrs,
+    scope const(Vertex)[] wLost)
+{
+    immutable int[3] zero = [0, 0, 0];
+    cocSet(st, w, fresh, zero);
+    foreach (x; freshNbrs)
+        if (x != w)
+            cocSet(st, fresh, x, cocGet(st, w, x));
+    foreach (y; wLost)
+        st.omega.remove(mkEdge(w, y));
+    if (st.posEnabled)
+        st.pos[fresh] = st.pos[w];
+}
+
 /// Full audit: key set must equal the manifold's edge set and the cochain
 /// must be closed on every triangle. Returns null if clean, else a message.
 /// This is the drift check — cheap enough for test/production cadence.
@@ -1561,6 +1613,72 @@ unittest
     auto prob = cocycleProblems(mfd, coc);
     assert(prob is null, "cocycle drift after churn: " ~ prob);
     assert(hingeAccepts + bAccepts[].sum > 100, "churn too weak to test");
+}
+
+/// The contract/split channel maintains the cocycle AND the vertex lift
+/// exactly: mixed MCMC with the channel at high probability, auditing both
+/// the closedness/edge-set invariant and the position lift, with periodic
+/// mid-run checks so a single bad update cannot hide behind later churn.
+unittest
+{
+    struct TestParams
+    {
+        int numFacetsTarget = 48;
+        real hingeDegreeTarget = 5.1;
+        real numFacetsCoef = 0.05;
+        real numHingesCoef = 0.0;
+        real hingeDegreeVarianceCoef = 0.0;
+        real coDim3DegreeVarianceCoef = 0.0;
+        real hingeDegreeTargetCoef = 0.1;
+        real coDim3DegreeTargetCoef = 0.0;
+        real coDim3DegreeTarget = 12.0;
+    }
+
+    auto mfd = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+    int[int] phi;
+    foreach (v; 0 .. 5) phi[v] = uniform(-50, 50);
+
+    CocycleState!int coc;
+    coc.enabled = true;
+    foreach (e; mfd.simplices(1))
+    {
+        int[3] val = [phi[e[1]] - phi[e[0]], 2 * (phi[e[1]] - phi[e[0]]), 0];
+        coc.omega[mkEdge(e[0], e[1])] = val;
+    }
+    immutable int[3] boxM = [1000, 1000, 1000];
+    auto seedErr = cocycleSeedPositions(coc, boxM);
+    assert(seedErr is null, seedErr);
+
+    auto params = TestParams();
+    auto currentObj = mfd.objective(params);
+    int[] unusedVertices;
+    ulong hingeTries, hingeAccepts;
+    ulong[4] bTries, bAccepts;
+    ContractSplitConfig cs;
+    cs.prob = 0.5;
+    cs.maxRing = 6;
+
+    foreach (step; 0 .. 4000)
+    {
+        mfd.mcmcStep(currentObj, unusedVertices, params, 0.5,
+            hingeTries, hingeAccepts, bTries, bAccepts, null, null, null,
+            null, &coc, null, null, null, null, null, &cs);
+        if (step % 250 == 0)
+        {
+            auto p1 = cocycleProblems(mfd, coc);
+            assert(p1 is null, "cocycle drift with channel: " ~ p1);
+            auto p2 = cocyclePosProblems(coc);
+            assert(p2 is null, "lift drift with channel: " ~ p2);
+        }
+    }
+    auto p1 = cocycleProblems(mfd, coc);
+    assert(p1 is null, "cocycle drift with channel: " ~ p1);
+    auto p2 = cocyclePosProblems(coc);
+    assert(p2 is null, "lift drift with channel: " ~ p2);
+    assert(cs.contractAccepts + cs.splitAccepts > 10,
+        "channel churn too weak to test the cocycle updates");
+    assert(mfd.findProblems.length == 0,
+        "manifold problems: " ~ mfd.findProblems.to!string);
 }
 
 /******************************************************************************
@@ -4114,7 +4232,8 @@ private bool tryContractSplit(Vertex, P)(
     VertexPotState!Vertex* potState,
     const(VertexPot)* pot,
     Deg3Set!Vertex* deg3Set,
-    Deg3Set!Vertex* deg4Set)
+    Deg3Set!Vertex* deg4Set,
+    CocycleState!Vertex* cocycle = null)
 {
     import link_cycles : CatalogClass, adjFromFaces, catalog, countCycles,
         kthCycle, matchCatalog, maxCycleLen, maxLinkVerts;
@@ -4354,6 +4473,8 @@ private bool tryContractSplit(Vertex, P)(
             if (potState !is null)
                 mfd.potentialBlockDelta(move.removedFacets, move.addedFacets,
                     [], removedV[], *potState, *pot, true);
+            if (cocycle !is null)
+                cocycleContract(*cocycle, u, v, nbrsV);
             mfd.commitPlannedMove(move);
             unusedVertices ~= v;
             currentObjective += dS;
@@ -4468,6 +4589,28 @@ private bool tryContractSplit(Vertex, P)(
             if (potState !is null)
                 mfd.potentialBlockDelta(move.removedFacets, move.addedFacets,
                     createdV[], [], *potState, *pot, true);
+            if (cocycle !is null)
+            {
+                Vertex[] freshNbrs;
+                foreach (ref t; move.addedFacets)
+                {
+                    bool hasFresh = false;
+                    foreach (x; t)
+                        hasFresh |= x == fresh;
+                    if (!hasFresh)
+                        continue;
+                    foreach (x; t)
+                        if (x != fresh && !freshNbrs.canFind(x))
+                            freshNbrs ~= x;
+                }
+                Vertex[] wLost;
+                foreach (ref t; move.removedFacets)
+                    foreach (x; t)
+                        if (x != w && !gamma.canFind(x)
+                            && !wLost.canFind(x))
+                            wLost ~= x;
+                cocycleSplit(*cocycle, w, fresh, freshNbrs, wLost);
+            }
             mfd.commitPlannedMove(move);
             unusedVertices.popBack;
             unusedVertices.assumeSafeAppend;
@@ -4672,15 +4815,18 @@ bool mcmcStep(Vertex, P)(
     }
 
     // --- Contract/split channel (dim=3) ---------------------------------
-    // The only channel that changes f0 without a degree-4 vertex. Not
-    // cocycle-safe (a vertex disappears; the lift cannot follow) and not
-    // six-flip-safe -- gated off under both, like the worm channel.
-    if (contractSplit !is null && contractSplit.prob > 0 && cocycle is null
+    // The only channel that changes f0 without a degree-4 vertex.
+    // Cocycle-safe: cocycleContract/cocycleSplit maintain the winding
+    // cochain and the vertex lift exactly (closedness forces every new
+    // edge value; the split's gauge places fresh at w, mirroring 1->4).
+    // Not six-flip-safe -- gated off under six-flip logging, like the worm.
+    if (contractSplit !is null && contractSplit.prob > 0
         && !(ledger !is null && ledger.logSixFlips)
         && uniform01 < contractSplit.prob)
     {
         return tryContractSplit(mfd, currentObjective, unusedVertices,
-            params, *contractSplit, potState, pot, deg3Set, deg4Set);
+            params, *contractSplit, potState, pot, deg3Set, deg4Set,
+            cocycle);
     }
 
     // Unified proposal loop

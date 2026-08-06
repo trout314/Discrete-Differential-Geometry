@@ -739,8 +739,12 @@ class ManifoldSampler:
         carried by exact Hastings factors built on link-cycle counts
         (FK-catalog tables for Z12/Z14/Z15/Z16 links, bounded DFS
         otherwise). ``max_ring`` caps BOTH directions and must be in [3, 8].
-        0 disables the channel (the default). The channel is automatically
-        inert while a cocycle is attached or six-flip logging is on."""
+        0 disables the channel (the default). Cocycle-safe: the winding
+        cochain and the vertex lift are maintained exactly through both
+        directions (contraction routes new edge values through the deleted
+        vertex; the split's gauge places the fresh vertex at the split
+        vertex, mirroring 1->4). Automatically inert while six-flip
+        logging is on."""
         self._recorded_contract_split = (prob, max_ring)
         _lib.ddg_sampler_set_contract_split(
             self._handle, float(prob), int(max_ring))

@@ -2991,7 +2991,8 @@ with probability `prob`, choosing edge contraction or vertex split with a
 fair coin. max_ring caps deg(uv) on the contract side and the splitting
 cycle length |gamma| on the split side (the pair must be capped together for
 detailed balance); pass max_ring <= 0 to keep the current value (default 6).
-The channel is automatically inert while a cocycle is attached or six-flip
+Cocycle-safe: the winding cochain and vertex lift are maintained exactly
+through both directions. The channel is automatically inert while six-flip
 logging is on. Set prob = 0 (default) to disable. See
 sampler.ContractSplitConfig / tryContractSplit.
 */
