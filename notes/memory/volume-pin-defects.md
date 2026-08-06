@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 1fc2ced4-2271-4a60-ba17-bc68ad6d30ad
-  modified: 2026-08-06T19:40:16.508Z
+  modified: 2026-08-06T21:18:38.028Z
 ---
 
 **Experiment (Aaron, 2026-08-06 night):** volume pins ≠ native volume with
@@ -56,6 +56,15 @@ hypothesis falsified.]
 +5%: 671±22, 15; a15 −5%: 506±12, 15; a15 +5%: 519±22, 24. Tension ~10%
 denser than compression in both hosts (more deg-3); per-tet the a15 gas
 is DENSER (0.09 vs 0.073/tet) despite the smaller absolute counts.
+
+**UNIVERSAL QUANTUM (strained c15 catalog, data/viz/c15_v1.05_strained,
+defect_catalog --layout mds — combinatorial layout since the cocycle lift
+can't follow the channel yet):** the strain-born gas shows the SAME deg-4
+multimer ladder as a15's native-debt gas (73/46/23/7 of 199) — the single
+deg-4 edge is the universal positive quantum of the flat-pinned FK
+ensemble, independent of host and driving force. All six deg-7-bearing
+complexes show the CAGED-MONOPOLE motif (deg-7 wrapped in a deg-3/4
+shell), same as a15's lone deg-7 — free negative curvature does not occur.
 
 All single chains, uncertified. Related: [[a15-positive-gas]],
 [[crystal-library-gas-campaign]].
