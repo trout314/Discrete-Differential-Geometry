@@ -147,12 +147,22 @@ def points_sk(frac_pts, nvec, V, F2):
 # geometry / combinatorics
 # ---------------------------------------------------------------------------
 
-def complexes(eu, defect, V):
-    """Connected components of the defect subgraph -> label array over defect
-    vertices (-1 elsewhere) and component sizes."""
-    idx = np.nonzero(defect)[0]
-    sub = np.isin(eu[:, 0], idx) & np.isin(eu[:, 1], idx)
-    e = eu[sub]
+def complexes(eu, defect, V, ill_mask=None):
+    """Connected components -> label array over defect vertices (-1
+    elsewhere) and component sizes.
+
+    Default: the historical defect SUBGRAPH (all edges among defect
+    vertices). With ill_mask (boolean over eu rows): components of the
+    ILLEGAL-EDGE GRAPH -- required at high defect-vertex density, where the
+    subgraph definition percolates (a strain gas has ~44% defect vertices
+    and the subgraph fuses everything into one complex, killing the
+    centroid estimator)."""
+    if ill_mask is not None:
+        e = eu[ill_mask]
+    else:
+        idx = np.nonzero(defect)[0]
+        sub = np.isin(eu[:, 0], idx) & np.isin(eu[:, 1], idx)
+        e = eu[sub]
     A = coo_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), shape=(V, V))
     _, lab = connected_components(A + A.T, directed=False)
     lab = np.where(defect, lab, -1)
@@ -290,7 +300,11 @@ def measure(mfd, nmax, rng, nshuf, control=False):
     PH = phase_matrix(frac, nvec)
     F2 = skeleton_F2(PH)
 
-    lab, sizes = complexes(eu, defect, V)
+    # Illegal-edge-graph components (except under --control, whose relocated
+    # scatter has no illegal edges; there the historical subgraph is kept --
+    # at control densities the two coincide for the estimator test's purpose).
+    ill_mask = None if control else (ecnt < 5) | (ecnt > 6)
+    lab, sizes = complexes(eu, defect, V, ill_mask)
     ncomp = len(sizes)
     cen = centroids(frac, lab, ncomp) if ncomp >= 2 else None
 
