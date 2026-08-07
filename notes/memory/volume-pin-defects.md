@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 1fc2ced4-2271-4a60-ba17-bc68ad6d30ad
-  modified: 2026-08-07T02:41:26.755Z
+  modified: 2026-08-07T03:40:12.679Z
 ---
 
 **Experiment (Aaron, 2026-08-06 night):** volume pins ≠ native volume with
@@ -117,8 +117,18 @@ registry destroyed (c15: 4 grains ≤33; a15: ZERO grains). The e_mean ≈
 a preferred mean edge degree ~5.108 independent of crystal and drive:
 ENTROPY owns the outcome; the ideal dilute state (c15: ~50 (3,4,4)
 flickers, dS downhill all the way!) loses to ~600 cheap deg-4 edges.
-Next knob: c_imp ladder at fixed debt-canceling volume (1.0/1.5/2.0) to
-price away the entropy gas — does the flicker crystal condense before the
-freezing wall (~cimp 2+)?
+**c_imp LADDER AT DEBT-CANCELING VOLUME (1.0/1.5/2.0, stationary, seeds
+120-125): THE FLICKER CRYSTAL NEVER CONDENSES.** Both crystals pay the
+volume pin in f0 currency (c15: +7 splits ABOVE the line, gap +4→+7.5,
+e_mean 5.1006 < e*; a15: f0 = 992 via ~10 contractions, gap −8.7 = full
+native debt, e_mean = native 5.111) and ABANDON the flat pin: n_ill
+drops to 20-115 (dispersed, top1 ≤ 5, stationary). Arithmetic: unpaid
+gap costs gap² ≈ 60-75 under the unit flat-pin coefficient; ~50 defect
+quanta cost ~700·c_imp — defect payment only wins below c_imp ≈ 0.1,
+where entropy already floods it. **NO c_imp window yields the
+zero-frustration state under the minimal action; the forced-defect-gas
+phenomenology lives entirely at c_imp ≲ 0.5 (entropy-dressed). The dial
+for sparse zero-frustration states is num_hinges_coef ≫ 1 (stiffen the
+flat pin), not c_imp.**
 
 Related: [[a15-positive-gas]], [[crystal-library-gas-campaign]].
