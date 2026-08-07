@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 1fc2ced4-2271-4a60-ba17-bc68ad6d30ad
-  modified: 2026-08-06T22:36:40.870Z
+  modified: 2026-08-07T02:07:26.899Z
 ---
 
 **Experiment (Aaron, 2026-08-06 night):** volume pins ≠ native volume with
@@ -83,5 +83,25 @@ c15 run with cocycle attached (f0 1536→1599), harmonic positions clean →
 FIRST harmonic-chart catalog of a channel state:
 data/viz/c15_v1.05_harmonic/index.html (largest complex now a deg-3-rich
 21-edge cluster; caged-deg-7 motif persists in the true chart).
+
+**SPATIAL/STRUCTURAL VERDICT ON THE STRAINED STATE (c15 +5%, 25e444d+):**
+- Worldlines: 94% site-pinned blinking, MSD exp ~0.46, no transport.
+- Positions: S_cen 0.659±0.036 at box wavelength (sub-Poisson) + contact
+  peak g(0.1)=2.9 (excess 1.1-1.2 at 0.7-1.5 cells) — clumpy at contact,
+  uniform at large scale.
+- Charges: C_QQ negative in the near zone (−0.27 at 0.45 cells, →0 by
+  0.65 cells); B(1.2 cells)=0.707±0.022 — bound opposite-charge dipole
+  pairs, screening length ~0.5-1 cell, ~70% partial screening
+  (S_Q(0)=0.52). Ionic gas of pinned curvature dipoles.
+- Halo census: native gas reproduces the no-halo verdict (shell-3 exactly
+  pristine); strained state has THICK halos (shell-1: 24% Z14/Z15 foreign
+  classes = rerouted six-web + 11% non-FK n6) and only 2% of vertices
+  beyond distance 1 from defects.
+- **crystal_grains (validated c15 registry): 10.9% interior-crystalline,
+  ONE 16-vertex grain in the whole box — THE CRYSTAL IS GONE.** The +5%
+  state is a strain-adapted FK ALLOY, not defects-in-crystal; the pinning
+  geography and dipole screening are properties of the frozen alloy
+  configuration. Contrast native gas: pristine registry + isolated
+  sharp-boundary defects.
 
 Related: [[a15-positive-gas]], [[crystal-library-gas-campaign]].
