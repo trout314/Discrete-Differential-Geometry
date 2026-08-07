@@ -167,6 +167,12 @@ def main():
                          "MCMC step (0 = off). Unpins f0: the flat pin's "
                          "gap can then be paid in vertices instead of "
                          "defects (f1 = f0 + f3).")
+    ap.add_argument("--hinge-coef", type=float, default=1.0,
+                    help="num_hinges_coef, the stiffness of the flat pin "
+                         "(f1 - 6 f3/e*)^2. At 1.0 an unpaid gap of ~8 costs "
+                         "only ~64 and the ensemble abandons the pin; "
+                         "stiffening to >>1 makes the gap ruinous so the "
+                         "volume debt must be paid in structure.")
     ap.add_argument("--vol-scale", type=float, default=1.0,
                     help="volume-pin target as a multiple of the native "
                          "f3_ref (1.0 = native). With the channel on, the "
@@ -202,7 +208,7 @@ def main():
 
     params = ddg.SamplerParams(
         num_facets_target=f3_target, num_facets_coef=0.1,
-        hinge_degree_target=E_FLAT, num_hinges_coef=1.0,
+        hinge_degree_target=E_FLAT, num_hinges_coef=args.hinge_coef,
         # everything else OFF: the defaults are ON and fight an FK pin
         hinge_degree_variance_coef=0.0, codim3_degree_variance_coef=0.0,
         hinge_degree_target_coef=0.0, codim3_degree_target_coef=0.0)
@@ -229,6 +235,7 @@ def main():
             "e_native": e_nat, "pin_gap_f1": gap, "n_forced_moves": n_forced,
             "burn": args.burn, "span": args.span, "f3_ref": f3_ref,
             "contract_split": args.contract_split,
+            "hinge_coef": args.hinge_coef, "seed": args.seed,
             "vol_scale": args.vol_scale, "f3_target": f3_target}
     rec = Recorder(s, args.out, chunk=args.chunk, census_every=1,
                    snap_mid=False,

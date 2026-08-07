@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 1fc2ced4-2271-4a60-ba17-bc68ad6d30ad
-  modified: 2026-08-07T03:40:12.679Z
+  modified: 2026-08-07T16:14:39.045Z
 ---
 
 **Experiment (Aaron, 2026-08-06 night):** volume pins ≠ native volume with
@@ -130,5 +130,26 @@ zero-frustration state under the minimal action; the forced-defect-gas
 phenomenology lives entirely at c_imp ≲ 0.5 (entropy-dressed). The dial
 for sparse zero-frustration states is num_hinges_coef ≫ 1 (stiffen the
 flat pin), not c_imp.**
+
+**HINGE-STIFFNESS LADDER (nh = num_hinges_coef ∈ {10,30}, c_imp 1.0,
+debt-canceling volumes, seeds 130-133, 12k sw): THE FLICKER CRYSTAL
+CONDENSES — prediction confirmed.** crystal_gas_scan grew --hinge-coef
+(stamped in meta with seed). All four cells satisfy BOTH pins jointly:
+f3 exact, f0 ON the flat line (c15 1536.2-.3 vs f0* 1536.1; a15 998.6/
+999.9 vs 1000.2), gap ≈ 0 (c15 +0.31/+0.15; a15 −1.78/−0.67, tightening
+with nh), e_mean = e* to 4-5 decimals. The debt is paid in STRUCTURE:
+~94-130 illegal edges (157-184 defect vertices) in dispersed complexes
+top1 ≤ 12 — right at the ~50-quantum forced-move scale. Composition
+flips with debt sign: c15 (+50 tets) deg-4:deg-3 = 3:1; a15 (−50)
+deg-3-rich (57:50 / 69:63). **crystal_grains: ONE crystal-spanning
+grain in every cell (78-84% interior-crystalline)** — single crystal +
+dilute pinned gas, the sparse zero-frustration state. NUANCE: nh=1
+c_imp 1.0 finals are ALSO single crystals (89%/95%, even more
+crystalline since 3× fewer defects) — registry destruction was a
+c_imp ≲ 0.5 phenomenon; what nh ≫ 1 buys is closing the gap (flat pin
+held instead of abandoned). Stiffer nh → tighter gap but MORE defects
+(n_ill 157→179 / 152→184): the two-dial picture is c_imp = gas
+dilution, nh = flat-pin enforcement. a15 nh10 late slope −4.6±1.3/ksw
+still annealing; others flat.
 
 Related: [[a15-positive-gas]], [[crystal-library-gas-campaign]].

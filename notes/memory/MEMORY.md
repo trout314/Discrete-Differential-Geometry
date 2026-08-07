@@ -68,4 +68,4 @@
 - [Crystal library gas campaign](crystal-library-gas-campaign.md) — ALL 10 TCP crystals under the minimal 3-term action; pin gap is an EXTENSIVE forced-defect debt, its SIGN splits the library; R is the flat crystal (debt ~0)
 - [Crystal grafting program](crystal-grafting-program.md) — graft lumps between TCP crystals via exact decorated-boundary matching; L3 match = zero-cost invisible seam; graft_signature.py validated, C36↔C14 control
 - [A15 positive gas](a15-positive-gas.md) — dilute NET-POSITIVE defect gas window c_imp 0.35–0.50 (e_nat > e* forces positive currency); elementary species = single deg-4 edges (Q=+1 multimer ladder)
-- [Volume-pin defects](volume-pin-defects.md) — ±5% volume strain (channel on) = clean defect dial: dispersed ~500-edge gas, POSITIVE currency regardless of strain sign/host; f0 tracks the flat line; a15 does NOT refinance debt into vertices
+- [Volume-pin defects](volume-pin-defects.md) — volume pin = defect dial; c_imp ladder: flicker crystal never condenses at nh=1; HINGE LADDER (nh 10-30): BOTH pins satisfied jointly, single crystal-spanning grain + dilute pinned gas = the zero-frustration state DELIVERED
