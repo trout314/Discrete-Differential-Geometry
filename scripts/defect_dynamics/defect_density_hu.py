@@ -352,6 +352,34 @@ def measure(mfd, nmax, rng, nshuf, control=False):
         out["Q_std"] = float(Q.std())
         out["Q_frac_negative"] = float((Q < 0).mean())
         out["neutrality_frac"] = float(neut.mean())
+
+        # --- 5. real-space charge-charge correlator of complex centroids:
+        #        C_QQ(r) = <dQ_i dQ_j>(r) / <dQ^2> (defect_statics'
+        #        estimator, on the dq-based complex charges) plus the
+        #        running screened fraction
+        #        B(r) = -(2 / (N <dQ^2>)) sum_{pairs < r} dQ_i dQ_j,
+        #        which climbs toward 1 under perfect screening
+        #        (Stillinger-Lovett) and toward 1 - S_Q(0) generally.
+        dQ = Q - Q.mean()
+        d = cen[:, None, :] - cen[None, :, :]
+        d -= np.round(d)                       # min-image, box units
+        dist = np.sqrt((d ** 2).sum(-1))
+        iu = np.triu_indices(ncomp, 1)
+        rr, qq = dist[iu], (dQ[:, None] * dQ[None, :])[iu]
+        edges_r = np.linspace(0.0, 0.5, 21)
+        cqq, nb = [], []
+        for a, b in zip(edges_r[:-1], edges_r[1:]):
+            m = (rr >= a) & (rr < b)
+            nb.append(int(m.sum()))
+            cqq.append(float(qq[m].mean() / (dQ @ dQ / ncomp))
+                       if m.sum() else None)
+        order = np.argsort(rr)
+        brun = -2.0 * np.cumsum(qq[order]) / (ncomp * (dQ @ dQ / ncomp))
+        out["cqq_r_edges"] = edges_r.tolist()
+        out["cqq_r"] = cqq
+        out["cqq_npairs"] = nb
+        out["B_of_r"] = [[float(rr[order][i]), float(brun[i])]
+                         for i in range(0, len(rr), max(1, len(rr) // 40))]
     else:
         for k in ("rigid_charge_lowk", "rigid_count_lowk", "rigid_mc_check",
                   "Q_mean", "Q_std", "Q_frac_negative", "neutrality_frac"):
@@ -459,6 +487,33 @@ def main():
             print(f"  consistency: centroid x form_factor = "
                   f"{s['centroid_lowk']*s['form_factor']:.2f}  vs vertex "
                   f"{s['vertex_lowk']:.2f}")
+
+        # pooled C_QQ(r) + screened fraction across the group's snapshots
+        cq_rows = [r for r in rows if r.get("cqq_r")]
+        if cq_rows:
+            edges_r = np.array(cq_rows[0]["cqq_r_edges"])
+            mids = 0.5 * (edges_r[1:] + edges_r[:-1])
+            print("  C_QQ(r) (box units; <0 = opposite-charge neighbours):")
+            for i in range(len(mids)):
+                vals = [r["cqq_r"][i] for r in cq_rows
+                        if r["cqq_r"][i] is not None]
+                npr = sum(r["cqq_npairs"][i] for r in cq_rows)
+                if vals and npr > 20 and (i < 6 or i % 3 == 0):
+                    print(f"    r={mids[i]:.3f}: C_QQ = {np.mean(vals):+.3f}"
+                          + (f" +- {np.std(vals):.3f}" if len(vals) > 1
+                             else "") + f"  (pairs {npr})")
+            print("  screened fraction B(r) (-> 1 = perfect screening):")
+            for rq in (0.1, 0.2, 0.3, 0.45):
+                vals = []
+                for r in cq_rows:
+                    br = np.array(r["B_of_r"])
+                    j = np.searchsorted(br[:, 0], rq)
+                    if 0 < j <= len(br):
+                        vals.append(br[min(j, len(br) - 1), 1])
+                if vals:
+                    print(f"    B({rq:.2f}) = {np.mean(vals):+.3f}"
+                          + (f" +- {np.std(vals):.3f}" if len(vals) > 1
+                             else ""))
 
     if args.out:
         os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
