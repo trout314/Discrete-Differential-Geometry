@@ -116,13 +116,27 @@ def render(st, cx, X, P, out, title, plotlyjs=True):
     pos = unwrap(X, P, region, cx.verts[0], adj)
     ill_in = {e: st.edeg[e] for e in st.ill_edges
               if e[0] in V and e[1] in V}
+    # the disclination web through the region: LEGAL degree-6 edges, drawn
+    # as their own trace (legend-toggleable) so how the six-web threads
+    # around/through the defect is visible
+    six_web = sorted(e for e in star_edges
+                     if st.edeg.get(e) == 6 and e not in ill_in)
+    six_set = set(six_web)
     induced_legal = {e for e in star_edges
-                     if e[0] in V and e[1] in V and e not in ill_in}
+                     if e[0] in V and e[1] in V and e not in ill_in
+                     and e not in six_set}
     context = [e for e in star_edges
-               if not (e[0] in V and e[1] in V)]
+               if not (e[0] in V and e[1] in V) and e not in six_set]
 
     illv = {v for e in ill_in for v in e}
-    nodes = [v for v in cx.verts if v not in illv]     # purple, no illegal edge
+    # Coordination-anomalous vertices (all edges legal, n6 not an FK value):
+    # scanned over the WHOLE displayed region, not just cx.verts -- under
+    # the narrow (illegal-edge-graph) complex definition every complex
+    # vertex touches an illegal edge, so the historical cx.verts-only scan
+    # left this trace silently empty.
+    _FK_N6 = (0, 2, 3, 4)
+    nodes = sorted(v for v in region
+                   if st.imp[v] == 0 and st.n6[v] not in _FK_N6)
     cores = sorted(illv)
     shell = sorted(region - V)
 
@@ -133,6 +147,10 @@ def render(st, cx, X, P, out, title, plotlyjs=True):
     # context: closed star of the defect's vertices
     fig.add_trace(edge_trace(context, pos, "closed star (context)",
                              "#9a9a9a", 1.2, opacity=0.25))
+    if six_web:
+        fig.add_trace(edge_trace(
+            six_web, pos, f"degree-6 web (x{len(six_web)})",
+            "#e6a817", 3.5, opacity=0.9))
     fig.add_trace(edge_trace(sorted(induced_legal), pos, "defect legal edges",
                              "#555555", 4, opacity=0.8))
     # illegal edges by degree, thick
@@ -161,8 +179,9 @@ def render(st, cx, X, P, out, title, plotlyjs=True):
         fig.add_trace(scatter(cores, "defect vertices", "#2b2b2b", 5))
     if nodes:
         fig.add_trace(scatter(
-            nodes, "n6 nodes (excess over 4)", "#7d26cd", 8,
-            text=[f"+{st.n6[v] - 4}" for v in nodes]))
+            nodes, "n6 nodes (non-FK coordination)", "#7d26cd", 8,
+            text=[f"+{st.n6[v] - 4}" if st.n6[v] > 4 else f"n6={st.n6[v]}"
+                  for v in nodes]))
 
     fig.update_layout(
         title=title, scene=dict(aspectmode="data",
