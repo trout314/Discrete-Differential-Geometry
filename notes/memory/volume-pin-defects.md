@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 1fc2ced4-2271-4a60-ba17-bc68ad6d30ad
-  modified: 2026-08-07T02:07:26.899Z
+  modified: 2026-08-07T02:41:26.755Z
 ---
 
 **Experiment (Aaron, 2026-08-06 night):** volume pins ≠ native volume with
@@ -103,5 +103,22 @@ data/viz/c15_v1.05_harmonic/index.html (largest complex now a deg-3-rich
   geography and dipole screening are properties of the frozen alloy
   configuration. Contrast native gas: pristine registry + isolated
   sharp-boundary defects.
+
+**DEBT-CANCELING VOLUMES (c15 +50 tets / a15 −50 tets: Δf3 = gap/(6/e*−1)
+zeroes the flat-pin debt AT NATIVE f0 — both pins jointly satisfiable):
+PREDICTION FAILED BOTH WAYS, universal attractor instead.** At cimp 0.5
+(channel 0.02, 12k sw, tracked): volume pins hit exactly, but both
+crystals blow past the zero-frustration point into the SAME dressed-gas
+attractor: gap ≈ −5.7/−5.9 (c15 OVERSHOT from +8.6 through zero),
+f0 ≈ f0* − 5.5, e_mean ≈ 5.107-5.109, n_ill 595/479 still climbing,
+registry destroyed (c15: 4 grains ≤33; a15: ZERO grains). The e_mean ≈
+5.108 / gap ≈ −6 compromise appears in EVERY channel cell of the campaign
+(native gases, ±5% strains, quench) — the dressed FK gas at cimp 0.5 has
+a preferred mean edge degree ~5.108 independent of crystal and drive:
+ENTROPY owns the outcome; the ideal dilute state (c15: ~50 (3,4,4)
+flickers, dS downhill all the way!) loses to ~600 cheap deg-4 edges.
+Next knob: c_imp ladder at fixed debt-canceling volume (1.0/1.5/2.0) to
+price away the entropy gas — does the flicker crystal condense before the
+freezing wall (~cimp 2+)?
 
 Related: [[a15-positive-gas]], [[crystal-library-gas-campaign]].
