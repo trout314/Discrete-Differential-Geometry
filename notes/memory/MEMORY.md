@@ -1,5 +1,7 @@
 # Project memory index
 
+- [Amorphous-FK program](fk-amorphous-program.md) — ē = 6 − 12/Z̄ is an IDENTITY (mean edge degree = six-web line density, not a free knob); edge contraction ALSO cannot preserve FK-legality (always mints a Z17+ hub) — proof + library census; but on DISORDERED states contraction annihilates 4-5 illegal edges in one move
+
 - [Defect-density HU](defect-density-hu.md) — RETRACTION + RESULT: old "crystal-grade HU" is a normalization readout (calls RANDOMISED defects hyperuniform too); shuffling WHOLE DEFECTS rigidly gives 0.999±0.026 = exactly Poisson; complexes carry residual NEGATIVE charge (77% negative)
 - [Flight contact barrier](flight-contact-barrier.md) — DECISIVE: the wall stopping a flicker entering a complex is 100% the m² term we chose (pins+geometry = EXACTLY 0); receiver is a background deg-4 edge the flier's own 2→3 makes deg-3; Q-refresh line retracted
 - [ECMC blob A/B](ecmc-blob-ab.md) — RESULT: blob dispersal is transport-limited and nonlocal moves win 16-43x, but the LIFT loses — unlifted diffusive slide beats the flight 6-9x at matched budget; + false-stationarity warning
