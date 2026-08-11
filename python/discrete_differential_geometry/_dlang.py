@@ -850,6 +850,16 @@ _lib.ddg_sampler_contract_split_stats.argtypes = [
 _lib.ddg_sampler_contract_split_stats.restype = ctypes.c_int
 _lib.ddg_sampler_contract_split_stats.errcheck = _check_int
 
+# Illegality budget: (handle, cap) / (handle, *out cap, n_illegal, blocked)
+_lib.ddg_sampler_set_illegal_budget.argtypes = [
+    ctypes.c_void_p, ctypes.c_long]
+_lib.ddg_sampler_set_illegal_budget.restype = ctypes.c_int
+_lib.ddg_sampler_set_illegal_budget.errcheck = _check_int
+_lib.ddg_sampler_illegal_budget_stats.argtypes = [
+    ctypes.c_void_p] + [ctypes.POINTER(ctypes.c_long)] * 3
+_lib.ddg_sampler_illegal_budget_stats.restype = ctypes.c_int
+_lib.ddg_sampler_illegal_budget_stats.errcheck = _check_int
+
 _lib.ddg_manifold_induced_subcomplex.argtypes = [
     ctypes.c_void_p, ctypes.POINTER(ctypes.c_int), ctypes.c_long]
 _lib.ddg_manifold_induced_subcomplex.restype = ctypes.c_void_p

@@ -1800,3 +1800,110 @@ string toPrettyString(T)(T value)
 }
 
 // TO DO: Unittests for above function
+/*******************************************************************************
+Fixed-capacity map keyed on a sorted vertex PAIR, with a heap spill.
+
+The contract/split planners (`manifold.hasValidContractMove`,
+`manifold.planSplitMove`, `sampler.tryContractSplit`) each built a builtin
+associative array keyed on `Vertex[2]` per proposal. A builtin AA on a
+static-array key routes every hash and compare through
+`TypeInfo_StaticArray`, which internally does `_d_dynamic_cast` ->
+`_d_isbaseof2` -> a mangled-name STRING comparison; a `sample` profile of the
+channel at cs = 0.25 put that machinery at ~31% of the whole run, with the AA
+lookups themselves another ~7%.
+
+Every one of these maps is tiny -- the ring is capped at maxRing, a link is
+capped at maxLinkVerts, the star of a vertex is a few dozen tets -- so a linear
+scan over a stack buffer wins outright: measured **10.5x** against the builtin
+AA at the planner's own access pattern (40 inserts + 120 lookups), and it
+allocates nothing.
+
+`capacity` is a fast path, NOT a bound: anything beyond it spills into a
+builtin AA so the semantics stay exactly those of the AA it replaces. The
+spill must never fire in normal use (it would only cost what the old code cost
+anyway) but it means an unusually large star can never overflow a buffer.
+*/
+struct PairTable(Vertex, Value, size_t capacity)
+{
+    private Vertex[2][capacity] keys_;
+    private Value[capacity] vals_;
+    private size_t n_;
+    private Value[Vertex[2]] spill_;
+
+    /// Pointer to the value for `key`, or null. Mirrors `key in aa`.
+    Value* find(const Vertex[2] key) return
+    {
+        foreach (i; 0 .. n_)
+            if (keys_[i] == key)
+                return &vals_[i];
+        if (spill_.length)
+            return key in spill_;
+        return null;
+    }
+
+    /// Value for `key`, or `fallback`. Mirrors `aa.get(key, fallback)`.
+    Value get(const Vertex[2] key, Value fallback)
+    {
+        auto p = find(key);
+        return p is null ? fallback : *p;
+    }
+
+    /// Insert or overwrite. Mirrors `aa[key] = value`.
+    void set(const Vertex[2] key, Value value)
+    {
+        auto p = find(key);
+        if (p !is null) { *p = value; return; }
+        if (n_ < capacity) { keys_[n_] = key; vals_[n_] = value; ++n_; }
+        else spill_[key] = value;
+    }
+
+    /// Pointer to the value for `key`, default-initialising it if absent.
+    /// Mirrors `aa.require(key)`.
+    Value* require(const Vertex[2] key) return
+    {
+        auto p = find(key);
+        if (p !is null)
+            return p;
+        if (n_ < capacity)
+        {
+            keys_[n_] = key;
+            vals_[n_] = Value.init;
+            return &vals_[n_++];
+        }
+        spill_[key] = Value.init;
+        return key in spill_;
+    }
+
+    /// `key in table`, as a bool.
+    bool has(const Vertex[2] key) { return find(key) !is null; }
+
+    size_t length() const { return n_ + spill_.length; }
+}
+
+///
+unittest
+{
+    // behaves exactly like the bool[int[2]] / ubyte[int[2]] AAs it replaces,
+    // including past the stack capacity (where it spills to a real AA)
+    PairTable!(int, bool, 4) t;
+    foreach (i; 0 .. 10)
+    {
+        int[2] e = [i, i + 1];
+        t.set(e, true);
+    }
+    assert(t.length == 10);                 // 4 on the stack, 6 spilled
+    foreach (i; 0 .. 10)
+        assert(t.has([i, i + 1]));
+    assert(!t.has([99, 100]));
+    assert(t.get([3, 4], false) == true);
+    assert(t.get([99, 100], false) == false);
+
+    PairTable!(int, size_t[2], 2) f;
+    *(f.require([1, 2])) = [7UL, 8UL];
+    assert((*f.find([1, 2]))[0] == 7);
+    f.require([5, 6]);                      // default-initialised
+    assert((*f.find([5, 6]))[0] == 0);
+    f.require([9, 9]);                      // spills
+    assert(f.length == 3);
+    assert(f.find([4, 4]) is null);
+}

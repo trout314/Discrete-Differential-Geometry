@@ -98,6 +98,24 @@ def main():
                     metavar=("LO", "HI"), help="illegal-edge fugacity ramp")
     ap.add_argument("--cimp", type=float, default=0.0,
                     help="quadratic clustering term (0 = pure fugacity)")
+    ap.add_argument("--ratchet-slack", type=int, default=-1,
+                    help="ADAPTIVE budget (-1 = off, overrides --budget): the "
+                         "cap is held at (running-minimum illegal-edge count) "
+                         "+ slack, so lateral moves are always legal (it "
+                         "cannot deadlock) while uphill excursions beyond the "
+                         "record are forbidden -- n_ill is monotone "
+                         "non-increasing on the coarse scale with NO fugacity "
+                         "doing the work. A FIXED cap cannot be used from a "
+                         "melt at all: the gate rejects any move whose "
+                         "POST-move count exceeds the cap, so at n_ill 1400 "
+                         "with cap 20 every move is blocked (sampler.d:632). "
+                         "slack is the real dial -- 0 arrests in a glass, "
+                         "large is just an uncapped melt.")
+    ap.add_argument("--budget", type=int, default=-1,
+                    help="hard cap on the illegal-edge count (-1 = off). A "
+                         "budget, not a price: keeps a fixed small reservoir "
+                         "circulating instead of pricing defects out, which "
+                         "freezes the chain. Needs a nonzero n6 coupling.")
     ap.add_argument("--cs", type=float, default=0.25,
                     help="contract/split probability per MCMC step")
     ap.add_argument("--max-ring", type=int, default=6)
@@ -128,6 +146,7 @@ def main():
             "e_target": args.e_target, "cn": args.cn, "nh": args.nh,
             "zleg": list(args.zleg), "mu_ill": list(args.mu_ill),
             "cimp": args.cimp, "cs": args.cs, "max_ring": args.max_ring,
+            "ratchet_slack": args.ratchet_slack, "budget": args.budget,
             "sweeps": args.sweeps, "hold": args.hold, "seed": args.seed,
             "e_flat": E_FLAT}
     rec = Recorder(s, args.out, chunk=args.chunk, census_every=1,
@@ -137,11 +156,21 @@ def main():
 
     ramp_end = args.sweeps * (1.0 - args.hold)
     t0 = time.time()
+    record, cap_now = None, None
     while rec.sw < args.sweeps:
         u = min(1.0, rec.sw / ramp_end) if ramp_end > 0 else 1.0
         zleg = args.zleg[0] + u * (args.zleg[1] - args.zleg[0])
         mu = args.mu_ill[0] + u * (args.mu_ill[1] - args.mu_ill[0])
         s.set_n6_potential(zleg, args.cimp, tilt=[0.0] * 5, imp_lin=mu)
+        # the gate needs the vertex-potential state, so (re)apply it AFTER
+        # every set_n6_potential call, not once at sweep 0
+        if args.ratchet_slack >= 0:
+            n_now = len(v.illegal_edges()[0])
+            record = n_now if record is None else min(record, n_now)
+            cap_now = record + args.ratchet_slack
+            s.set_illegal_budget(cap_now)
+        elif args.budget >= 0:
+            s.set_illegal_budget(args.budget)
         rec.step()
 
         n_ill_e, n_fk, n_hub, n_imp, f0 = census(v)
@@ -152,14 +181,22 @@ def main():
                "n_ill_e": n_ill_e, "n_fk": n_fk, "n_hub": n_hub,
                "n_imp": n_imp,
                "gap": f1 - 6.0 * f3 / args.e_target,
-               "cs": s.contract_split_stats()}
+               "cs": s.contract_split_stats(),
+               "budget": s.illegal_budget_stats(),
+               "ratchet_record": record, "cap": cap_now,
+               # the user-facing f_FK: EVERY incident edge deg 5 or 6, hubs
+               # allowed (CONVENTIONS `legalvert`); n_fk is the stricter
+               # `legalvert_fk` that also demands n6 in {0,2,3,4}
+               "f_legalvert": (f0 - n_imp) / f0}
         obs.write(json.dumps(row) + "\n")
         obs.flush()
         print(f"sw {rec.sw:6d} zleg {zleg:4.2f} mu {mu:4.2f} | "
               f"f0 {f0:5d} f3 {f3:6d} e {row['e_mean']:.5f} "
               f"Zbar {row['zbar']:.4f} | n_ill_e {n_ill_e:5d} "
               f"hubs {n_hub:4d} imp {n_imp:5d} "
-              f"fFK {100.0 * n_fk / f0:6.2f}%  [{time.time() - t0:.0f}s]",
+              f"f_legalvert {100.0 * (f0 - n_imp) / f0:6.2f}% "
+              f"(fk-coord {100.0 * n_fk / f0:6.2f}%) "
+              f"cap {cap_now}  [{time.time() - t0:.0f}s]",
               flush=True)
 
     v.save(args.out + ".final.mfd")

@@ -2518,7 +2518,8 @@ bool hasValidContractMove(Vertex)(
     if (common != ringVerts)
         return false;                                   // (a)
 
-    bool[Vertex[2]] ringEdge;
+    // stack table, not a builtin AA: see utility.PairTable
+    PairTable!(Vertex, bool, 64) ringEdge;
     foreach (lk; mfd.link(uv[]))
     {
         Vertex[2] e;
@@ -2527,7 +2528,7 @@ bool hasValidContractMove(Vertex)(
             e[n++] = x;
         assert(n == 2);
         e[].sort();
-        ringEdge[e] = true;
+        ringEdge.set(e, true);
     }
 
     foreach (i; 0 .. common.length)
@@ -2540,7 +2541,7 @@ bool hasValidContractMove(Vertex)(
             tv[].sort();
             immutable bothTri = mfd.contains(tu[]) && mfd.contains(tv[]);
             Vertex[2] ab = [a, b];
-            immutable isRing = (ab in ringEdge) !is null;
+            immutable isRing = ringEdge.has(ab);
             if (bothTri != isRing)
                 return false;                           // (b)
         }
@@ -2698,28 +2699,30 @@ void planSplitMove(Vertex)(const ref Manifold!(3, Vertex) mfd,
             faces ~= lf;
         }
 
-    bool[Vertex[2]] gammaEdge;
+    PairTable!(Vertex, bool, 32) gammaEdge;
     foreach (i; 0 .. glen)
     {
         Vertex[2] e = [g[i], g[(i + 1) % glen]];
         e[].sort();
-        gammaEdge[e] = true;
+        gammaEdge.set(e, true);
     }
 
     // partition faces into the two sides of gamma: BFS across shared link
     // edges that are NOT gamma edges
-    size_t[2][Vertex[2]] edgeFaces;
-    ubyte[Vertex[2]] edgeCount;
+    // the two incident faces AND their count in one entry, so the BFS does one
+    // lookup per edge instead of the old two AAs' worth
+    static struct EdgeFaces { size_t[2] face; ubyte count; }
+    PairTable!(Vertex, EdgeFaces, 256) edgeFaces;
     foreach (fi, ref lf; faces)
         foreach (i; 0 .. 3)
             foreach (j; i + 1 .. 3)
             {
                 Vertex[2] e = [lf[i], lf[j]];
                 e[].sort();
-                immutable c = edgeCount.get(e, cast(ubyte) 0);
-                assert(c < 2, "link of w is not a closed surface");
-                edgeFaces.require(e)[c] = fi;
-                edgeCount[e] = cast(ubyte)(c + 1);
+                auto slot = edgeFaces.require(e);
+                assert(slot.count < 2, "link of w is not a closed surface");
+                slot.face[slot.count] = fi;
+                slot.count = cast(ubyte)(slot.count + 1);
             }
 
     auto comp = new int[faces.length];
@@ -2741,9 +2744,9 @@ void planSplitMove(Vertex)(const ref Manifold!(3, Vertex) mfd,
                 {
                     Vertex[2] e = [lf[i], lf[j]];
                     e[].sort();
-                    if ((e in gammaEdge) !is null)
+                    if (gammaEdge.has(e))
                         continue;
-                    foreach (gi; edgeFaces[e][])
+                    foreach (gi; edgeFaces.find(e).face[])
                         if (comp[gi] < 0)
                         {
                             comp[gi] = nComp;

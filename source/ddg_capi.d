@@ -1675,6 +1675,12 @@ private struct SamplerState
     // Integer 1-cocycle tracking (T^3 winding forms; opt-in, dim=3 only).
     // See sampler.CocycleState.
     CocycleState!int cocycle;
+
+    // Hard cap on the illegal-edge count (dim=3 only; opt-in). See
+    // sampler.IllegalBudget. Requires the vertex potential (it maintains the
+    // sum_v m counter the gate reads) and is incompatible with the channels
+    // mcmcStep runs before the gated ones.
+    IllegalBudget illegalBudget;
 }
 
 /// Recompute the tracked objective from scratch, including the n6 potential
@@ -1969,7 +1975,9 @@ private long runSamplerDim3(SamplerState* s, long numMoves,
                     (s.dim == 3 && s.nlSlideCfg.prob > 0) ? &s.deg3Chords : null,
                     (s.dim == 3 && s.wormCfg.prob > 0) ? &s.wormCfg : null,
                     (s.dim == 3 && s.wormCfg.prob > 0) ? &s.deg4Edges : null,
-                    (s.dim == 3 && s.csCfg.prob > 0) ? &s.csCfg : null))
+                    (s.dim == 3 && s.csCfg.prob > 0) ? &s.csCfg : null,
+                    (s.dim == 3 && s.illegalBudget.enabled)
+                        ? &s.illegalBudget : null))
             {
                 accepted++;
                 acceptedSinceWriteback++;
@@ -2920,6 +2928,12 @@ extern(C) int ddg_sampler_set_slide_clean_only(void* sampler_handle,
     clearError();
     if (sampler_handle is null) { setError("null handle"); return -1; }
     auto s = cast(SamplerState*) sampler_handle;
+    if (clean_only == 0 && s.slideCfg.prob > 0 && s.illegalBudget.enabled)
+    {
+        setError("cannot drop the clean-slide restriction while an "
+                 ~ "illegality budget is active and the slide channel is on");
+        return -1;
+    }
     s.slideCfg.cleanOnly = (clean_only != 0);
     return 0;
 }
@@ -2933,6 +2947,18 @@ extern(C) int ddg_sampler_set_slide_prob(void* sampler_handle, double prob) noth
     { setError("slide probability must be in [0, 1]"); return -1; }
     if (s.dim != 3 && prob > 0)
     { setError("knot slides are dim=3 only"); return -1; }
+    // A CLEAN slide preserves the multiset of illegal degrees over its changed
+    // edges exactly (sampler.trySlideMove), hence the global illegal-edge
+    // count, so it cannot breach the cap -- and it is precisely the transport
+    // move a budgeted reservoir needs: birth/death alone only ever retraces.
+    // A dirty slide carries no such guarantee.
+    if (prob > 0 && s.illegalBudget.enabled && !s.slideCfg.cleanOnly)
+    {
+        setError("with an illegality budget the slide channel must be "
+                 ~ "restricted to CLEAN slides (they preserve the illegal "
+                 ~ "count exactly); call ddg_sampler_set_slide_clean_only(1)");
+        return -1;
+    }
     s.slideCfg.prob = cast(real) prob;
     return 0;
 }
@@ -2956,6 +2982,8 @@ extern(C) int ddg_sampler_set_nonlocal_slide_prob(void* sampler_handle,
     { setError("nonlocal slides are dim=3 only"); return -1; }
     if (prob > 0 && max_step < 1)
     { setError("nonlocal slide max_step must be >= 1"); return -1; }
+    if (prob > 0 && s.illegalBudget.enabled)
+    { setError("this channel bypasses the illegality budget; disable the budget first"); return -1; }
     s.nlSlideCfg.prob = cast(real) prob;
     if (max_step >= 1) s.nlSlideCfg.maxStep = max_step;
     return 0;
@@ -3038,6 +3066,73 @@ extern(C) int ddg_sampler_contract_split_stats(void* sampler_handle,
 }
 
 /******************************************************************************
+Cap the illegal-edge count at `cap` (dim = 3 only): any move whose post-move
+count of edges with degree outside {5, 6} would exceed the cap is rejected
+outright.  Pass a negative cap to disable (the default).
+
+This is a BUDGET, not a price.  A fugacity on illegal edges suppresses them by
+making them expensive, but they are the only mobile objects, so a large
+fugacity freezes the chain before it reaches zero.  A cap instead keeps a fixed
+small reservoir circulating, so the chain returns to n_ill = 0 repeatedly and
+those returns are exact samples of the uniform measure on FK-legal states (the
+action is exactly degenerate there at fixed f0, f3).
+
+Requires the n6 potential to be enabled -- its per-vertex state maintains the
+sum_v m counter the gate reads (sum_v m = 2 * #illegal edges exactly).  It is
+also refused while the slide, non-local slide or deg-4 worm channels are on:
+those run BEFORE the gated move types in mcmcStep and would tunnel through the
+cap.  Enable them in either order; whichever comes second is refused.
+*/
+extern(C) int ddg_sampler_set_illegal_budget(void* sampler_handle,
+    long cap) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto s = cast(SamplerState*) sampler_handle;
+    if (cap >= 0)
+    {
+        if (s.dim != 3)
+        { setError("the illegality budget is dim=3 only"); return -1; }
+        if (!s.potEnabled)
+        {
+            setError("the illegality budget needs the n6 potential enabled "
+                     ~ "(it maintains the counter the gate reads); call "
+                     ~ "ddg_sampler_set_n6_potential first");
+            return -1;
+        }
+        if ((s.slideCfg.prob > 0 && !s.slideCfg.cleanOnly)
+            || s.nlSlideCfg.prob > 0 || s.wormCfg.prob > 0)
+        {
+            setError("the illegality budget cannot be combined with dirty "
+                     ~ "slides or with the non-local-slide / worm channels: "
+                     ~ "they bypass the gate. CLEAN slides are allowed (they "
+                     ~ "preserve the illegal count exactly).");
+            return -1;
+        }
+    }
+    s.illegalBudget.cap = cap;
+    s.illegalBudget.blocked = 0;
+    return 0;
+}
+
+/// Illegality-budget readout: (cap, current illegal-edge count, #proposals
+/// rejected by the cap alone). The count is the maintained sum_v m / 2 when
+/// the potential is on, else -1.
+extern(C) int ddg_sampler_illegal_budget_stats(void* sampler_handle,
+    long* out_cap, long* out_n_illegal, long* out_blocked) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto s = cast(SamplerState*) sampler_handle;
+    if (out_cap !is null) *out_cap = s.illegalBudget.cap;
+    if (out_n_illegal !is null)
+        *out_n_illegal = s.potEnabled ? s.vertexPotState.sumM / 2 : -1;
+    if (out_blocked !is null)
+        *out_blocked = cast(long) s.illegalBudget.blocked;
+    return 0;
+}
+
+/******************************************************************************
 Enable the deg-4 worm channel (dim = 3 only): each mcmcStep proposes it with
 probability `prob`, drawing an anchor uniformly from the live deg-4 edge set
 and attempting the catalysed 2-move transport step (one 2->3 + one 3->2,
@@ -3055,6 +3150,8 @@ extern(C) int ddg_sampler_set_worm_prob(void* sampler_handle,
     { setError("worm probability must be in [0, 1]"); return -1; }
     if (s.dim != 3 && prob > 0)
     { setError("the worm channel is dim=3 only"); return -1; }
+    if (prob > 0 && s.illegalBudget.enabled)
+    { setError("this channel bypasses the illegality budget; disable the budget first"); return -1; }
     s.wormCfg.prob = cast(real) prob;
     return 0;
 }

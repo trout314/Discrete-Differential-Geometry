@@ -583,6 +583,59 @@ struct VertexPotState(Vertex)
     int[Vertex] n6;
     int[Vertex] mImp;
     real total = 0;
+
+    /// sum_v m(v), maintained incrementally alongside mImp. Because every
+    /// illegal edge contributes exactly 2 (one per endpoint), this is
+    /// 2 * (#illegal edges) EXACTLY -- the quantity the illegality budget
+    /// caps, available in O(1) with no edge scan.
+    long sumM = 0;
+    /// The change in sumM computed by the most recent potential-delta call,
+    /// whether or not it committed. A caller that has just evaluated a
+    /// speculative delta can therefore test the POST-move illegal-edge count
+    /// as (sumM + lastDSumM) / 2 before deciding.
+    long lastDSumM = 0;
+}
+
+/// Cap on the number of illegal edges (degree not in {5, 6}) the chain may
+/// hold. Moves whose post-move count would exceed `cap` are rejected outright
+/// -- an infinite energy, so plain Metropolis stays valid and the chain is
+/// reversible on the capped set.
+///
+/// This is a BUDGET, not a price, and the distinction is the whole point.
+/// Charging a fugacity per illegal edge (VertexPot.impLinCoef) suppresses
+/// defects by making them expensive -- but the defects are the only thing that
+/// moves, so a large fugacity freezes the chain before it reaches zero
+/// (measured: at zleg 8 / mu 12 the census went bit-identical for 750 sweeps).
+/// A cap instead keeps a fixed small reservoir circulating: the chain wanders
+/// through <= cap illegal edges and returns to n_ill = 0 repeatedly.
+///
+/// The payoff is that the sampler's action is EXACTLY degenerate on the
+/// FK-legal manifold at fixed (f0, f3) -- volume pin, flat pin, U and V are all
+/// constant there -- so conditioning a capped chain on n_ill = 0 samples the
+/// UNIFORM measure over legal triangulations, in which crystals are
+/// measure-zero and amorphous states dominate. Harvest the cap-0 snapshots.
+///
+/// cap < 0 disables the gate. Requires the vertex-potential state (that is
+/// what maintains sumM); the C API enforces this.
+struct IllegalBudget
+{
+    long cap = -1;
+    ulong blocked = 0;        // proposals rejected by the cap alone
+
+    bool enabled() const pure nothrow @nogc @safe { return cap >= 0; }
+
+    /// Would the pending move (whose delta is recorded in st.lastDSumM) leave
+    /// more than `cap` illegal edges? Counts the block when it would.
+    bool blocks(Vertex)(const ref VertexPotState!Vertex st)
+    {
+        if (cap < 0) return false;
+        if (st.sumM + st.lastDSumM > 2 * cap)
+        {
+            blocked++;
+            return true;
+        }
+        return false;
+    }
 }
 
 private bool ind6(long d) pure nothrow @nogc @safe { return d >= 6; }
@@ -616,7 +669,13 @@ void recomputeVertexPotState(Vertex)(
     // total = f0 * U(0)  +  corrections for vertices with nonzero counters.
     st.total = cast(real) mfd.fVector[0] * pot.U(0);
     foreach (v, k; st.n6) st.total += pot.U(k) - pot.U(0);
-    foreach (v, m; st.mImp) st.total += pot.V(m);
+    st.sumM = 0;
+    foreach (v, m; st.mImp)
+    {
+        st.total += pot.V(m);
+        st.sumM += m;
+    }
+    st.lastDSumM = 0;
 }
 
 /// Potential delta for a bistellar move (dim 3). Must be called BEFORE the
@@ -676,6 +735,14 @@ real potentialBistellarDelta(Vertex)(
     // 1->4 creates coCenter[0]; 4->1 destroys center[0].
     immutable hasCreated = (coCenLen == 1);
     immutable hasRemoved = (cenLen == 1);
+
+    // sum_v m(v) delta. A destroyed vertex needs no special case: every edge
+    // at it goes to degree 0, indImp(0) is false, so its dm entry is already
+    // -m(v). Likewise a created vertex starts from m = 0.
+    long dSumM = 0;
+    foreach (i; 0 .. nv) dSumM += dm[i];
+    st.lastDSumM = dSumM;
+    if (commit) st.sumM += dSumM;
 
     real dS = 0;
     foreach (i; 0 .. nv)
@@ -764,6 +831,11 @@ real potentialHingeDelta(Vertex)(
             }
         }
     }
+
+    long dSumM = 0;
+    foreach (i; 0 .. 6) dSumM += dm[i];
+    st.lastDSumM = dSumM;
+    if (commit) st.sumM += dSumM;
 
     real dS = 0;
     foreach (i; 0 .. 6)
@@ -924,6 +996,13 @@ real potentialBlockDelta(Vertex)(
     foreach (v, d; dm) affected[v] = true;
     foreach (v; createdVerts) affected[v] = true;
     foreach (v; removedVerts) affected[v] = true;
+
+    // See potentialBistellarDelta: created/removed vertices need no special
+    // case, their dm entries already carry the full change.
+    long dSumM = 0;
+    foreach (v, d; dm) dSumM += d;
+    st.lastDSumM = dSumM;
+    if (commit) st.sumM += dSumM;
 
     real dS = 0;
     foreach (v, _; affected)
@@ -4233,7 +4312,8 @@ private bool tryContractSplit(Vertex, P)(
     const(VertexPot)* pot,
     Deg3Set!Vertex* deg3Set,
     Deg3Set!Vertex* deg4Set,
-    CocycleState!Vertex* cocycle = null)
+    CocycleState!Vertex* cocycle = null,
+    IllegalBudget* budget = null)
 {
     import link_cycles : CatalogClass, adjFromFaces, catalog, countCycles,
         kthCycle, matchCatalog, maxCycleLen, maxLinkVerts;
@@ -4348,7 +4428,7 @@ private bool tryContractSplit(Vertex, P)(
 
         // link condition, locally: (a) common neighbours = ring vertices
         Vertex[] nbrsU, nbrsV, ringV;
-        bool[Vertex[2]] ringEdges;
+        PairTable!(Vertex, bool, 64) ringEdges;   // not a builtin AA: utility.PairTable
         foreach (i; 0 .. nSU)
             foreach (x; suBuf[i])
                 if (x != u && !nbrsU.canFind(x))
@@ -4376,7 +4456,7 @@ private bool tryContractSplit(Vertex, P)(
                 opp[0] = opp[1];
                 opp[1] = t;
             }
-            ringEdges[opp] = true;
+            ringEdges.set(opp, true);
             foreach (x; opp)
                 if (!ringV.canFind(x))
                     ringV ~= x;
@@ -4401,7 +4481,7 @@ private bool tryContractSplit(Vertex, P)(
                 tv[].sort();
                 immutable bothTri = mfd.contains(tu[]) && mfd.contains(tv[]);
                 Vertex[2] ab = [a, b];
-                if (bothTri != ((ab in ringEdges) !is null))
+                if (bothTri != ringEdges.has(ab))
                 {
                     cs.noValid++;
                     return false;
@@ -4467,6 +4547,8 @@ private bool tryContractSplit(Vertex, P)(
                 move.addedFacets, [], removedV[], *potState, *pot, false);
 
         cs.contractTries++;
+        if (budget !is null && potState !is null && budget.blocks(*potState))
+            return false;
         immutable real logAlpha = -dS + logQ;
         if (logAlpha >= 0 || uniform01 <= exp(logAlpha))
         {
@@ -4583,6 +4665,8 @@ private bool tryContractSplit(Vertex, P)(
                 move.addedFacets, createdV[], [], *potState, *pot, false);
 
         cs.splitTries++;
+        if (budget !is null && potState !is null && budget.blocks(*potState))
+            return false;
         immutable real logAlpha = -dS + logQ;
         if (logAlpha >= 0 || uniform01 <= exp(logAlpha))
         {
@@ -4647,7 +4731,8 @@ bool mcmcStep(Vertex, P)(
     Deg3Set!Vertex* deg3Set = null,
     WormConfig* worm = null,
     Deg3Set!Vertex* deg4Set = null,
-    ContractSplitConfig* contractSplit = null)
+    ContractSplitConfig* contractSplit = null,
+    IllegalBudget* budget = null)
 {
     enum dim = 3;
     enum nVerts = dim + 1;
@@ -4826,7 +4911,7 @@ bool mcmcStep(Vertex, P)(
     {
         return tryContractSplit(mfd, currentObjective, unusedVertices,
             params, *contractSplit, potState, pot, deg3Set, deg4Set,
-            cocycle);
+            cocycle, budget);
     }
 
     // Unified proposal loop
@@ -4886,6 +4971,8 @@ bool mcmcStep(Vertex, P)(
             real deltaObj = mfd.speculativeHingeDelta(hm, baseObj, params);
             if (potState !is null)
                 deltaObj += mfd.potentialHingeDelta(hm, *potState, *pot, false);
+            if (budget !is null && potState !is null && budget.blocks(*potState))
+                return false;
             real logAlpha = -deltaObj;
 
             if (logAlpha >= 0 || uniform01 <= exp(logAlpha))
@@ -4975,6 +5062,11 @@ bool mcmcStep(Vertex, P)(
         real deltaObj = mfd.speculativeBistellarDelta(bm, baseObj, params);
         if (potState !is null)
             deltaObj += mfd.potentialBistellarDelta(bm, *potState, *pot, false);
+        // Illegality budget: an ordinary rejection (NOT a re-draw -- continuing
+        // the proposal loop here would reweight the proposal and break
+        // detailed balance; the cap is just an infinite energy).
+        if (budget !is null && potState !is null && budget.blocks(*potState))
+            return false;
         real logAlpha = -deltaObj;
 
         if (logAlpha >= 0 || uniform01 <= exp(logAlpha))
@@ -5083,7 +5175,108 @@ unittest
         "manifold has problems after mixed MCMC: " ~ mfd.findProblems.to!string);
 
     // Verify objective tracking is consistent
-    auto actualObj = mfd.objective(params);
+    {
+        auto actual = mfd.objective(params);
+        assert(isClose(currentObj, actual, 1e-4),
+            "objective drift: tracked=%s actual=%s".format(currentObj, actual));
+    }
+}
+
+/// The illegality budget: sum_v m stays exact through every gated move type,
+/// and the cap is never breached.
+unittest
+{
+    struct TestParams
+    {
+        int numFacetsTarget = 60;
+        real hingeDegreeTarget = 5.1042993;
+        real numFacetsCoef = 0.1;
+        real numHingesCoef = 1.0;
+        real hingeDegreeVarianceCoef = 0.0;
+        real coDim3DegreeVarianceCoef = 0.0;
+        real hingeDegreeTargetCoef = 0.0;
+        real coDim3DegreeTargetCoef = 0.0;
+        real coDim3DegreeTarget = 0.0;
+    }
+
+    /// ground truth: one O(E) scan
+    long illegalByScan(ref Manifold!3 m)
+    {
+        long n = 0;
+        foreach (e; m.simplices(1))
+        {
+            immutable d = cast(long) m.degree(e);
+            if (d != 5 && d != 6) n++;
+        }
+        return n;
+    }
+
+    alias BM = BistellarMove!3;
+    auto mfd = Manifold!3([[0,1,2,3],[0,1,2,4],[0,1,3,4],[0,2,3,4],[1,2,3,4]]);
+    auto params = TestParams();
+    mfd.doMove(BM([0,1,2,3], [5]));
+    mfd.doMove(BM([0,1,2,4], [6]));
+    mfd.doMove(BM([1,2,3,4], [7]));
+
+    VertexPot pot;
+    pot.zlegCoef = 0.5;
+    pot.impLinCoef = 0.25;
+    VertexPotState!int st;
+    recomputeVertexPotState(mfd, st, pot);
+    assert(st.sumM == 2 * illegalByScan(mfd), "recompute got sumM wrong");
+
+    auto currentObj = mfd.objective(params) + st.total;
+    int[] unusedVertices = [8];
+    ulong hT, hA;
+    ulong[4] bT, bA;
+    ContractSplitConfig cs;
+    cs.prob = 0.25L;                   // exercise the block path hard
+    IllegalBudget budget;
+    budget.cap = 40;
+
+    foreach (step; 0 .. 4000)
+    {
+        mfd.mcmcStep(currentObj, unusedVertices, params, 0.5, hT, hA, bT, bA,
+            null, null, &st, &pot, null, null, null, null, null, null,
+            &cs, &budget);
+
+        // The maintained counter must equal the scan at EVERY step -- this is
+        // what the gate reads, so a drift here is a silently wrong cap.
+        immutable scanned = illegalByScan(mfd);
+        assert(st.sumM == 2 * scanned,
+            "sumM drifted from the scan at step " ~ step.to!string
+            ~ ": " ~ st.sumM.to!string ~ " vs " ~ (2 * scanned).to!string);
+        assert(scanned <= budget.cap,
+            "illegality budget breached at step " ~ step.to!string
+            ~ ": " ~ scanned.to!string ~ " > " ~ budget.cap.to!string);
+    }
+    assert(mfd.findProblems.length == 0, "manifold broken under the budget");
+
+    // Tighten the cap onto the CURRENT count: the chain must then never rise
+    // above it, and must actually feel the wall. (Clamping to the current
+    // value rather than 0 keeps this unconditional -- a tiny sphere at this
+    // edge target does not sit at n_ill = 0.)
+    budget.cap = illegalByScan(mfd);
+    budget.blocked = 0;
+    foreach (step; 0 .. 3000)
+    {
+        mfd.mcmcStep(currentObj, unusedVertices, params, 0.5, hT, hA,
+            bT, bA, null, null, &st, &pot, null, null, null, null, null,
+            null, &cs, &budget);
+        immutable scanned = illegalByScan(mfd);
+        assert(st.sumM == 2 * scanned, "sumM drifted under the tight cap");
+        assert(scanned <= budget.cap,
+            "tight cap breached at step " ~ step.to!string
+            ~ ": " ~ scanned.to!string ~ " > " ~ budget.cap.to!string);
+    }
+    assert(budget.blocked > 0, "a tight cap should have blocked proposals");
+
+    // The tracked objective carries the potential total, so the ground truth
+    // is the base objective plus a freshly recomputed potential.
+    VertexPotState!int fresh;
+    recomputeVertexPotState(mfd, fresh, pot);
+    assert(fresh.sumM == st.sumM, "sumM drifted from a fresh recompute");
+    immutable actualObj = mfd.objective(params) + fresh.total;
     assert(isClose(currentObj, actualObj, 1e-4),
         "objective drift: tracked=%s actual=%s".format(currentObj, actualObj));
 }

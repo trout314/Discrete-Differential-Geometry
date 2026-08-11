@@ -759,6 +759,52 @@ class ManifoldSampler:
             self._handle, *[ctypes.byref(v) for v in vals])
         return tuple(int(v.value) for v in vals)
 
+    def set_illegal_budget(self, cap: int) -> None:
+        """Cap the number of illegal edges (degree outside {5, 6}); dim = 3.
+
+        Any move whose post-move count would exceed ``cap`` is rejected
+        outright -- an infinite energy, so plain Metropolis stays valid and
+        the chain is reversible on the capped set. A negative cap disables
+        the gate (the default).
+
+        This is a BUDGET, not a price, and the difference is the point. A
+        fugacity on illegal edges (``imp_lin``) suppresses defects by making
+        them expensive, but the defects are the only mobile objects, so a
+        large fugacity freezes the chain before it reaches zero. A cap
+        instead keeps a fixed small reservoir circulating: the chain wanders
+        through at most ``cap`` illegal edges and returns to n_ill = 0 over
+        and over.
+
+        The payoff is that the action is EXACTLY degenerate on the FK-legal
+        manifold at fixed (f0, f3) -- volume pin, flat pin and both vertex
+        terms are constant there -- so the snapshots a capped chain takes at
+        n_ill = 0 are exact samples of the UNIFORM measure over legal
+        triangulations, in which crystals are measure-zero and amorphous
+        states dominate. Harvest those; the excursions are only transport.
+
+        Requires :meth:`set_n6_potential` to have been called with a nonzero
+        coupling (its per-vertex state maintains the counter the gate reads,
+        sum_v m = 2 * #illegal edges exactly), and is refused while the
+        slide / non-local-slide / worm channels are on -- those run before
+        the gated move types and would tunnel through the cap.
+        """
+        self._recorded_illegal_budget = int(cap)
+        _lib.ddg_sampler_set_illegal_budget(self._handle, int(cap))
+
+    def illegal_budget_stats(self) -> tuple[int, int, int]:
+        """``(cap, n_illegal_edges, blocked)``.
+
+        ``n_illegal_edges`` is the maintained counter (no edge scan), or -1
+        when the n6 potential is off. ``blocked`` counts proposals rejected
+        by the cap alone, which is the diagnostic for whether the budget is
+        binding: near zero means the cap is slack, near the proposal count
+        means it is strangling the chain.
+        """
+        vals = [ctypes.c_long() for _ in range(3)]
+        _lib.ddg_sampler_illegal_budget_stats(
+            self._handle, *[ctypes.byref(v) for v in vals])
+        return tuple(int(v.value) for v in vals)
+
     def slide_at(self, a: int, b: int, slot: int,
                  commit: bool = False) -> "float | None":
         """Attempt the knot slide at chord ``(a, b)`` in slot ``slot``.

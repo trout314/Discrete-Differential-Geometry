@@ -124,5 +124,101 @@ edges, f_FK 81.2%), S = c_N(f3−f3*)² + 30(f1−6f3/e*)² + zleg·Σdist²(n6,
   amorphous states dominate. The target ensemble is maximum-entropy, so the
   entire problem is the move set, not the action.
 
-Related: [[fk-move-search]], [[crystal-library-gas-campaign]],
+## 6. The illegality budget is BUILT (2026-08-10) — and it returns but does not travel
+
+**Machinery.** `VertexPotState` now maintains `sumM` (= Σ_v m = 2·#illegal
+edges, exact) and `lastDSumM` incrementally through all three potential-delta
+functions; `IllegalBudget{cap, blocked}` gates the bistellar, hinge and
+contract/split paths in `mcmcStep` with a plain `return false` (an infinite
+energy — NOT a re-draw, which would reweight the proposal). C API:
+`ddg_sampler_set_illegal_budget` / `..._illegal_budget_stats`; Python:
+`ManifoldSampler.set_illegal_budget` / `.illegal_budget_stats`. Requires the n6
+potential (it maintains the counter). D unittest asserts `sumM == 2·scan` and
+`scan ≤ cap` at EVERY step over 4000 mixed steps at cs 0.25, plus a tight-cap
+phase; **meson test 14/14 modules pass**. `--budget` on `fk_amorphous.py`;
+new `scripts/fk_worm_harvest.py` harvests and fingerprints the n_ill = 0 returns.
+
+**Clean slides are allowed alongside the budget** (dirty ones, nonlocal slide
+and worm are refused, both directions): a clean slide preserves the multiset of
+illegal degrees over its changed edges, hence n_ill globally, so it cannot
+breach the cap — and it is the only transport move the reservoir has.
+
+**MEASURED on the pristine R crystal (m2, f0 1272), 150–250 sweeps/cell:**
+
+| B | μ_ill | returns to n_ill=0 | distinct legal states |
+|---|---|---|---|
+| 6 | 0.0 | 0 (fills to the cap) | — |
+| 6 | 1.0 | 9 | **1** |
+| 12 | 1.5 | 24–41 | **1** |
+| 24 | 2.5 | 30 | **1** |
+| 48 | 1.8 | 49 | **1** |
+| 96 | 1.5 | 40 | **1** |
+| 200 | 1.2 | 29 | **1** |
+| 12 | 1.5 + clean slide 0.3 | 46 | **1** |
+
+- **A flat reservoir (μ = 0) fills to the cap and never returns** — entropy
+  owns the interior. A fugacity is still needed to make n_ill = 0 weighty.
+- **Every return is to the SAME state.** Excursions retrace exactly. Fully
+  consistent with [[defect-travel]] (all defects caged) and §2 (R has zero
+  non-positive-damage contractions): the crystal is a deep trap.
+- The clean-slide channel fired **2 times in 250 sweeps** — at μ 1.5 the chain
+  is at n_ill = 0 for 92% of steps (mean 0.24, max 3), so there is almost never
+  a degree-3 chord to slide. Fugacity and transport fight: cheap defects fill
+  the reservoir, expensive ones never persist long enough to move.
+
+**NEXT (clear from the above): a DIRECTED worm, not a thermal one.** Decouple
+the worm's existence from its price — insert exactly one defect, slide it many
+times while it is held open, then close it, with the insert/close pair carrying
+the Hastings factors. That is the standard resolution of exactly this tension
+and the machinery (clean slide + budget + maintained counter) is now all in
+place. Also worth trying: start the harvest from a disordered legal state
+rather than a crystal (none exists yet — chicken-and-egg, so grafting first).
+
+## 7. MAXIMISING f_FK AT f_reg ≈ 0 (2026-08-11): hold μ at the threshold
+
+**Goal (Aaron):** maximise the FK-legal VERTEX fraction (every incident edge
+deg 5 or 6 — hubs explicitly allowed) while keeping f_reg ≈ 0. Any dispersed
+defect population acceptable.
+
+**Reframing that makes it tractable:** f_reg ≈ 0 is nearly FREE if you start
+amorphous — melts do not recrystallise ([[quanta-strain-heal]] hysteresis) and
+crystals are measure-zero. So this is a PREPARATION problem from a disordered
+seed, not a sampling one. Start = the a15 c_imp 0.4 melt (f_FK 37.3%,
+f_reg 0.00%). `fk_amorphous.py --ratchet-slack` added (cap = running-minimum
+illegal-edge count + slack).
+
+**RESULT (8 cells, 40k sweeps, zleg 0, cs 0, cn 0.1, nh 30, e* target):
+f_FK 37.3% → 64.4% with ZERO crystalline grains** (1.59% interior-crystalline,
+f_reg/f_FK = 0.025). Z̄ held at 13.397–13.401 against the FK-window target
+Z̄* = 13.39733 for the whole run — the flat pin does exactly the job the
+identity says it should. Hubs stayed at 78–87 (strict fk-coord 56.7%, so hubs
+cost ~8 points). Z host final: f_FK 35.4% → **60.5%**, Z̄ 13.3977 / ē 5.10433 (targets
+13.39733 / 5.10430 — the flat pin holds the composition essentially exactly),
+0 grains — BUT 11.4% interior-crystalline in sub-threshold clumps, so
+f_reg/f_FK = 0.19 against 0.025–0.049 on a15: the Z glass keeps markedly more
+local registry than the a15 one. Prefer a15 as the amorphous seed.
+
+**TWO NEGATIVE RESULTS THAT MATTER:**
+- **The ratchet is NOT the active ingredient.** No-ratchet control 64.38% vs
+  slack-5 64.09% — indistinguishable, and slack 5/20/50 span only 62.4–64.1%.
+  At the working μ the fugacity already prevents the melt, so the cap never
+  binds. (It IS needed at low μ: at μ = 0.1 this state blows up 491 → 923
+  illegal edges in ONE sweep.) Keep it as a cheap safety net, not a driver.
+- **RAMPING μ UP IS ACTIVELY HARMFUL** — the opposite of the driver's default
+  design and of annealing intuition. μ = 2 const 64.4% | μ 2→4 56.3% |
+  μ 2→6 54.7% | μ = 3 const 53.2%. Every stiffer cell has late slope
+  **0.0 ± 0.1 /ksw (total arrest)** while the μ = 2 cells are still descending
+  at −1.1 to −1.3 /ksw at 40k sweeps. **μ ≈ 2 is simultaneously the descent
+  THRESHOLD (0.5 and 1.0 just pin at the cap) and the OPTIMUM.** Hold it;
+  do not anneal it.
+- Cost note: cs = 0.05 costs **11×** the wall time (17.1 vs 1.5 s/100 sweeps)
+  for a marginal gain at ~500 illegal edges. Save the channel for the endgame
+  where 2→3 can only nibble; the bulk descent is cheaper with cs = 0.
+
+**NEXT:** the μ = 2 cells had not converged — longest-run-wins. Run 200k+
+sweeps at μ = 2 const, then switch on cs for the endgame.
+Figure: data/fk_amorph/ratchet/fk_ratchet.png; data under data/fk_amorph/ratchet.
+
+Related: [[quanta-strain-heal]], [[fk-move-search]], [[worm-sampler-program]], [[defect-travel]],
+[[crystal-library-gas-campaign]],
 [[volume-pin-defects]], [[six-web-gauge]], [[edq-only-melting]].
