@@ -28,6 +28,7 @@ __pycache__/
 # Meson
 builddir/
 builddir-release/
+builddir-fp/   # scratch -frame-pointer=all build for profiling
 
 # data files created by unittests
 data/manifold_sampler_unittest_save.dat
