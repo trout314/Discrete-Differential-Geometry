@@ -123,6 +123,12 @@ def main():
     ap.add_argument("--chunk", type=int, default=100)
     ap.add_argument("--hold", type=float, default=0.25,
                     help="fraction of the run held at the final couplings")
+    ap.add_argument("--snap-every", type=int, default=0,
+                    help="write <out>.snap.mfd every N sweeps (0 = off). "
+                         "Cheap insurance on multi-hour runs: the driver only "
+                         "saves .final.mfd at the end, so an interrupt would "
+                         "otherwise leave the annealed state unrecoverable "
+                         "(the .obs.jsonl trajectory survives either way).")
     ap.add_argument("--seed", type=int, default=20260810)
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
@@ -190,6 +196,10 @@ def main():
                "f_legalvert": (f0 - n_imp) / f0}
         obs.write(json.dumps(row) + "\n")
         obs.flush()
+        if args.snap_every and rec.sw % args.snap_every == 0:
+            v.save(args.out + ".snap.mfd",
+                   [f"periodic snapshot at sweep {rec.sw}",
+                    f"n_ill_e={n_ill_e} f_legalvert={(f0 - n_imp) / f0:.4f}"])
         print(f"sw {rec.sw:6d} zleg {zleg:4.2f} mu {mu:4.2f} | "
               f"f0 {f0:5d} f3 {f3:6d} e {row['e_mean']:.5f} "
               f"Zbar {row['zbar']:.4f} | n_ill_e {n_ill_e:5d} "
