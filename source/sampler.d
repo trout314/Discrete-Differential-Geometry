@@ -4330,7 +4330,7 @@ private bool tryContractSplit(Vertex, P)(
     IllegalBudget* budget = null)
 {
     import link_cycles : CatalogClass, adjFromFaces, catalog, countCycles,
-        kthCycle, matchCatalog, maxCycleLen, maxLinkVerts;
+        countCyclesCached, kthCycle, matchCatalog, maxCycleLen, maxLinkVerts;
     import std.math : log;
 
     enum dim = 3;
@@ -4542,7 +4542,7 @@ private bool tryContractSplit(Vertex, P)(
         uint[maxLinkVerts] adjY;
         adjFromFaces(lfaces, adjY);
         immutable long NY =
-            countCycles(adjY[0 .. linkVerts.length], cs.maxRing)
+            countCyclesCached(adjY[0 .. linkVerts.length], cs.maxRing)
             .total(cs.maxRing);
         assert(NY >= 1, "merged link lost its ring cycle");
         immutable long deg3yU = cast(long) lfaces.length;
@@ -4633,7 +4633,7 @@ private bool tryContractSplit(Vertex, P)(
         }
         else
         {
-            NX = countCycles(adjX[0 .. nL], cs.maxRing).total(cs.maxRing);
+            NX = countCyclesCached(adjX[0 .. nL], cs.maxRing).total(cs.maxRing);
             if (NX == 0)
             {
                 cs.noValid++;

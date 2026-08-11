@@ -3044,6 +3044,22 @@ extern(C) int ddg_sampler_set_contract_split(void* sampler_handle,
 /// Contract/split counters: per-direction proposals that reached Metropolis,
 /// accepts, and proposals that failed validity/geometry gates. All pointers
 /// optional.
+/// (hits, misses) of the link-cycle memo (link_cycles.countCyclesCached).
+/// Process-wide diagnostic for sizing the memo; not per-sampler.
+extern(C) int ddg_cycle_memo_stats(ulong* hits, ulong* misses) nothrow
+{
+    clearError();
+    import link_cycles : cycleMemoStats;
+    try
+    {
+        immutable st = cycleMemoStats();
+        if (hits !is null) *hits = st[0];
+        if (misses !is null) *misses = st[1];
+    }
+    catch (Exception) { setError("cycle memo stats failed"); return -1; }
+    return 0;
+}
+
 extern(C) int ddg_sampler_contract_split_stats(void* sampler_handle,
     long* out_contract_tries, long* out_contract_accepts,
     long* out_split_tries, long* out_split_accepts,

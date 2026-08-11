@@ -59,6 +59,130 @@ CycleCounts countCycles(const(uint)[] adj, int maxLen) pure nothrow @nogc @safe
 }
 
 /*******************************************************************************
+Memoised `countCycles`.
+
+The bounded DFS is the single largest cost in the contract/split channel: a
+frame-pointer profile put `countCycles` at ~34% of it (the merged link of a
+contraction always takes the DFS, and so does any split link the FK catalog
+does not match). But `countCycles` is `pure` -- its answer depends only on the
+adjacency bitmasks and `maxLen` -- and links repeat constantly, both across
+proposals at the same site and across the handful of local topologies a
+near-FK state contains. So it memoises exactly.
+
+DIRECT-MAPPED, one entry per hash bucket, overwritten on a miss: no eviction
+policy, no probing, no failure mode when the working set exceeds the table.
+The key is the FULL adjacency (plus length and maxLen) and is compared in
+full on a hit, so a hash collision costs a recompute, never a wrong answer.
+
+The memo is mutable module state, which is why this wrapper is not `pure`;
+`countCycles` itself stays pure and is the fallback for oversized links.
+Thread-local, like all D module state, so the table needs no synchronisation.
+
+MEASURED on the a15 c_imp-0.4 melt at cs = 0.25 (the hit rate is limited by
+RELABELLING -- the adjacency is keyed by local index, so the same abstract
+link recurs under many labellings -- not by the number of link topologies):
+
+    slots    TLS      hit rate   s/sweep   vs no memo
+     4096    0.8 MB     24.2%     0.326      1.14x
+    16384    3.2 MB     35.6%     0.294      1.26x
+    65536   13.0 MB     41.3%     0.259      1.43x
+
+Raise `cycleMemoSlots` (power of two) to trade thread-local memory for hit
+rate; `cycleMemoStats` reports hits/misses, exposed as
+`ddg_cycle_memo_stats`. Canonicalising the adjacency before hashing would
+collapse the relabellings and lift the ceiling well above 41%, but a correct
+canonical form is a real cost per call and a WRONG one silently returns
+another graph's count -- so this stays an exact, labelled key.
+*/
+private struct CycleMemoEntry
+{
+    uint[maxLinkVerts] adj;
+    ubyte n;
+    ubyte maxLen;
+    bool live;
+    CycleCounts counts;
+}
+
+private enum size_t cycleMemoSlots = 65_536;          // power of two
+private CycleMemoEntry[cycleMemoSlots] cycleMemo_;
+private ulong cycleMemoHits_, cycleMemoMisses_;
+
+/// (hits, misses) since process start -- the dial for sizing cycleMemoSlots.
+ulong[2] cycleMemoStats() nothrow @nogc @safe
+{
+    return [cycleMemoHits_, cycleMemoMisses_];
+}
+
+/// ditto
+CycleCounts countCyclesCached(const(uint)[] adj, int maxLen) nothrow @nogc @safe
+{
+    immutable size_t n = adj.length;
+    if (n > maxLinkVerts || maxLen > maxCycleLen || maxLen < 0)
+        return countCycles(adj, maxLen);
+
+    ulong h = 0xcbf29ce484222325UL ^ (cast(ulong) maxLen * 0x9E3779B97F4A7C15UL);
+    h = (h ^ n) * 0x100000001b3UL;
+    foreach (i; 0 .. n)
+        h = (h ^ adj[i]) * 0x100000001b3UL;
+    h ^= h >>> 33;
+
+    auto e = &cycleMemo_[cast(size_t)(h & (cycleMemoSlots - 1))];
+    if (e.live && e.n == n && e.maxLen == maxLen)
+    {
+        bool same = true;
+        foreach (i; 0 .. n)
+            if (e.adj[i] != adj[i]) { same = false; break; }
+        if (same)
+        {
+            ++cycleMemoHits_;
+            return e.counts;
+        }
+    }
+    ++cycleMemoMisses_;
+    immutable c = countCycles(adj, maxLen);
+    e.live = true;
+    e.n = cast(ubyte) n;
+    e.maxLen = cast(ubyte) maxLen;
+    foreach (i; 0 .. n)
+        e.adj[i] = adj[i];
+    e.counts = c;
+    return c;
+}
+
+/// the memo must be indistinguishable from the function it caches
+unittest
+{
+    import std.random : Random, uniform;
+    auto rnd = Random(20260811);
+    foreach (trial; 0 .. 400)
+    {
+        immutable int n = uniform(4, 13, rnd);
+        uint[maxLinkVerts] adj;
+        foreach (i; 0 .. n)
+            foreach (j; i + 1 .. n)
+                if (uniform(0, 3, rnd) == 0)
+                {
+                    adj[i] |= 1u << j;
+                    adj[j] |= 1u << i;
+                }
+        foreach (maxLen; 3 .. maxCycleLen + 1)
+        {
+            immutable want = countCycles(adj[0 .. n], maxLen);
+            // first call populates, second must hit, both must agree
+            immutable got1 = countCyclesCached(adj[0 .. n], maxLen);
+            immutable got2 = countCyclesCached(adj[0 .. n], maxLen);
+            foreach (L; 0 .. maxCycleLen + 1)
+            {
+                assert(got1.byLength[L] == want.byLength[L]);
+                assert(got2.byLength[L] == want.byLength[L]);
+            }
+        }
+    }
+    immutable st = cycleMemoStats();
+    assert(st[0] > 0 && st[1] > 0, "memo saw neither a hit nor a miss");
+}
+
+/*******************************************************************************
 Select the k-th cycle (0-based, in the fixed DFS enumeration order) among all
 simple cycles of length <= maxLen. Fills buf with the cycle's vertices and
 returns its length, or 0 if k is out of range. Combined with a uniform k in
