@@ -108,6 +108,25 @@ def main():
                     help="quanta BELOW native for the phase-A targets "
                          "(1 quantum = 1 tet = 1 sixfold edge at fixed f0); "
                          "negative strains upward. 0 = pure control run.")
+    ap.add_argument("--flat", action="store_true",
+                    help="target the FLAT mean edge degree e* = 2pi/acos(1/3) "
+                         "exactly, with the matching tet target at the NATIVE "
+                         "vertex count, f3* = round(f0 e*/(6 - e*)). The two "
+                         "pins are then jointly satisfiable only to within "
+                         "the tet lattice (the residual, in quanta, is "
+                         "printed); --dq is derived and ignored.")
+    ap.add_argument("--edq-lambda", type=float, default=0.0,
+                    help="lambda of the FULL action: switches on the per-edge "
+                         "EDQ term via hinge_degree_target_coef = "
+                         "lambda * e_tar / 6 (the dope_hold wiring), and "
+                         "makes --cimp and --zleg-scale RATIOS scaled by it "
+                         "(imp_coef = cimp*lambda, zleg_coef = "
+                         "zleg_scale*lambda). 0 = off, i.e. the campaign's "
+                         "minimal action with c_imp an absolute coefficient. "
+                         "Never numerically comparable to lambda_EDQ.")
+    ap.add_argument("--zleg-scale", type=float, default=0.0,
+                    help="n6 legality coupling as a ratio to lambda (0 = off, "
+                         "as in the whole crystal-gas campaign)")
     ap.add_argument("--cimp", type=float, default=1.0)
     ap.add_argument("--heal-cimp", type=float, default=None,
                     help="c_imp for phase B (default: same as phase A). "
@@ -183,23 +202,38 @@ def main():
                          "3-manifold with chi = 0; the quantum arithmetic "
                          "this script is built on does not apply")
     e_nat = edge_degree_target(f0n, f3n)
-    f3_str = f3n - args.dq
-    e_str = edge_degree_target(f0n, f3_str)
     quantum = e_nat - edge_degree_target(f0n, f3n - 1)
+    if args.flat:
+        # e* exactly, with the tet target that realises it at native f0
+        f3_str = int(round(f0n * E_FLAT / (6.0 - E_FLAT)))
+        e_str = E_FLAT
+        args.dq = f3n - f3_str
+        resid = (edge_degree_target(f0n, f3_str) - E_FLAT) / quantum
+    else:
+        f3_str = f3n - args.dq
+        e_str = edge_degree_target(f0n, f3_str)
+        resid = 0.0
 
     # c_eff and the nucleation cost, both at fixed f0 (see module docstring).
     grad = f0n / f3_str                     # |d gap / d f3|
     c_eff = args.vol_coef + args.hinge_coef * grad ** 2
     n5_leg, n6_leg = 6 * f0n, f3_str - 5 * f0n
 
+    lam = args.edq_lambda
+    # Full-action wiring (dope_hold): lambda scales the per-edge EDQ term and
+    # makes cimp / zleg ratios. With lambda = 0 this is exactly the campaign's
+    # minimal action and c_imp keeps its absolute meaning.
+    edq_coef = lam * e_str / 6.0 if lam else 0.0
+    imp_coef = args.cimp * lam if lam else args.cimp
+    zleg_coef = args.zleg_scale * lam if lam else 0.0
     params = ddg.SamplerParams(
         num_facets_target=f3_str, num_facets_coef=args.vol_coef,
         hinge_degree_target=e_str, num_hinges_coef=args.hinge_coef,
-        # everything else OFF: the defaults are ON and fight an FK pin
+        # variance couplings default ON and fight an FK pin -- zero them
         hinge_degree_variance_coef=0.0, codim3_degree_variance_coef=0.0,
-        hinge_degree_target_coef=0.0, codim3_degree_target_coef=0.0)
+        hinge_degree_target_coef=edq_coef, codim3_degree_target_coef=0.0)
     s = ddg.ManifoldSampler(mfd, params)
-    s.set_n6_potential(0.0, args.cimp, tilt=[0.0] * 5)      # zleg = 0: m^2 only
+    s.set_n6_potential(zleg_coef, imp_coef, tilt=[0.0] * 5)
     if args.contract_split > 0:
         s.set_contract_split(args.contract_split, 6)
     if args.illegal_budget >= 0:
@@ -214,7 +248,7 @@ def main():
     meta = {"crystal": args.crystal, "cell": os.path.basename(cell),
             "mcell": mcell, "dq": args.dq, "cimp": args.cimp,
             "hinge_coef": args.hinge_coef, "vol_coef": args.vol_coef,
-            "heal_cimp": args.heal_cimp, "heal_dq": args.heal_dq, "start": args.start, "contract_split": args.contract_split, "illegal_budget": args.illegal_budget, "seed": args.seed, "f0_native": f0n, "f3_native": f3n,
+            "heal_cimp": args.heal_cimp, "flat": args.flat, "edq_lambda": lam, "zleg_scale": args.zleg_scale, "edq_coef": edq_coef, "imp_coef": imp_coef, "zleg_coef": zleg_coef, "flat_residual_quanta": resid, "heal_dq": args.heal_dq, "start": args.start, "contract_split": args.contract_split, "illegal_budget": args.illegal_budget, "seed": args.seed, "f0_native": f0n, "f3_native": f3n,
             "f3_strain": f3_str, "e_native": e_nat, "e_strain": e_str,
             "e_flat": E_FLAT, "quantum": quantum,
             "quanta_native_to_eflat": (e_nat - E_FLAT) / quantum,
@@ -230,6 +264,15 @@ def main():
     print(f"  phase A: dq = {args.dq} -> f3_ref = {f3_str}, e_tar = "
           f"{e_str:.9f}; edge-legal answer is n5 = {n5_leg}, n6 = {n6_leg} "
           f"(native n6 = {f3n - 5*f0n})", flush=True)
+    if args.flat:
+        print(f"  FLAT target e* = {E_FLAT:.9f} exactly; f3* = {f3_str} "
+              f"(native {f3n}, dq = {args.dq}); the tet lattice puts the two "
+              f"pins {resid:+.2f} quanta apart -- irreducible residual",
+              flush=True)
+    if lam:
+        print(f"  full action: lambda = {lam} -> EDQ coef {edq_coef:.5f}, "
+              f"imp_coef = {args.cimp}*{lam} = {imp_coef:.4f}, "
+              f"zleg_coef = {zleg_coef:.4f}", flush=True)
     print(f"  c_eff = {c_eff:.4f} -> pristine pays {c_eff*args.dq**2:.2f}, "
           f"first uphill 2->3 costs {c_eff*(2*args.dq+1):.2f} + m^2; "
           f"1<->4 costs {args.hinge_coef*(1-3*grad)**2:.2f}", flush=True)
@@ -266,6 +309,8 @@ def main():
                     cur_tar = edge_degree_target(f0n, cur_ref)
                     s.set_num_facets_target(cur_ref)
                     s.set_hinge_degree_target(cur_tar)
+                    if lam:
+                        s.set_hinge_degree_target_coef(lam * cur_tar / 6.0)
                     obs.write(json.dumps({"kind": "ramp", "phase": tag,
                                           "sw": rec.sw, "dq": int(k)}) + "\n")
                     k_set = k
@@ -311,6 +356,8 @@ def main():
         # -- move the targets to the phase-B point; SAME chain --
         s.set_num_facets_target(f3_heal)
         s.set_hinge_degree_target(e_heal)
+        if lam:
+            s.set_hinge_degree_target_coef(lam * e_heal / 6.0)
         if args.heal_cimp is not None and args.heal_cimp != args.cimp:
             s.set_n6_potential(0.0, args.heal_cimp, tilt=[0.0] * 5)
         obs.write(json.dumps({"kind": "release", "sw_A": args.strain,

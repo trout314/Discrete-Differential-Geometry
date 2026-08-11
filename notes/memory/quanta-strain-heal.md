@@ -111,6 +111,72 @@ defects can only REDISTRIBUTE the net six-web excess, never change its total.
 Measured 747.4 / 747.2 (strained) vs 750.3 (control); the c_imp 0.4 melt has
 the same 747.2 with n4 = 412, n6 = 1254.
 
+**Z AT THE FLAT TARGET, FULL ACTION (2026-08-10, `data/quanta_heal/zflat`).**
+z m6 f = (1512, 10152, 17280, 8640), ē_nat = 5.106382979, quantum 8.803e-5,
+so **e\* is 23.67 quanta below native**; the matched tet target at native f0
+is f3\* = round(f0 e\*/(6−e\*)) = **8616** (ē within 3.4e−5 of flat). Legal
+answer: n5 = 9072 unchanged, n6 1080 → **1056** (six-web sheds 24 lines).
+Cross-checks the campaign's 23.6 forced moves for z. NOTE the tet lattice
+leaves an irreducible **−0.39 quantum** residual between the two pins.
+Wiring (`quanta_heal.py --flat --edq-lambda`): full action per dope_hold —
+num_facets_coef 0.1, num_hinges_coef 2.0, hinge_degree_target_coef = λ·ē\*/6,
+imp_coef = c_imp·λ, **zleg = 0**.
+
+**GRID λ ∈ {0.2,0.35,0.5} × c_imp ∈ {0.3,0.6}, 12k sw, pristine start, no cap:
+MELT OR FREEZE, no dilute window.** Every moving cell pays the volume pin
+(f3−nat = −22 to −23.5 vs target −24) and every one of them **destroys the
+crystal**: crystal_grains 0 grains, 0.0–1.3% interior-crystalline, including
+the native-target control. λ 0.2 (both c) and λ 0.35/c 0.3 percolate outright
+(frac_top1 ≈ 1.0, stationary). (0.5, 0.6) never moves at all — 0 accepted in
+12k sweeps, still exactly pristine. **KINETIC TRAP FOR THE ANALYST:** (0.35,
+0.6) and (0.5, 0.3) look frozen for 2500 and 4700 sweeps and then nucleate
+and climb; at 12k they read n_ill 1129 / 861 with frac_top1 0.41 / 0.33 and
+late slopes **+31 ± 3 and +203 ± 40 per ksw** — transients en route to the
+same melt, NOT dispersed gases. Never call a cell frozen off a short window;
+check the slope and the acceptance rate together.
+
+**DIAGNOSIS: with zleg = 0 this grid IS the EDQ-only ablation**, which
+[[edq-only-melting]] already found melts first-order with m² unable to cure it
+— now reproduced on a new host and with the flat volume target as well.
+Figure: data/quanta_heal/zflat/z_flat_sweep.png.
+
+**zleg RE-RUN (identical grid, one knob changed, `data/quanta_heal/zleg`):
+zleg CHANGES THE MORPHOLOGY BUT DOES NOT SAVE THE CRYSTAL.** At
+zleg_scale = 0.3 the (λ 0.35, c_imp 0.6) cell reaches the flat target
+(f3−nat = −23.6 of −24) as a **DISPERSED gas: n_ill 853 ± 85 in 156
+complexes, top1 64, frac_top1 = 0.07** — against 0.33–1.00 for every zleg = 0
+cell; the native-target control likewise sits at frac_top1 0.12 (157
+complexes). So the n6 line-closure term is what stops the defects condensing
+into one blob, exactly the role [[six-web-gauge]] assigns it. BUT
+**crystal_grains: still 0 grains, 3.6% / 2.5% interior-crystalline** — a
+dispersed amorphous FK alloy, not defects-in-crystal. And it is NOT
+stationary: late slope **+58.6 ± 6.5 / ksw** (control +15.7 ± 9.5).
+Everything else is unchanged: λ 0.2 (both c) and λ 0.35/c 0.3 percolate
+(frac_top1 0.88–1.00, stationary), λ 0.5 stays frozen at pristine.
+**MORE zleg IS NOT BETTER: zleg_scale 0.6 FREEZES** the (0.35, 0.6) cell
+(acc 2.3e-6, never leaves pristine) and does not disperse (0.35, 0.3)
+(frac_top1 0.88). zleg has an optimum, it is not a monotone dial.
+Figure: data/quanta_heal/zleg/z_zleg_compare.png.
+
+**f_FK IN THE ZERO-GRAIN STATES — f_reg/f_FK IS THE AMORPHOUS-vs-DEFECTED
+DISCRIMINATOR.** All 14 zero-grain samples (13 Z cells across both grids + the
+a15 c_imp 0.4 price-route melt) have **f_FK between 0.4% and 37%** — they are
+not crystals carrying defects, most of their vertices are locally illegal.
+crystal_grains gates on imp = 0, so f_reg ≤ f_FK identically; the RATIO is
+what separates the phases:
+  zero-grain states: f_reg/f_FK = 0.000–0.103 (mostly exactly 0)
+  budget-gated dilute crystals: 0.988 / 0.987 / 1.000
+Sharpest case: the a15 c_imp 0.4 melt has f_FK = 37.3% — as high as the best Z
+alloy — with **f_reg = 0.00%**: a third of its vertices sit in perfect
+Frank-Kasper shells and not one is in registry. Local FK legality carries no
+information about crystallinity.
+**DO NOT REPORT f_e INSTEAD OF f_FK.** Z̄ ≈ 13.4 amplifies: f_FK ≈ f_e^Z̄, so
+the melts' reassuring-looking f_e = 72–93% corresponds to f_FK = 0.4–37%.
+Against that scattered null, obs/null < 1 for the percolated λ=0.2 melts
+(0.33–0.73: illegal edges spread over MORE vertices than chance) and ≥ 1 for
+the dispersed and crystalline states (1.01–1.13) — an independent confirmation
+of the frac_top1 morphology, from a statistic that never looks at complexes.
+
 **PIN CALIBRATION (worth reusing).** At fixed f0 both pins are the SAME
 quadratic in f3, joint stiffness c_eff = A + B(f0/f3_ref)²; f0 then follows
 along the flat line f0 = f3(6/e_tar − 1), so **A (num_facets_coef) is the only
