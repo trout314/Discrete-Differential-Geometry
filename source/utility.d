@@ -1907,3 +1907,142 @@ unittest
     assert(f.length == 3);
     assert(f.find([4, 4]) is null);
 }
+
+/*******************************************************************************
+Reusable open-addressed map for the per-proposal degree deltas.
+
+`sampler.blockDegreeDeltas` / `speculativeBlockDelta` / `potentialBlockDelta`
+built four builtin AAs (`int[Vertex[2]] eDelta`, `int[Vertex] vDelta`,
+`int[Vertex] dn6`, `int[Vertex] dm`) on EVERY block-move proposal. A
+frame-pointer `sample` profile of the contract/split channel attributed 47% of
+the whole run to those two functions, of which ~19 points was
+`_d_isbaseof2` -- the TypeInfo dynamic-cast + mangled-name string compare that
+a builtin AA performs per hash and per equality test on a static-array key.
+
+Linear scan is not the answer here (unlike `PairTable`): a block move touches
+hundreds of edges, so an O(n^2) scan would be worse than the AA. This is a
+power-of-two open-addressed table with linear probing and an integer hash --
+no TypeInfo, no allocation, O(1) per operation.
+
+Instances are meant to be `static` (thread-local) in the caller and REUSED:
+`reset()` bumps a generation counter instead of clearing the slots, so a call
+costs nothing to start. Zeroing the tables per call would defeat the purpose
+-- at these capacities that is tens of KB of memset per proposal.
+
+Iteration is by insertion order over `length` entries, which is what the
+callers need (they walk the deltas once).
+*/
+struct DeltaMap(Key, Value, size_t slots)
+{
+    static assert(slots >= 8 && (slots & (slots - 1)) == 0,
+        "slots must be a power of two");
+    import std.traits : isStaticArray;
+
+    private Key[slots] keys_;
+    private Value[slots] vals_;
+    private uint[slots] stamp_;      // slot live iff stamp_[i] == gen_
+    private uint[slots] order_;      // live slots, in insertion order
+    private uint gen_ = 0;
+    private uint n_ = 0;
+
+    /// Forget every entry in O(1). Slots are not touched.
+    void reset() { ++gen_; n_ = 0; if (gen_ == 0) { stamp_[] = 0; gen_ = 1; } }
+
+    private static size_t mix(const Key k) pure nothrow @nogc
+    {
+        ulong h;
+        static if (isStaticArray!Key)
+        {
+            h = (cast(ulong) cast(uint) k[0] << 32) ^ cast(uint) k[1];
+            static if (Key.length > 2)
+                foreach (i; 2 .. Key.length) h = h * 0x100000001b3UL ^ cast(uint) k[i];
+        }
+        else
+            h = cast(uint) k;
+        h ^= h >>> 33; h *= 0xff51afd7ed558ccdUL;
+        h ^= h >>> 33; h *= 0xc4ceb9fe1a85ec53UL;
+        h ^= h >>> 33;
+        return cast(size_t)(h & (slots - 1));
+    }
+
+    /// Pointer to the value for `k`, inserting `Value.init` if absent.
+    /// Asserts rather than looping forever if the table is saturated; callers
+    /// size `slots` from the move's own bound (6 edges / 4 vertices per tet).
+    Value* require(const Key k) return
+    {
+        assert(n_ < slots - 1, "DeltaMap saturated -- raise slots");
+        auto i = mix(k);
+        while (stamp_[i] == gen_)
+        {
+            if (keys_[i] == k) return &vals_[i];
+            i = (i + 1) & (slots - 1);
+        }
+        stamp_[i] = gen_; keys_[i] = k; vals_[i] = Value.init;
+        order_[n_++] = cast(uint) i;
+        return &vals_[i];
+    }
+
+    /// Value for `k`, or `fallback`. Mirrors `aa.get(k, fallback)`.
+    Value get(const Key k, Value fallback) const
+    {
+        auto i = mix(k);
+        while (stamp_[i] == gen_)
+        {
+            if (keys_[i] == k) return vals_[i];
+            i = (i + 1) & (slots - 1);
+        }
+        return fallback;
+    }
+
+    /// `k in map`, as a bool.
+    bool has(const Key k) const
+    {
+        auto i = mix(k);
+        while (stamp_[i] == gen_)
+        {
+            if (keys_[i] == k) return true;
+            i = (i + 1) & (slots - 1);
+        }
+        return false;
+    }
+
+    uint length() const { return n_; }
+    Key keyAt(uint j) const { return keys_[order_[j]]; }
+    ref inout(Value) valAt(uint j) inout { return vals_[order_[j]]; }
+}
+
+///
+unittest
+{
+    // matches int[int[2]] / int[int] semantics, and reset() really clears
+    DeltaMap!(int[2], int, 64) e;
+    e.reset();
+    foreach (i; 0 .. 20)
+    {
+        int[2] k = [i % 7, i % 5];
+        *e.require(k) += 1;
+    }
+    int[int[2]] want;
+    foreach (i; 0 .. 20)
+    {
+        int[2] k = [i % 7, i % 5];
+        want[k] = want.get(k, 0) + 1;
+    }
+    assert(e.length == want.length);
+    foreach (j; 0 .. e.length)
+        assert(e.valAt(j) == want[e.keyAt(j)]);
+    assert(e.get([99, 99], -1) == -1);
+    assert(e.has([0, 0]) && !e.has([99, 99]));
+
+    e.reset();
+    assert(e.length == 0);
+    assert(!e.has([0, 0]));
+    assert(e.get([0, 0], -7) == -7);
+
+    // scalar keys, and probing under collisions
+    DeltaMap!(int, int, 8) v;
+    v.reset();
+    foreach (i; 0 .. 6) *v.require(i * 8) = i;   // all collide mod 8 pre-mix
+    assert(v.length == 6);
+    foreach (i; 0 .. 6) assert(v.get(i * 8, -1) == i);
+}

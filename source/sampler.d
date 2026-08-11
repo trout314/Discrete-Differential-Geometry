@@ -871,12 +871,17 @@ real potentialHingeDelta(Vertex)(
 // probability; revisit if a profile ever says otherwise.
 
 /// Edge/vertex degree deltas induced by (removedFacets, addedFacets).
-private void blockDegreeDeltas(Vertex)(
+/// Degree deltas of a block move. The tables are passed in (and are meant to
+/// be `static` in the caller) so a proposal allocates nothing: see
+/// utility.DeltaMap for why these stopped being builtin AAs.
+private void blockDegreeDeltas(Vertex, ET, VT)(
     const(Vertex[4])[] removedFacets,
     const(Vertex[4])[] addedFacets,
-    out int[Vertex[2]] eDelta,
-    out int[Vertex] vDelta)
+    ref ET eDelta,
+    ref VT vDelta)
 {
+    eDelta.reset();
+    vDelta.reset();
     static immutable int[2][6] pairIdx =
         [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]];
     void tally(const(Vertex[4])[] facets, int sign)
@@ -892,10 +897,10 @@ private void blockDegreeDeltas(Vertex)(
                     e[0] = e[1];
                     e[1] = tmp;
                 }
-                eDelta[e] = eDelta.get(e, 0) + sign;
+                *eDelta.require(e) += sign;
             }
             foreach (v; t)
-                vDelta[v] = vDelta.get(v, 0) + sign;
+                *vDelta.require(v) += sign;
         }
     }
     tally(removedFacets, -1);
@@ -912,8 +917,10 @@ real speculativeBlockDelta(Vertex, P)(
     P params)
 {
     enum dim = 3;
-    int[Vertex[2]] eDelta;
-    int[Vertex] vDelta;
+    // reused across proposals (thread-local); sized from the move's own bound
+    // of 6 edges / 4 vertices per touched tet
+    static DeltaMap!(Vertex[2], int, 4096) eDelta;
+    static DeltaMap!(Vertex, int, 2048) vDelta;
     blockDegreeDeltas!Vertex(removedFacets, addedFacets, eDelta, vDelta);
 
     long f3 = cast(long) mfd.fVector[dim]
@@ -923,8 +930,10 @@ real speculativeBlockDelta(Vertex, P)(
     long sqE = cast(long) mfd.totalSquareDegree(1);
     long sqV = cast(long) mfd.totalSquareDegree(0);
 
-    foreach (e, d; eDelta)
+    foreach (j; 0 .. eDelta.length)
     {
+        immutable e = eDelta.keyAt(j);
+        immutable d = eDelta.valAt(j);
         if (d == 0)
             continue;
         immutable long old = cast(long) mfd.degreeOrZero!1(e[]);
@@ -934,8 +943,10 @@ real speculativeBlockDelta(Vertex, P)(
         if (old > 0 && nw == 0) --f1;
         sqE += nw * nw - old * old;
     }
-    foreach (v, d; vDelta)
+    foreach (j; 0 .. vDelta.length)
     {
+        immutable v = vDelta.keyAt(j);
+        immutable d = vDelta.valAt(j);
         if (d == 0)
             continue;
         Vertex[1] vs = [v];
@@ -968,14 +979,18 @@ real potentialBlockDelta(Vertex)(
 {
     import std.algorithm : canFind;
 
-    int[Vertex[2]] eDelta;
-    int[Vertex] vDelta;
+    static DeltaMap!(Vertex[2], int, 4096) eDelta;
+    static DeltaMap!(Vertex, int, 2048) vDelta;
     blockDegreeDeltas!Vertex(removedFacets, addedFacets, eDelta, vDelta);
 
-    int[Vertex] dn6;
-    int[Vertex] dm;
-    foreach (e, d; eDelta)
+    static DeltaMap!(Vertex, int, 2048) dn6;
+    static DeltaMap!(Vertex, int, 2048) dm;
+    static DeltaMap!(Vertex, bool, 2048) affected;
+    dn6.reset(); dm.reset(); affected.reset();
+    foreach (j; 0 .. eDelta.length)
     {
+        immutable e = eDelta.keyAt(j);
+        immutable d = eDelta.valAt(j);
         if (d == 0)
             continue;
         immutable long old = cast(long) mfd.degreeOrZero!1(e[]);
@@ -986,27 +1001,26 @@ real potentialBlockDelta(Vertex)(
             continue;
         foreach (v; e)
         {
-            dn6[v] = dn6.get(v, 0) + d6;
-            dm[v] = dm.get(v, 0) + dI;
+            *dn6.require(v) += d6;
+            *dm.require(v) += dI;
+            affected.require(v);
         }
     }
 
-    bool[Vertex] affected;
-    foreach (v, d; dn6) affected[v] = true;
-    foreach (v, d; dm) affected[v] = true;
-    foreach (v; createdVerts) affected[v] = true;
-    foreach (v; removedVerts) affected[v] = true;
+    foreach (v; createdVerts) affected.require(v);
+    foreach (v; removedVerts) affected.require(v);
 
     // See potentialBistellarDelta: created/removed vertices need no special
     // case, their dm entries already carry the full change.
     long dSumM = 0;
-    foreach (v, d; dm) dSumM += d;
+    foreach (j; 0 .. dm.length) dSumM += dm.valAt(j);
     st.lastDSumM = dSumM;
     if (commit) st.sumM += dSumM;
 
     real dS = 0;
-    foreach (v, _; affected)
+    foreach (j; 0 .. affected.length)
     {
+        immutable v = affected.keyAt(j);
         immutable isCreated = createdVerts.canFind(v);
         immutable isRemoved = removedVerts.canFind(v);
         immutable long oldN6 = st.n6.get(v, 0);
