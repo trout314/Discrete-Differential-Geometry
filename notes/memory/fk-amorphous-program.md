@@ -260,6 +260,61 @@ one. Resumes are NOT bit-continuations (fresh RNG, ratchet record re-inits),
 and `--f3-target` must be passed explicitly or the driver re-pins to the
 snapshot's own f3.
 
+## 10. THE EDQ ROUTE, AND WHEN THE CHANNEL EARNS ITS COST (2026-08-12)
+
+Objective: volume pin + flat global pin + EDQ (per-edge Σ(deg−ē*)²), wired as
+hinge_degree_target_coef = λ·ē*/6. a15, f3_ref = 5750 with f0 FREE — the best
+legal point (f0 1009, E6 705) is only **+0.05 quanta** off flat, an unusually
+well-matched target.
+
+**MELT:** λ_EDQ ∈ {0.05,0.1,0.2,0.35} all melt a15 COMPLETELY — f_FK = 0.00%,
+43–68% of edges illegal. f0 relaxes 1000→1010 via the channel and Z̄ lands at
+13.398–13.400 (flat target) even in the melt.
+
+**RAMP λ 0.1 → X over 105k sweeps then hold, cs = 0, 150k total:**
+
+| X | 2 | 4 | 8 | 16 | 32 |
+|---|---|---|---|---|---|
+| f_FK | **61.8%** | 52.4 | 45.5 | 35.9 | 19.4 |
+| n_ill | 305 | 390 | 501 | 654 | 899 |
+
+**f_FK DECREASES monotonically with λ** — the opposite of the prediction.
+Best EDQ state overall: the earlier λ→2 arm, f_FK 64.7%, 0 grains, ē +0.05 q.
+
+**CAUSE: KINETIC ARREST, and EDQ prices the TRANSITION STATE.** Every 2→3
+*creates* a degree-3 edge — that is what the move is — and EDQ charges
+3.767λ for it (120 at λ=32). Late-window accepted 2→3: 3171 (λ2), 93 (λ4),
+**0** (λ8), 16 (λ16), **0** (λ32). Raising λ raises the barrier faster than it
+deepens the well. **DESIGN ERROR (made TWICE this session): a fixed-duration
+ramp to a higher ceiling is a STEEPER ramp — λ→32 crosses λ=2 at sweep 6000
+where λ→2 spends 105k there. Index schedules to the COUPLING, not to sweeps.**
+
+**THE CHANNEL UNFREEZES A QUENCHED GLASS (the sharpest channel result yet):**
+restart the λ8 / λ32 finals at constant λ, 15k sweeps:
+
+| arm | n_ill | 2→3 acc | contract/split acc |
+|---|---|---|---|
+| λ8 cs=0 | 501 → **501** | **0** | 0 |
+| λ8 cs=.05 | 501 → **464** | 14 | **69/70** |
+| λ32 cs=0 | 899 → **899** | **0** | 0 |
+| λ32 cs=.05 | 899 → **815** | 1 | **76/75** |
+
+Controls accept **literally zero moves of any type** in 15k sweeps. A
+contraction has no obligation to pass through a deg-3 edge (ring edges drop
+one, spokes merge to deg+deg−4, both can land in {5,6}), so it walks around an
+obstruction the Pachner sector cannot cross AT ANY PRICE. It also RE-ENABLES
+the Pachner sector (14 2→3 fire after the channel rearranges). Slow though —
+~70 contractions per 15k sweeps, a bypass not a highway.
+
+**UNIFYING STATEMENT: the channel earns its cost exactly when the objective has
+priced the Pachner pathway out of reach** — by a μ fugacity on the deg-3 chords
+it needs (+17 points, §8), or by an EDQ penalty on the deg-3 edge it must
+transiently create (motion vs total arrest, here). On a MELT, where 2→3 is
+cheap and plentiful, it is redundant (equal-λ n_ill within 1–2% of control).
+
+μ-route 86.6% vs EDQ-route 64.7%, and now we know why: **μ prices DEFECTS,
+EDQ prices the MOVE THAT REMOVES THEM.**
+
 ## 9. IS f_FK = 100% COMPATIBLE WITH BOTH PINS? YES, up to an irreducible bit
 
 All edges in {5,6} ⟹ every link is a (5,6)-triangulation of S² (fullerene

@@ -92,6 +92,15 @@ def main():
                     help="mean-edge-degree target of the flat pin")
     ap.add_argument("--cn", type=float, default=0.1, help="volume-pin coef")
     ap.add_argument("--nh", type=float, default=30.0, help="flat-pin coef")
+    ap.add_argument("--edq", type=float, nargs=2, default=(0.0, 0.0),
+                    help="lambda_EDQ ramp (start end) for the PER-EDGE term "
+                         "sum_e (deg(e) - e_target)^2, wired as "
+                         "hinge_degree_target_coef = lambda * e_target / 6 "
+                         "(the dope_hold convention). This is the knob that "
+                         "prices each edge's own deviation from flat, as "
+                         "opposed to nh which prices only the GLOBAL mean. "
+                         "Never numerically comparable to the lambda of the "
+                         "full action (notes/CONVENTIONS.md).")
     ap.add_argument("--zleg", type=float, nargs=2, default=(0.0, 2.0),
                     metavar=("LO", "HI"), help="hub penalty ramp")
     ap.add_argument("--mu-ill", type=float, nargs=2, default=(0.5, 4.0),
@@ -129,6 +138,11 @@ def main():
                          "saves .final.mfd at the end, so an interrupt would "
                          "otherwise leave the annealed state unrecoverable "
                          "(the .obs.jsonl trajectory survives either way).")
+    ap.add_argument("--no-hastings", action="store_true",
+                    help="DISABLE the bistellar proposal-asymmetry (Hastings) "
+                         "correction. It is on by default and you want it on; "
+                         "this exists only to reproduce chains recorded before "
+                         "the fix. See ManifoldSampler.set_bistellar_hastings.")
     ap.add_argument("--seed", type=int, default=20260810)
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
@@ -141,8 +155,10 @@ def main():
         num_facets_target=f3_target, num_facets_coef=args.cn,
         hinge_degree_target=args.e_target, num_hinges_coef=args.nh,
         hinge_degree_variance_coef=0.0, codim3_degree_variance_coef=0.0,
-        hinge_degree_target_coef=0.0, codim3_degree_target_coef=0.0)
+        hinge_degree_target_coef=args.edq[0] * args.e_target / 6.0,
+        codim3_degree_target_coef=0.0)
     s = ddg.ManifoldSampler(mfd, params)
+    s.set_bistellar_hastings(not args.no_hastings)
     if args.cs > 0:
         s.set_contract_split(args.cs, args.max_ring)
     v = s.manifold
@@ -152,6 +168,8 @@ def main():
             "e_target": args.e_target, "cn": args.cn, "nh": args.nh,
             "zleg": list(args.zleg), "mu_ill": list(args.mu_ill),
             "cimp": args.cimp, "cs": args.cs, "max_ring": args.max_ring,
+            "edq": list(args.edq),
+            "bistellar_hastings": not args.no_hastings,
             "ratchet_slack": args.ratchet_slack, "budget": args.budget,
             "sweeps": args.sweeps, "hold": args.hold, "seed": args.seed,
             "e_flat": E_FLAT}
@@ -162,12 +180,18 @@ def main():
 
     ramp_end = args.sweeps * (1.0 - args.hold)
     t0 = time.time()
-    record, cap_now = None, None
+    record, cap_now, edq_set = None, None, None
     while rec.sw < args.sweeps:
         u = min(1.0, rec.sw / ramp_end) if ramp_end > 0 else 1.0
         zleg = args.zleg[0] + u * (args.zleg[1] - args.zleg[0])
         mu = args.mu_ill[0] + u * (args.mu_ill[1] - args.mu_ill[0])
+        edq = args.edq[0] + u * (args.edq[1] - args.edq[0])
         s.set_n6_potential(zleg, args.cimp, tilt=[0.0] * 5, imp_lin=mu)
+        # only on change: the setter invalidates the cached objective, forcing
+        # a full O(N) recompute on the next step
+        if edq != edq_set:
+            s.set_hinge_degree_target_coef(edq * args.e_target / 6.0)
+            edq_set = edq
         # the gate needs the vertex-potential state, so (re)apply it AFTER
         # every set_n6_potential call, not once at sweep 0
         if args.ratchet_slack >= 0:
@@ -181,7 +205,7 @@ def main():
 
         n_ill_e, n_fk, n_hub, n_imp, f0 = census(v)
         f1, f3 = int(v.f_vector[1]), int(v.f_vector[3])
-        row = {"sw": rec.sw, "zleg": zleg, "mu_ill": mu,
+        row = {"sw": rec.sw, "zleg": zleg, "mu_ill": mu, "edq": edq,
                "f0": f0, "f1": f1, "f3": f3,
                "e_mean": 6.0 * f3 / f1, "zbar": 2.0 * f1 / f0,
                "n_ill_e": n_ill_e, "n_fk": n_fk, "n_hub": n_hub,
@@ -200,7 +224,7 @@ def main():
             v.save(args.out + ".snap.mfd",
                    [f"periodic snapshot at sweep {rec.sw}",
                     f"n_ill_e={n_ill_e} f_legalvert={(f0 - n_imp) / f0:.4f}"])
-        print(f"sw {rec.sw:6d} zleg {zleg:4.2f} mu {mu:4.2f} | "
+        print(f"sw {rec.sw:6d} edq {edq:5.3f} zleg {zleg:4.2f} mu {mu:4.2f} | "
               f"f0 {f0:5d} f3 {f3:6d} e {row['e_mean']:.5f} "
               f"Zbar {row['zbar']:.4f} | n_ill_e {n_ill_e:5d} "
               f"hubs {n_hub:4d} imp {n_imp:5d} "
