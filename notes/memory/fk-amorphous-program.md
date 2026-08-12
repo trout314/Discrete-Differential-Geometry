@@ -215,9 +215,75 @@ local registry than the a15 one. Prefer a15 as the amorphous seed.
   for a marginal gain at ~500 illegal edges. Save the channel for the endgame
   where 2→3 can only nibble; the bulk descent is cheaper with cs = 0.
 
-**NEXT:** the μ = 2 cells had not converged — longest-run-wins. Run 200k+
-sweeps at μ = 2 const, then switch on cs for the endgame.
 Figure: data/fk_amorph/ratchet/fk_ratchet.png; data under data/fk_amorph/ratchet.
+
+## 8. THE CHANNEL IS THE WHOLE GAME (200k sweeps, both hosts, data/fk_amorph/long)
+
+After the D optimisation made cs affordable (~3.1× on the channel: PairTable
+1.11 × DeltaMap 1.93 × countCycles memo 1.43), six chains at 200k sweeps,
+μ = 2 const, zleg = 0, **cs = 0.05 vs cs = 0 MATCHED CONTROLS** from the same
+start and seed:
+
+| | a15 ctrl | a15 cs.05 ×3 seeds | z ctrl | z cs.05 |
+|---|---|---|---|---|
+| f_FK | 69.44% | **86.11/86.41/86.61%** | 66.03% | **82.13%** |
+| illegal edges | 253 | 93/95/103 | 425 | 204 |
+| hubs | 84 | 68/72/78 | 120 | 97 |
+| f_reg | 2.5%, 0 grains | 5.0–5.2%, **0 grains** | 15.2%, 0 grains | 19.8%, 0 grains |
+
+**+17 points on a15, +16 on Z; three seeds agree to 0.5 points, so it is a
+plateau not luck. f_reg stayed at ZERO GRAINS throughout — legality and
+crystallinity did NOT rise together, which was the real risk.**
+
+**MECHANISM, sharpest form: the Pachner-only control removed ZERO deg-3 edges
+in 200k sweeps (62 → 63) while the channel cut them 5-fold (62 → 11–22).**
+deg-4: 231 → 185 (control) vs 71–91 (channel). §3 confirmed at length on two
+hosts — a 2→3 nibbles one quantum and cannot clear a deg-3 chord; a
+contraction takes 4–5 illegal edges at once and eats the structures deg-3
+lives in. Hubs FALL with the channel and RISE without it, so it improves
+FK-coordination and edge-legality together (unlike the stiffening ramp).
+
+Composition at the end: Z12-rich 485:150:93:73 at Z̄ 13.3988 vs the flat
+target 13.39733 — an amorphous FK phase structurally unlike A15's 250:750:0:0.
+CAVEAT: Z keeps 4× more local registry than a15 (f_reg/f_FK 0.19 vs 0.06);
+prefer a15 as the amorphous seed.
+
+**The states are now DILUTE**: a15_cs05_nr at sweep 160k has 37 complexes of
+which 21 are the minimal 2-vertex object, largest 12 — so the dilute-gas
+species instruments apply to an AMORPHOUS host for the first time.
+Catalog: data/viz/a15_cs05_nr/index.html. Census tool:
+`scripts/defect_dynamics/amorph_census.py`.
+
+OPERATIONAL: multi-hour runs launched inside a harness background task get
+KILLED when the task is reaped — use nohup + disown. `--snap-every` saved this
+one. Resumes are NOT bit-continuations (fresh RNG, ratchet record re-inits),
+and `--f3-target` must be passed explicitly or the driver re-pins to the
+snapshot's own f3.
+
+## 9. IS f_FK = 100% COMPATIBLE WITH BOTH PINS? YES, up to an irreducible bit
+
+All edges in {5,6} ⟹ every link is a (5,6)-triangulation of S² (fullerene
+dual), Euler forces exactly 12 deg-5 edges per vertex, so the ENTIRE legal
+f-vector lattice is two integers (f0, E6):
+
+    E5 = 6 f0,  f3 = 5 f0 + E6,  f1 = 6 f0 + E6,  Z = 12 + n6(v).
+
+**e\* is IRRATIONAL and ē = 6f3/f1 is rational, so the flat pin is never
+exactly zero for ANY triangulation, legal or not** — a property of the target,
+not of legality. Shifting E6 by 1 moves ē by exactly one quantum 6f0/f1², so
+E6 can always be chosen to land ē within HALF a quantum of e\* while f3 hits
+the volume target EXACTLY. Best points: a15 m5 (1000, 699) → +0.33 q; a15
+f0=1008 (1008, 704) → −0.26 q; z m6 (1512, 1056) → −0.38 q. Flat-pin penalty
+at nh=30 is then 0.06–0.14, against ~4–8 for one flicker.
+
+LOCAL CONSTRAINT: **n6(v) ≠ 1** (no fullerene has exactly one hexagon), so
+admissible n6 is {0,2,3,4,5,…}; n̄6 ≈ 1.397 needs a mixture, which sits
+comfortably between C15 (1.333) and A15 (1.5). VERIFIED IN DATA: n6 = 1 occurs
+ZERO times in every state censused.
+
+NOTE the 200k a15 chains inherited f3_ref = 5746, whose best legal point is
++1.74 q off e\*; **f3_ref = 5744 is the matched target** (costs ~0.9 vs 0.06 in
+flat penalty — harmless, but worth fixing for a definitive run).
 
 Related: [[quanta-strain-heal]], [[fk-move-search]], [[worm-sampler-program]], [[defect-travel]],
 [[crystal-library-gas-campaign]],
