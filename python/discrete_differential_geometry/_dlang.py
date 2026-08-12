@@ -845,6 +845,8 @@ _lib.ddg_sampler_set_contract_split.argtypes = [
     ctypes.c_void_p, ctypes.c_double, ctypes.c_int]
 _lib.ddg_sampler_set_contract_split.restype = ctypes.c_int
 _lib.ddg_sampler_set_contract_split.errcheck = _check_int
+_lib.ddg_sampler_set_bistellar_hastings.argtypes = [ctypes.c_void_p, ctypes.c_int]
+_lib.ddg_sampler_set_bistellar_hastings.restype = ctypes.c_int
 _lib.ddg_cycle_memo_stats.argtypes = [ctypes.POINTER(ctypes.c_ulonglong),
                                       ctypes.POINTER(ctypes.c_ulonglong)]
 _lib.ddg_cycle_memo_stats.restype = ctypes.c_int

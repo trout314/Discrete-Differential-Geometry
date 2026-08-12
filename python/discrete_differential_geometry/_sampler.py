@@ -759,6 +759,28 @@ class ManifoldSampler:
             self._handle, *[ctypes.byref(v) for v in vals])
         return tuple(int(v.value) for v in vals)
 
+    def set_bistellar_hastings(self, on: bool = True) -> None:
+        """Toggle the bistellar proposal-asymmetry (Hastings) correction.
+
+        ON by default, and you almost certainly want it on. The proposal
+        reaches a move's center from any of its ``d`` incident facets and then
+        keeps it with probability ``min(1, 2/d)``, which cancels ``d`` for
+        every move EXCEPT ``1->4`` (``d = 1``, where the factor clips at 1).
+        So ``1->4`` is proposed at half the rate of its reverse, and without
+        the correction the chain is stationary for ``exp(-S)`` times a
+        spurious vertex fugacity of ~2 per vertex -- the "ln 2 anti-vertex
+        potential" seen as an f0 offset in earlier campaigns.
+
+        This is unrelated to ``run(exact=True)`` / ``importance_weight()``,
+        which correct by counting ALL valid moves (O(N)). The asymmetry here
+        is a closed-form factor in f3 alone, so it costs nothing.
+
+        Turn it OFF only to reproduce chains recorded before the fix; results
+        will differ from corrected runs by construction.
+        """
+        _lib.ddg_sampler_set_bistellar_hastings(self._handle, 1 if on else 0)
+        self._recorded_bistellar_hastings = bool(on)
+
     def set_illegal_budget(self, cap: int) -> None:
         """Cap the number of illegal edges (degree outside {5, 6}); dim = 3.
 

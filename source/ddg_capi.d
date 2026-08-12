@@ -1650,6 +1650,14 @@ private struct SamplerState
     // tryContractSplit. Not cocycle-safe (gated off in mcmcStep).
     ContractSplitConfig csCfg;
 
+    /// Apply the bistellar proposal-asymmetry (Hastings) correction. Default
+    /// TRUE = correct. See the derivation at the acceptance test in
+    /// sampler.mcmcStep: the 1<->4 pair is proposed asymmetrically by a
+    /// factor of ~2 and 2<->3 by ~1+2e-4, so with this off the chain is
+    /// stationary for exp(-S) times a spurious vertex fugacity. Settable to
+    /// false ONLY to reproduce chains recorded before the fix.
+    bool bistellarHastings = true;
+
     // f0 worm channel (scheme C; dim=3 only): extended-ensemble vertex
     // removal/insertion with a frozen umbrella table. See sampler.wormF0Episode.
     // Not cocycle- or ledger-safe (gated in the episode entry point).
@@ -1977,7 +1985,8 @@ private long runSamplerDim3(SamplerState* s, long numMoves,
                     (s.dim == 3 && s.wormCfg.prob > 0) ? &s.deg4Edges : null,
                     (s.dim == 3 && s.csCfg.prob > 0) ? &s.csCfg : null,
                     (s.dim == 3 && s.illegalBudget.enabled)
-                        ? &s.illegalBudget : null))
+                        ? &s.illegalBudget : null,
+                    s.bistellarHastings))
             {
                 accepted++;
                 acceptedSinceWriteback++;
@@ -3024,6 +3033,16 @@ through both directions. The channel is automatically inert while six-flip
 logging is on. Set prob = 0 (default) to disable. See
 sampler.ContractSplitConfig / tryContractSplit.
 */
+/// Toggle the bistellar proposal-asymmetry (Hastings) correction.
+/// Default on; turn it OFF only to reproduce pre-fix chains.
+extern(C) int ddg_sampler_set_bistellar_hastings(void* sampler_handle, int on) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    (cast(SamplerState*) sampler_handle).bistellarHastings = (on != 0);
+    return 0;
+}
+
 extern(C) int ddg_sampler_set_contract_split(void* sampler_handle,
     double prob, int max_ring) nothrow
 {

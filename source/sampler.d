@@ -4746,7 +4746,8 @@ bool mcmcStep(Vertex, P)(
     WormConfig* worm = null,
     Deg3Set!Vertex* deg4Set = null,
     ContractSplitConfig* contractSplit = null,
-    IllegalBudget* budget = null)
+    IllegalBudget* budget = null,
+    bool bistellarHastings = true)
 {
     enum dim = 3;
     enum nVerts = dim + 1;
@@ -5081,7 +5082,37 @@ bool mcmcStep(Vertex, P)(
         // detailed balance; the cap is just an infinite energy).
         if (budget !is null && potState !is null && budget.blocks(*potState))
             return false;
+        // --- Hastings correction for the bistellar proposal asymmetry ---
+        // This loop reaches a center of degree d from any of its d facets and
+        // then keeps it with probability min(1, 2/d), so
+        //     q(center) = d * (1/(2^(dim+1)-1) / f_dim) * min(1, 2/d),
+        // which is the SAME for every d >= 2 -- the 2/d factor is there
+        // precisely to cancel the degree -- but clips at 1 for d = 1, i.e.
+        // for the 1->4 move whose center is the whole facet. So 1->4 is
+        // proposed at HALF the rate of its reverse.
+        //
+        // With c = 1 when the center is a full facet (d = 1) and c = 2
+        // otherwise, and the reverse move's center being the coCenter, the
+        // ratio q(y->x)/q(x->y) is (c_rev/c_fwd) * (f_dim / f_dim_after).
+        // That is ~2 for 1->4 and ~1/2 for 4->1 (the "ln 2 anti-vertex
+        // potential" of notes/memory/volume-pin-defects.md, here derived
+        // rather than inferred), and f3/(f3 +- 1) ~ 1 + 2e-4 for 2<->3.
+        //
+        // Without it the chain is stationary for exp(-S) times a spurious
+        // vertex fugacity, which showed up as a circulating f0 current once
+        // the exactly-weighted contract/split channel connected the same
+        // configurations (~2.2 vertices/sweep, measured).
         real logAlpha = -deltaObj;
+        if (bistellarHastings)
+        {
+            immutable long f3now = cast(long) mfd.fVector[dim];
+            immutable long f3new =
+                f3now + 2L * cast(long) bm.center.length - 2L - dim;
+            immutable real cFwd = (bm.center.length == dim + 1) ? 1.0L : 2.0L;
+            immutable real cRev = (bm.coCenter.length == dim + 1) ? 1.0L : 2.0L;
+            logAlpha += log((cRev / cFwd)
+                            * (cast(real) f3now / cast(real) f3new));
+        }
 
         if (logAlpha >= 0 || uniform01 <= exp(logAlpha))
         {
