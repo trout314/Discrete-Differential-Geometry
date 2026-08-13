@@ -27,9 +27,26 @@ Historical traps this design evolved through (kept as warnings):
     ~ class multiplicity (measured forward rates exceeding the
     single-transition proposal bound are the tell).
 
+THE SENSITIVE DIAGNOSTIC is --circulation: with BOTH f0-changing families
+live (the channel and the bistellar 1<->4 pair, the latter independently
+Hastings-corrected), stationarity forces
+    net channel f0 flux  +  net bistellar f0 flux  =  df0/dt = 0,
+and net flux through EITHER family alone must vanish -- a family is closed
+under reversal, so a biased-but-stationary chain still shows zero net flux
+through it. A nonzero circulation is therefore two families DISAGREEING
+about the same distribution, which is exactly what a wrong Hastings factor
+in one of them produces. It is far more sensitive than any equilibrium
+comparison (an O(1) rate imbalance moves <f0> by well under one sigma but
+shows up as many sigma of circulation), and --max-ring scans it over the
+cycle-length cap, which BISECTS the suspect machinery: maxRing = 3 exercises
+only triangle cycles (a facial one is literally the 1->4 move), while 4..8
+pull in the bounded-DFS / FK-catalog cycle counting that supplies q_rev.
+
 Usage:
     caffeinate -i python scripts/validate_contract_split.py \
         --pair-test [--trials 150000] [--pairs 4]     # the criterion
+    caffeinate -i python scripts/validate_contract_split.py \
+        --circulation [--max-ring 3,4,5,6] [--sweeps 20000]
     caffeinate -i python scripts/validate_contract_split.py \
         [--moves 4000000]                             # A/B diagnostic
 """
@@ -398,6 +415,172 @@ def forensics(X, Y, n_xy, n_yx, trials, pt):
         print(f"    {name:14s} P(L->H)={pLH:.3e}  P(H->L)={pHL:.3e}")
 
 
+def circulation(max_ring, cs_prob, sweeps, chunks, target, cimp,
+                burn_frac=0.25, nh=0.1, seed_moves=20000):
+    """Net f0 flux carried by each family in a stationary mixed chain.
+
+    Returns a dict of per-sweep rates with block errors. The exact identity
+    d f0 = (splits - contracts) + (n_{1->4} - n_{4->1}) is asserted per
+    chunk -- those are the only moves that change f0, so any mismatch is a
+    counter bug, not statistics.
+    """
+    params = ddg.SamplerParams(
+        num_facets_target=target, num_facets_coef=0.05,
+        hinge_degree_target=4.8, num_hinges_coef=nh,
+        hinge_degree_variance_coef=0.0, codim3_degree_variance_coef=0.0,
+        hinge_degree_target_coef=0.0, codim3_degree_target_coef=0.0)
+    m = make_sphere()
+    s = ddg.ManifoldSampler(m, params)
+    if cimp > 0:
+        s.set_n6_potential(0.0, cimp, tilt=[0.0] * 5)
+    s.set_contract_split(cs_prob, max_ring)
+
+    # grow + equilibrate (channel live throughout, so f0 starts stationary)
+    s.run(moves=seed_moves)
+    s.run(sweeps=sweeps * burn_frac)
+
+    def snap():
+        ct, ca, sp, sa, nv = s.contract_split_stats()
+        st = s.get_stats()
+        v = s.manifold
+        return dict(ca=ca, sa=sa, ct=ct, sp=sp, nv=nv,
+                    # index = len(coCenter) - 1: 1->4 puts a single new
+                    # vertex in coCenter (index 0), 4->1 a whole facet (3)
+                    b14=int(st.bistellar_accepts[0]),
+                    b41=int(st.bistellar_accepts[3]),
+                    f0=int(v.f_vector[0]), f3=int(v.num_facets),
+                    tried=int(st.total_tried))
+
+    prev = snap()
+    chan, bist, f0s, f3s, msweeps = [], [], [], [], []
+    per = sweeps * (1.0 - burn_frac) / chunks
+    for _ in range(chunks):
+        s.run(sweeps=per)
+        cur = snap()
+        dchan = (cur["sa"] - prev["sa"]) - (cur["ca"] - prev["ca"])
+        dbist = (cur["b14"] - prev["b14"]) - (cur["b41"] - prev["b41"])
+        df0 = cur["f0"] - prev["f0"]
+        assert df0 == dchan + dbist, (
+            f"f0 bookkeeping broken: df0={df0} chan={dchan} bist={dbist}")
+        nsw = (cur["tried"] - prev["tried"]) / max(1.0, 0.5 *
+                                                   (cur["f3"] + prev["f3"]))
+        chan.append(dchan / nsw)
+        bist.append(dbist / nsw)
+        f0s.append(cur["f0"])
+        f3s.append(cur["f3"])
+        msweeps.append(nsw)
+        prev = cur
+
+    chan = np.array(chan, float)
+    bist = np.array(bist, float)
+    nb = min(20, len(chan))
+    ec = block_err(chan, nb)
+    eb = block_err(bist, nb)
+    tot = prev["ca"] + prev["sa"]
+    return dict(max_ring=max_ring, circ=chan.mean(), circ_err=ec,
+                bist=bist.mean(), bist_err=eb,
+                z=chan.mean() / ec if ec > 0 else float("nan"),
+                f0=float(np.mean(f0s)), f0_sd=float(np.std(f0s)),
+                f3=float(np.mean(f3s)), accepts=tot,
+                acc_rate=tot / max(1, prev["ct"] + prev["sp"]),
+                noValid=prev["nv"], sweeps=float(np.sum(msweeps)))
+
+
+def fugacity(cs_prob, max_ring, sweeps, chunks, target, cimp,
+             burn_frac=0.25, nh=0.1, hdt=4.8, seed_moves=20000,
+             bist_hastings=True):
+    """Spurious vertex fugacity of the channel, read off the equilibrium.
+
+    The base action depends on the f-vector only through (f1, f3), and a
+    3-manifold has f1 = f0 + f3, so
+        mu := dS/df0 |_f3 = 2 nh (f1 - 6 f3 / hdt)
+    is the chemical potential the chain equilibrates against. Two kernels
+    that both target exp(-S) must settle at the same <mu>; a kernel carrying
+    a spurious fugacity z^f0 settles where <mu> is displaced by exactly
+    ln z. So ln z = <mu>(cs_prob) - <mu>(0) reads the missing Hastings
+    factor directly, in nats -- this is the same meter that identified the
+    bistellar 1->4 clip as ln 2.
+    """
+    params = ddg.SamplerParams(
+        num_facets_target=target, num_facets_coef=0.05,
+        hinge_degree_target=hdt, num_hinges_coef=nh,
+        hinge_degree_variance_coef=0.0, codim3_degree_variance_coef=0.0,
+        hinge_degree_target_coef=0.0, codim3_degree_target_coef=0.0)
+    s = ddg.ManifoldSampler(make_sphere(), params)
+    s.set_bistellar_hastings(bist_hastings)
+    if cimp > 0:
+        s.set_n6_potential(0.0, cimp, tilt=[0.0] * 5)
+    if cs_prob > 0:
+        s.set_contract_split(cs_prob, max_ring)
+    s.run(moves=seed_moves)
+    s.run(sweeps=sweeps * burn_frac)
+
+    mus, f0s, f3s = [], [], []
+    per = sweeps * (1.0 - burn_frac) / chunks
+    for _ in range(chunks):
+        s.run(sweeps=per)
+        v = s.manifold
+        f0 = int(v.f_vector[0])
+        f3 = int(v.num_facets)
+        f1 = f0 + f3                      # Euler, closed 3-manifold
+        mus.append(2.0 * nh * (f1 - 6.0 * f3 / hdt))
+        f0s.append(f0)
+        f3s.append(f3)
+    mus = np.array(mus, float)
+    return dict(cs=cs_prob, mu=mus.mean(), mu_err=block_err(mus, 20),
+                f0=float(np.mean(f0s)), f3=float(np.mean(f3s)),
+                bh=bist_hastings)
+
+
+def run_fugacity(probs, max_ring, sweeps, chunks, target, cimp):
+    print(f"\n=== fugacity scan (ring {max_ring}, target f3 {target}, "
+          f"{sweeps} sweeps/setting) ===")
+    print("  ln z = <mu> - <mu>(cs=0); a correct channel gives ln z = 0.")
+    print(f"  {'cs_prob':>8} {'<f0>':>8} {'<f3>':>7} {'<mu> = dS/df0':>22} "
+          f"{'ln z':>18} {'z':>8}")
+    base = None
+    rows = []
+    for p in probs:
+        d = fugacity(p, max_ring, sweeps, chunks, target, cimp)
+        rows.append(d)
+        if base is None:
+            base = d
+            lnz, lnz_err = 0.0, 0.0
+        else:
+            lnz = d["mu"] - base["mu"]
+            lnz_err = math.hypot(d["mu_err"], base["mu_err"])
+        print(f"  {d['cs']:>8.3f} {d['f0']:>8.2f} {d['f3']:>7.1f} "
+              f"{d['mu']:>+14.4f} +- {d['mu_err']:.4f} "
+              f"{lnz:>+11.4f} +- {lnz_err:.4f} {math.exp(lnz):>8.4f}")
+    print("  reference constants: ln 2 = 0.6931, ln 3 = 1.0986, "
+          "ln(3/2) = 0.4055, ln 4 = 1.3863")
+    return rows
+
+
+def run_circulation(rings, cs_prob, sweeps, chunks, target, cimp):
+    print(f"\n=== circulation scan (target f3 {target}, cs_prob {cs_prob}, "
+          f"cimp {cimp}, {sweeps} sweeps/setting) ===")
+    print("  net f0 flux per sweep through each family; both must be 0 in a\n"
+          "  correct stationary chain, and they must cancel.")
+    print(f"  {'ring':>4} {'<f0>':>8} {'<f3>':>7} {'acc':>6} "
+          f"{'channel circ/sweep':>24} {'bistellar/sweep':>20} {'z':>7}")
+    rows = []
+    ok = True
+    for r in rings:
+        d = circulation(r, cs_prob, sweeps, chunks, target, cimp)
+        rows.append(d)
+        print(f"  {d['max_ring']:>4} {d['f0']:>8.2f} {d['f3']:>7.1f} "
+              f"{d['acc_rate']:>6.3f} "
+              f"{d['circ']:>+14.4f} +- {d['circ_err']:.4f} "
+              f"{d['bist']:>+12.4f} +- {d['bist_err']:.4f} "
+              f"{d['z']:>+7.2f}")
+        if abs(d["z"]) > 4.0:
+            ok = False
+    print(f"  {'PASS' if ok else 'FAIL'} "
+          f"(|z| < 4 on every ring cap)")
+    return ok, rows
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--moves", type=int, default=4_000_000)
@@ -405,7 +588,34 @@ def main():
     ap.add_argument("--pair-test", action="store_true")
     ap.add_argument("--trials", type=int, default=60000)
     ap.add_argument("--pairs", type=int, default=3)
+    ap.add_argument("--fugacity", action="store_true",
+                    help="read the channel's spurious vertex fugacity in nats")
+    ap.add_argument("--cs-scan", default="0.0,0.3,0.9,0.99",
+                    help="channel probabilities for --fugacity")
+    ap.add_argument("--circulation", action="store_true",
+                    help="net f0 flux per family (the sensitive diagnostic)")
+    ap.add_argument("--max-ring", default="3,4,5,6",
+                    help="comma-separated ring caps to scan")
+    ap.add_argument("--sweeps", type=int, default=20000)
+    ap.add_argument("--chunks", type=int, default=200)
+    ap.add_argument("--target", type=int, default=240)
+    ap.add_argument("--cs-prob", type=float, default=0.3)
+    ap.add_argument("--cimp", type=float, default=0.0)
     args = ap.parse_args()
+
+    if args.fugacity:
+        probs = [float(x) for x in args.cs_scan.split(",") if x.strip()]
+        rings = [int(x) for x in args.max_ring.split(",") if x.strip()]
+        for r in rings:
+            run_fugacity(probs, r, args.sweeps, args.chunks,
+                         args.target, args.cimp)
+        sys.exit(0)
+
+    if args.circulation:
+        rings = [int(x) for x in args.max_ring.split(",") if x.strip()]
+        ok, _ = run_circulation(rings, args.cs_prob, args.sweeps,
+                                args.chunks, args.target, args.cimp)
+        sys.exit(0 if ok else 1)
 
     if args.pair_test:
         ok = True

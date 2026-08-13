@@ -2076,8 +2076,25 @@ extern(C) long ddg_sampler_run_exact(void* sampler_handle, long num_moves,
 
                 auto bm = mw.mfd.chooseRandomMove(s.unusedVertices[$ - 1], params);
 
-                // Exact Hastings: execute, compute V_after, accept or undo
+                // Exact Hastings: execute, compute V_after, accept or undo.
+                //
+                // chooseRandomMove is NOT uniform over valid moves: it reaches
+                // a center of degree d from any of its d facets and keeps it
+                // with min(1, 2/d), giving weight c = 2 for every d >= 2 but
+                // c = 1 for d = 1, i.e. for the 1->(dim+1) move whose center
+                // is a whole facet. So the proposal is q(m) = c(m)/C with
+                //     C = 2 * (V - f_dim) + 1 * f_dim = 2V - f_dim
+                // (countValidBistellarMoves adds one always-valid facet center
+                // per facet), and the correct factor is
+                //     (c_rev/c_fwd) * (C_before/C_after),
+                // NOT V_before/V_after. Using V alone dropped the c ratio and
+                // left run_exact carrying the very ln-2 anti-vertex fugacity
+                // it exists to remove -- see notes/memory/volume-pin-defects.md
+                // and the derivation in commit e8051df for the same clip in
+                // the mcmcStep loop.
+                immutable f3Before = cast(real) mw.mfd.fVector[dim];
                 immutable vBefore = cast(real) mw.mfd.countValidBistellarMoves;
+                immutable cBefore = 2.0L * vBefore - f3Before;
 
                 mw.mfd.doMove(bm);
                 if (bm.coCenter.length == 1)
@@ -2092,9 +2109,24 @@ extern(C) long ddg_sampler_run_exact(void* sampler_handle, long num_moves,
 
                 real newObjective = mw.mfd.objective(params);
                 real deltaObj = newObjective - currentObjective;
+                immutable f3After = cast(real) mw.mfd.fVector[dim];
                 immutable vAfter = cast(real) mw.mfd.countValidBistellarMoves;
+                immutable cAfter = 2.0L * vAfter - f3After;
 
-                real logAlpha = -deltaObj + log(vBefore) - log(vAfter);
+                real logAlpha;
+                if (s.bistellarHastings)
+                {
+                    immutable cFwd = (bm.center.length == dim + 1) ? 1.0L : 2.0L;
+                    immutable cRev =
+                        (bm.coCenter.length == dim + 1) ? 1.0L : 2.0L;
+                    logAlpha = -deltaObj + log(cBefore) - log(cAfter)
+                        + log(cRev / cFwd);
+                }
+                else
+                {
+                    // pre-fix behaviour, kept only to reproduce old chains
+                    logAlpha = -deltaObj + log(vBefore) - log(vAfter);
+                }
 
                 if ((logAlpha < 0) && (uniform01 > exp(logAlpha)))
                 {

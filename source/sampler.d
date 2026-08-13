@@ -4643,6 +4643,29 @@ private bool tryContractSplit(Vertex, P)(
             clen = kthCycle(adjX[0 .. nL], cs.maxRing, k, cbuf);
             assert(clen >= 3);
         }
+        // Capacity gate, applied SYMMETRICALLY. The reverse contraction
+        // collects star(w) | star(fresh), which is exactly nT + clen tets,
+        // so gating the split on nT alone makes every split with
+        // nT in [STAR_CAP - clen, STAR_CAP) a ONE-WAY move: accepted here,
+        // rejected as noValid on the way back, pumping f0 upward. Gating on
+        // nT + clen makes the two directions see the identical condition
+        // (the contract branch's own gate is nAll = nT + clen < STAR_CAP).
+        // The per-path proposal probability is unaffected -- 1/NX is the
+        // chance of drawing THIS cycle whatever happens to the others -- so
+        // the Hastings factor needs no change; this only turns the
+        // unpairable proposals into self-loops.
+        //
+        // DEFENSIVE ONLY: measurably a no-op, and provably unreachable today.
+        // A vertex link is a triangulated 2-sphere, so F = 2V - 4 (checked:
+        // |star| max 278 against |lk| max 141 on a melted R state). Hence
+        // maxLinkVerts = 32 <=> |star| <= 60, while this window is [90, 96),
+        // so the SYMMETRIC linkOverflow gate above always rejects first. Keep
+        // the check anyway: it stays correct if either cap is ever retuned.
+        if (nT + clen >= STAR_CAP)
+        {
+            cs.noValid++;
+            return false;
+        }
         Vertex[] gamma;
         foreach (i; 0 .. clen)
             gamma ~= linkVerts[cbuf[i]];
