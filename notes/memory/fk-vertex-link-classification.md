@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: a48cb7a2-9bd0-449c-81d5-b74518ecd7cb
-  modified: 2026-08-13T15:15:36.740Z
+  modified: 2026-08-13T15:23:33.682Z
 ---
 
 In a closed 3-manifold triangulation with **all edge degrees in {5,6}**, lk(v) is a
@@ -32,8 +32,10 @@ six-edges at v are **cofacial** (span a triangle with v). In Z12/Z14/Z15/Z16-T_d
 the six-edges at a vertex are pairwise NON-cofacial; from n_6 = 5 upward every
 class has ≥2 cofacial pairs. So the FK list Z12/Z14/Z15/Z16 is exactly the set of
 5/6-links with pairwise non-cofacial six-edges — the non-cofaciality condition is
-what caps n_6 at 4 (verified by enumeration through n_6 = 7; classes 1,0,1,1,2,3,
-6,6 = the C_{20+2n_6} fullerene isomer counts).
+what caps n_6 at 4 (verified by enumeration through n_6 = 8; classes
+1,0,1,1,2,3,6,6,15 = the C_{20+2n_6} fullerene isomer counts). The minimum
+cofacial-pair count rises monotonically past 4 — 2,3,5,6 at n_6 = 5,6,7,8 — so
+the cap is not a near miss further up.
 
 **DELIVERED as `tools/link_classes.py`** (enumerator + fast detector + CLI), wired
 into `fk_skeleton.vertex_class_census(eu, edeg, V, facets=…)` — optional arg, so
