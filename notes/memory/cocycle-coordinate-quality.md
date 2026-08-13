@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: a2047098-7e89-4d8e-b1c5-3231dfa0bf45
-  modified: 2026-08-13T16:27:36.732Z
+  modified: 2026-08-13T16:56:10.883Z
 ---
 
 2026-08-13. Quantified how well-behaved the cocycle coordinates are
@@ -46,11 +46,29 @@ host** (coordinates are fractional), so the old `basis` reported a cubic cell
 for R/σ/μ/Z/C14/C36/P/δ and pushed that into every |k| bin. Whitening recovers
 the true aspect without being told L: R 1.774 → 1.780, C14 1.633 → 1.633,
 σ 1.932 → 1.911, μ 5.379 → 5.525; cubic hosts unchanged.
-**Impact measured** (crude single-snapshot log-log fit of S/S_null over
-k ≤ 2.5, curvature_charge): r_gas exponent 1.579 → 2.241, mgas ab1 (R m4)
-−0.160 → −0.043, c15_gas 0.828 → 0.824 (cubic, null). **So any pre-2026-08-13
-S(k) result on an R host may shift — re-check [[statics-hu-verdict]] and
-[[defect-density-hu]]; A15/C15 results stand.**
+**EXACT SCOPE OF THE FIX (verified):** S_obs and S_null are BIT-IDENTICAL per
+mode whitened vs not (they are built from `frac` and integer n, both untouched);
+only the |k| LABEL of each mode moves (max shift 2.4 units, rank corr 0.90).
+So a derived number moves only insofar as it aggregates over modes by |k|.
+Measured on R m4: shell-binned low-k ratios essentially unchanged (0.0017 vs
+0.0016); a narrow-window per-mode log-log fit swings a lot (r_gas 1.579 →
+2.241) purely because window membership changes. Don't quote the latter kind
+of fit without saying which modes it used.
+
+**R-hosted re-run done same day** — see [[defect-density-hu]]: the Poisson
+verdict SURVIVES (lam=0.40 rigid_charge 0.999±0.026 → 0.980±0.018). The metric
+fix is a few-percent effect on those estimators; the big shifts that showed up
+in the re-run were an unrelated script drift.
+
+**STILL OPEN — a second, PRE-EXISTING frame bug in adjacent scripts.**
+`lattice_basis` returns a Euclidean-reduced basis that is NOT diagonal (R m4
+gives [[4,4,0],[0,4,0],[0,0,4]]), yet `pass2_structure.py`, `carrier_gr.py`
+and `sl_verdict.py` all do `P = np.abs(np.diag(basis))`, `X = frac * P` and
+min-image by P — a SHEAR error on top of the metric error, independent of
+whitening. Correct form is fractional min-image (`d -= np.round(d)`) then
+`d @ basis`, which `curv_scale_real.py` already does. Their g(r) / screening /
+centroid distances on R hosts are wrong pointwise; exponents survive (affine
+bi-Lipschitz), constants do not. NOT YET FIXED.
 
 See [[intrinsic-geometry]] (§6 policy) and [[cocycle-vertex-lift]] (how the
 lift is maintained).

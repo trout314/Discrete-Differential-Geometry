@@ -73,7 +73,11 @@ import discrete_differential_geometry as ddg
 from discrete_differential_geometry import cocycle as coc
 from discrete_differential_geometry.vertex_fields import FIELDS, edges_and_degrees
 
-LOWK = 2.0 + 1e-9          # |n| <= 2 box modes = the k -> 0 window
+# The k -> 0 window, in units of the smallest reciprocal length. Since
+# torus_positions whitens (2026-08-13) this is a PHYSICAL |k| cut, not the
+# |n| <= 2 mode count it used to coincide with: on a non-cubic host the two
+# differ, and modes along the long cell axis now correctly land at smaller k.
+LOWK = 2.0 + 1e-9
 
 
 # ---------------------------------------------------------------------------
@@ -271,10 +275,11 @@ def reloc_null_power(PH, vals, rng, nshuf):
 # per-snapshot measurement
 # ---------------------------------------------------------------------------
 
-def measure(mfd, nmax, rng, nshuf, control=False):
+def measure(mfd, nmax, rng, nshuf, control=False, whiten=True,
+            complex_def="illegal"):
     facets = np.asarray(ddg.Manifold.load(mfd, 3).facets())
     edges, omega, _ = coc.load_cocycle(os.path.splitext(mfd)[0] + ".cocycle.npz")
-    frac, basis = coc.torus_positions(facets, edges, omega)
+    frac, basis = coc.torus_positions(facets, edges, omega, whiten=whiten)
     eu, ecnt, deg, V = edges_and_degrees(facets)
 
     defect = FIELDS["defect_indicator"](facets) > 0
@@ -300,10 +305,12 @@ def measure(mfd, nmax, rng, nshuf, control=False):
     PH = phase_matrix(frac, nvec)
     F2 = skeleton_F2(PH)
 
-    # Illegal-edge-graph components (except under --control, whose relocated
-    # scatter has no illegal edges; there the historical subgraph is kept --
-    # at control densities the two coincide for the estimator test's purpose).
-    ill_mask = None if control else (ecnt < 5) | (ecnt > 6)
+    # Which graph defines a "complex" -- this is NOT a detail, it decides
+    # what the arrangement estimators measure (see --complex-def).  The
+    # --control state's relocated scatter has no illegal edges, so it always
+    # uses the subgraph; at control densities the two coincide anyway.
+    ill_mask = None if (control or complex_def == "subgraph") \
+        else (ecnt < 5) | (ecnt > 6)
     lab, sizes = complexes(eu, defect, V, ill_mask)
     ncomp = len(sizes)
     cen = centroids(frac, lab, ncomp) if ncomp >= 2 else None
@@ -313,7 +320,9 @@ def measure(mfd, nmax, rng, nshuf, control=False):
            "mean_size": float(sizes.mean()) if ncomp else 0.0,
            "form_factor": float((sizes ** 2).mean() / sizes.mean()) if ncomp else 0.0,
            "s2_frac_defect": float(dq[defect] @ dq[defect] / (dq @ dq)),
-           "M": np.abs(np.diag(basis)).astype(float).tolist()}
+           # principal cell lengths (singular values) -- the diagonal is not
+           # the period once the basis is whitened / Euclidean-reduced
+           "M": np.linalg.svd(basis, compute_uv=False).astype(float).tolist()}
 
     # --- 1. charge field, sk_torus's own (permutation) null, for reference
     S2 = float(dq @ dq)
@@ -423,6 +432,22 @@ def main():
     ap.add_argument("--nmax", type=int, default=6)
     ap.add_argument("--nshuf", type=int, default=64, help="relocation-null draws")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--complex-def", choices=("illegal", "subgraph"),
+                    default="illegal",
+                    help="what counts as one defect complex. 'subgraph' = all "
+                         "edges among defect vertices (the definition the "
+                         "2026-08-05 dilute-gas numbers were measured with; "
+                         "correct when defects are dilute, but PERCOLATES at "
+                         "high defect-vertex density). 'illegal' = components "
+                         "of the illegal-edge graph (added 2026-08-06 for "
+                         "strain gases; it FRAGMENTS a dilute complex into "
+                         "~2.6 pieces, and the pieces of one physical defect "
+                         "then read as clustering -- the form-factor trap one "
+                         "level up). Pick by density, and say which you used.")
+    ap.add_argument("--no-whiten", dest="whiten", action="store_false",
+                    help="reproduce the pre-2026-08-13 unfixed GL(3) frame "
+                         "(audit only: it mislabels |k| on a non-cubic host, "
+                         "so the LOWK window selects the wrong modes)")
     ap.add_argument("--control", action="store_true",
                     help="relocate defects at random first; every ratio must come back 1")
     ap.add_argument("--out", default=None)
@@ -439,7 +464,8 @@ def main():
         if not os.path.exists(os.path.splitext(p)[0] + ".cocycle.npz"):
             print(f"  SKIP {os.path.basename(p)}: no cocycle")
             continue
-        r = measure(p, args.nmax, rng, args.nshuf, args.control)
+        r = measure(p, args.nmax, rng, args.nshuf, args.control,
+                    whiten=args.whiten, complex_def=args.complex_def)
         label = args.label or re.sub(args.group, "",
                                      os.path.splitext(os.path.basename(p))[0])
         groups[label].append(r)

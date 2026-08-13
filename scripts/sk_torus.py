@@ -22,7 +22,7 @@ so the charge-weighted structure factor is suppressed as k -> 0
 Steps 2-3 are `cocycle.torus_positions`, step 5 is `structure_factor` -- this
 script is a thin driver over the package (pooling / CLI / plot only).
 
-Ratio < 1 at small |n| = hyperuniform. Pools replicas by --group regex.
+Ratio < 1 at small |k| = hyperuniform. Pools replicas by --group regex.
 
 Usage:
     python scripts/sk_torus.py data/replicas/flatpin_mu3_r*_final.mfd \
@@ -30,7 +30,14 @@ Usage:
 
 FRAME: harmonic (periodic Tutte) embedding -- a third frame,
 neither registry nor intrinsic (CONVENTIONS.md sec 6). Small-k
-exponents frame-robust; k-values and amplitudes gauge.
+exponents frame-robust; amplitudes gauge.
+
+Since 2026-08-13 `torus_positions` WHITENS the basis, so the |k| axis is a
+real metric rather than an arbitrary GL(3) frame. S_obs and S_null at each
+commensurate mode are unchanged by that (they are built from fractional
+coordinates and integer n); what changes is the |k| LABEL of each mode, hence
+every shell average and every exponent fit on a non-cubic host. Pre-2026-08-13
+outputs on R / sigma / mu / Z / C14 / C36 / P / delta are superseded.
 """
 import argparse
 import csv
@@ -49,16 +56,18 @@ from discrete_differential_geometry.vertex_fields import FIELDS
 from discrete_differential_geometry.structure_factor import structure_factor
 
 
-def sk_one(mfd_path, coc_path, field, nmax):
-    """One snapshot -> (kmag, s_obs, s_null, winding-lattice-diag, N). Thin
+def sk_one(mfd_path, coc_path, field, nmax, whiten=True):
+    """One snapshot -> (kmag, s_obs, s_null, principal cell lengths, N). Thin
     orchestration over the package: cocycle.torus_positions (coords) + the shared
     vertex-field library + structure_factor (the one S(k) implementation)."""
     facets = np.asarray(ddg.Manifold.load(mfd_path, 3).facets())
     edges, omega, _ = coc.load_cocycle(coc_path)
-    frac, basis = coc.torus_positions(facets, edges, omega)
+    frac, basis = coc.torus_positions(facets, edges, omega, whiten=whiten)
     q = FIELDS[field](facets)
     kmag, s_obs, s_null = structure_factor(frac, basis, q, nmax)
-    return kmag, s_obs, s_null, np.abs(np.diag(basis)), len(q)
+    # principal cell lengths: the basis diagonal is not the period once the
+    # basis is whitened (2026-08-13) / Euclidean-reduced
+    return kmag, s_obs, s_null, np.linalg.svd(basis, compute_uv=False), len(q)
 
 
 def main():
@@ -68,11 +77,16 @@ def main():
     ap.add_argument("--field", choices=list(FIELDS), default="n6",
                     help="vertex charge field (see vertex_fields.FIELDS)")
     ap.add_argument("--nmax", type=int, default=8)
+    ap.add_argument("--no-whiten", dest="whiten", action="store_false",
+                    help="reproduce the pre-2026-08-13 unfixed GL(3) frame "
+                         "(audit only -- the |k| axis is then meaningless on "
+                         "a non-cubic host)")
     ap.add_argument("--group", default=r"_r\d+.*$")
     ap.add_argument("--out", default=None)
     ap.add_argument("--plot", default=None)
     args = ap.parse_args()
-    print("[frame] harmonic frame -- exponents robust, k/amplitudes gauge")
+    print(f"[frame] harmonic frame, whitened={args.whiten} -- amplitudes gauge; "
+          f"the |k| axis is a metric only when whitened")
 
     pooled = defaultdict(list)
     for path in args.snapshots:
@@ -81,11 +95,13 @@ def main():
             print(f"  SKIP {os.path.basename(path)}: no cocycle")
             continue
         label = re.sub(args.group, "", os.path.splitext(os.path.basename(path))[0])
-        kmag, s_obs, s_null, M, N = sk_one(path, cpath, args.field, args.nmax)
+        kmag, s_obs, s_null, M, N = sk_one(path, cpath, args.field, args.nmax,
+                                           whiten=args.whiten)
         pooled[label].append((kmag, s_obs, s_null))
         low = kmag <= 2.0 + 1e-9
-        print(f"  {os.path.basename(path)}: N={N} M={M.astype(int).tolist()} "
-              f"low-k ratio (|n|<=2): "
+        print(f"  {os.path.basename(path)}: N={N} "
+              f"cell={np.round(M / M.min(), 3).tolist()} "
+              f"low-k ratio (|k|<=2): "
               f"{np.mean(s_obs[low] / s_null[low]):.4f}")
 
     rows = []
@@ -107,7 +123,7 @@ def main():
                                                 / np.sqrt(m.sum()))
                              if m.sum() > 1 else 0.0})
         low = kmag <= 2.0 + 1e-9
-        print(f"{label} ({len(runs)} snapshots): low-k (|n|<=2) ratio = "
+        print(f"{label} ({len(runs)} snapshots): low-k (|k|<=2) ratio = "
               f"{ratio[low].mean():.4f} ± "
               f"{ratio[low].std(ddof=1) / np.sqrt(low.sum()):.4f}")
 

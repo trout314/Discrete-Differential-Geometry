@@ -1,8 +1,11 @@
 ---
 name: defect-density-hu
 description: "RETRACTION + RESULT: the 'crystal-grade HU' headline is a normalization artifact (the old estimator calls RANDOMISED defects hyperuniform too); shuffling WHOLE DEFECTS rigidly gives 0.999+-0.026 = exactly Poisson; complexes carry residual NEGATIVE charge Q=-0.97, 77% negative"
-metadata:
+metadata: 
+  node_type: memory
   type: project
+  originSessionId: a2047098-7e89-4d8e-b1c5-3231dfa0bf45
+  modified: 2026-08-13T16:56:49.987Z
 ---
 
 Measured 2026-08-05 after the user flagged that "our conclusions about
@@ -152,5 +155,48 @@ genuinely open; what is settled is that the published number never answered
 it. Note also [[six-web-gauge]] is a COMPETING explanation for any curvature
 correlation (L_vec(k) = S_mono(k)/k^2 exactly).
 
+## 8. RE-MEASURED 2026-08-13 after the cocycle metric fix — VERDICT SURVIVES
+
+The harmonic gauge's Euclidean structure was an unfixed GL(3) modulus, so the
+`basis` this script uses for its |k| window was wrong on every non-cubic host,
+R m4 included ([[cocycle-coordinate-quality]]). Re-ran all three datasets.
+New JSONs: `data/defect_hu/{lam40,lam35}_pooled_{w,nw,wsub}.json`,
+`lam40_control_w.json` (suffix: _nw = unwhitened, _w = whitened, _wsub =
+whitened + subgraph complexes).
+
+    lam=0.40         OLD (08-05)      NOW whitened+subgraph
+    rigid_charge   0.999 +- 0.026        0.980 +- 0.018
+    rigid_count    1.003 +- 0.030        0.975 +- 0.017
+    centroid       1.067 +- 0.037        1.024 +- 0.023
+    lam=0.35
+    rigid_charge   0.958 +- 0.053        1.030 +- 0.037
+    rigid_count    0.865 +- 0.039        0.895 +- 0.028   (control 0.925 +- 0.020)
+
+**Sec 2 stands: the defect arrangement is Poisson.** The metric fix alone is a
+few-percent effect. lam=0.35's "~2 sigma hint of mild suppression" is GONE in
+the charge channel (1.030 +- 0.037) and the count channel now sits on top of
+the control — so that hint is retracted, not upgraded.
+
+## 9. THE TRAP THE RE-RUN EXPOSED — complex definition is not a detail
+
+Sec 1-7's numbers were measured 2026-08-05; commit d46fe18 (08-06) then
+switched the DEFAULT complex definition from the defect SUBGRAPH to the
+ILLEGAL-EDGE GRAPH, for strain gases where the subgraph percolates. Nobody
+re-ran the dilute data. On dilute lam=0.40 that definition FRAGMENTS each
+physical complex into ~2.6 pieces (n_complex 9.3 -> 24.1, mean size 6.9 ->
+2.6) and the pieces of one defect then read as clustering:
+
+    illegal-edge graph, lam=0.40:  centroid 2.807 +- 0.082, rigid_count 2.613 +- 0.075
+
+and 2.61 ~ 24.1/9.3 = 2.58 — the ratio IS the fragmentation. **This is sec 4's
+form-factor trap one level up**: the centroid estimator is form-factor-free
+only if a "complex" is a whole physical object. Fixed by making the choice
+explicit: `--complex-def {illegal,subgraph}` (default illegal, preserving
+current behaviour). **Use `subgraph` for dilute gases, `illegal` for strain
+gases, and always say which.** NOTE this also means the c15 strain-gas result
+in d46fe18's message (charge-weighted 0.516 +- 0.017, "~30 sigma of screening")
+is measured with `illegal` on a 44%-defect state — right choice there, but it
+has never been cross-checked against `subgraph`.
+
 Related: [[statics-hu-verdict]], [[curvature-length-scale]],
-[[no-halo-verdict]], [[ecmc-blob-ab]].
+[[no-halo-verdict]], [[ecmc-blob-ab]], [[cocycle-coordinate-quality]].
