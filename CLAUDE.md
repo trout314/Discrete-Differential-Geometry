@@ -142,6 +142,18 @@ Import bootstrap convention: compute `_ROOT` from `__file__`, then `sys.path.ins
 ### Support Tools (tools/)
 
 - **`seed_utils.py`** — shared helpers imported across `scripts/` and `tools/`: memory probes (`get_free_memory_gb`), seed filename encode/decode, `build_metadata_comments`, `load_seed_metadata`, git info.
+- **`link_classes.py`** — exact classification of pure-{5,6} vertex links. These
+  are the duals of the fullerenes C_{20+2·n6}, so **n6 does not determine
+  lk(v)**: at n6 = 4 there are two classes, the T_d Friauf polyhedron (the FK
+  Z16) and a D2 isomer that is edge-legal but not Frank-Kasper. The FK links
+  Z12/Z14/Z15/Z16-T_d are exactly those whose deg-6 edges are pairwise
+  **non-cofacial**, which is the cheap per-vertex predicate wired into
+  `fk_skeleton.vertex_class_census(..., facets=…)` (adds `Z16_Td`, `Z16_D2`,
+  `FK_strict`) and `defect_dynamics/amorph_census.py` (`Z16*` column). Also
+  carries the exhaustive 5/6-sphere generator used to derive the table —
+  `--enumerate KMAX` regenerates it, `--verify` cross-checks the fast detector
+  against per-vertex link extraction. **Never bucket links by n6 alone.**
+
 - **`grid_sweep.py`** — shared engine for the grid-sweep drivers (`scripts/explore_grid.py`, `scripts/produce_grid.py`): standard-grid constants, nearest-family founding, per-cell `--produce` invocation + verdict parsing, and the `sweep()` loop with cell filters / prune predicate.
 - **`reburn_batch.py` → `reburn_family.py` + `reburn_seed.py`** — the reburn pipeline: regenerate the whole seed library's metadata cheaply (orchestrator calibrates per-family burn-in, then spawns memory-capped `reburn_seed.py` workers).
 

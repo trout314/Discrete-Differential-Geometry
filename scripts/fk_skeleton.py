@@ -21,7 +21,10 @@ endpoints require a compensating deg<=4 or deg>=7 edge at the same vertex.
 
 Measured per seed:
   * edge-degree census (fractions by degree, EDV);
-  * vertex Z-class census: Z12/Z14/Z15/Z16, other pure-{5,6}, rest;
+  * vertex Z-class census: Z12/Z14/Z15/Z16, other pure-{5,6}, rest -- with Z16
+    split into the FK Friauf polyhedron (T_d) and the D2 isomer, which has the
+    same n_6 = 4 but is not a Frank-Kasper coordination (tools/link_classes.py);
+    fFK_strict excludes it, fFK (historical, n_6-bucketed) does not;
   * the 6-skeleton (edges deg>=6): valence histogram of its vertices
     (valence-1 = broken lines, forbidden in ideal TCP), connected components,
     largest-component share, cyclomatic number (loops);
@@ -48,6 +51,7 @@ import numpy as np
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_ROOT, "python"))
+sys.path.insert(0, os.path.join(_ROOT, "tools"))       # link_classes
 from discrete_differential_geometry import Manifold
 
 # (tag, family stem, g) -- k=2 ladders at N=1e4 across the three edge pins.
@@ -97,8 +101,17 @@ def load_edges(path):
     return edges_from_facets(Manifold.load(path, 3).facets())
 
 
-def vertex_class_census(eu, edeg, V):
-    """Per-vertex counts of incident edges by degree class + Z-classification."""
+def vertex_class_census(eu, edeg, V, facets=None):
+    """Per-vertex counts of incident edges by degree class + Z-classification.
+
+    n_6 alone does NOT determine lk(v): at n_6 = 4 there are two 5/6-spheres,
+    the T_d Friauf polyhedron (the FK Z16) and a D2 isomer no FK phase admits
+    (tools/link_classes.py).  Pass `facets` to split them -- the discriminator
+    is whether any two degree-6 edges at v are cofacial.  Keys "Z12".."Z16"
+    keep their historical n_6-bucketed meaning either way, so fFK is unchanged;
+    with `facets` the census additionally reports "Z16_Td", "Z16_D2" and
+    "FK_strict" = fFK - fZ16_D2, which is the honest FK fraction.
+    """
     def incident(mask):
         c = np.zeros(V, dtype=np.int64)
         np.add.at(c, eu[mask, 0], 1)
@@ -123,6 +136,17 @@ def vertex_class_census(eu, edeg, V):
     n_broken = int(np.sum(pure56 & (n6 == 1)))  # forbidden by S^2 combinatorics
     fz["pure56_other"] = float(np.mean(pure56)) - sum(fz.values())
     fz["impure"] = float(np.mean(~pure56))
+
+    if facets is not None:
+        from link_classes import cofacial_six_pairs
+        cof = cofacial_six_pairs(facets, eu, edeg, V)
+        assert not np.any(pure56 & (n6 <= 3) & (cof > 0)), \
+            "cofacial six-pair at n_6 <= 3 -- no such 5/6-sphere exists"
+        z16 = pure56 & (n6 == 4)
+        fz["Z16_D2"] = float(np.mean(z16 & (cof > 0)))
+        fz["Z16_Td"] = fz["Z16"] - fz["Z16_D2"]
+        # keyed "FK_strict" so the callers' f-prefix convention yields fFK_strict
+        fz["FK_strict"] = fz["Z12"] + fz["Z14"] + fz["Z15"] + fz["Z16_Td"]
     return fz, n_broken
 
 
@@ -208,7 +232,8 @@ def window_ratio(q, orders, mgrid, rng, n_shuf=4):
 
 
 def analyze_seed(path, n_centers, rng, n_shuf=4):
-    eu, edeg, V = load_edges(path)
+    facets = np.asarray(Manifold.load(path, 3).facets(), np.int64)
+    eu, edeg, V = edges_from_facets(facets)
     f1 = len(eu)
     row = dict(V=V, f1=f1,
                edv=float(np.var(edeg)),
@@ -218,7 +243,7 @@ def analyze_seed(path, n_centers, rng, n_shuf=4):
                p6=float(np.mean(edeg == 6)),
                p_ge7=float(np.mean(edeg >= 7)),
                deg_hist=np.bincount(edeg).tolist())
-    fz, n_broken = vertex_class_census(eu, edeg, V)
+    fz, n_broken = vertex_class_census(eu, edeg, V, facets=facets)
     row.update({f"f{k}": v for k, v in fz.items()})
     row["fFK"] = fz["Z12"] + fz["Z14"] + fz["Z15"] + fz["Z16"]
     row["n_broken56"] = n_broken
@@ -253,6 +278,7 @@ def main():
     results = {}
     scalar_keys = ["edv", "p_le4", "p5", "p6", "p_ge7",
                    "fZ12", "fZ14", "fZ15", "fZ16", "fpure56_other", "fimpure",
+                   "fZ16_Td", "fZ16_D2", "fFK_strict",
                    "fFK", "frac_val1", "frac_val2", "largest_frac",
                    "n_comp", "n_edges", "cyclomatic", "n_broken56",
                    "frac_val1_null", "largest_frac_null", "cyclomatic_null",

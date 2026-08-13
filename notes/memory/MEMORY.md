@@ -1,5 +1,7 @@
 # Project memory index
 
+- [FK vertex-link classification](fk-vertex-link-classification.md) — 5/6-links = fullerene duals; n_6 determines lk(v) only up to n_6=3 (n_6=1 IMPOSSIBLE); n_6=4 has TWO classes (Td Friauf + a D2 isomer legal but non-FK); non-cofacial six-edges is exactly what caps FK at Z16
+
 - [Amorphous-FK program](fk-amorphous-program.md) — ē = 6 − 12/Z̄ is an IDENTITY (mean edge degree = six-web line density, not a free knob); edge contraction ALSO cannot preserve FK-legality (always mints a Z17+ hub) — proof + library census; but on DISORDERED states contraction annihilates 4-5 illegal edges in one move
 
 - [Defect-density HU](defect-density-hu.md) — RETRACTION + RESULT: old "crystal-grade HU" is a normalization readout (calls RANDOMISED defects hyperuniform too); shuffling WHOLE DEFECTS rigidly gives 0.999±0.026 = exactly Poisson; complexes carry residual NEGATIVE charge (77% negative)
