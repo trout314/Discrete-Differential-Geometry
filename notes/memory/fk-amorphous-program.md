@@ -315,6 +315,58 @@ cheap and plentiful, it is redundant (equal-λ n_ill within 1–2% of control).
 μ-route 86.6% vs EDQ-route 64.7%, and now we know why: **μ prices DEFECTS,
 EDQ prices the MOVE THAT REMOVES THEM.**
 
+## 11. CONSTANT-λ A/B: THE CHANNEL *DRIVES*, AND HUBS ARE LOAD-BEARING
+
+All at constant λ_EDQ (`--edq X X --hold 0`, no ramp, so nothing is confounded
+by schedule steepness), from the same melt, corrected sampler,
+`data/fk_amorph/lam4long` + `zlegscan`.
+
+**λ = 4, cs = 0.05 vs cs = 0, same seed and start:**
+
+| arm | sweeps | n_ill | f_FK |
+|---|---|---|---|
+| cs = 0 CONTROL | **250k (finished)** | 2400 | **1.29%** |
+| cs = .05 (a) | 176.8k (stopped) | 1441 | **11.40%** |
+| cs = .05 (b) | 170.6k (stopped) | 1311 | **13.97%** |
+
+**The control ran to completion and reached 1.29%; the channel arms are ~9-11×
+that with ~30% fewer sweeps and were still descending.** So the channel does
+not merely rescue quenched glasses (§10) — it DRIVES annealing at a coupling
+where the Pachner sector stalls. λ = 2 constant + cs reached **41.23%** at
+250k, still the better coupling.
+
+**METRIC WARNING: motion ≠ progress.** The λ=4 control accepted 2,370 2→3
+moves in its late window vs 303-344 for the channel arms — the CONTROL moves
+MORE. It churns in a defect-rich state where 2→3 is cheap while the channel
+arms sit in cleaner states where it is hard. Acceptance counts are not a
+progress proxy; use n_ill / f_FK trajectories.
+
+**zleg SCAN (λ=2, cs=.05, same seed/start; zleg=0 arm IS lam2_cs05):**
+
+| zleg | 0 | 0.5 | 2 | 8 |
+|---|---|---|---|---|
+| f_FK | **41.23%** (250k) | 22.8% (56k) | 6.4% (90k) | 0.3% (94k) |
+| n_ill | 677 | 1095 | 1995 | 3023 |
+| hubs | 27 | 14 | **0** | **0** |
+| fk-coord | 38.55% | 21.4% | = f_FK | = f_FK |
+
+**HUBS ARE LOAD-BEARING.** The penalty does exactly what it says — hubs
+27→14→0→0, and at zleg ≥ 2 every legal vertex is a true Z12/Z14/Z15/Z16 — but
+the six-web excess does NOT redistribute into a better FK mixture. It goes
+straight back into ILLEGAL EDGES: n_ill 677 → 3023, nearly back to the melt's
+4297, and f_FK collapses to 0.3%. Z̄ stays pinned at 13.397-13.400 throughout,
+so the flat pin is never what gives way.
+
+This reframes §1: the old VDV anneal making all-{5,6} edges but non-FK vertices
+looks less like a defect of that protocol and more like **a property of what
+this move set can REACH** — the hub sector is the route to edge-legality, and
+closing it closes the route.
+
+**PREDICTION FALSIFIED:** I expected zleg to price the channel out, since §2
+proves a contraction always mints a Z17+ hub. It does not — contract/split
+acceptance per sweep is comparable or HIGHER at zleg 8 than at zleg 0. The
+move keeps firing; it is the OUTCOME that is blocked.
+
 ## 9. IS f_FK = 100% COMPATIBLE WITH BOTH PINS? YES, up to an irreducible bit
 
 All edges in {5,6} ⟹ every link is a (5,6)-triangulation of S² (fullerene
