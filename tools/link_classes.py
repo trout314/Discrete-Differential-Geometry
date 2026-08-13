@@ -27,15 +27,16 @@ Enumerated here exhaustively (`enumerate_5_6_spheres`, no external tables):
     2     14   1        24                   0        Z14  (D6d)
     3     15   1        12                   0        Z15  (D3h)
     4     16   2        24 / 4               0 / 2    Z16 T_d (Friauf) / D2
-    5     17   3        20, 4, 4             5, 3, 2
-    6     18   6        4, 2, 12, 2, 12, 6   6, 5, 6, 4, 6, 3
-    7     19   6        ...                  min 4
-    8     20   15       ...                  min 4
+    5     17   3        20, 4, 4             5, 3, 2          (min 2)
+    6     18   6        4, 2, 12, 2, 12, 6   6, 5, 6, 4, 6, 3 (min 3)
+    7     19   6        2, 2, 2, 2, 2, 6     8, 6, 6, 6, 5, 6 (min 5)
+    8     20   15       1..24                6..12            (min 6)
 
 Two degree-6 vertices are adjacent in lk(v) iff the corresponding six-edges at
 v are **cofacial** -- they span a triangle with v.  Reading the last column:
 the four FK links Z12/Z14/Z15/Z16-T_d are precisely the 5/6-links whose
-six-edges are pairwise non-cofacial, and from n_6 = 5 up no class achieves it.
+six-edges are pairwise non-cofacial, and from n_6 = 5 up no class achieves it --
+the minimum rises monotonically (2, 3, 5, 6 at n_6 = 5, 6, 7, 8).
 So non-cofaciality is a purely local predicate equivalent to FK legality, and
 it is what caps n_6 at 4.  That is the detector wired into the census: count,
 per vertex, the pairs of degree-6 edges sharing a triangle with v.
