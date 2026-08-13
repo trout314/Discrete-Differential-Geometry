@@ -122,6 +122,34 @@ def test_whitening_is_a_metric_fix_not_a_coordinate_change():
     assert np.linalg.det(b_w) == pytest.approx(np.linalg.det(b_raw), rel=1e-9)
 
 
+def test_min_image_matches_naive_rule_only_on_an_orthogonal_cell():
+    """On a diagonal basis the per-axis rule is right; on the Euclidean-reduced
+    basis torus_positions actually returns for R m4 it is not, in two separate
+    ways -- the primary image is not always nearest, and diag(basis) is not the
+    cell. This is the bug that hit carrier_gr / pass2_structure."""
+    rng = np.random.default_rng(0)
+    dfrac = rng.uniform(-1, 1, (2000, 3))
+
+    B = np.diag([3.0, 5.0, 7.0])
+    _, d = coc.min_image(dfrac, B)
+    naive = np.linalg.norm((dfrac - np.round(dfrac)) @ B, axis=1)
+    assert np.allclose(d, naive)
+
+    B = np.array([[4.0, 4.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 4.0]])
+    _, d = coc.min_image(dfrac, B)
+    # exact against a much wider image search
+    import itertools
+    offs = np.array(list(itertools.product(range(-3, 4), repeat=3)), float)
+    brute = np.min(np.linalg.norm(
+        ((dfrac - np.round(dfrac))[:, None, :] + offs) @ B, axis=-1), axis=1)
+    assert np.allclose(d, brute)
+    # and both naive rules are materially wrong here
+    primary = np.linalg.norm((dfrac - np.round(dfrac)) @ B, axis=1)
+    assert (primary > d + 1e-9).mean() > 0.2
+    diag_only = np.linalg.norm((dfrac - np.round(dfrac)) * np.diag(B), axis=1)
+    assert (np.abs(diag_only / d - 1) > 0.1).mean() > 0.5
+
+
 @pytest.mark.parametrize("name,m", [("c15", 3), ("r", 2), ("c14", 3)])
 def test_whitening_recovers_the_true_cell_shape(name, m):
     """The winding lattice in cochain units is cubic for EVERY host (the

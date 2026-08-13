@@ -91,8 +91,12 @@ for snap in snaps:
     # harmonic coords for geometry
     edges, omega, _ = coc.load_cocycle(snap[:-4] + ".cocycle.npz")
     frac, basis = coc.torus_positions(fac, edges, omega)
-    X = frac * np.diag(basis)         # Cartesian raw units
-    P = np.abs(np.diag(basis))
+    # Geometry goes through the FULL basis (fixed 2026-08-13): `lattice_basis`
+    # is Euclidean-reduced, not diagonal (R m4: [[4,4,0],[0,4,0],[0,0,4]]), so
+    # the old `frac * np.diag(basis)` sheared every distance -- 68% of pair
+    # separations wrong by >10%. Positions stay FRACTIONAL; the metric enters
+    # only through coc.min_image.
+    Bc = basis / CELL                 # rows = lattice vectors, in cells
 
     qbar = np.median(qR)              # crystal background (defects are rare)
     # edge lookup for intra-complex motifs
@@ -113,24 +117,23 @@ for snap in snaps:
         n7p = sum(v for k, v in mot.items() if k >= 7)
         # charge + gyration (min-image about first member)
         Q = float(qR[comp].sum() - n * qbar)
-        d = X[comp] - X[comp[0]]
-        d -= np.round(d / P) * P
-        cen = X[comp[0]] + d.mean(0)
-        Rg = float(np.sqrt(((d - d.mean(0)) ** 2).sum(1).mean())) / CELL
+        df = frac[comp] - frac[comp[0]]
+        df -= np.round(df)                       # members are adjacent
+        d = df @ Bc                              # Cartesian, cells
+        cen = (frac[comp[0]] + df.mean(0)) % 1.0     # fractional centroid
+        Rg = float(np.sqrt(((d - d.mean(0)) ** 2).sum(1).mean()))
         rows.append(dict(tag=tag, n=n, halo=halo, n3=n3, n4=n4, n7p=n7p,
                          Q=Q, Rg=Rg))
         (cens_big if n >= 10 else cens_small).append(cen)
 
     # blinker-site test within this snapshot
     if cens_big and cens_small:
-        B = np.array(cens_big)
+        Bg = np.array(cens_big)                  # fractional
         def dmin(pt):
-            dd = B - pt
-            dd -= np.round(dd / P) * P
-            return np.linalg.norm(dd, axis=1).min() / CELL
+            return float(coc.min_image(Bg - pt, Bc)[1].min())
         for c in cens_small:
             blink_d.append(dmin(c))
-        for c in rng.uniform(0, 1, (40, 3)) * P:
+        for c in rng.uniform(0, 1, (40, 3)):     # uniform in the TRUE cell
             null_d.append(dmin(c))
     print(f"  {tag}: {len(comps)} complexes "
           f"({sum(1 for c in comps if len(c) >= 10)} big)", flush=True)

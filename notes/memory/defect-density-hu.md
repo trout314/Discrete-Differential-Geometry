@@ -198,5 +198,31 @@ in d46fe18's message (charge-weighted 0.516 +- 0.017, "~30 sigma of screening")
 is measured with `illegal` on a 44%-defect state — right choice there, but it
 has never been cross-checked against `subgraph`.
 
+## 10. g(r) OF THE CARRIERS — corrected metric changes the answer (2026-08-13)
+
+`carrier_gr.py` built pair distances as `frac * np.diag(basis)` with per-axis
+min-imaging. On R m4 that is a shear (basis is [[4,4,0],[0,4,0],[0,0,4]], not
+diagonal) which mis-states 68% of separations by >10%, so it SMEARED g(r).
+Fixed to go through `coc.min_image` on the full basis. Three configurations,
+same 30 snapshots, <n_carriers> = 9.0:
+
+    r (cells)   0.3    0.5    0.7    0.9    1.1    1.3    1.5
+    published  1.95   0.81   1.26   0.97   1.07   1.12   0.85     (unwhit + diag)
+    whit+diag  1.71   1.25   1.31   1.25   1.26   1.16   1.09
+    FIXED      1.94   1.45   0.55   1.07   1.03   1.01   1.01
+
+The corrected g(r) is a clean **contact peak (1.94 at 0.3, 1.45 at 0.5), an
+exclusion dip (0.55 at 0.7), then flat at 1.00 from 0.9 cells outward.** The
+old "broad shoulder decaying to 0.75 at 1.9" was the smear; the published
+version was scrambled noise. So u_eff is SHORT-RANGED with a hard-core-plus-
+shell structure and no tail — which is the same physics sec 2's rigid shuffle
+found (Poisson at long wavelength), now from an independent real-space
+estimator. Two estimators agreeing is worth more than either alone.
+
+Also: bins beyond r = 1.73 cells (half the shortest lattice vector, 3.46) are
+past the min-image radius and are now flagged in the output rather than
+plotted as if they were a pair correlation. The old code's RMAX = 2.0 with a
+hardcoded "4 cells/side" cubic null was over that limit AND the wrong cell.
+
 Related: [[statics-hu-verdict]], [[curvature-length-scale]],
 [[no-halo-verdict]], [[ecmc-blob-ab]], [[cocycle-coordinate-quality]].

@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: a2047098-7e89-4d8e-b1c5-3231dfa0bf45
-  modified: 2026-08-13T16:56:10.883Z
+  modified: 2026-08-13T17:27:47.288Z
 ---
 
 2026-08-13. Quantified how well-behaved the cocycle coordinates are
@@ -60,15 +60,32 @@ verdict SURVIVES (lam=0.40 rigid_charge 0.999±0.026 → 0.980±0.018). The metr
 fix is a few-percent effect on those estimators; the big shifts that showed up
 in the re-run were an unrelated script drift.
 
-**STILL OPEN — a second, PRE-EXISTING frame bug in adjacent scripts.**
+**SECOND, PRE-EXISTING FRAME BUG — FOUND AND FIXED (same day).**
 `lattice_basis` returns a Euclidean-reduced basis that is NOT diagonal (R m4
-gives [[4,4,0],[0,4,0],[0,0,4]]), yet `pass2_structure.py`, `carrier_gr.py`
-and `sl_verdict.py` all do `P = np.abs(np.diag(basis))`, `X = frac * P` and
-min-image by P — a SHEAR error on top of the metric error, independent of
-whitening. Correct form is fractional min-image (`d -= np.round(d)`) then
-`d @ basis`, which `curv_scale_real.py` already does. Their g(r) / screening /
-centroid distances on R hosts are wrong pointwise; exponents survive (affine
-bi-Lipschitz), constants do not. NOT YET FIXED.
+gives [[4,4,0],[0,4,0],[0,0,4]]), so `frac * np.diag(basis)` is not a Cartesian
+position and per-axis min-imaging is not the min-image rule. Two distinct
+errors, both independent of whitening:
+ (a) diag-only distances on R m4 are wrong by >10% for **68%** of pairs and
+     >30% for 18%, range 0.62–1.62x — that SMEARS a correlation function, it
+     does not merely shift it;
+ (b) even with the full basis, `d -= round(d)` gives the primary image, not
+     the nearest: wrong for **26%** of random pairs, up to 2.4x too far.
+Both closed by `cocycle.min_image(dfrac, basis)` (minimizes over neighbouring
+images; validated against a ±3 brute force). Consumers keep FRACTIONAL
+positions and let the metric enter only there.
+
+**Audit outcome, script by script:**
+- `sl_verdict.py` — **NO BUG** (I was wrong to list it). Its `P` cancels
+  identically: the centroid is frac[0] + mean(wrap(frac − frac[0])) and a
+  per-axis scale commutes with the per-axis wrap; S_N/S_Q use fractional coords
+  against integer n with |n| shells. Verified bit-identical whitened vs not.
+  Note in the file's docstring so nobody "fixes" it.
+- `pass2_structure.py` — fixed. Conclusions unchanged: Rg ~ N^nu 0.49 → 0.50,
+  blinker templating still null (KS p 0.52 → 0.35). Only the Rg CONSTANTS move,
+  down 10–13% (0.31 → 0.27 cells for the largest bin) — exactly the
+  bi-Lipschitz expectation (exponents survive, constants don't).
+- `carrier_gr.py` — fixed, and **the conclusion changes**. See
+  [[defect-density-hu]] §10.
 
 See [[intrinsic-geometry]] (§6 policy) and [[cocycle-vertex-lift]] (how the
 lift is maintained).

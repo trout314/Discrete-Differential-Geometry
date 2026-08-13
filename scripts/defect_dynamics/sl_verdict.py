@@ -10,6 +10,16 @@ per shell (medium screening), pooled.
 FRAME: harmonic (periodic Tutte) embedding -- a third frame,
 neither registry nor intrinsic (CONVENTIONS.md sec 6). Small-k
 exponents frame-robust; k-values and amplitudes gauge.
+
+This script is FRAME-INDEPENDENT and needs no metric (audited 2026-08-13,
+when the sibling scripts were fixed -- do not "fix" it to match them):
+S_N and S_Q are built from FRACTIONAL centroids against integer mode indices,
+and the shells are cut on |n|, not on physical |k|. The `P = abs(diag(basis))`
+below looks like the shear bug that hit carrier_gr / pass2_structure, but here
+it cancels identically -- the centroid is frac[0] + mean(wrap(frac - frac[0]))
+and a per-axis scaling commutes with the per-axis wrap (verified on 300 random
+groups, exact to 1e-12). Kept as-is rather than rewritten, so the audit trail
+is legible.
 """
 import glob
 import os

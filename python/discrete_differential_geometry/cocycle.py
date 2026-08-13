@@ -179,6 +179,42 @@ def whitening_transform(gram: np.ndarray, unimodular: bool = True):
     return W
 
 
+def min_image(dfrac, basis, shells: int = 1):
+    """Shortest Cartesian displacement(s) for FRACTIONAL differences on the
+    torus with lattice ``basis`` (rows = lattice vectors).
+
+    Two traps this exists to close, both of which bit consumers of
+    ``torus_positions``:
+
+    1. ``lattice_basis`` returns a Euclidean-reduced basis, which is NOT
+       diagonal in general (R m4 gives [[4,4,0],[0,4,0],[0,0,4]]). So
+       ``frac * np.diag(basis)`` is not the Cartesian position and
+       ``d -= round(d / diag) * diag`` is not the min-image rule -- both shear
+       every distance. Go through the full matrix: ``dfrac @ basis``.
+    2. On a non-orthogonal cell, wrapping to the primary cell
+       (``dfrac -= round(dfrac)``) does not always land on the NEAREST image;
+       a further lattice translation can be closer. This minimizes over the
+       (2*shells+1)^3 neighbouring images, which is exact whenever the true
+       separation is below the cell's inradius (ample at shells=1 for the
+       hosts in use).
+
+    dfrac: (..., 3) fractional differences. Returns (vec (..., 3) Cartesian,
+    dist (...)). Note a per-axis scaling cancels in a centroid computed as
+    ``frac[0] + mean(wrap(frac - frac[0]))``, so code shaped that way was
+    already right; it is DISTANCES that need this.
+    """
+    import itertools
+    d = np.asarray(dfrac, dtype=float)
+    d = d - np.round(d)
+    offs = np.array(list(itertools.product(range(-shells, shells + 1),
+                                           repeat=3)), dtype=float)
+    cand = (d[..., None, :] + offs) @ np.asarray(basis, dtype=float)
+    nrm = np.linalg.norm(cand, axis=-1)
+    best = np.argmin(nrm, axis=-1)
+    vec = np.take_along_axis(cand, best[..., None, None], axis=-2)[..., 0, :]
+    return vec, np.take_along_axis(nrm, best[..., None], axis=-1)[..., 0]
+
+
 # ---------------------------------------------------------------------------
 # Gauge-invariant integer readouts
 # ---------------------------------------------------------------------------
