@@ -110,6 +110,12 @@ def harmonic_gauge(edges: np.ndarray, omega: np.ndarray, n_verts: int,
     Gram matrix G_ij = <omega_h^i, omega_h^j> — the emergent metric on H^1
     (cell-shape modulus: for a cubic box, G = M^2 * (f1/3-ish) * I up to
     normalization; track its anisotropy, not its trace).
+
+    GAUGE WARNING. The Laplacian is solved per COLUMN, so this projection is
+    GL(3)-equivariant on the Z^3 value space: omega -> omega A gives
+    omega_h -> omega_h A for any invertible A. The Euclidean structure on that
+    space is therefore a free modulus and no length or angle read off omega_h
+    means anything until it is fixed -- see :func:`whitening_transform`.
     """
     from scipy.sparse import coo_matrix
     from scipy.sparse.linalg import cg
@@ -140,6 +146,37 @@ def harmonic_gauge(edges: np.ndarray, omega: np.ndarray, n_verts: int,
     omega_h = omega - (phi[v] - phi[u])
     gram = omega_h.T @ omega_h
     return omega_h, phi, gram
+
+
+def whitening_transform(gram: np.ndarray, unimodular: bool = True):
+    """Fix the Euclidean structure the harmonic gauge leaves free.
+
+    ``harmonic_gauge`` determines the embedding only up to GL(3) acting on the
+    value space (see its gauge warning), so the canonical choice is the one
+    that makes the edge second moment isotropic: W = G^{-1/2}, after which
+    <(omega_h W)^T (omega_h W)> = I. Returns W (3, 3), symmetric positive
+    definite; apply on the RIGHT (``omega_h @ W``, ``basis @ W``).
+
+    ``unimodular`` (default) rescales to det(W) = 1, so the transform corrects
+    the cell SHAPE without touching the fundamental-domain volume -- the scale
+    is meaningful (it is ``scale * box``), the anisotropy is the gauge. With
+    that normalization W is invariant under an overall rescaling of gram, so
+    it does not matter whether gram was divided by the edge count.
+
+    Validated against known lattices: on a pristine non-cubic crystal, whitened
+    harmonic coordinates reproduce the true Cartesian embedding (frac @ L) to
+    ~1% in per-tet edge ratios WITHOUT being given the lattice matrix L; on a
+    cubic host W is the identity to a few parts in 1e3.
+    """
+    G = np.asarray(gram, dtype=float)
+    G = 0.5 * (G + G.T)
+    w, V = np.linalg.eigh(G)
+    if w.min() <= 0:
+        raise RuntimeError(f"Gram matrix is not positive definite: {w}")
+    W = (V * w ** -0.5) @ V.T
+    if unimodular:
+        W = W * float(np.prod(w)) ** (1.0 / 6.0)
+    return W
 
 
 # ---------------------------------------------------------------------------
@@ -223,14 +260,26 @@ def loop_winding(loop_vertices, edges: np.ndarray, omega: np.ndarray) -> np.ndar
     return w
 
 
-def torus_positions(facets, edges, omega):
+def torus_positions(facets, edges, omega, whiten: bool = True):
     """Harmonic-gauge (periodic-Tutte) torus coordinates for a snapshot + its
     tracked cocycle -- the one entry point turning (state, cocycle) into a point
     set on the metric torus for structure-factor analysis.
 
     Composes: canonicalize labels -> integrate the cocycle over a spanning tree
     (lift to the cover) -> read the winding lattice off the fundamental cycles ->
-    harmonic gauge X_v = lift_v - phi_v -> fractional coordinates s = X B^{-1}.
+    harmonic gauge X_v = lift_v - phi_v -> fractional coordinates s = X B^{-1}
+    -> metric gauge fix B -> B W (``whiten``, default on).
+
+    The whitening is what makes ``basis`` an actual METRIC rather than an
+    arbitrary GL(3) frame (:func:`whitening_transform`). It is unimodular and
+    acts only on the value space, so ``frac`` is UNCHANGED by it -- consumers
+    that use fractional coordinates alone are unaffected, and consumers that
+    build lengths or wavevectors out of ``basis`` (``frac @ basis``, k = n
+    B^{-T}) get the corrected cell shape. On a cubic host the correction is
+    the identity to ~1e-3; on the hexagonal / tetragonal hosts (R, sigma, mu,
+    Z, C14, C36, P, delta) it is a real anisotropy of up to ~8x in G's
+    eigenvalues, previously carried into every |k| bin. Pass ``whiten=False``
+    to recover the pre-2026-08-13 unfixed frame.
 
     facets: (F, 4) of the .mfd; edges, omega: as from load_cocycle (raw or
     canonical -- canonicalized here). Returns (frac (V, 3) in [0, 1)^3, basis
@@ -246,8 +295,10 @@ def torus_positions(facets, edges, omega):
     basis = lattice_basis(cyc).astype(float)
     if basis.shape != (3, 3) or abs(np.linalg.det(basis)) < 1:
         raise RuntimeError(f"winding lattice degenerate: {basis}")
-    _, phi, _ = harmonic_gauge(edges, omega, n_verts)
+    _, phi, gram = harmonic_gauge(edges, omega, n_verts)
     frac = ((pos - phi) @ np.linalg.inv(basis)) % 1.0
+    if whiten:
+        basis = basis @ whitening_transform(gram)
     return frac, basis
 
 

@@ -199,9 +199,40 @@ embeddings carrying extra structure:
 
 | frame | what it is | edge lengths | legitimate uses |
 |---|---|---|---|
-| registry | vertex labels pinned to ideal reference-crystal fractional positions (`reference_frac_positions`) | ~25% spread | site identity, winding sectors, visualization, large-scale exponents |
+| registry | vertex labels pinned to ideal reference-crystal fractional positions (`reference_frac_positions`) | cv **7%** Cartesian (24.7% if read in lattice-fractional units — see below) | site identity, winding sectors, visualization, large-scale exponents |
 | registry lift | the cocycle/tree lift of the registry (cells) | inherits registry | same as registry; MSD/centroid bookkeeping |
-| harmonic | periodic Tutte embedding (`coc.torus_positions`) | uncontrolled | S(k) suite, large-scale exponents |
+| harmonic | periodic Tutte embedding (`coc.torus_positions`) | cv **7–10%**, per-tet ℓ_min/ℓ_max median 0.82–0.84 | S(k) suite, large-scale exponents |
+
+**Frame units are themselves a gauge (measured 2026-08-13).** Registry
+coordinates are *lattice-fractional*, so a length read off them is a length in
+the crystal's own cell frame — for a hexagonal host (R, c/a = 1.774) that
+inflates the apparent edge-length spread from 7.3% to 24.7%. The earlier
+"~25% spread" entry in this table was that artifact, not a property of the
+embedding. Likewise the winding lattice in cochain units is cubic for *every*
+host, so the unwhitened `basis` reported a cubic cell for R/σ/μ/Z/C14/C36/P/δ
+and carried the error into every |k| bin.
+
+`harmonic_gauge` solves the Laplacian per column, hence is GL(3)-equivariant
+on the Z³ value space: **the Euclidean structure is a free modulus and no
+length or angle in harmonic coordinates means anything until it is fixed.**
+The canonical fix is `coc.whitening_transform(gram)` — W = G^{-1/2} normalized
+to det W = 1, so it corrects cell *shape* and leaves the fundamental-domain
+volume alone. `torus_positions(..., whiten=True)` applies it by default
+(`frac` is unchanged by it; only `basis` moves). Validated: it recovers the
+true cell aspect ratio without being given the lattice matrix (R 1.774 →
+1.780, C14 1.633 → 1.633, σ 1.932 → 1.911, μ 5.379 → 5.525), and reproduces
+the ideal Cartesian embedding's per-tet edge ratios to ~1%.
+
+**Quality of the harmonic frame** (whitened; pristine + defect-gas + melt
+states, ~370k tets): per-tet ℓ_min/ℓ_max median 0.82–0.84, mode exactly
+2/√6 = 0.8165 (the ratio of the two TCP bond lengths), 1st pct 0.60–0.77,
+worst 0.22; ~0.03% of tets below ½, essentially none below ⅓. The entire tail
+is defects — tets with all six edges legal sit at median 0.831, tets touching
+a deg≠5,6 edge at 0.706, two disjoint populations. The embedding does **not
+fold**: Σ|V_tet| / det B = 1.000000–1.000184 (a GL(3)-invariant test), i.e. it
+is a bijection onto T³, not merely a lift. So "uncontrolled" is retired: the
+harmonic frame is a bi-Lipschitz quasi-isometry with a measured constant, and
+rule 3 below applies to it with the same force as to the registry.
 
 **Rules:**
 
@@ -236,7 +267,16 @@ embeddings carrying extra structure:
 5. Known **registry-frame artifacts** to date: the nonzero P2 null in
    defect_statics (chords along crystallographic axes); the smeared
    quasi-continuous dock-angle census (intrinsic contact angles are expected
-   to quantize into discrete combinatorial classes).
+   to quantize into discrete combinatorial classes); the "~25% edge-length
+   spread" formerly quoted in the table above (lattice-fractional units on a
+   non-cubic cell — the Cartesian figure is 7%).
+6. **Never quote a length, angle, or |k| out of harmonic coordinates without
+   whitening.** `torus_positions` does it by default since 2026-08-13; anything
+   older, or any hand-rolled `harmonic_gauge` call, is in an arbitrary GL(3)
+   frame. Results computed before that date on a **non-cubic host** (R, σ, μ,
+   Z, C14, C36, P, δ) and involving `basis` — S(k) |k| axes, real-space
+   distances from `frac @ basis` — need re-checking; cubic hosts (A15, C15)
+   are unaffected (W = I to ~1e-3).
 
 ## 7. Run-launch checklist
 

@@ -90,6 +90,54 @@ def test_torus_positions_shapes(crystal):
     assert abs(np.linalg.det(basis)) >= 1
 
 
+def _minima_ratios(B, R=4):
+    """Successive-minima ratios of the lattice spanned by the rows of B -- a
+    lattice invariant, unlike the shape of B itself (lattice_basis returns a
+    Euclidean-reduced, not Minkowski-reduced, basis)."""
+    import itertools
+    combos = np.array([c for c in itertools.product(range(-R, R + 1), repeat=3)
+                       if any(c)])
+    V = combos @ B
+    chosen = []
+    for i in np.argsort(np.linalg.norm(V, axis=1)):
+        cand = chosen + [V[i]]
+        if np.linalg.matrix_rank(np.array(cand), tol=1e-9) == len(cand):
+            chosen.append(V[i])
+            if len(chosen) == 3:
+                break
+    m = np.linalg.norm(np.array(chosen), axis=1)
+    return m / m[0]
+
+
+def test_whitening_is_a_metric_fix_not_a_coordinate_change():
+    """Whitening acts on the value space, so fractional coordinates are
+    untouched and the fundamental-domain volume is preserved (unimodular);
+    only the cell SHAPE carried by ``basis`` changes."""
+    fac = np.asarray(tr.build_t3_triangulation("r", 2)[0])
+    eu, _, _, _ = vf.edges_and_degrees(fac)
+    omega = coc.build_from_positions(eu, reference_frac_positions("r", 2), 2)
+    f_raw, b_raw = coc.torus_positions(fac, eu, omega, whiten=False)
+    f_w, b_w = coc.torus_positions(fac, eu, omega, whiten=True)
+    assert np.array_equal(f_raw, f_w)
+    assert np.linalg.det(b_w) == pytest.approx(np.linalg.det(b_raw), rel=1e-9)
+
+
+@pytest.mark.parametrize("name,m", [("c15", 3), ("r", 2), ("c14", 3)])
+def test_whitening_recovers_the_true_cell_shape(name, m):
+    """The winding lattice in cochain units is cubic for EVERY host (the
+    coordinates are fractional), so the unwhitened basis reports a cubic cell
+    even for hexagonal R / C14. Whitening by G^{-1/2} recovers the real
+    aspect ratio to a few percent without being told the lattice matrix."""
+    fac = np.asarray(tr.build_t3_triangulation(name, m)[0])
+    eu, _, _, _ = vf.edges_and_degrees(fac)
+    omega = coc.build_from_positions(eu, reference_frac_positions(name, m), m)
+    _, b_raw = coc.torus_positions(fac, eu, omega, whiten=False)
+    _, b_w = coc.torus_positions(fac, eu, omega, whiten=True)
+    ideal = _minima_ratios(np.asarray(tr.STRUCTURES[name][0], float) * m)
+    assert _minima_ratios(b_raw) == pytest.approx([1.0, 1.0, 1.0], abs=1e-6)
+    assert _minima_ratios(b_w) == pytest.approx(ideal, rel=0.03)
+
+
 # ---- real-k structure factor: crystal is hyperuniform --------------------
 
 @pytest.mark.parametrize("field", ["n6", "curvature_charge"])

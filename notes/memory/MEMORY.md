@@ -20,6 +20,8 @@
 - [Lifted/ECMC transport](lifted-ecmc-transport.md) — same-rung hops are EXACTLY free (no traversal, so no barrier); rung landscape short-correlated; mean free path to contact 55-83 steps at lam=0.35 so ell must be ~50-150; passing OVER a defect is allowed, stopping is a modelling choice
 - [Crystal symmetry group](crystal-symmetry-group.md) — symmetry.py gives EXACT Aut(K)/orbits/stabilizers/BC-chain classes cheaply; Aut(K) may legitimately EXCEED the physical crystal's space group; WL bucketing was fusing 5 real classes; chain-class provenance hole still open
 
+- [Cocycle coordinate quality](cocycle-coordinate-quality.md) — harmonic-gauge coords are NON-FOLDING (sum|V|/detB = 1); tet min/max edge ratio med 0.83, mode exactly 2/sqrt6; whiten by G^-1/2 or every length is wrong; CONVENTIONS' 25% registry spread was a lattice-fractional artifact (true 7%)
+
 - [Reporting conventions](reporting-conventions.md) — notation/terminology/report rules in notes/CONVENTIONS.md + CLAUDE.md; follow in every report and figure
 - [Cocycle detachment bug](cocycle-detachment-bug.md) — RESOLVED as phantom: save-path label skew (canonicalize before save_cocycle!); all pairs repaired; no D-core bug
 
