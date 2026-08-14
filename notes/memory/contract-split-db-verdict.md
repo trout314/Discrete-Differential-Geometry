@@ -477,6 +477,53 @@ WITHOUT it (bare geometric action, any churned/melted state) carried the
 
 `ManifoldSampler.set_label_fix(bool)` now wraps the C entry point.
 
+## The C/f3 tilt: documented, and importance_weight() fixed (2026-08-14)
+
+Left the `f3(x)/f3(y)` approximation in place by decision -- the exact factor
+is `C(x)/C(y)` and C costs O(N) naively (it CAN be maintained incrementally,
+since every move perturbs it only inside its own support; that is the real fix
+and is not done). The approximation is now documented at length in sampler.d
+next to the Hastings block, with the derivation, the exact normaliser and the
+measured size.
+
+    q(m|x) = c(m)/C(x),  C = 2V - f3 + 2H
+    (V = countValidBistellarMoves, already one facet centre per facet;
+     H = countValidHingeMoves, c = 2 per valid diagonal; c = 1 for the 1->4
+     facet centre whose keep-coin clips, 2 otherwise)
+    => the default chain is stationary for  exp(-S) * C/f3.
+
+**importance_weight() was wrong and is fixed.** It returned `1/V` -- neither
+the right normaliser nor the right power, and blind to the hinge moves. It now
+returns **w = f3/C**, the actual reciprocal of the tilt. Estimate an exp(-S)
+expectation as `sum(w_i O_i)/sum(w_i)`.
+
+Cross-validated: the D formula reproduces the independently enumerated C of
+the toy classes EXACTLY -- f3=8 -> C=32, f3=9 -> C=21, matching
+`labeled_chain.py`'s own enumeration and the hand count.
+
+End-to-end, three estimates of `mu = dS/df0` (A = default unweighted,
+B = default reweighted, C = run_exact, which commit e09f3e9 made exactly
+exp(-S)). At f3 ~ 14, where C/f3 varies enough to resolve the tilt:
+
+    A -0.7939 +- 0.0014 | B +0.7886 +- 0.0016 | C +0.7814 +- 0.0049
+    A - C = +0.0125 +- 0.0051   (2.5 sigma: the unweighted estimate IS biased)
+    B - C = +0.0072 +- 0.0052   (1.4 sigma: reweighted agrees with exact)
+    B - A = -0.0054 +- 0.0021   (2.6 sigma: moved the right way)
+
+At production size (f3 ~ 120+) all three agree inside errors -- the tilt is
+below resolution, as the O(1/N) argument predicts.
+
+**Scope limits, now enforced in code**: dim 3 only (dim 2/4 run `runBistellar`,
+which applies NO Hastings factor at all, so their bias needs a 2^-f0 term that
+is not a bounded per-state weight -- `run(exact=True)` is the tool there, and
+the function now raises). And valid ONLY for the pure bistellar+hinge chain:
+with the contract/split channel (or worm / non-local slide) on, the chain is a
+mixture of kernels with different targets and NO per-state weight corrects it.
+
+Also exposed `Manifold.count_valid_hinge_moves()` so the formula is checkable
+from Python, and added `_check_nan` to _dlang.py (the double-returning entry
+points had no errcheck, so errors surfaced as silent NaN).
+
 ## Tools
 
 `scripts/validate_contract_split.py` gained `--circulation` (with

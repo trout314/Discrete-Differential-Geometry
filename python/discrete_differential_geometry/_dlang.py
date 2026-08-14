@@ -157,6 +157,16 @@ def _check_null(result, func, args):
     return result
 
 
+def _check_nan(result, func, args):
+    """ctypes errcheck: raise on a NaN return (the double-valued analogue of
+    _check_int, whose negative-return convention a double cannot use)."""
+    if result != result:
+        err = _lib.ddg_last_error()
+        msg = err.decode() if err else "unknown error"
+        raise RuntimeError(f"{func.__name__}: {msg}")
+    return result
+
+
 def _check_int(result, func, args):
     """ctypes errcheck: raise on negative return."""
     if result < 0:
@@ -326,8 +336,13 @@ _lib.ddg_manifold_count_valid_moves.argtypes = [ctypes.c_void_p]
 _lib.ddg_manifold_count_valid_moves.restype = ctypes.c_long
 _lib.ddg_manifold_count_valid_moves.errcheck = _check_int
 
+_lib.ddg_manifold_count_valid_hinge_moves.argtypes = [ctypes.c_void_p]
+_lib.ddg_manifold_count_valid_hinge_moves.restype = ctypes.c_long
+_lib.ddg_manifold_count_valid_hinge_moves.errcheck = _check_int
+
 _lib.ddg_manifold_importance_weight.argtypes = [ctypes.c_void_p]
 _lib.ddg_manifold_importance_weight.restype = ctypes.c_double
+_lib.ddg_manifold_importance_weight.errcheck = _check_nan
 
 _lib.ddg_manifold_mean_degree.argtypes = [ctypes.c_void_p, ctypes.c_int]
 _lib.ddg_manifold_mean_degree.restype = ctypes.c_double
@@ -579,6 +594,7 @@ _lib.ddg_sampler_f_vector.errcheck = _check_int
 
 _lib.ddg_sampler_importance_weight.argtypes = [ctypes.c_void_p]
 _lib.ddg_sampler_importance_weight.restype = ctypes.c_double
+_lib.ddg_sampler_importance_weight.errcheck = _check_nan
 
 _lib.ddg_sampler_simplices.argtypes = [
     ctypes.c_void_p, ctypes.c_int, ctypes.POINTER(ctypes.c_int),

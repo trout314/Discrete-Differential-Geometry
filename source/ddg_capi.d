@@ -528,30 +528,83 @@ extern(C) long ddg_manifold_count_valid_moves(void* handle) nothrow
     catch (Exception e) { setError(e.msg); return -1; }
 }
 
-/// Return 1/V(x): the importance weight that corrects the sampler's
-/// stationary distribution (exp(-objective)*V) back to exp(-objective).
-extern(C) double ddg_manifold_importance_weight(void* handle) nothrow
+/// Number of valid 4-4 hinge moves (dim = 3 only): for each degree-4 edge,
+/// each of the two link-cycle diagonals whose edge is not already present.
+/// These carry c = 2 apiece in the proposal normaliser C -- see
+/// ddg_manifold_importance_weight.
+extern(C) long ddg_manifold_count_valid_hinge_moves(void* handle) nothrow
 {
     clearError();
     try
     {
         if (handle is null) { setError("null handle"); return -1; }
         auto h = cast(ManifoldHandle*) handle;
-
-        double compute(int dim)(ManifoldWrapper!dim* mw)
-        {
-            return 1.0 / cast(double) mw.mfd.countValidBistellarMoves;
-        }
-
-        switch (h.dim)
-        {
-            case 2: return compute!2(cast(ManifoldWrapper!2*) h.ptr);
-            case 3: return compute!3(cast(ManifoldWrapper!3*) h.ptr);
-            case 4: return compute!4(cast(ManifoldWrapper!4*) h.ptr);
-            default: setError("bad dimension"); return -1;
-        }
+        if (h.dim != 3) { setError("hinge moves are dim=3 only"); return -1; }
+        return cast(long) (cast(ManifoldWrapper!3*) h.ptr)
+            .mfd.countValidHingeMoves;
     }
     catch (Exception e) { setError(e.msg); return -1; }
+}
+
+/******************************************************************************
+Importance weight converting DEFAULT-sampler samples back to exp(-objective).
+
+`mcmcStep`'s proposal is a REJECTION LOOP, so it does not propose move m with
+the raw draw probability c(m)/(2^(dim+1)-1)/f_dim but with the conditioned
+
+    q(m|x) = c(m) / C(x),
+    C(x)   = sum of c over every valid move
+           = 2V(x) - f3(x) + 2H(x)
+
+where c = 1 for a facet centre (the 1->4 whose keep-coin clips at d = 1) and
+c = 2 otherwise, V = countValidBistellarMoves (which already includes one
+always-valid facet centre per facet) and H = countValidHingeMoves (c = 2 per
+valid diagonal). The applied Hastings factor uses f3(x)/f3(y) in place of
+C(x)/C(y), so the chain is stationary for
+
+    exp(-S) * C(x)/f3(x)
+
+and the correcting weight is its reciprocal, **w = f3/C**. Estimate an
+exp(-S) expectation as sum(w_i O_i) / sum(w_i); only ratios matter, so the
+overall scale is irrelevant.
+
+VALID ONLY FOR THE PURE BISTELLAR+HINGE CHAIN, i.e. plain `run()` at dim 3
+with set_bistellar_hastings ON (the default). With the contract/split channel
+(or the worm / non-local slide) enabled the chain is a MIXTURE of kernels with
+different targets, whose stationary law has no closed form -- there is no
+per-state weight that corrects it, and this function must not be used.
+
+dim 2 and 4 take a different path (`runBistellar`), which applies NO Hastings
+factor at all; its target picks up an additional 2^-f0 vertex fugacity that is
+not expressible as a bounded per-state weight. Use run(exact=True) there --
+it is exact for every dimension.
+
+(The old implementation returned 1/V, which is neither the right normaliser
+nor the right power, and ignored the hinge moves entirely.)
+*/
+extern(C) double ddg_manifold_importance_weight(void* handle) nothrow
+{
+    clearError();
+    try
+    {
+        if (handle is null) { setError("null handle"); return double.nan; }
+        auto h = cast(ManifoldHandle*) handle;
+        if (h.dim != 3)
+        {
+            setError("importance_weight is dim=3 only: the dim 2/4 sampler "
+                ~ "applies no Hastings factor, so its bias is not a bounded "
+                ~ "per-state weight -- use run(exact=True) instead");
+            return double.nan;
+        }
+        auto mw = cast(ManifoldWrapper!3*) h.ptr;
+        immutable double f3 = cast(double) mw.mfd.fVector[3];
+        immutable double v = cast(double) mw.mfd.countValidBistellarMoves;
+        immutable double hinge = cast(double) mw.mfd.countValidHingeMoves;
+        immutable double c = 2.0 * v - f3 + 2.0 * hinge;
+        if (!(c > 0)) { setError("degenerate move count"); return double.nan; }
+        return f3 / c;
+    }
+    catch (Exception e) { setError(e.msg); return double.nan; }
 }
 
 extern(C) double ddg_manifold_mean_degree(void* handle, int simp_dim) nothrow

@@ -5179,6 +5179,35 @@ bool mcmcStep(Vertex, P)(
         // vertex fugacity, which showed up as a circulating f0 current once
         // the exactly-weighted contract/split channel connected the same
         // configurations (~2.2 vertices/sweep, measured).
+        //
+        // KNOWN APPROXIMATION -- f_dim stands in for the true normaliser.
+        // This is a REJECTION LOOP: it redraws on the degree gate, the
+        // keep-coin, a frozen support or an invalid move, so the proposal is
+        // not c(m)/(15 f_dim) but the CONDITIONED
+        //     q(m|x) = c(m) / C(x),   C(x) = sum of c over all valid moves
+        //            = 2V - f_dim + 2H   (V = countValidBistellarMoves, which
+        //              already counts one always-valid facet centre per facet;
+        //              H = countValidHingeMoves, c = 2 per hinge diagonal).
+        // The exact factor is therefore (c_rev/c_fwd) * (C(x)/C(y)), and using
+        // f_dim(x)/f_dim(y) leaves the chain stationary for
+        //     exp(-S) * C(x)/f_dim(x)
+        // rather than exp(-S) -- states with more escape routes are
+        // over-weighted, because the loop is likelier to FIND a move there and
+        // the acceptance never discounts for it.
+        //
+        // Deliberate: C(x) costs O(N) per move computed naively (it can be
+        // maintained incrementally, since every move perturbs it only inside
+        // its own support -- that is the real fix, not yet done). The bias is
+        // O(1/N) because C/f_dim is intensive, and MEASURED it is tiny:
+        //     d ln(C/f3)/d f0 |_f3       = +0.0003 +- 0.0004  (no fugacity)
+        //     <d ln(C/f3)> per 1->4 move = -0.0034 +- 0.0003
+        //     <d ln(C/f3)> per channel split, |gamma| 3..6
+        //                                = +0.0013 +- 0.0006 .. +0.0059
+        // against ~0.21 nats for the label bug that used to sit here. To
+        // correct it exactly, either run(exact=True) or reweight samples by
+        // Manifold.importance_weight() = f_dim/C. Note the reweighting is only
+        // available for the PURE bistellar+hinge chain: with the contract/
+        // split channel on, the mixture's stationary law has no closed form.
         real logAlpha = -deltaObj;
         if (bistellarHastings)
         {

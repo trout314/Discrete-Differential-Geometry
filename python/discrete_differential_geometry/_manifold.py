@@ -325,14 +325,45 @@ class Manifold:
         from .disclination import disclination_census_from_handle
         return disclination_census_from_handle(self._handle, host_classes)
 
-    def importance_weight(self) -> float:
-        """Return 1/V(x), the importance weight correcting the sampler's
-        stationary distribution back to exp(-objective(x)).
+    def count_valid_hinge_moves(self) -> int:
+        """Number of valid 4-4 hinge moves (dim = 3 only).
 
-        The default sampler (pure Metropolis, no Hastings correction) samples
-        from pi(x) ~ exp(-obj(x)) * V(x), where V(x) is the number of valid
-        Pachner moves. Multiplying observables by this weight corrects for
-        the bias.
+        One per degree-4 edge per link-cycle diagonal whose edge is not
+        already present, so 0, 1 or 2 per degree-4 edge. They carry c = 2
+        apiece in the proposal normaliser -- see :meth:`importance_weight`.
+        """
+        return _lib.ddg_manifold_count_valid_hinge_moves(self._handle)
+
+    def importance_weight(self) -> float:
+        """Weight converting default-sampler samples back to exp(-objective).
+
+        ``mcmcStep``'s proposal is a REJECTION LOOP, so it proposes a move not
+        with the raw draw probability but with the conditioned
+        ``q(m|x) = c(m)/C(x)``, where ``c = 1`` for the ``1->4`` facet centre
+        (whose keep-coin clips) and ``2`` otherwise, and
+
+            C = 2*count_valid_moves() - f3 + 2*count_valid_hinge_moves()
+
+        The applied Hastings factor uses ``f3(x)/f3(y)`` in place of
+        ``C(x)/C(y)``, so the chain is stationary for ``exp(-S) * C/f3`` --
+        states with more escape routes are over-weighted. This returns the
+        correcting weight ``w = f3/C``. Estimate an ``exp(-S)`` expectation as
+
+            sum(w_i * O_i) / sum(w_i)
+
+        Only ratios matter, so the overall scale is irrelevant.
+
+        The bias is small at production size (``C/f3`` is intensive, so the
+        drift is O(1/N): measured ``<d ln(C/f3)>`` per move is a few times
+        1e-3, and it carries no vertex fugacity), but this makes it exact.
+
+        VALID ONLY FOR THE PURE BISTELLAR+HINGE CHAIN: plain ``run()`` at
+        dim 3 with ``set_bistellar_hastings`` ON (the default). With the
+        contract/split channel, worm or non-local slide enabled the chain is a
+        MIXTURE of kernels with different targets, whose stationary law has no
+        closed form -- no per-state weight corrects it. dim 2/4 raise, because
+        their sampler applies no Hastings factor at all; use
+        ``run(exact=True)`` there, which is exact in every dimension.
         """
         return _lib.ddg_manifold_importance_weight(self._handle)
 

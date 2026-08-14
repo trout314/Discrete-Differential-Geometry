@@ -213,20 +213,31 @@ class TestDataAccess:
         assert m.count_valid_moves() > m.num_facets
 
     def test_importance_weight_standard_sphere(self):
-        # importance_weight = 1/countValidBistellarMoves
-        # On standard spheres, only stellar subdivisions are valid,
-        # so countValidBistellarMoves == num_facets
-        for dim in (2, 3, 4):
-            m = Manifold.standard_sphere(dim)
-            assert m.importance_weight() == pytest.approx(1.0 / m.num_facets)
-
-    def test_importance_weight_after_moves(self):
+        # w = f3 / C with C = 2V - f3 + 2H, the proposal normaliser of the
+        # rejection loop. On a standard 3-sphere only the stellar
+        # subdivisions are valid (V == f3) and there are no degree-4 edges
+        # (H == 0), so C == f3 and the weight is exactly 1.
         m = Manifold.standard_sphere(3)
-        for _ in range(5):
+        assert m.count_valid_moves() == m.num_facets
+        assert m.count_valid_hinge_moves() == 0
+        assert m.importance_weight() == pytest.approx(1.0)
+
+    def test_importance_weight_matches_its_formula(self):
+        m = Manifold.standard_sphere(3)
+        for _ in range(6):
             m.do_move()
-        w = m.importance_weight()
-        # After subdivision, more valid moves exist, so weight < 1/num_facets
-        assert 0 < w < 1.0 / m.num_facets
+            f3 = m.num_facets
+            c = (2 * m.count_valid_moves() - f3
+                 + 2 * m.count_valid_hinge_moves())
+            assert c > 0
+            assert m.importance_weight() == pytest.approx(f3 / c)
+
+    def test_importance_weight_is_dim3_only(self):
+        # dim 2/4 run a sampler with NO Hastings factor at all, whose bias is
+        # not a bounded per-state weight -- run(exact=True) is the tool there.
+        for dim in (2, 4):
+            with pytest.raises(RuntimeError):
+                Manifold.standard_sphere(dim).importance_weight()
 
 
 class TestMoves:
