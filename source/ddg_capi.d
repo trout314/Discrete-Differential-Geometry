@@ -1657,6 +1657,7 @@ private struct SamplerState
     /// stationary for exp(-S) times a spurious vertex fugacity. Settable to
     /// false ONLY to reproduce chains recorded before the fix.
     bool bistellarHastings = true;
+    bool labelFix = true;
 
     // f0 worm channel (scheme C; dim=3 only): extended-ensemble vertex
     // removal/insertion with a frozen umbrella table. See sampler.wormF0Episode.
@@ -1986,7 +1987,7 @@ private long runSamplerDim3(SamplerState* s, long numMoves,
                     (s.dim == 3 && s.csCfg.prob > 0) ? &s.csCfg : null,
                     (s.dim == 3 && s.illegalBudget.enabled)
                         ? &s.illegalBudget : null,
-                    s.bistellarHastings))
+                    s.bistellarHastings, s.labelFix))
             {
                 accepted++;
                 acceptedSinceWriteback++;
@@ -2105,7 +2106,13 @@ extern(C) long ddg_sampler_run_exact(void* sampler_handle, long num_moves,
                         s.unusedVertices.assumeSafeAppend;
                     }
                 }
-                if (bm.center.length == 1) s.unusedVertices ~= bm.center;
+                if (bm.center.length == 1)
+                {
+                    // see retireLabel() in sampler.d
+                    if (!(s.labelFix && s.unusedVertices.length == 0
+                          && bm.center[0] == cast(int) mw.mfd.fVector[0]))
+                        s.unusedVertices ~= bm.center;
+                }
 
                 real newObjective = mw.mfd.objective(params);
                 real deltaObj = newObjective - currentObjective;
@@ -3067,6 +3074,21 @@ sampler.ContractSplitConfig / tryContractSplit.
 */
 /// Toggle the bistellar proposal-asymmetry (Hastings) correction.
 /// Default on; turn it OFF only to reproduce pre-fix chains.
+/******************************************************************************
+Toggle the label-bookkeeping fix (survivor coin on edge contraction + the
+hole-only pool push). ON by default and you want it on: without it the
+contract/split pair is not an involution and the chain carries a spurious f0
+current (~15% of accepted channel moves, measured). OFF reproduces chains
+recorded before the fix.
+*/
+extern(C) int ddg_sampler_set_label_fix(void* sampler_handle, int on) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    (cast(SamplerState*) sampler_handle).labelFix = (on != 0);
+    return 0;
+}
+
 extern(C) int ddg_sampler_set_bistellar_hastings(void* sampler_handle, int on) nothrow
 {
     clearError();

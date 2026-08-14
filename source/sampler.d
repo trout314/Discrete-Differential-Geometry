@@ -3478,6 +3478,30 @@ unittest
     }
 }
 
+/*******************************************************************************
+Return a label to the free pool after a move retired it.
+
+The allocator hands out `unusedVertices.back` when the pool is non-empty and
+`fVector[0]` when it is empty. So retiring the label that an EMPTY pool would
+hand back anyway produces a state that behaves identically to the unpushed one
+-- two names for one state -- and the split/contract pair stops being an
+involution: a split from the empty pool mints a brand-new label without
+consuming anything, while its reverse contraction always pushed. Skipping that
+one push closes it. (Only for an empty pool: a non-empty pool returns its own
+back, so a retired label must always be recorded.)
+
+Verified to machine zero by exact enumeration; see
+notes/memory/contract-split-db-verdict.md.
+*/
+private void retireLabel(Vertex)(ref Vertex[] unusedVertices, Vertex gone,
+    ref Manifold!(3, Vertex) mfd, bool labelFix)
+{
+    if (labelFix && unusedVertices.empty
+        && gone == cast(Vertex) mfd.fVector[0])
+        return;
+    unusedVertices ~= gone;
+}
+
 private int collectStar(Vertex)(ref Manifold!(3, Vertex) mfd, Vertex v,
     Vertex[4] seed, Vertex[4][] arr, int n)
 {
@@ -4341,7 +4365,8 @@ private bool tryContractSplit(Vertex, P)(
     Deg3Set!Vertex* deg3Set,
     Deg3Set!Vertex* deg4Set,
     CocycleState!Vertex* cocycle = null,
-    IllegalBudget* budget = null)
+    IllegalBudget* budget = null,
+    bool labelFix = true)
 {
     import link_cycles : CatalogClass, adjFromFaces, catalog, countCycles,
         countCyclesCached, kthCycle, matchCatalog, maxCycleLen, maxLinkVerts;
@@ -4398,15 +4423,23 @@ private bool tryContractSplit(Vertex, P)(
         static immutable int[2][6] pairIdx =
             [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]];
         immutable pi = pairIdx[uniform(0, 6)];
-        Vertex u = facet[pi[0]];
-        Vertex v = facet[pi[1]];
-        if (u > v)
+        Vertex ea = facet[pi[0]];
+        Vertex eb = facet[pi[1]];
+        Vertex[2] uv = [ea < eb ? ea : eb, ea < eb ? eb : ea];  // sorted key
+        // SURVIVOR COIN. The old rule always kept min(u, v), so only ONE of
+        // the two survivor choices was ever proposed while being weighted as
+        // the whole move -- and a split that mints a label SMALLER than its
+        // split vertex then had no reverse at all (the contraction would keep
+        // the small label and retire the other end). That is a one-way move
+        // pumping f0, worth exactly the factor 2 below. See
+        // notes/memory/contract-split-db-verdict.md; verified to machine zero
+        // by exact enumeration of a 1404-state chain.
+        Vertex u = uv[0], v = uv[1];
+        if (labelFix && uniform(0, 2) == 0)
         {
-            immutable t = u;
-            u = v;
-            v = t;
+            u = uv[1];
+            v = uv[0];
         }
-        Vertex[2] uv = [u, v];
         immutable long rl = cast(long) mfd.degreeOrZero!1(uv[]);
         if (rl < 3 || rl > cs.maxRing)
         {
@@ -4565,7 +4598,8 @@ private bool tryContractSplit(Vertex, P)(
 
         immutable real logQ =
             log(cast(real) deg3yU) - log(4.0L * f3y) - log(cast(real) NY)
-            - log(2.0L) - (log(cast(real) rl) - log(6.0L * f3x));
+            - log(2.0L) - (log(cast(real) rl) - log(6.0L * f3x))
+            + (labelFix ? log(2.0L) : 0.0L);   // survivor coin in q_fwd
 
         real dS = mfd.speculativeBlockDelta(move.removedFacets,
                                             move.addedFacets, baseObj, params);
@@ -4586,7 +4620,7 @@ private bool tryContractSplit(Vertex, P)(
             if (cocycle !is null)
                 cocycleContract(*cocycle, u, v, nbrsV);
             mfd.commitPlannedMove(move);
-            unusedVertices ~= v;
+            retireLabel(unusedVertices, v, mfd, labelFix);
             currentObjective += dS;
             cs.contractAccepts++;
             if (rl >= 3 && rl <= maxCycleLenCS)
@@ -4707,6 +4741,7 @@ private bool tryContractSplit(Vertex, P)(
 
         immutable real logQ =
             log(cast(real) clen) - log(6.0L * f3y)
+            - (labelFix ? log(2.0L) : 0.0L)    // survivor coin in q_rev
             - (log(cast(real) nT) - log(4.0L * f3x)
                - log(cast(real) NX) - log(2.0L));
 
@@ -4788,7 +4823,8 @@ bool mcmcStep(Vertex, P)(
     Deg3Set!Vertex* deg4Set = null,
     ContractSplitConfig* contractSplit = null,
     IllegalBudget* budget = null,
-    bool bistellarHastings = true)
+    bool bistellarHastings = true,
+    bool labelFix = true)
 {
     enum dim = 3;
     enum nVerts = dim + 1;
@@ -4967,7 +5003,7 @@ bool mcmcStep(Vertex, P)(
     {
         return tryContractSplit(mfd, currentObjective, unusedVertices,
             params, *contractSplit, potState, pot, deg3Set, deg4Set,
-            cocycle, budget);
+            cocycle, budget, labelFix);
     }
 
     // Unified proposal loop
@@ -5187,7 +5223,8 @@ bool mcmcStep(Vertex, P)(
                 unusedVertices.popBack;
                 unusedVertices.assumeSafeAppend;
             }
-            if (bm.center.length == 1) unusedVertices ~= bm.center;
+            if (bm.center.length == 1)
+                retireLabel(unusedVertices, bm.center[0], mfd, labelFix);
             currentObjective += deltaObj;
             bistellarAccepts[bm.coCenter.length - 1]++;
             return true;

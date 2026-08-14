@@ -1,6 +1,6 @@
 ---
 name: contract-split-db-verdict
-description: "Contract/split channel: circulation is ZERO in the production regime (n_6 potential on) -- the bias is a potential-OFF test artefact; FK catalog verified exact on 4502 real links incl. Z16_D2 rejection"
+description: "FIXED: the circulation was a LABEL-BOOKKEEPING DB bug (min(u,v) survivor rule + an over-eager pool push). Survivor coin + hole-only push -> DB residual 6e-18 by exact enumeration, and the measured circulation 1.36/sweep -> 0.01"
 metadata: 
   node_type: memory
   type: project
@@ -339,6 +339,123 @@ exhaustively enumerating both kernels, and solve for the stationary vector.
 That either shows pi = exp(-S) (so the fault is scale- or state-class
 dependent) or hands over the offending (x, y) pair outright. No statistics,
 no theory -- it terminates the search either way.
+
+## SOLVED (2026-08-14): it is the LABEL BOOKKEEPING, not the geometry
+
+Built the mixed chain EXACTLY -- both kernels from the validated replicas, on
+the labelled state space (facets + the unusedVertices stack), f3 window
+[5,10], 32 states -- and solved for the stationary vector. It reproduces the
+phenomenon: channel flux **-19.19% per accepted channel move**. Then the
+offending pair fell straight out:
+
+    K(31->14) = 8.571e-03      K(14->31) = 0
+    state 31: f3=5 f0=5 pool=(0,)  live=[1,2,3,4,5]
+    state 14: f3=8 f0=6 pool=()    live=[0,1,2,3,4,5]
+
+State 31 has HOLEY labels: 0 is retired into the pool. A split takes
+`fresh = pool.back = 0`, minting a vertex labelled 0. The reverse would be
+contracting (0, w) -- but `tryContractSplit` keeps `min(u,v)` = 0 and retires
+w instead. **A split that creates a label smaller than its split vertex has no
+reverse.** One-way move, f0 pumped, done.
+
+Two components, both label discipline:
+ (a) the contraction keeps min(u,v), so only ONE of the two survivor choices
+     is ever proposed while being weighted as the whole move -- worth exactly
+     a factor 2, which is the long-suspected ln 2;
+ (b) `fresh` comes from a LIFO stack and a split from an EMPTY pool allocates
+     a brand-new label leaving the pool empty, while its reverse contraction
+     always PUSHES -- so the pool state cannot return either.
+
+Fix, verified in exact arithmetic (total |pi K - pi K| over all pairs):
+
+    FIX=0  current code                   chan 8.872e-03   bist 5.866e-03
+    FIX=1  + survivor coin (a)            chan 3.632e-03   bist 5.866e-03
+    FIX=2  + canonical fresh label (b)    chan 4.879e-18   bist 1.301e-17
+
+i.e. **both families become exactly reversible for their derived targets**:
+the channel for exp(-S) and the bistellar+hinge sector for exp(-S)*C/f3. So
+both derivations were right all along; the label discipline was the bug. Note
+(b) fixes the BISTELLAR family too -- 1<->4 shares the same pool.
+
+The fix in the sampler:
+  * `fresh` = a canonical choice (smallest free label), not a stack pop;
+  * the contraction picks its survivor by a fair coin, both endpoints allowed;
+  * hence `-log 2` on the contract branch's q_fwd and on the split branch's
+    q_rev (splits become 2x less favoured relative to contractions).
+
+### Why every earlier test missed it
+Every fixed-state rate audit measured the AGGREGATE rate out of a state; this
+bug is about WHICH LABELLED STATE you land in, which those cannot see. Worse,
+the exact-enumeration replica (`db_exact.py`) used `fresh = max(label) + 1`,
+so fresh > w always -- **precisely the benign case**. The original pair test
+was designed around it too, its docstring saying labels are "compacted to
+0..n-1 so a split creates fresh = n ... and the reverse contraction of (w, n)
+keeps w < n, restoring x bit-for-bit". The blind spot was written into the
+test suite from the start.
+
+### Why the n_6 potential hid it
+The irreversible sub-case needs the pool to hold a label SMALLER than a
+typical split vertex. Pool entries come from channel contractions (which
+retire max(u,v), a large label) and from bistellar 4->1 (which retires
+whatever degree-4 vertex it finds -- often small). With the potential on,
+degree-4 vertices are illegal, 4->1 is suppressed, and the pool holds mostly
+large labels -- so the bad case rarely fires. Hypothesis, consistent with
+every regime measured; worth confirming with a counter.
+
+## THE FIX, validated and shipped (2026-08-14)
+
+Two changes, both label bookkeeping, each validated to MACHINE ZERO by exact
+enumeration of a 1404-state chain (f3 window [5,12], where holes coexist):
+
+1. **Survivor coin.** The contraction picks which endpoint survives by a fair
+   coin instead of always keeping `min(u, v)`. Hastings: `+log 2` on the
+   contract branch's q_fwd and `-log 2` on the split branch's q_rev.
+2. **Hole-only pool push** (`retireLabel`). Push the retired label onto
+   `unusedVertices` UNLESS the pool is empty and the label equals `fVector[0]`
+   after the move -- the allocator would hand that one back anyway, so pushing
+   creates a second name for one state. Applies to the channel's contraction
+   AND to the bistellar 4->1 (mcmcStep and run_exact both).
+
+Incremental validation, total |pi K - pi K| over all pairs, 1404 states:
+
+    variant                          channel      bistellar
+    current code                     8.320e-03    4.952e-03
+    survivor coin only               3.077e-03    4.952e-03
+    hole-only push only              5.242e-03    5.692e-18   <- fixes bistellar
+    BOTH                             5.870e-18    5.692e-18   <- both exact
+
+Note the push fix alone makes the BISTELLAR family exactly reversible (4->1's
+retired vertex is geometrically determined, so it needs no coin); the channel
+needs both. An earlier attempt using `fresh = smallest free label` reached
+zero only on the 32-state window where holes never coexist -- at [5,12] it
+left 2.3e-03. The push rule must test `pool empty`, not just the label value:
+a NON-empty pool returns its own back, so a retired label must be recorded.
+
+`ddg_sampler_set_label_fix(bool)` / default ON; OFF reproduces old chains.
+
+### MEASURED after the fix
+Circulation diagnostic, churned sphere, f3 240, cs 0.3 -- the statistic that
+sat at 30 sigma through this whole investigation:
+
+    ring   before (per sweep)   after (per sweep)        z
+      3         +1.3648          -0.0146 +- 0.0357     -0.41
+      4         +1.4878          +0.0029 +- 0.0417     +0.07
+      6         +1.0816          +0.0672 +- 0.0395     +1.70
+      8         +0.7203          -0.0658 +- 0.0295     -2.23   -> PASS
+
+Per-ring-length flux, per accepted channel move:
+
+    L      before        after
+    3     +16.01%    +0.65% +- 0.72%
+    4     +10.25%    -1.19% +- 0.76%
+    5      +5.67%    -1.34% +- 0.83%
+    6      +5.70%    +0.84% +- 0.97%
+    ALL   +10.44%            -0.29%
+
+**This CHANGES SAMPLED RESULTS for every chain that ran the channel**, and the
+push fix also changes bistellar-only chains (4->1 pool bookkeeping). Chains in
+the production regime (n_6 potential on) already showed zero circulation, so
+they should shift little.
 
 ## Tools
 
