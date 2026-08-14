@@ -570,6 +570,87 @@ pure @safe unittest
     }
 }
 
+/*******************************************************************************
+matchCatalog must REJECT the D2 Z16 isomer.
+
+n_6 does NOT determine lk(v): at n_6 = 4 there are two edge-legal classes --
+the T_d Friauf polyhedron (the catalog's Z16, the only Frank-Kasper one, with
+its deg-6 vertices pairwise non-cofacial) and a D2 isomer with two cofacial
+deg-6 pairs. See tools/link_classes.py and
+notes/memory/fk-vertex-link-classification.md.
+
+The two are indistinguishable to every cheap test matchCatalog applies before
+propagateIso: SAME 16 vertices, SAME 28 faces. And they are indistinguishable
+to the cycle counts too -- until length 6:
+
+    Z16 T_d (catalog)  28 42 96 282  960 3237
+    Z16 D2  (isomer)   28 42 96 296 1008 3212
+
+so a false match would be SILENT at maxRing <= 5 and wrong by 3% in the split
+branch's N at the production maxRing = 6 -- and only in the split branch,
+since the contract branch always DFS-counts the merged link. That asymmetry
+would break detailed balance on exactly those vertices, with no assertion to
+catch it. Real D2 links do occur: data/crystal_gas/r_c0.50.final.mfd carries
+5 of them beside 170 T_d Z16.
+
+The face list below is a real D2 link lifted from that crystal.
+*/
+unittest
+{
+    static immutable ubyte[3][] z16D2Faces = [
+        [0,2,3],  [0,2,13], [0,3,7],   [0,7,12],  [0,11,12], [0,11,13],
+        [1,2,4],  [1,2,13], [1,4,8],   [1,8,15],  [1,13,15], [2,3,4],
+        [3,4,10], [3,7,9],  [3,9,10],  [4,8,10],  [5,6,9],   [5,6,14],
+        [5,7,9],  [5,7,12], [5,12,14], [6,8,10],  [6,8,15],  [6,9,10],
+        [6,14,15],[11,12,14],[11,13,15],[11,14,15],
+    ];
+    // same size and face count as the catalog's Z16 -- the cheap guard cannot
+    // separate them, so the rejection is entirely propagateIso's doing
+    z16D2Faces.length.shouldEqual(z16Faces.length);
+
+    ubyte[maxLinkVerts] perm;
+    assert(matchCatalog(16, z16D2Faces, perm) == -1,
+        "the D2 Z16 isomer was FALSELY matched to the catalog's T_d Z16");
+
+    // and it really is a different link: the counts diverge at length 6
+    uint[maxLinkVerts] adjD2, adjTd;
+    adjFromFaces(z16D2Faces, adjD2);
+    adjFromFaces(z16Faces, adjTd);
+    immutable d2 = countCycles(adjD2[0 .. 16], maxCycleLen);
+    immutable td = countCycles(adjTd[0 .. 16], maxCycleLen);
+    foreach (len; 3 .. 6)
+        d2.byLength[len].shouldEqual(td.byLength[len]);   // agree to len 5
+    d2.byLength[6].shouldEqual(296);
+    td.byLength[6].shouldEqual(282);
+    assert(d2.total(6) != td.total(6),
+        "the isomer must differ from the catalog at the production maxRing");
+
+    // positive control: a RELABELLED T_d Z16 is still matched, and the
+    // returned perm is a genuine isomorphism (transported faces are faces)
+    ubyte[maxLinkVerts] sigma;
+    foreach (i; 0 .. 16)
+        sigma[i] = cast(ubyte)(15 - i);           // any fixed permutation
+    ubyte[3][] shuffled;
+    foreach (ref f; z16Faces)
+    {
+        ubyte[3] g = [sigma[f[0]], sigma[f[1]], sigma[f[2]]];
+        g[].sort();
+        shuffled ~= g;
+    }
+    immutable ci = matchCatalog(16, shuffled, perm);
+    assert(ci == cast(int) CatalogClass.z16,
+        "a relabelled T_d Z16 must still match the catalog");
+    bool[ubyte[3]] target;
+    foreach (ref f; shuffled)
+        target[f] = true;
+    foreach (ref f; catalog(CatalogClass.z16).faces)
+    {
+        ubyte[3] img = [perm[f[0]], perm[f[1]], perm[f[2]]];
+        img[].sort();
+        assert(img in target, "perm is not an isomorphism onto the link");
+    }
+}
+
 /// kthCycle enumerates each cycle exactly once, in valid canonical form,
 /// and agrees with countCycles; out-of-range k returns 0.
 pure @safe unittest

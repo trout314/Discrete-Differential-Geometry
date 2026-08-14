@@ -3133,6 +3133,34 @@ extern(C) int ddg_sampler_contract_split_stats(void* sampler_handle,
 }
 
 /******************************************************************************
+Accepted contract/split moves resolved by RING LENGTH: writes
+maxCycleLenCS + 1 entries (index = |gamma| resp. the contracted edge degree,
+so entries 0..2 are always zero) into each of out_split and out_contract.
+
+Splits with |gamma| = L and contractions of a ring-L edge are each other's
+reverses, so in a stationary chain a channel reversible for that chain's law
+must carry zero net flux in EVERY L separately. The aggregate counters can
+only report that an imbalance exists; this reports where it lives -- and
+unlike a fixed-state rate audit it is an ENSEMBLE measurement, which is what
+a stationary current actually is.
+*/
+extern(C) int ddg_sampler_contract_split_by_len(void* sampler_handle,
+    long* out_split, long* out_contract) nothrow
+{
+    clearError();
+    if (sampler_handle is null) { setError("null handle"); return -1; }
+    auto s = cast(SamplerState*) sampler_handle;
+    foreach (i; 0 .. maxCycleLenCS + 1)
+    {
+        if (out_split !is null)
+            out_split[i] = cast(long) s.csCfg.splitAcceptsByLen[i];
+        if (out_contract !is null)
+            out_contract[i] = cast(long) s.csCfg.contractAcceptsByLen[i];
+    }
+    return 0;
+}
+
+/******************************************************************************
 Cap the illegal-edge count at `cap` (dim = 3 only): any move whose post-move
 count of edges with degree outside {5, 6} would exceed the cap is rejected
 outright.  Pass a negative cap to disable (the default).

@@ -2497,7 +2497,21 @@ struct ContractSplitConfig
     ulong splitTries;
     ulong splitAccepts;
     ulong noValid;            // failed validity/geometry gates
+    // Accepted moves resolved by RING LENGTH (index = |gamma| resp. the
+    // contracted edge's degree, 3 .. maxCycleLen). Splits with |gamma| = L
+    // and contractions of a ring-L edge are each other's reverses, so at
+    // stationarity a channel reversible for the chain's own law must show
+    // zero net flux in EVERY L separately. The aggregate counters above can
+    // only say that some imbalance exists; these say where it lives, and
+    // they are an ENSEMBLE measurement -- fixed-state rate audits cannot
+    // see it.
+    ulong[maxCycleLenCS + 1] splitAcceptsByLen;
+    ulong[maxCycleLenCS + 1] contractAcceptsByLen;
 }
+
+/// Mirror of link_cycles.maxCycleLen, so ContractSplitConfig does not need
+/// the import at its declaration site.
+enum int maxCycleLenCS = 8;
 
 /// A live set of the degree-3 edges (defect chords) for the 1/n_3 proposal:
 /// O(1) uniform draw / add / remove, and -- crucially -- a WITNESS facet per
@@ -4575,6 +4589,8 @@ private bool tryContractSplit(Vertex, P)(
             unusedVertices ~= v;
             currentObjective += dS;
             cs.contractAccepts++;
+            if (rl >= 3 && rl <= maxCycleLenCS)
+                cs.contractAcceptsByLen[cast(size_t) rl]++;
             if (deg3Set !is null)
                 reconcileDeg3(mfd, *deg3Set, sup);
             if (deg4Set !is null)
@@ -4737,6 +4753,8 @@ private bool tryContractSplit(Vertex, P)(
             unusedVertices.assumeSafeAppend;
             currentObjective += dS;
             cs.splitAccepts++;
+            if (clen >= 3 && clen <= maxCycleLenCS)
+                cs.splitAcceptsByLen[cast(size_t) clen]++;
             sup ~= fresh;
             if (deg3Set !is null)
                 reconcileDeg3(mfd, *deg3Set, sup);

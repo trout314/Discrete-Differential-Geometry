@@ -289,6 +289,57 @@ So the circulation cause is STILL OPEN. Note also that linkOverflow excludes
 11.4% of vertices of a melted state from the channel entirely (symmetric, so
 not a DB bug, but a real coverage limit).
 
+## Flux spectrum by ring length (2026-08-14) -- new ENSEMBLE instrument
+
+Added per-ring-length accept counters to ContractSplitConfig, exposed as
+`ddg_sampler_contract_split_by_len` / `ManifoldSampler.contract_split_by_len()`.
+Splits with |gamma| = L and contractions of a ring-L edge are each other's
+reverses, so each L is a sub-family closed under reversal and must show zero
+net flux separately. Churned sphere, ring cap 6, cs 0.3, 6000 sweeps:
+
+    L   splits  contracts    net    net/(s+c)        share of total net
+    3     8531       6176  +2355  +16.01% +- 0.70%        50.3%
+    4     7413       6035  +1378  +10.25% +- 0.75%        29.4%
+    5     5333       4761   +572   +5.67% +- 0.82%        12.2%
+    6     3494       3117   +377   +5.70% +- 0.88%         8.1%
+    ALL  24771      20089  +4682  +10.44%
+
+Present at EVERY L, decaying monotonically with L -- not localised to one
+sub-family. That is the signature of an external potential tilting pi with the
+channel merely responding, not of an L-specific bug.
+
+## Everything now ruled out, quantitatively
+
+* **The tilt is not ln(C/f3).** Measured along the CHANNEL's own splits (not
+  just 1->4): **+0.0013 / +0.0006 / +0.0022 / +0.0059** for L = 3/4/5/6. A flux
+  fraction phi needs delta = 2*atanh(phi), i.e. 0.323 / 0.206 / 0.113 / 0.114.
+  **Short by 20x to 250x.**
+* **The proposal loop is a proper rejection loop** -- `continue` only on the
+  degree gate / keep-coin / frozen / invalid, and `return false` on Metropolis
+  rejection (checked in source). So pi_B ∝ exp(-S)*C/f3 stands; it is NOT the
+  rejection-free variant, which would have given pi ∝ exp(-S)*Z(x) and a far
+  bigger tilt.
+* **The path bijection holds at ring 6 too**: 21668 distinct split targets,
+  (fwd, rev) multiplicities exactly (1,1) 19950, (2,2) 1322, (3,3) 264,
+  (4,4) 132.
+* **C has no missing category**: all five proposal-weight ratios came out at
+  1.000 with no common offset, and a missed landable class would have scaled
+  all five by the same factor.
+
+### The gap, stated precisely
+For a mixture of two reversible kernels, flux/throughput ~ epsilon, the
+log-target difference per move. Measured flux/throughput = 0.104 => epsilon
+~ 0.21 nats. Every measurement of the actual target difference says
+epsilon <= 0.006. **A factor ~35 that nothing so far explains.**
+
+### The decisive next experiment
+Stop probing and CONSTRUCT: on a small manifold (f3 pinned to ~12-20), BFS the
+reachable labeled state space, build the full mixed transition matrix by
+exhaustively enumerating both kernels, and solve for the stationary vector.
+That either shows pi = exp(-S) (so the fault is scale- or state-class
+dependent) or hands over the offending (x, y) pair outright. No statistics,
+no theory -- it terminates the search either way.
+
 ## Tools
 
 `scripts/validate_contract_split.py` gained `--circulation` (with

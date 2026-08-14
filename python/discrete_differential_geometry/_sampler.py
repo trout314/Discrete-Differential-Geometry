@@ -759,6 +759,24 @@ class ManifoldSampler:
             self._handle, *[ctypes.byref(v) for v in vals])
         return tuple(int(v.value) for v in vals)
 
+    def contract_split_by_len(self) -> tuple[np.ndarray, np.ndarray]:
+        """``(split_accepts, contract_accepts)`` by ring length, index 0..8.
+
+        A split along a cycle of length L and a contraction of a ring-L edge
+        are each other's reverses, so in a stationary chain a channel that is
+        reversible for that chain's own law must carry zero net flux in EVERY
+        L separately. ``contract_split_stats`` can only say that an imbalance
+        exists; this says which L it lives in -- and being an ENSEMBLE
+        quantity it sees things a fixed-state rate audit cannot, because a
+        stationary current is a property of the ensemble, not of one state.
+        """
+        n = 9
+        sp = (ctypes.c_long * n)()
+        co = (ctypes.c_long * n)()
+        _lib.ddg_sampler_contract_split_by_len(self._handle, sp, co)
+        return (np.array(list(sp), dtype=np.int64),
+                np.array(list(co), dtype=np.int64))
+
     def set_bistellar_hastings(self, on: bool = True) -> None:
         """Toggle the bistellar proposal-asymmetry (Hastings) correction.
 

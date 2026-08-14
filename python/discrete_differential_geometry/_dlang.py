@@ -856,6 +856,13 @@ _lib.ddg_sampler_contract_split_stats.argtypes = [
 _lib.ddg_sampler_contract_split_stats.restype = ctypes.c_int
 _lib.ddg_sampler_contract_split_stats.errcheck = _check_int
 
+# Accepted channel moves resolved by ring length; 9 entries (0..8) each
+_lib.ddg_sampler_contract_split_by_len.argtypes = [
+    ctypes.c_void_p, ctypes.POINTER(ctypes.c_long),
+    ctypes.POINTER(ctypes.c_long)]
+_lib.ddg_sampler_contract_split_by_len.restype = ctypes.c_int
+_lib.ddg_sampler_contract_split_by_len.errcheck = _check_int
+
 # Illegality budget: (handle, cap) / (handle, *out cap, n_illegal, blocked)
 _lib.ddg_sampler_set_illegal_budget.argtypes = [
     ctypes.c_void_p, ctypes.c_long]
