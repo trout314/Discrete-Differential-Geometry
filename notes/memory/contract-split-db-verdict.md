@@ -457,6 +457,26 @@ push fix also changes bistellar-only chains (4->1 pool bookkeeping). Chains in
 the production regime (n_6 potential on) already showed zero circulation, so
 they should shift little.
 
+## Post-fix confirmations (2026-08-14)
+
+**The flag is a clean reproducibility switch.** Same host/params, churned
+sphere f3 240, cs 0.3, ring 6, 3000 sweeps, per accepted channel move:
+
+    set_label_fix(False)   +11.10% +- 0.38%     (reproduces the old bias)
+    set_label_fix(True)     -0.17% +- 0.46%     (fixed)
+
+**Production is unaffected**, as expected -- it never had the bias to begin
+with. R crystal, n_6 potential zleg=cimp=0.6, cs 0.6, ring 6, 1800 sweeps:
+
+    before the fix   -0.07% +- 0.62%   (FK 0.746, 42 Z16_D2)
+    after  the fix   +0.00% +- 0.69%   (FK 0.777, 29 Z16_D2)
+
+So chains run with the potential on need no reinterpretation; chains run
+WITHOUT it (bare geometric action, any churned/melted state) carried the
+~10-16% current and should be treated as suspect.
+
+`ManifoldSampler.set_label_fix(bool)` now wraps the C entry point.
+
 ## Tools
 
 `scripts/validate_contract_split.py` gained `--circulation` (with

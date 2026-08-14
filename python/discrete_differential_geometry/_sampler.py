@@ -777,6 +777,32 @@ class ManifoldSampler:
         return (np.array(list(sp), dtype=np.int64),
                 np.array(list(co), dtype=np.int64))
 
+    def set_label_fix(self, on: bool = True) -> None:
+        """Toggle the vertex-label bookkeeping fix (dim = 3). ON by default.
+
+        Two changes that together make the contract/split pair an INVOLUTION:
+
+        * the contraction picks its surviving endpoint by a fair coin rather
+          than always keeping ``min(u, v)`` -- under the old rule only one of
+          the two survivor choices was ever proposed while being weighted as
+          the whole move, and a split minting a label SMALLER than its split
+          vertex had no reverse at all;
+        * a retired label is pushed onto the free pool only when it is a
+          genuine hole -- pushing the one an empty pool would hand back
+          anyway gives two names for a single state.
+
+        Without them the chain carries a spurious f0 current: ~10-16% of
+        accepted channel moves, and a vertex fugacity of order ln 2. Turn it
+        OFF only to reproduce chains recorded before the fix; results will
+        differ from corrected runs by construction. The second change also
+        affects bistellar-only chains, through the ``4->1`` pool bookkeeping.
+
+        See ``notes/memory/contract-split-db-verdict.md``; both were validated
+        to machine precision by exact enumeration of a 1404-state chain.
+        """
+        _lib.ddg_sampler_set_label_fix(self._handle, 1 if on else 0)
+        self._recorded_label_fix = bool(on)
+
     def set_bistellar_hastings(self, on: bool = True) -> None:
         """Toggle the bistellar proposal-asymmetry (Hastings) correction.
 
