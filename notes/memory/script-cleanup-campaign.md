@@ -66,8 +66,12 @@ bit-identity; twosided_chord+agg_knobs+chainsites stay campaign tools);
 CLI sweep test_cli_smoke.py (compile fast; --help/import-rot slow, 109
 scripts). conftest rebuilds missing tcp references, skips mgas snaps.
 BUGS FIXED: stale 10th argtype on ddg_sampler_worm_at (worm_enum/worm_at
-raised TypeError); ddg_last_error garbled bytes now decoded
-errors="replace" (D-side buffer lifetime still suspect). GOTCHAS:
+raised TypeError); ddg_last_error garbled bytes ROOT-CAUSED +
+FIXED: setError stored a bare D slice, only string LITERALS are
+zero-terminated, so constructed messages (concat/e.msg) leaked heap
+garbage past the end -- now stores msg ~ "\0" (python decode stays
+defensive). Transient exit-133 SIGTRAPs right after dylib rebuilds are
+the macOS code-sign cache on in-place dylib replacement, not a code bug. GOTCHAS:
 contract/split --pair-test needs ≥250k trials (60k trips its own
 transition-count gate); two concurrent pytest runs in one checkout
 interfere (transient enable_cocycle failures) — run one at a time.

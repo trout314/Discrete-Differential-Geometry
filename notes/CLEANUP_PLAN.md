@@ -150,9 +150,10 @@ snapshots skip when absent.
 
 Bugs found and fixed by the conversion: (1) `ddg_sampler_worm_at` had a
 stale 10th ctypes argtype — every `worm_enum`/`worm_at` call raised
-TypeError; (2) `ddg_last_error` can return garbled bytes, and the decode
-now uses errors="replace" so it can't mask the underlying error (D-side
-buffer lifetime worth a look). Caveat: two concurrent pytest runs in one
+TypeError; (2) `ddg_last_error` handed out `.ptr` of a D string slice with
+no NUL terminator, so C-side reads ran past constructed (non-literal)
+messages into heap garbage; fixed 2026-08-16 by storing `msg ~ "\0"` in
+setError (the Python decode also stays defensive). Caveat: two concurrent pytest runs in one
 checkout interfere (observed transient enable_cocycle failures); run one
 suite at a time. Suite: 512 fast (~75 s) + 121 slow, all green.
 

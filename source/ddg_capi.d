@@ -16,7 +16,12 @@ private string lastErrorMsg;
 
 private void setError(string msg) nothrow
 {
-    try { lastErrorMsg = msg; } catch (Exception) {}
+    // Append an explicit NUL: ddg_last_error hands out .ptr as a C string,
+    // but only D string LITERALS are zero-terminated -- constructed messages
+    // (concatenations, formatted e.msg) are bare slices, and the C side would
+    // read past the end into heap garbage. Storing the terminated copy in the
+    // module-level string also keeps the buffer GC-rooted while it is current.
+    try { lastErrorMsg = msg ~ "\0"; } catch (Exception) {}
 }
 
 private void clearError() nothrow
