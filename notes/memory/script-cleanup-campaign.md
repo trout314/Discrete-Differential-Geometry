@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 2ba2630d-5dd2-4f4e-a2ae-d6d1091a81b0
-  modified: 2026-08-16T15:30:53.022Z
+  modified: 2026-08-16T15:50:38.104Z
 ---
 
 Cleanup campaign for the ~213 research scripts, started 2026-08-15.
@@ -50,8 +50,17 @@ INDEX now 177 scripts, closed=0. GOTCHAS (pre-existing, Phase-3 fodder):
 several campaign scripts read env START or sys.argv at module import
 (pass1/2/3, release_run, perc_*, ep_cost, wf_vs_planner, catalysis_audit,
 flicker_catalysis_barrier — and on the ACTIVE surface twosided_chord +
-agg_knobs_test). Next: Phase 1b (ddg_lab tier-2 package), then Phase 3
-(latent validators → pytest + CLI smoke sweep), Phase 4 docs.
+agg_knobs_test). Phase 1b DONE (2026-08-16): python/ddg_lab/ with 19
+modules (16 hubs + tip_retract_search + heat_geodesic + sixhundred_cell);
+relative imports inside, ddg absolute for tier-1; old locations are
+runpy-dispatch shims (sys.modules swap on import, runpy run_module as
+__main__ for CLI — inline __main__ blocks unrefactored); pyproject ships
+both packages; test_ddg_lab.py smoke; f0_worm's module-level argv[3..5]
+knob parsing now gated on being run as the script. INDEX: lib 0, shim 23,
+closed 0 — shadow library dissolved. Suite 332 fast + 2 slow green.
+Next: Phase 3 (13 latent validators → pytest, incl. the env-driven
+twosided_chord/agg_knobs_test; CLI --help smoke sweep over active
+surface), then Phase 4 docs (CLAUDE.md architecture section).
 
 Related: [[crystal-grains-tool]], [[crystal-symmetry-group]],
 [[memory-lives-in-repo]] (memories are tracked in the repo — commit this

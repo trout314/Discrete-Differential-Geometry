@@ -66,8 +66,20 @@ gets real unit tests):
 - `tools/chain_select.py` → `ddg.chain_select`
 - `tools/seed_utils.py` → `ddg.seed_utils`
 
-**Tier 2 → new research package `python/ddg_lab/`** (shared research-grade
-code, lighter test bar — smoke + the invariants its validators encode):
+**Phase 1b (tier 2) ✔ DONE 2026-08-16.** `python/ddg_lab/` created with 19
+modules — the 16 remaining lib hubs plus `tip_retract_search` (it carries
+the Patch machinery `worm_deg4_slide` builds on), `heat_geodesic` and
+`sixhundred_cell` (steiner_geodesic's dependencies). All sys.path hacks
+removed inside the package: tier-2 siblings import relatively, tier-1 via
+`discrete_differential_geometry.*`. Old locations are runpy-dispatch shims
+(import → sys.modules swap; run-as-script → `runpy.run_module(...,
+run_name="__main__")`, so inline `__main__` blocks work unrefactored).
+`pyproject.toml` ships both packages. `tests/test_ddg_lab.py` smoke-guards
+every module import + shim identity. Fixed en route: `f0_worm` parsed
+optional knobs from `sys.argv[3..5]` at module level (now only when run as
+the script itself). Suite: 332 fast + 2 slow, green. INDEX: lib 0, shim 23.
+
+Original tier-2 plan text:
 
 - `defect_state.py` (31 importers), `event_replay.py`, `crystal_flicker.py`
 - worm machinery: `worm_moves`, `worm_helix`, `worm_slide`,

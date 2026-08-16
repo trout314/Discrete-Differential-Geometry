@@ -13,7 +13,7 @@ dependencies = ["numpy", "scipy"]
 dev = ["pytest"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["python/discrete_differential_geometry"]
+packages = ["python/discrete_differential_geometry", "python/ddg_lab"]
 artifacts = ["*.so", "*.dylib", "*.dll"]
 
 [tool.hatch.build.targets.wheel.sources]

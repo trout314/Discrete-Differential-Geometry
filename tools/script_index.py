@@ -8,7 +8,7 @@ bottom of the manifest so drift is visible.
 
 Status vocabulary (the cleanup-plan tiers, see notes/CLEANUP_PLAN.md):
   lib        promote into a package (ddg or ddg_lab) -- imported by other scripts
-  shim       thin re-export / CLI shim; core already promoted into the ddg package
+  shim       thin re-export / CLI shim; core promoted into ddg or ddg_lab
   active     current research surface, stays in scripts/
   tool       reusable reporting / viewing / construction front-end, stays
   validator  encodes exact invariants -> convert to pytest (tests/)
@@ -46,7 +46,7 @@ CLASSIFICATION = {
     "overnight_large_queue.sh":  ("seed-pipeline", "active"),
     "compare_twins.py":          ("seed-pipeline", "active"),
     "quench.py":                 ("seed-pipeline", "dormant"),
-    "grid_sweep.py":             ("seed-pipeline", "lib"),
+    "grid_sweep.py":             ("seed-pipeline", "shim"),
     "seed_utils.py":             ("seed-pipeline", "shim"),     # -> ddg.seed_utils
     "reburn_batch.py":           ("seed-pipeline", "active"),
     "reburn_family.py":          ("seed-pipeline", "active"),
@@ -71,7 +71,7 @@ CLASSIFICATION = {
 
     # --- references: TCP crystal construction + melt spectroscopy -----------
     "tcp_reference.py":          ("references", "active"),      # core -> ddg.tcp_reference
-    "tcp_melt.py":               ("references", "lib"),
+    "tcp_melt.py":               ("references", "shim"),
     "reference_campaign.py":     ("references", "active"),
     "reference_summary.py":      ("references", "active"),
 
@@ -96,21 +96,21 @@ CLASSIFICATION = {
     "dd/fk_amorphous_ab_figure.py": ("fk-amorphous", "active"),
 
     # --- fk-move-search: FK->FK block moves / glass producer -----------------
-    "dd/fk_moves.py":            ("fk-move-search", "lib"),
+    "dd/fk_moves.py":            ("fk-move-search", "shim"),
     "dd/glass_mine.py":          ("fk-move-search", "dormant"),
     "dd/glass_quench.py":        ("fk-move-search", "dormant"),
     "dd/enumerate_fillings.py":  ("fk-move-search", "dormant"),
 
     # --- grafting: decorated-boundary lump surgery ---------------------------
-    "graft_signature.py":        ("grafting", "lib"),
+    "graft_signature.py":        ("grafting", "shim"),
     "graft_ball_search.py":      ("grafting", "active"),
     "graft_c15_cross.py":        ("grafting", "active"),
     "graft_c36_control.py":      ("grafting", "active"),
 
     # --- defect-core: identification, bookkeeping, viewing -------------------
-    "dd/defect_state.py":        ("defect-core", "lib"),
-    "dd/event_replay.py":        ("defect-core", "lib"),
-    "dd/crystal_flicker.py":     ("defect-core", "lib"),
+    "dd/defect_state.py":        ("defect-core", "shim"),
+    "dd/event_replay.py":        ("defect-core", "shim"),
+    "dd/crystal_flicker.py":     ("defect-core", "shim"),
     "dd/defect_viewer.py":       ("defect-core", "tool"),
     "dd/defect_catalog.py":      ("defect-core", "tool"),
     "dd/species_report.py":      ("defect-core", "tool"),
@@ -119,10 +119,10 @@ CLASSIFICATION = {
     "dd/complex_d3_census.py":   ("defect-core", "dormant"),
 
     # --- worm-core: exact move combinatorics + knot-slide machinery ----------
-    "dd/worm_moves.py":          ("worm-core", "lib"),
-    "dd/worm_helix.py":          ("worm-core", "lib"),
-    "dd/worm_slide.py":          ("worm-core", "lib"),
-    "dd/dressed_generators.py":  ("worm-core", "lib"),
+    "dd/worm_moves.py":          ("worm-core", "shim"),
+    "dd/worm_helix.py":          ("worm-core", "shim"),
+    "dd/worm_slide.py":          ("worm-core", "shim"),
+    "dd/dressed_generators.py":  ("worm-core", "shim"),
     "dd/crossval_moves.py":      ("worm-core", "validator"),
     "dd/worm_crossval2.py":      ("worm-core", "validator"),
     "dd/samerung_validate.py":   ("worm-core", "validator"),
@@ -131,11 +131,11 @@ CLASSIFICATION = {
     "dd/worm_catalog.py":        ("worm-core", "dormant"),
 
     # --- deg4-transport: the deg-4 worm / translation program (delivered) ----
-    "dd/worm_deg4_slide.py":     ("deg4-transport", "lib"),
+    "dd/worm_deg4_slide.py":     ("deg4-transport", "shim"),
     "dd/worm_deg4.py":           ("deg4-transport", "dormant"),
     "dd/worm_walk.py":           ("deg4-transport", "dormant"),
     "dd/worm_helix_launch": ("deg4-transport", "dormant"),  # placeholder, removed below if absent
-    "dd/tip_retract_search.py":  ("deg4-transport", "dormant"),
+    "dd/tip_retract_search.py":  ("deg4-transport", "shim"),
     "dd/search_positive_control.py": ("deg4-transport", "dormant"),
     "dd/template_census.py":     ("deg4-transport", "dormant"),
     "dd/hinge_by_position.py":   ("deg4-transport", "dormant"),
@@ -148,12 +148,12 @@ CLASSIFICATION = {
     "dd/launch_worm_campaign.sh":("deg4-transport", "dormant"),
 
     # --- f0-sector: vertex-number surgery (ACTIVE) ---------------------------
-    "dd/f0_worm.py":             ("f0-sector", "lib"),
+    "dd/f0_worm.py":             ("f0-sector", "shim"),
     "dd/f0_channel.py":          ("f0-sector", "active"),
     "dd/edge_removal.py":        ("f0-sector", "active"),
     "dd/harvest_f0.py":          ("f0-sector", "active"),
     "dd/harvest_f0_verdict.py":  ("f0-sector", "active"),
-    "dd/link_planner.py":        ("f0-sector", "lib"),
+    "dd/link_planner.py":        ("f0-sector", "shim"),
     "dd/planner_profile.py":     ("f0-sector", "tool"),
     "dd/chainsites_validate.py": ("f0-sector", "validator"),
 
@@ -246,7 +246,7 @@ CLASSIFICATION = {
     "dd/run_reaction_campaign.sh": ("reaction-census", "dormant"),
 
     # --- doping: R/C15 dopant solubility campaign (results in) ---------------
-    "dopant_pairs.py":           ("doping", "lib"),          # 17 importers -- extract helpers
+    "dopant_pairs.py":           ("doping", "shim"),          # 17 importers -- extract helpers
     "dope_hold.py":              ("doping", "dormant"),
     "complex_analysis.py":       ("doping", "dormant"),
     "defect_pairs.py":           ("doping", "dormant"),
@@ -265,9 +265,9 @@ CLASSIFICATION = {
     "certify_edq_clust.py":      ("edq", "dormant"),
 
     # --- geometry: geodesics + exact constructions ---------------------------
-    "steiner_geodesic.py":       ("geometry", "lib"),
-    "heat_geodesic.py":          ("geometry", "tool"),
-    "sixhundred_cell.py":        ("geometry", "tool"),
+    "steiner_geodesic.py":       ("geometry", "shim"),
+    "heat_geodesic.py":          ("geometry", "shim"),
+    "sixhundred_cell.py":        ("geometry", "shim"),
     "defect_boundary_map.py":    ("geometry", "tool"),
     # TODO(generalize): currently hard-wired to the 2->3 lens study; make it a
     # general lens/optics front-end when we next touch it (see CLEANUP_PLAN.md).
@@ -286,7 +286,7 @@ STATUS_ORDER = ["lib", "shim", "active", "tool", "validator", "dormant", "closed
 
 STATUS_LEGEND = {
     "lib":       "promote into a package (imported by other scripts)",
-    "shim":      "thin re-export/CLI shim; core promoted into the ddg package",
+    "shim":      "thin re-export/CLI shim; core promoted into ddg or ddg_lab",
     "active":    "current research surface; stays in `scripts/`",
     "tool":      "reusable reporting/viewing front-end; stays",
     "validator": "encodes exact invariants; convert to pytest",
