@@ -128,7 +128,35 @@ active may import from `legacy/`. Where a closed script is imported by
 another closed script in the same program, they move together. `git mv` so
 history follows.
 
-## Phase 3 — tests
+## Phase 3 — tests  ✔ DONE 2026-08-16
+
+Latent validators are now pytest (`tests/test_validator_scripts.py` wraps
+the scripts in subprocesses — rc-checked where they assert, verdict-string
+checked where they only print; campaign-scale invocations still work
+unchanged): fpkmc_m0 formulas, transport battery + injectivity, same-rung
+slide exactness (fast tier); worm-cycles DFS, HB detailed balance,
+contract/split pair test (250k trials — 60k is below its own transition-
+count gate), worm_enum-vs-oracle + 2-move fusion (pinned-snapshot, skipif)
+behind `-m slow`. `crossval_moves` was transcribed outright
+(`test_move_crossval.py`, c15 m2 in-memory). The three campaign harnesses
+(twosided_chord, agg_knobs_test, chainsites_validate) stay scripts
+(reclassified tool); their unit-testable core is `test_chord_channel.py`
+(f0 conservation, determinism, agg-knob bit-identity). CLI sweep
+(`test_cli_smoke.py`): every manifest script compiles (fast); every
+runnable front-end passes `--help` or fails only on its declared
+env/argv inputs, never with import rot (slow, 109 scripts, all pass).
+Fixtures (`conftest.py`) rebuild missing reference crystals; mgas
+snapshots skip when absent.
+
+Bugs found and fixed by the conversion: (1) `ddg_sampler_worm_at` had a
+stale 10th ctypes argtype — every `worm_enum`/`worm_at` call raised
+TypeError; (2) `ddg_last_error` can return garbled bytes, and the decode
+now uses errors="replace" so it can't mask the underlying error (D-side
+buffer lifetime worth a look). Caveat: two concurrent pytest runs in one
+checkout interfere (observed transient enable_cocycle failures); run one
+suite at a time. Suite: 512 fast (~75 s) + 121 slow, all green.
+
+Original plan text:
 
 1. **Library units** (tier 1): exact invariants on tiny in-memory crystals,
    in the style of `tests/test_crystal_grains.py` (Wyckoff-built references,

@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 2ba2630d-5dd2-4f4e-a2ae-d6d1091a81b0
-  modified: 2026-08-16T15:50:38.104Z
+  modified: 2026-08-16T16:25:20.146Z
 ---
 
 Cleanup campaign for the ~213 research scripts, started 2026-08-15.
@@ -58,9 +58,21 @@ __main__ for CLI — inline __main__ blocks unrefactored); pyproject ships
 both packages; test_ddg_lab.py smoke; f0_worm's module-level argv[3..5]
 knob parsing now gated on being run as the script. INDEX: lib 0, shim 23,
 closed 0 — shadow library dissolved. Suite 332 fast + 2 slow green.
-Next: Phase 3 (13 latent validators → pytest, incl. the env-driven
-twosided_chord/agg_knobs_test; CLI --help smoke sweep over active
-surface), then Phase 4 docs (CLAUDE.md architecture section).
+Phase 3 DONE (2026-08-16): validators wrapped as subprocess pytest
+(test_validator_scripts.py; print-only ones verdict-string checked),
+crossval_moves transcribed (test_move_crossval.py), chord-channel unit
+core in test_chord_channel.py (f0 conservation/determinism/agg-knob
+bit-identity; twosided_chord+agg_knobs+chainsites stay campaign tools);
+CLI sweep test_cli_smoke.py (compile fast; --help/import-rot slow, 109
+scripts). conftest rebuilds missing tcp references, skips mgas snaps.
+BUGS FIXED: stale 10th argtype on ddg_sampler_worm_at (worm_enum/worm_at
+raised TypeError); ddg_last_error garbled bytes now decoded
+errors="replace" (D-side buffer lifetime still suspect). GOTCHAS:
+contract/split --pair-test needs ≥250k trials (60k trips its own
+transition-count gate); two concurrent pytest runs in one checkout
+interfere (transient enable_cocycle failures) — run one at a time.
+Suite: 512 fast (~75s) + 121 slow, green. Next: Phase 4 docs
+(CLAUDE.md architecture, conventions).
 
 Related: [[crystal-grains-tool]], [[crystal-symmetry-group]],
 [[memory-lives-in-repo]] (memories are tracked in the repo — commit this

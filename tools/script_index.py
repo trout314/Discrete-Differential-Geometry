@@ -11,7 +11,7 @@ Status vocabulary (the cleanup-plan tiers, see notes/CLEANUP_PLAN.md):
   shim       thin re-export / CLI shim; core promoted into ddg or ddg_lab
   active     current research surface, stays in scripts/
   tool       reusable reporting / viewing / construction front-end, stays
-  validator  encodes exact invariants -> convert to pytest (tests/)
+  validator  exact-invariant harness; wrapped by tests/ (heavy runs behind -m slow)
   dormant    program paused with results in; stays in place, tagged, untested
   closed     program scientifically closed -> archive to legacy/<program>/
 
@@ -155,12 +155,12 @@ CLASSIFICATION = {
     "dd/harvest_f0_verdict.py":  ("f0-sector", "active"),
     "dd/link_planner.py":        ("f0-sector", "shim"),
     "dd/planner_profile.py":     ("f0-sector", "tool"),
-    "dd/chainsites_validate.py": ("f0-sector", "validator"),
+    "dd/chainsites_validate.py": ("f0-sector", "tool"),       # old-vs-new A/B benchmark harness (needs two builds)
 
     # --- chord-bilocal: strict chord channel + bilocal carriers (CLOSED:
     #     5 impossibility results, transport blocked; see bilocal-program-saga)
-    "dd/twosided_chord.py":      ("chord-bilocal", "validator"),
-    "dd/agg_knobs_test.py":      ("chord-bilocal", "validator"),
+    "dd/twosided_chord.py":      ("chord-bilocal", "tool"),   # campaign drift harness; unit core in tests/test_chord_channel.py
+    "dd/agg_knobs_test.py":      ("chord-bilocal", "tool"),   # campaign regression; unit core in tests/test_chord_channel.py
 
     # --- fpkmc: paused pending D-side optimization (D-first policy) ----------
     "dd/fpkmc_m0_derivations.py":("fpkmc", "validator"),
@@ -289,7 +289,7 @@ STATUS_LEGEND = {
     "shim":      "thin re-export/CLI shim; core promoted into ddg or ddg_lab",
     "active":    "current research surface; stays in `scripts/`",
     "tool":      "reusable reporting/viewing front-end; stays",
-    "validator": "encodes exact invariants; convert to pytest",
+    "validator": "exact-invariant harness; wrapped by tests/ (-m slow for heavy runs)",
     "dormant":   "program paused, results recorded; stays in place, tagged",
     "closed":    "program scientifically closed; archive to `legacy/<program>/`",
 }

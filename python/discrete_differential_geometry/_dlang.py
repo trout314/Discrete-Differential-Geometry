@@ -152,7 +152,8 @@ def _check_null(result, func, args):
     """ctypes errcheck: raise on NULL return."""
     if result is None:
         err = _lib.ddg_last_error()
-        msg = err.decode() if err else "unknown error"
+        # errors="replace": a garbled error buffer must never mask the error
+        msg = err.decode(errors="replace") if err else "unknown error"
         raise RuntimeError(f"{func.__name__}: {msg}")
     return result
 
@@ -162,7 +163,8 @@ def _check_nan(result, func, args):
     _check_int, whose negative-return convention a double cannot use)."""
     if result != result:
         err = _lib.ddg_last_error()
-        msg = err.decode() if err else "unknown error"
+        # errors="replace": a garbled error buffer must never mask the error
+        msg = err.decode(errors="replace") if err else "unknown error"
         raise RuntimeError(f"{func.__name__}: {msg}")
     return result
 
@@ -171,7 +173,8 @@ def _check_int(result, func, args):
     """ctypes errcheck: raise on negative return."""
     if result < 0:
         err = _lib.ddg_last_error()
-        msg = err.decode() if err else "unknown error"
+        # errors="replace": a garbled error buffer must never mask the error
+        msg = err.decode(errors="replace") if err else "unknown error"
         raise RuntimeError(f"{func.__name__}: {msg}")
     return result
 
@@ -796,7 +799,7 @@ _lib.ddg_sampler_worm_stats.errcheck = _check_int
 _lib.ddg_sampler_worm_at.argtypes = [
     ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
     ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int),
-    ctypes.POINTER(ctypes.c_double), ctypes.c_long, ctypes.c_double]
+    ctypes.POINTER(ctypes.c_double), ctypes.c_long]
 _lib.ddg_sampler_worm_at.restype = ctypes.c_long
 _lib.ddg_sampler_worm_at.errcheck = _check_int
 
