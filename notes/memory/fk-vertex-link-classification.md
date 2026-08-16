@@ -37,7 +37,7 @@ what caps n_6 at 4 (verified by enumeration through n_6 = 8; classes
 cofacial-pair count rises monotonically past 4 — 2,3,5,6 at n_6 = 5,6,7,8 — so
 the cap is not a near miss further up.
 
-**DELIVERED as `tools/link_classes.py`** (enumerator + fast detector + CLI), wired
+**DELIVERED as `ddg.link_classes (shim: tools/link_classes.py)`** (enumerator + fast detector + CLI), wired
 into `fk_skeleton.vertex_class_census(eu, edeg, V, facets=…)` — optional arg, so
 all ~10 existing callers are unchanged; with `facets` it adds `Z16_Td`, `Z16_D2`,
 `FK_strict` — and into `defect_dynamics/amorph_census.py` as the `Z16*` column

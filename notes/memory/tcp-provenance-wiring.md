@@ -8,7 +8,7 @@ metadata:
 ---
 
 2026-07-20: wired the TCP-crystal side into the flattened-provenance history
-machinery (`tools/seed_utils.py`), which previously only knew sphere-rooted S³
+machinery (`ddg.seed_utils (shim: tools/seed_utils.py)`), which previously only knew sphere-rooted S³
 lineages. Motivation: `tcp_melt.py` (and the whole TCP-experiment family) saved
 plain historyless `.mfd` via `v.save()`, silently dropping lineage.
 

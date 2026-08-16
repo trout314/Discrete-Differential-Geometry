@@ -370,7 +370,7 @@ TWO STRUCTURAL FINDINGS:
 
 ## DRIVER BUILT + THE HANDOFF IS THE ONLY COUPLING (2026-08-04/05)
 
-`scripts/defect_dynamics/ecmc_flight.py` (commit eeb261e): ONE uniform kernel
+`legacy/ecmc/ecmc_flight.py` (commit eeb261e): ONE uniform kernel
 -- scan the frame walk for the first site that is clean-and-on-rung-Q or
 touching a complex; propose the slide there; Metropolis; flip on rejection.
 Travel/entry/exit/deeper are all this one rule. Validated 6 seeds x 1500

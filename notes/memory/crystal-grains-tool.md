@@ -1,6 +1,6 @@
 ---
 name: crystal-grains-tool
-description: scripts/crystal_grains.py — covering-map crystalline-grain detector (registry-aware)
+description: ddg.crystal_grains (shim: scripts/crystal_grains.py) — covering-map crystalline-grain detector (registry-aware)
 metadata: 
   node_type: memory
   type: project
@@ -8,7 +8,7 @@ metadata:
   modified: 2026-07-21T02:52:58.198Z
 ---
 
-2026-07-20: built `scripts/crystal_grains.py` to identify connected components
+2026-07-20: built `ddg.crystal_grains (shim: scripts/crystal_grains.py)` to identify connected components
 of the vertex graph consistent with a piece of a reference TCP crystal — genuine
 crystalline grains, not merely local FK order. Motivation & design were worked
 out with Aaron; see [[tcp-r-c15-defect-state]].
@@ -40,7 +40,7 @@ floor ⇒ K can be small). Partial melts (where crystal_match r=2 = 0.0%): real
 grains, monotone in melt depth — r_lam0.03/0.1/0.3 → 462 / 264 / (60+19, TWO
 disconnected R grains) interior verts. Fast (seconds).
 
-CLI: `python scripts/crystal_grains.py STATE.mfd [--ref c15 r] [--min-size K]`.
+CLI: `python ddg.crystal_grains (shim: scripts/crystal_grains.py) STATE.mfd [--ref c15 r] [--min-size K]`.
 Reuses crystal_match.best_refs, fk_skeleton, dopant_pairs. Committed ba8e5b9.
 
 **FIXED & VALIDATED 2026-07-20 (loose-heal landed, tests + real-data green;
@@ -50,7 +50,7 @@ required the FULL star to develop, but a defect vertex's degree/class change mak
 _tet_ok fail for ALL its tets, so good neighbours had an incomplete star and got
 flagged.
 
-The fix has THREE parts (all in scripts/crystal_grains.py):
+The fix has THREE parts (all in ddg.crystal_grains (shim: scripts/crystal_grains.py)):
 1. **FK-shell GATE** `_locally_fk(st,v)`: v interior only if every spoke edge (v,w)
    has hinge degree 5 or 6 with EXACTLY twelve 5s (the mandatory 12 fivefold
    disclinations of any all-5/6 triangulated 2-sphere; link-node-degree(w) ==

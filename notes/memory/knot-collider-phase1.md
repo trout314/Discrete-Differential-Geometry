@@ -8,7 +8,7 @@ metadata:
   modified: 2026-07-25T23:38:33.840Z
 ---
 
-Measured 2026-07-25. Tool: `scripts/defect_dynamics/knot_collider.py` —
+Measured 2026-07-25. Tool: `legacy/colliders/knot_collider.py` —
 deterministic two-knot collider on one BC helix, no sampling. Prep exploits
 the no-halo theorem: create A on a chain window, slide +8 (directed clean
 slides via worm_slide frames, steered by exact chain arithmetic from

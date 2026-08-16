@@ -176,7 +176,23 @@ Original plan text:
    module and runs it with `--help` (bitrot guard for all 73 surviving
    front-ends).
 
-## Phase 4 — conventions + docs
+## Phase 4 — conventions + docs  ✔ DONE 2026-08-16 — CAMPAIGN COMPLETE
+
+CLAUDE.md architecture rewritten for the new layout (tier-1 modules in the
+ddg package section, the ddg_lab section, INDEX.md as the authoritative
+manifest, shim mechanics, legacy/<program>/ layout, Python test tiers +
+the one-pytest-at-a-time caveat, where-code-goes rules). Nine
+notes/memory files had moved paths rewritten to their new homes.
+CONVENTIONS.md names no script paths — untouched.
+
+**Final state of the campaign:** 177 scripts on the active surface
+(23 shim / 62 active / 16 tool / 10 validator / 66 dormant), 36 archived
+in legacy/<program>/ with verdict READMEs, 25 modules promoted into two
+packages, zero script-to-script shadow imports, suite 512 fast + 121
+slow all green, four latent bugs fixed en route (f0_worm argv-at-import,
+worm_at stale argtype, garbled-error decode, 4 hard-coded roots).
+
+Original plan text:
 
 - Single bootstrap: scripts do `import ddg_lab` / package imports; the
   remaining sys.path shim (scripts importing sibling CLIs) reduced to one

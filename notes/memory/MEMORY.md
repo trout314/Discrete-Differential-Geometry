@@ -1,6 +1,6 @@
 # Project memory index
 
-- [Script cleanup campaign](script-cleanup-campaign.md) — plan notes/CLEANUP_PLAN.md + manifest scripts/INDEX.md (tools/script_index.py); two-tier lib split, legacy/<program>/ archival, full tests; Phase 0 awaiting Aaron's review
+- [Script cleanup campaign](script-cleanup-campaign.md) — COMPLETE 2026-08-16: ddg + ddg_lab packages with shims at old paths, legacy/<program>/ verdict archives, pytest fast/slow tiers + CLI sweep; scripts/INDEX.md (tools/script_index.py --check) is the manifest; new code imports the packages
 
 - [FK vertex-link classification](fk-vertex-link-classification.md) — 5/6-links = fullerene duals; n_6 determines lk(v) only up to n_6=3 (n_6=1 IMPOSSIBLE); n_6=4 has TWO classes (Td Friauf + a D2 isomer legal but non-FK); non-cofacial six-edges is exactly what caps FK at Z16
 

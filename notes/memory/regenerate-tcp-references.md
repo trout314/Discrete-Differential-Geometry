@@ -13,7 +13,7 @@ reference crystals or seed families — only the scripts and 3 tracked seeds in
 
 **Reference TCP crystals** (`data/tcp_reference/*.mfd`) are regenerated exactly
 and cheaply from published Wyckoff positions:
-`python scripts/tcp_reference.py <struct> -m <mult>` (or `all`). Deterministic,
+`python ddg.tcp_reference (CLI: scripts/tcp_reference.py) <struct> -m <mult>` (or `all`). Deterministic,
 validates on build (all edges {5,6}, Z-census, χ=0, orientable). Sizes used by
 `tcp_melt.CRYSTALS`: r m3=N24462 / rbig m4=N57984; c15 m4=N8704 / c15big m9=N99144;
 a15 m6 / a15big m13; sigma m4 / sigmabig m7; plus c14/c36/z/mu/p/delta at m3–5.

@@ -19,7 +19,7 @@ Alphabet = V-preserving bistellar moves = complete worm grammar:
 3-2 = annihilate deg-3. Inverse-closed. Hinge moves deliberately excluded
 for now (ergodicity question deferred).
 
-Code (commit 0b1f3a2): scripts/defect_dynamics/worm_moves.py = REUSABLE
+Code (commit 0b1f3a2): ddg_lab.worm_moves = REUSABLE
 crystal-independent library (bare facet arrays; user explicitly wants a
 future EXHAUSTIVE non-crystal search to reuse it — keep all move arithmetic
 there). worm_catalog.py = r-crystal driver, canonical S3xS2 signatures,
@@ -162,7 +162,7 @@ run, so the Python crossval above IS the regression for this move type.
 
 DEFECT TRACKING REBUILT (2026-07-25, commits dce7332 + 716eb79).
 
-`scripts/defect_dynamics/defect_state.py` is now THE defect census: one
+`ddg_lab.defect_state` is now THE defect census: one
 incremental implementation over the accepted-move stream, 0.39 ms/sample vs
 715 ms for the from-scratch rebuild every script was doing (1846x). Seeded
 O(N) once, then 59 us/event. `audit()` compares the whole state against the

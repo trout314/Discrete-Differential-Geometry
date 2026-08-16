@@ -1,11 +1,11 @@
 ---
 name: script-cleanup-campaign
-description: "2026-08-15 script-library cleanup — plan in notes/CLEANUP_PLAN.md, manifest scripts/INDEX.md via tools/script_index.py; two-tier lib split + legacy/<program>/ archival + full tests; awaiting Aaron's Phase-0 review"
+description: "2026-08 script-library cleanup, COMPLETE — two packages (ddg + ddg_lab) + shims, legacy/<program>/ archives, pytest tiers + CLI sweep; manifest scripts/INDEX.md via tools/script_index.py; plan notes/CLEANUP_PLAN.md"
 metadata: 
   node_type: memory
   type: project
   originSessionId: 2ba2630d-5dd2-4f4e-a2ae-d6d1091a81b0
-  modified: 2026-08-16T16:25:20.146Z
+  modified: 2026-08-16T16:38:10.214Z
 ---
 
 Cleanup campaign for the ~213 research scripts, started 2026-08-15.
@@ -71,8 +71,14 @@ errors="replace" (D-side buffer lifetime still suspect). GOTCHAS:
 contract/split --pair-test needs ≥250k trials (60k trips its own
 transition-count gate); two concurrent pytest runs in one checkout
 interfere (transient enable_cocycle failures) — run one at a time.
-Suite: 512 fast (~75s) + 121 slow, green. Next: Phase 4 docs
-(CLAUDE.md architecture, conventions).
+Suite: 512 fast (~75s) + 121 slow, green. Phase 4 DONE (2026-08-16):
+CLAUDE.md architecture rewritten (packages, shims, INDEX manifest, legacy
+layout, test tiers); 9 memory files' moved paths rewritten. CAMPAIGN
+COMPLETE — durable rules: new code imports the packages (no
+script-to-script imports); scripts/INDEX.md + tools/script_index.py
+--check is the manifest (edit CLASSIFICATION there); closed programs go
+to legacy/<program>/ with a verdict README; validators get wrapped in
+tests/; one pytest per checkout at a time.
 
 Related: [[crystal-grains-tool]], [[crystal-symmetry-group]],
 [[memory-lives-in-repo]] (memories are tracked in the repo — commit this

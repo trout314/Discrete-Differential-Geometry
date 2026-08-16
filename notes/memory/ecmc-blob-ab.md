@@ -88,7 +88,7 @@ stationary distributions with and without the channel.
 
 ## Code
 
-- scripts/defect_dynamics/ecmc_ab.py -- driver (arms A/B/N, blob builder,
+- legacy/ecmc/ecmc_ab.py -- driver (arms A/B/N, blob builder,
   self-consistent pins, incremental .ab.jsonl sidecar, work accounting:
   B's work = d_tried + 2*nonlocal_slide_at calls since totalTried never
   sees the kernel -- the [[percolation-ab-test]] lesson).

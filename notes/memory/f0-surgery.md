@@ -84,7 +84,7 @@ exp(2*(eta*dZ+gamma*dPhi)) at the boundary: completion-strength shaping
 completes 0/15 walks even low-Z-seeded. completion*acceptance ~ 0
 everywhere: stepwise CBMC CANNOT drive this composite (the +20 collapse
 barrier + ~50-way branching beats any potential drift the acceptance
-can afford). **SCHEME C BUILT (2026-07-31, scripts/defect_dynamics/f0_worm.py,
+can afford). **SCHEME C BUILT (2026-07-31, ddg_lab.f0_worm,
 design doc 3.2):** extended-ensemble worm. Open sector (T, head vertex
 v), weight zeta*e^{-S+U}; U = eta(Z0-Z)+gamma(PHI0-Phi) calibrated at
 startup (C15 mean Z=13.4! Z12/Z16 mix); five moves with exact local
