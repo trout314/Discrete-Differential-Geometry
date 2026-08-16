@@ -19,8 +19,8 @@ from discrete_differential_geometry import cocycle as coc
 from discrete_differential_geometry import vertex_fields as vf
 from discrete_differential_geometry import graph_hyperuniformity as gh
 from discrete_differential_geometry.structure_factor import structure_factor
-import tcp_reference as tr
-from cocycle_check import reference_frac_positions
+from discrete_differential_geometry import tcp_reference as tr
+from discrete_differential_geometry.tcp_reference import reference_frac_positions
 
 THETA = float(np.arccos(1.0 / 3.0))
 

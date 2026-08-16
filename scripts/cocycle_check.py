@@ -28,26 +28,13 @@ sys.path.insert(0, os.path.join(_ROOT, "python"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import discrete_differential_geometry as ddg
 from discrete_differential_geometry import cocycle as coc
-from tcp_reference import STRUCTURES, build_t3_triangulation
+# reference_frac_positions was promoted to ddg.tcp_reference (2026-08 cleanup,
+# Phase 1a); re-exported here so legacy ``from cocycle_check import ...``
+# keeps working.
+from discrete_differential_geometry.tcp_reference import (  # noqa: F401
+    STRUCTURES, build_t3_triangulation, reference_frac_positions)
 
 SCALE = 10**6
-
-
-def reference_frac_positions(name, m, perturb=1e-6):
-    """Fractional torus coordinates (period m) per canonical vertex id,
-    reproducing build_t3_triangulation's site perturbation and id scheme."""
-    L, sites, cn, _ = STRUCTURES[name]
-    ns = len(sites)
-    rng = np.random.default_rng(12345)
-    sites = sites + perturb * rng.standard_normal(sites.shape)
-    n = ns * m**3
-    v = np.arange(n)
-    s = v % ns
-    c = v // ns
-    cz = c % m
-    cy = (c // m) % m
-    cx = c // (m * m)
-    return (sites[s] + np.stack([cx, cy, cz], axis=1)) % m
 
 
 def wrapped_rms(a, b, M):

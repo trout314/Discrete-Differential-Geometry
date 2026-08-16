@@ -51,8 +51,12 @@ import numpy as np
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_ROOT, "python"))
-sys.path.insert(0, os.path.join(_ROOT, "tools"))       # link_classes
 from discrete_differential_geometry import Manifold
+# Census core promoted to the package (2026-08 cleanup, Phase 1a); re-exported
+# here so legacy ``from fk_skeleton import ...`` keeps working.
+from discrete_differential_geometry.fk_skeleton import (   # noqa: F401
+    EDGE_PAIRS, edges_from_facets, load_edges, vertex_classes,
+    vertex_class_census, skeleton_stats, bfs_orders, window_ratio)
 
 # (tag, family stem, g) -- k=2 ladders at N=1e4 across the three edge pins.
 # g is the VDV coupling beta/N; None = no VDV term (base family).
@@ -81,155 +85,6 @@ ENSEMBLES = [
     ("VDV2e-3+HDV.228", "S3_N1e4_1e-1_ED5p0043_2_VDVs_2e-3_HDVs_0p228", 0.228),
     ("VDV2e-3+HDV.405", "S3_N1e4_1e-1_ED5p0043_2_VDVs_2e-3_HDVs_0p405", 0.405),
 ]
-
-EDGE_PAIRS = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)]
-
-
-def edges_from_facets(F):
-    """(eu, edeg, V) from a facet array: unique edges (relabeled 0..V-1), degrees."""
-    F = np.asarray(F, np.int64)
-    lab, inv = np.unique(F, return_inverse=True)
-    T = inv.reshape(F.shape)
-    V = len(lab)
-    epairs = np.sort(np.vstack([T[:, [i, j]] for i, j in EDGE_PAIRS]), axis=1)
-    eu, edeg = np.unique(epairs, axis=0, return_counts=True)
-    return eu, edeg, V
-
-
-def load_edges(path):
-    """Load a seed; return (eu, edeg, V) as in edges_from_facets."""
-    return edges_from_facets(Manifold.load(path, 3).facets())
-
-
-def vertex_class_census(eu, edeg, V, facets=None):
-    """Per-vertex counts of incident edges by degree class + Z-classification.
-
-    n_6 alone does NOT determine lk(v): at n_6 = 4 there are two 5/6-spheres,
-    the T_d Friauf polyhedron (the FK Z16) and a D2 isomer no FK phase admits
-    (tools/link_classes.py).  Pass `facets` to split them -- the discriminator
-    is whether any two degree-6 edges at v are cofacial.  Keys "Z12".."Z16"
-    keep their historical n_6-bucketed meaning either way, so fFK is unchanged;
-    with `facets` the census additionally reports "Z16_Td", "Z16_D2" and
-    "FK_strict" = fFK - fZ16_D2, which is the honest FK fraction.
-    """
-    def incident(mask):
-        c = np.zeros(V, dtype=np.int64)
-        np.add.at(c, eu[mask, 0], 1)
-        np.add.at(c, eu[mask, 1], 1)
-        return c
-
-    n_le4 = incident(edeg <= 4)
-    n5 = incident(edeg == 5)
-    n6 = incident(edeg == 6)
-    n_ge7 = incident(edeg >= 7)
-
-    # Exact local sum rule (vertex link = S^2): sum(6 - deg) over incident = 12.
-    charge = np.zeros(V, dtype=np.int64)
-    np.add.at(charge, eu[:, 0], 6 - edeg)
-    np.add.at(charge, eu[:, 1], 6 - edeg)
-    assert np.all(charge == 12), "link sum rule violated -- not a 3-manifold?"
-
-    pure56 = (n_le4 == 0) & (n_ge7 == 0)
-    fz = {}
-    for name, k in (("Z12", 0), ("Z14", 2), ("Z15", 3), ("Z16", 4)):
-        fz[name] = float(np.mean(pure56 & (n6 == k)))
-    n_broken = int(np.sum(pure56 & (n6 == 1)))  # forbidden by S^2 combinatorics
-    fz["pure56_other"] = float(np.mean(pure56)) - sum(fz.values())
-    fz["impure"] = float(np.mean(~pure56))
-
-    if facets is not None:
-        from link_classes import cofacial_six_pairs
-        cof = cofacial_six_pairs(facets, eu, edeg, V)
-        assert not np.any(pure56 & (n6 <= 3) & (cof > 0)), \
-            "cofacial six-pair at n_6 <= 3 -- no such 5/6-sphere exists"
-        z16 = pure56 & (n6 == 4)
-        fz["Z16_D2"] = float(np.mean(z16 & (cof > 0)))
-        fz["Z16_Td"] = fz["Z16"] - fz["Z16_D2"]
-        # keyed "FK_strict" so the callers' f-prefix convention yields fFK_strict
-        fz["FK_strict"] = fz["Z12"] + fz["Z14"] + fz["Z15"] + fz["Z16_Td"]
-    return fz, n_broken
-
-
-def skeleton_stats(eu, edeg, V):
-    """Structure of the deg>=6 disclination network."""
-    sk = eu[edeg >= 6]
-    if len(sk) == 0:
-        return dict(n_edges=0, frac_val1=np.nan, frac_val2=np.nan,
-                    n_comp=0, largest_frac=np.nan, cyclomatic=0)
-    val = np.zeros(V, dtype=np.int64)
-    np.add.at(val, sk[:, 0], 1)
-    np.add.at(val, sk[:, 1], 1)
-    touched = val > 0
-    vh = np.bincount(val[touched])
-    ntouch = int(touched.sum())
-
-    parent = {}
-
-    def find(a):
-        while parent[a] != a:
-            parent[a] = parent[parent[a]]
-            a = parent[a]
-        return a
-
-    for a, b in sk:
-        a, b = int(a), int(b)
-        parent.setdefault(a, a)
-        parent.setdefault(b, b)
-        ra, rb = find(a), find(b)
-        if ra != rb:
-            parent[ra] = rb
-    roots = {}
-    for a, b in sk:
-        r = find(int(a))
-        roots[r] = roots.get(r, 0) + 1
-    comp_sizes = sorted(roots.values(), reverse=True)
-    return dict(
-        n_edges=int(len(sk)),
-        frac_val1=float(vh[1] / ntouch) if len(vh) > 1 else 0.0,
-        frac_val2=float(vh[2] / ntouch) if len(vh) > 2 else 0.0,
-        n_comp=len(comp_sizes),
-        largest_frac=float(comp_sizes[0] / len(sk)),
-        cyclomatic=int(len(sk) - ntouch + len(comp_sizes)),
-    )
-
-
-def bfs_orders(eu, V, n_centers, rng):
-    adj = [[] for _ in range(V)]
-    for a, b in eu:
-        adj[a].append(b)
-        adj[b].append(a)
-    mmax = V // 6
-    orders = []
-    for _ in range(n_centers):
-        src = int(rng.integers(V))
-        seen = np.zeros(V, bool)
-        seen[src] = True
-        order = [src]
-        frontier = [src]
-        while len(order) < mmax and frontier:
-            nxt = []
-            for u in frontier:
-                for w in adj[u]:
-                    if not seen[w]:
-                        seen[w] = True
-                        nxt.append(w)
-            rng.shuffle(nxt)
-            order.extend(nxt)
-            frontier = nxt
-        orders.append(np.array(order[:mmax]))
-    return orders, mmax
-
-
-def window_ratio(q, orders, mgrid, rng, n_shuf=4):
-    """Var over centers of window charge, observed / value-shuffled null."""
-    def var(field):
-        sums = np.array([np.cumsum(field[o])[mgrid - 1] for o in orders])
-        return sums.var(axis=0)
-
-    vr = var(q)
-    vs = np.mean([var(rng.permutation(q)) for _ in range(n_shuf)], axis=0)
-    return vr / vs
-
 
 def analyze_seed(path, n_centers, rng, n_shuf=4):
     facets = np.asarray(Manifold.load(path, 3).facets(), np.int64)

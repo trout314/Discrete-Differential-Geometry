@@ -21,12 +21,8 @@ from functools import lru_cache
 import numpy as np
 import pytest
 
-_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-for _p in ("scripts", "tools"):
-    sys.path.insert(0, os.path.join(_ROOT, _p))
-
-import crystal_grains as cg
-import tcp_reference as tr
+from discrete_differential_geometry import crystal_grains as cg
+from discrete_differential_geometry import tcp_reference as tr
 
 # (phase, supercell) -- smallest quotient that validates, kept tiny for speed.
 CRYSTALS = [("a15", 2), ("c15", 2), ("r", 2)]

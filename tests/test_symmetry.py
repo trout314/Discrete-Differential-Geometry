@@ -29,10 +29,8 @@ import pytest
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_ROOT, "python"))
-for _p in ("scripts", "tools"):
-    sys.path.insert(0, os.path.join(_ROOT, _p))
 
-import tcp_reference as tr
+from discrete_differential_geometry import tcp_reference as tr
 from discrete_differential_geometry.symmetry import (
     CrystalSymmetry, TriView, develop_total)
 

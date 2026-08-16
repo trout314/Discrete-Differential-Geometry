@@ -35,6 +35,20 @@ Judgment calls that were reviewed and stand:
 
 ## Phase 1 — promote the shadow library (two tiers)
 
+**Phase 1a (tier 1) ✔ DONE 2026-08-16.** Promoted into
+`python/discrete_differential_geometry/`: `fk_skeleton` (census core, +
+`vertex_classes` absorbed from dopant_pairs), `link_classes`,
+`tcp_reference` (construction core + `reference_frac_positions` absorbed
+from cocycle_check), `chain_select`, `crystal_grains`, `seed_utils`. The old
+locations are shims (pure re-export via a `sys.modules` swap) or thin CLIs
+re-exporting the core, so all ~190 legacy `sys.path` importers keep working
+unchanged. New tests: `test_tcp_reference` (whole library at m=2, exact
+census incl. Z16_D2 = 0), `test_fk_skeleton` (fast census vs per-vertex
+exact-link oracle on a churned state), `test_link_classes` (hard-coded
+T_d/D2 pair + enumeration, slow marks), `test_cocycle` (the validation
+ladder as pytest), `test_seed_utils`. Suite: 311 fast + 2 slow, all green;
+existing tests moved off script imports onto the package.
+
 Kill the pattern of 190 `sys.path.insert` bootstraps importing scripts as
 modules. CLIs keep their filenames and become thin front-ends.
 

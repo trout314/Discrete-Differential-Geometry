@@ -6,6 +6,7 @@ hand; edit the CLASSIFICATION map in the generator and re-run.
 ## Status legend
 
 - **lib** -- promote into a package (imported by other scripts)
+- **shim** -- thin re-export/CLI shim; core promoted into the ddg package
 - **active** -- current research surface; stays in `scripts/`
 - **tool** -- reusable reporting/viewing front-end; stays
 - **validator** -- encodes exact invariants; convert to pytest
@@ -16,8 +17,9 @@ hand; edit the CLASSIFICATION map in the generator and re-run.
 
 | status | files |
 |---|---|
-| lib | 23 |
-| active | 59 |
+| lib | 16 |
+| shim | 4 |
+| active | 62 |
 | tool | 15 |
 | validator | 13 |
 | dormant | 67 |
@@ -56,7 +58,7 @@ hand; edit the CLASSIFICATION map in the generator and re-run.
 
 | script | status | last commit | fan-in | what it is |
 |---|---|---|---|---|
-| `scripts/cocycle_check.py` | lib | 2026-07-19 | 23 | Validation ladder for T^3 integer-cocycle tracking (Tier 3 instrumentation). |
+| `scripts/cocycle_check.py` | active | 2026-07-19 | 23 | Validation ladder for T^3 integer-cocycle tracking (Tier 3 instrumentation). |
 | `scripts/defect_dynamics/regen_cocycle.py` | tool | 2026-07-24 |  | Regenerate a T^3 integer cocycle for a mostly-crystalline state from scratch. |
 
 ## colliders  (8)
@@ -137,7 +139,7 @@ hand; edit the CLASSIFICATION map in the generator and re-run.
 
 | script | status | last commit | fan-in | what it is |
 |---|---|---|---|---|
-| `scripts/dopant_pairs.py` | lib | 2026-07-19 | 17 | Dopant-dopant pair correlations in doped TCP crystals. |
+| `scripts/dopant_pairs.py` | lib | 2026-07-19 | 16 | Dopant-dopant pair correlations in doped TCP crystals. |
 | `scripts/complex_analysis.py` | dormant | 2026-07-21 |  | Complex-resolved dopant interaction analysis in doped TCP crystals. |
 | `scripts/defect_pairs.py` | dormant | 2026-07-16 |  | Defect pair-correlations: the effective interaction of "matter" defects. |
 | `scripts/dope_hold.py` | dormant | 2026-07-19 |  | Dope-and-hold: time series of dopant population in a TCP crystal. |
@@ -193,8 +195,8 @@ hand; edit the CLASSIFICATION map in the generator and re-run.
 
 | script | status | last commit | fan-in | what it is |
 |---|---|---|---|---|
-| `scripts/fk_skeleton.py` | lib | 2026-08-13 | 34 | Frank-Kasper / disclination-skeleton census of seed triangulations. |
-| `tools/link_classes.py` | lib | 2026-08-13 | 2 | Exact classification of pure-{5,6} vertex links, and the FK legality detector. |
+| `tools/link_classes.py` | shim | 2026-08-13 | 1 | MOVED: link_classes now lives in the package as |
+| `scripts/fk_skeleton.py` | active | 2026-08-13 | 31 | Frank-Kasper / disclination-skeleton census of seed triangulations. |
 | `scripts/defect_census.py` | tool | 2026-08-02 | 4 | Crystal-defect census: a reporting front-end over the crystal_grains identifier. |
 
 ## fk-move-search  (4)
@@ -282,7 +284,7 @@ hand; edit the CLASSIFICATION map in the generator and re-run.
 | script | status | last commit | fan-in | what it is |
 |---|---|---|---|---|
 | `tools/link_memory.sh` | tool | 2026-08-02 |  | Point Claude Code's per-project memory store at the copy tracked in this repo. |
-| `tools/script_index.py` | tool | ? |  | Generate scripts/INDEX.md: the classified manifest of every research script. |
+| `tools/script_index.py` | tool | 2026-08-16 |  | Generate scripts/INDEX.md: the classified manifest of every research script. |
 
 ## intrinsic-geometry  (2)
 
@@ -340,9 +342,9 @@ hand; edit the CLASSIFICATION map in the generator and re-run.
 | script | status | last commit | fan-in | what it is |
 |---|---|---|---|---|
 | `scripts/tcp_melt.py` | lib | 2026-07-20 | 7 | M1 activation spectroscopy: heating perfect TCP crystals, coupling by coupling. |
-| `scripts/tcp_reference.py` | lib | 2026-07-20 | 9 | Build T^3 triangulations of real tetrahedrally-close-packed (TCP) crystals. |
 | `scripts/reference_campaign.py` | active | 2026-07-20 |  | Reference-state campaign driver: certified, lineage-recorded TCP fleets. |
 | `scripts/reference_summary.py` | active | 2026-07-21 |  | Cross-crystal summary of a reference-state tier: pool each fleet's replica |
+| `scripts/tcp_reference.py` | active | 2026-07-20 | 6 | Build T^3 triangulations of real tetrahedrally-close-packed (TCP) crystals. |
 
 ## run5h-passes  (8)
 
@@ -362,7 +364,7 @@ hand; edit the CLASSIFICATION map in the generator and re-run.
 | script | status | last commit | fan-in | what it is |
 |---|---|---|---|---|
 | `tools/grid_sweep.py` | lib | 2026-07-16 | 4 | Shared engine for beta/N x edge-target x N grid sweeps over |
-| `tools/seed_utils.py` | lib | 2026-07-20 | 18 | Shared utilities for seed triangulation management. |
+| `tools/seed_utils.py` | shim | 2026-07-20 | 17 | MOVED: seed_utils now lives in the package as |
 | `scripts/anneal_vdv.py` | active | 2026-07-10 |  | Two-stage VDV annealing to produce minimal degree variance samples. |
 | `scripts/compare_twins.py` | active | 2026-07-16 |  | Compare two certified seed families at the replica-ensemble level. |
 | `scripts/equilibrium_vdv.py` | active | 2026-07-16 |  | Fixed-coefficient VDV equilibrium sampling with two-sided convergence checks. |
@@ -391,8 +393,8 @@ hand; edit the CLASSIFICATION map in the generator and re-run.
 
 | script | status | last commit | fan-in | what it is |
 |---|---|---|---|---|
-| `tools/chain_select.py` | lib | 2026-08-02 | 13 | Shared BC-chain class selection and provenance. |
-| `scripts/crystal_grains.py` | lib | 2026-08-02 | 8 | Crystalline-grain detection by covering-map development. |
+| `tools/chain_select.py` | shim | 2026-08-02 | 13 | MOVED: chain_select now lives in the package as |
+| `scripts/crystal_grains.py` | shim | 2026-08-02 | 8 | MOVED: crystal_grains now lives in the package as |
 | `scripts/bc_chain_census.py` | active | 2026-08-02 |  | Census of the BC (Boerdijk-Coxeter) chain classes of a crystal triangulation. |
 | `scripts/move_site_census.py` | active | 2026-08-02 | 1 | Classify the 2->3 move sites of a triangulation into EXACT symmetry classes, |
 | `scripts/orbit_decoration_census.py` | active | 2026-08-12 | 1 | Aut-orbit counts per crystal, refined by the simplex's own decoration. |

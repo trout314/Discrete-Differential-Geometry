@@ -126,7 +126,7 @@ def r_chain():
     """A real R chain, built in-memory. The chain comes from CrystalSymmetry's
     own enumeration rather than worm_helix.bc_orbit -- same sequence (asserted
     in test_chain_select.py), no dependency on scripts/."""
-    import tcp_reference as tr
+    from discrete_differential_geometry import tcp_reference as tr
     from discrete_differential_geometry import Manifold, CrystalSymmetry
     facets = np.asarray(tr.build_t3_triangulation("r", 2)[0])
     m = Manifold(3, facets.tolist())
@@ -146,7 +146,7 @@ def test_rung_ladder_on_R_has_exactly_four_values(r_chain):
 def test_rung_is_constant_on_aut_face_orbits(r_chain):
     """Q is a function of the FACE, so it must be constant on Aut orbits --
     which is what lets the rung sequence be cached per chain CLASS."""
-    import tcp_reference as tr
+    from discrete_differential_geometry import tcp_reference as tr
     facets = np.asarray(tr.build_t3_triangulation("r", 2)[0])
     _, edeg, sym = r_chain
     f2a = {}

@@ -24,3 +24,6 @@ python = ""
 
 [tool.pytest.ini_options]
 pythonpath = ["python"]
+markers = [
+    "slow: long-running test (deselect with -m 'not slow')",
+]

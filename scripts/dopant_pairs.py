@@ -33,22 +33,9 @@ from fk_skeleton import edges_from_facets
 CLASS_N6 = {"Z12": 0, "Z14": 2, "Z15": 3, "Z16": 4}
 
 
-def vertex_classes(facets):
-    """Per-vertex (n6, m_impure) and adjacency list."""
-    eu, edeg, V = edges_from_facets(facets)
-    n6 = np.zeros(V, int)
-    imp = np.zeros(V, int)
-    adj = [[] for _ in range(V)]
-    for (a, b), d in zip(eu, edeg):
-        adj[a].append(b)
-        adj[b].append(a)
-        if d >= 6:
-            n6[a] += 1
-            n6[b] += 1
-        if d < 5 or d > 6:
-            imp[a] += 1
-            imp[b] += 1
-    return n6, imp, adj
+# vertex_classes was promoted to ddg.fk_skeleton (2026-08 cleanup, Phase 1a);
+# re-exported here so legacy ``from dopant_pairs import ...`` keeps working.
+from discrete_differential_geometry.fk_skeleton import vertex_classes  # noqa: F401,E402
 
 
 def bfs_dists(src, adj, V):

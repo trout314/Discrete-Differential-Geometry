@@ -8,6 +8,7 @@ bottom of the manifest so drift is visible.
 
 Status vocabulary (the cleanup-plan tiers, see notes/CLEANUP_PLAN.md):
   lib        promote into a package (ddg or ddg_lab) -- imported by other scripts
+  shim       thin re-export / CLI shim; core already promoted into the ddg package
   active     current research surface, stays in scripts/
   tool       reusable reporting / viewing / construction front-end, stays
   validator  encodes exact invariants -> convert to pytest (tests/)
@@ -46,7 +47,7 @@ CLASSIFICATION = {
     "compare_twins.py":          ("seed-pipeline", "active"),
     "quench.py":                 ("seed-pipeline", "dormant"),
     "grid_sweep.py":             ("seed-pipeline", "lib"),
-    "seed_utils.py":             ("seed-pipeline", "lib"),
+    "seed_utils.py":             ("seed-pipeline", "shim"),     # -> ddg.seed_utils
     "reburn_batch.py":           ("seed-pipeline", "active"),
     "reburn_family.py":          ("seed-pipeline", "active"),
     "reburn_seed.py":            ("seed-pipeline", "active"),
@@ -57,19 +58,19 @@ CLASSIFICATION = {
     "scale_curvature.py":        ("analysis-chain", "active"),
 
     # --- symmetry-census: exact Aut(K) orbit machinery ----------------------
-    "crystal_grains.py":         ("symmetry-census", "lib"),
+    "crystal_grains.py":         ("symmetry-census", "shim"),   # -> ddg.crystal_grains
     "move_site_census.py":       ("symmetry-census", "active"),
     "bc_chain_census.py":        ("symmetry-census", "active"),
     "orbit_decoration_census.py":("symmetry-census", "active"),
-    "chain_select.py":           ("symmetry-census", "lib"),
+    "chain_select.py":           ("symmetry-census", "shim"),   # -> ddg.chain_select
 
     # --- fk-census: FK / disclination-skeleton classification ---------------
-    "fk_skeleton.py":            ("fk-census", "lib"),
-    "link_classes.py":           ("fk-census", "lib"),
+    "fk_skeleton.py":            ("fk-census", "active"),       # core -> ddg.fk_skeleton
+    "link_classes.py":           ("fk-census", "shim"),         # -> ddg.link_classes
     "defect_census.py":          ("fk-census", "tool"),
 
     # --- references: TCP crystal construction + melt spectroscopy -----------
-    "tcp_reference.py":          ("references", "lib"),
+    "tcp_reference.py":          ("references", "active"),      # core -> ddg.tcp_reference
     "tcp_melt.py":               ("references", "lib"),
     "reference_campaign.py":     ("references", "active"),
     "reference_summary.py":      ("references", "active"),
@@ -81,7 +82,7 @@ CLASSIFICATION = {
     # --- cocycle: T^3 integer-cocycle instrumentation ------------------------
     # helpers are a de-facto library for 23 scripts; the validation ladder
     # itself becomes pytest.
-    "cocycle_check.py":          ("cocycle", "lib"),
+    "cocycle_check.py":          ("cocycle", "active"),         # helper -> ddg.tcp_reference
     "dd/regen_cocycle.py":       ("cocycle", "tool"),
 
     # --- fk-amorphous: the ACTIVE amorphous-FK program -----------------------
@@ -327,10 +328,11 @@ CLASSIFICATION = {
 # remove placeholder entries for files that don't exist
 CLASSIFICATION = {k: v for k, v in CLASSIFICATION.items() if not k.endswith("worm_helix_launch")}
 
-STATUS_ORDER = ["lib", "active", "tool", "validator", "dormant", "closed"]
+STATUS_ORDER = ["lib", "shim", "active", "tool", "validator", "dormant", "closed"]
 
 STATUS_LEGEND = {
     "lib":       "promote into a package (imported by other scripts)",
+    "shim":      "thin re-export/CLI shim; core promoted into the ddg package",
     "active":    "current research surface; stays in `scripts/`",
     "tool":      "reusable reporting/viewing front-end; stays",
     "validator": "encodes exact invariants; convert to pytest",
