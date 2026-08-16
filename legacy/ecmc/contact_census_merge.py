@@ -20,6 +20,9 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.normpath(os.path.join(              # archived:
+    os.path.dirname(os.path.abspath(__file__)), "..", "..",   # siblings
+    "scripts", "defect_dynamics")))                            # stayed in dd/
 from contact_census import report
 
 

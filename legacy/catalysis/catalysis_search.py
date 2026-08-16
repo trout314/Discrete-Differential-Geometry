@@ -18,7 +18,7 @@ create/work/annihilate cycle paid for itself.
 import os
 import sys
 
-_ROOT = "/Users/atrout/Desktop/Discrete-Differential-Geometry"
+_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_ROOT, "python"))
 sys.path.insert(0, os.path.join(_ROOT, "scripts", "defect_dynamics"))

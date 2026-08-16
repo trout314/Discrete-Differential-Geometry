@@ -63,7 +63,71 @@ sys.path.insert(0, _HERE)
 import discrete_differential_geometry as ddg
 from discrete_differential_geometry import Manifold, ManifoldSampler, SamplerParams
 from discrete_differential_geometry.recording import _components
-from ecmc_ab import build_blob, _face_apex_map, _edge_set
+# Blob-construction helpers, absorbed from ecmc_ab.py when the ECMC A/B
+# experiment was archived (2026-08 cleanup, Phase 2).
+def _face_apex_map(m):
+    f2a = {}
+    for t in np.asarray(m.facets()):
+        t = tuple(sorted(int(x) for x in t))
+        for i in range(4):
+            f2a.setdefault(t[:i] + t[i + 1:], []).append(t[i])
+    return f2a
+
+
+def _edge_set(m):
+    return {tuple(sorted(map(int, e))) for e in m.simplices(1)}
+
+
+def build_blob(m, k, rng, radius=4):
+    """Insert k vertex-adjacent 2->3 fliers inside a graph ball; return
+    (list of (face, chord), center vertex)."""
+    # ball on the pristine crystal
+    edges = _edge_set(m)
+    V = int(np.asarray(m.facets()).max()) + 1
+    adj = [[] for _ in range(V)]
+    for a, b in edges:
+        adj[a].append(b)
+        adj[b].append(a)
+    center = int(rng.integers(V))
+    dist = np.full(V, -1, np.int32)
+    dist[center] = 0
+    dq = deque([center])
+    while dq:
+        u = dq.popleft()
+        if dist[u] >= radius:
+            continue
+        for w in adj[u]:
+            if dist[w] < 0:
+                dist[w] = dist[u] + 1
+                dq.append(w)
+    ball = {v for v in range(V) if 0 <= dist[v] <= radius}
+
+    placed, support = [], set()
+    for _ in range(50 * k):                       # retry budget
+        if len(placed) >= k:
+            break
+        f2a = _face_apex_map(m)
+        edges = _edge_set(m)
+        faces = [(f, ap) for f, ap in f2a.items() if len(ap) == 2]
+        rng.shuffle(faces)
+        for f, ap in faces:
+            sup = set(f) | set(map(int, ap))
+            if not sup <= ball:
+                continue
+            if placed and not (sup & support):
+                continue                          # must touch the blob
+            chord = tuple(sorted(map(int, ap)))
+            if chord in edges:
+                continue                          # 2->3 invalid
+            m.do_bistellar_move(list(f), list(ap))
+            placed.append((f, chord))
+            support |= sup
+            break
+        else:
+            break                                 # no candidate face at all
+    if len(placed) < k:
+        raise RuntimeError(f"only placed {len(placed)}/{k} fliers")
+    return placed, center
 
 REF = os.path.join(_ROOT, "data/tcp_reference/T3_C15_m3_N3672.mfd")
 

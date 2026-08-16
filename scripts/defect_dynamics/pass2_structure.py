@@ -22,7 +22,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-_ROOT = "/Users/atrout/Desktop/Discrete-Differential-Geometry"
+_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 for p in ("python", "scripts"):
     sys.path.insert(0, os.path.join(_ROOT, p))
 import discrete_differential_geometry as ddg

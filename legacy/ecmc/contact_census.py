@@ -51,6 +51,7 @@ import numpy as np
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(os.path.dirname(_HERE))
 sys.path.insert(0, os.path.join(_ROOT, "python"))
+sys.path.insert(0, os.path.join(_ROOT, "scripts", "defect_dynamics"))  # archived: siblings stayed in dd/
 sys.path.insert(0, _HERE)
 
 import discrete_differential_geometry as ddg

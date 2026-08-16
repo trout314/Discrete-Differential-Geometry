@@ -156,42 +156,11 @@ CLASSIFICATION = {
     "dd/link_planner.py":        ("f0-sector", "lib"),
     "dd/planner_profile.py":     ("f0-sector", "tool"),
     "dd/chainsites_validate.py": ("f0-sector", "validator"),
-    "dd/wf_vs_planner.py":       ("f0-sector", "closed"),
 
     # --- chord-bilocal: strict chord channel + bilocal carriers (CLOSED:
     #     5 impossibility results, transport blocked; see bilocal-program-saga)
-    "dd/bilocal_factorize.py":   ("chord-bilocal", "closed"),
-    "dd/bilocal_range.py":       ("chord-bilocal", "closed"),
-    "dd/chord_tube.py":          ("chord-bilocal", "closed"),
     "dd/twosided_chord.py":      ("chord-bilocal", "validator"),
     "dd/agg_knobs_test.py":      ("chord-bilocal", "validator"),
-    "dd/ep_cost.py":             ("chord-bilocal", "closed"),
-
-    # --- catalysis: RETRACTED (see flicker-catalysis memory) -----------------
-    "dd/catalysis_audit.py":     ("catalysis", "closed"),
-    "dd/catalysis_search.py":    ("catalysis", "closed"),
-    "dd/catalysis_wide.py":      ("catalysis", "closed"),
-    "dd/flicker_catalysis_barrier.py": ("catalysis", "closed"),
-
-    # --- percolation: A/B verdict in (chord channel = pure overhead) ---------
-    "dd/perc_ab.py":             ("percolation", "closed"),
-    "dd/perc_pilot.py":          ("percolation", "closed"),
-
-    # --- ecmc: lifted-flight A/B verdict in (lift loses) ---------------------
-    "dd/ecmc_flight.py":         ("ecmc", "closed"),
-    "dd/ecmc_ab.py":             ("ecmc", "closed"),
-    "dd/ecmc_ab_analyze.py":     ("ecmc", "closed"),
-    "dd/ecmc_ab_figure.py":      ("ecmc", "closed"),
-
-    # --- colliders: phase 1+2 + harvest done; S-matrix sweep killed ----------
-    "dd/knot_collider.py":       ("colliders", "closed"),
-    "dd/crossing_collider.py":   ("colliders", "closed"),
-    "dd/crossing_intrinsic_label.py": ("colliders", "closed"),
-    "dd/harvest_collider.py":    ("colliders", "closed"),
-    "dd/knot_smatrix_sweep.py":  ("colliders", "closed"),
-    "dd/compound_lab.py":        ("colliders", "closed"),
-    "dd/contact_census.py":      ("colliders", "closed"),
-    "dd/contact_census_merge.py":("colliders", "closed"),
 
     # --- fpkmc: paused pending D-side optimization (D-first policy) ----------
     "dd/fpkmc_m0_derivations.py":("fpkmc", "validator"),
@@ -203,7 +172,6 @@ CLASSIFICATION = {
     "dd/fp_transport.py":        ("fpkmc", "dormant"),
     "dd/fp_encounter.py":        ("fpkmc", "dormant"),
     "dd/fp_prod_report.py":      ("fpkmc", "dormant"),
-    "dd/fp_dock_angles.py":      ("fpkmc", "closed"),      # explicitly DEPRECATED
     "dd/fp_dock_census_intrinsic.py": ("fpkmc", "dormant"),
     "dd/fp_dock_local_census.py":("fpkmc", "dormant"),
     "dd/fp_recombine_intrinsic.py": ("fpkmc", "dormant"),
@@ -248,7 +216,6 @@ CLASSIFICATION = {
     "dd/sk_exponent.py":         ("hu-statics", "active"),
     "dd/tt_channel.py":          ("hu-statics", "active"),
     "dd/defect_statics.py":      ("hu-statics", "active"),
-    "dd/defect_halo.py":         ("hu-statics", "closed"),   # no-halo verdict: DECISIVE
     "sk_torus.py":               ("hu-statics", "active"),
     "hyperuniformity.py":        ("hu-statics", "dormant"),
     "curvature_hyperuniformity_g.py": ("hu-statics", "dormant"),
@@ -270,14 +237,7 @@ CLASSIFICATION = {
     "dd/flicker_subclass.py":    ("flicker", "dormant"),
 
     # --- run5h-passes: the run5h post-hoc analysis suite (CLOSED) ------------
-    "dd/pass1_kinematics.py":    ("run5h-passes", "closed"),
     "dd/pass2_structure.py":     ("run5h-passes", "active"),  # recently reused for amorph census
-    "dd/pass3_microdynamics.py": ("run5h-passes", "closed"),
-    "dd/survivor_anatomy.py":    ("run5h-passes", "closed"),
-    "dd/release_run.py":         ("run5h-passes", "closed"),
-    "dd/longlived_structures.py":("run5h-passes", "closed"),
-    "dd/lifetime_charge.py":     ("run5h-passes", "closed"),
-    "dd/defect_travel.py":       ("run5h-passes", "closed"),
 
     # --- reaction-census: thermal merge/split chemistry (results in) ---------
     "dd/reaction_census.py":     ("reaction-census", "dormant"),
@@ -312,12 +272,6 @@ CLASSIFICATION = {
     # TODO(generalize): currently hard-wired to the 2->3 lens study; make it a
     # general lens/optics front-end when we next touch it (see CLEANUP_PLAN.md).
     "defect_lens_field.py":      ("geometry", "tool"),
-
-    # --- diagnostics: resolved-bug investigation scripts (CLOSED) ------------
-    "dd/diag_state_divergence.py": ("diagnostics", "closed"),
-    "dd/diag_readmethod_mutation.py": ("diagnostics", "closed"),
-    "dd/leak_probe.py":          ("diagnostics", "closed"),
-    "dd/linkage_bias.py":        ("diagnostics", "closed"),
 
     "r_pinscan_queue.sh":        ("doping", "dormant"),
 

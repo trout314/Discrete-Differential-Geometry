@@ -15,8 +15,9 @@ import time
 
 import numpy as np
 
-_R = "/Users/atrout/Desktop/Discrete-Differential-Geometry"
-for p in ("python", "scripts", "tools"):
+_R = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "..", ".."))
+for p in ("python", "scripts", "tools", "scripts/defect_dynamics"):
     sys.path.insert(0, os.path.join(_R, p))
 import discrete_differential_geometry as ddg
 import defect_state as ds

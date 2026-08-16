@@ -87,7 +87,23 @@ Order of operations: promote **leaf-most first** (link_classes, chain_select,
 seed_utils have no script deps), then the hubs, fixing importers as we go;
 `tools/script_index.py --check` + the smoke sweep after each batch.
 
-## Phase 2 — archive closed programs
+## Phase 2 — archive closed programs  ✔ DONE 2026-08-16
+
+All 36 closed scripts moved (`git mv`) into `legacy/<program>/`:
+catalysis (4), percolation (2), ecmc (6 — `contact_census*` archived here,
+not with colliders, since they import the flight machinery), colliders (6),
+chord-bilocal (4), run5h-passes (7; `pass2_structure` stays active),
+diagnostics (4), + singletons under `f0-sector/`, `fpkmc/`, `hu-statics/`.
+Verdict sections with memory links appended to `legacy/README.md`.
+Import hygiene: every archived script resolves its imports from the new
+location (bootstraps gained a `scripts/defect_dynamics` insert where they
+relied on being *in* dd/; four hard-coded absolute `_ROOT`s made relative);
+`build_blob`/`_face_apex_map`/`_edge_set` moved from the archived `ecmc_ab`
+to their live user `cimp_scan`; nothing active imports from `legacy/`
+(grep-verified). Remaining archived-file failures are pre-existing styles
+only (env-var/argv at import, gitignored data paths). Suite still 311 green.
+
+Original plan text:
 
 `legacy/<program>/` per closed program (catalysis, percolation, ecmc,
 colliders, chord-bilocal, run5h-passes, diagnostics, + singletons

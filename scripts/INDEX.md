@@ -23,8 +23,8 @@ hand; edit the CLASSIFICATION map in the generator and re-run.
 | tool | 15 |
 | validator | 13 |
 | dormant | 67 |
-| closed | 36 |
-| **total** | 213 |
+| closed | 0 |
+| **total** | 177 |
 
 ## analysis-chain  (3)
 
@@ -34,45 +34,19 @@ hand; edit the CLASSIFICATION map in the generator and re-run.
 | `scripts/roundness_analysis.py` | active | 2026-07-26 | 1 | Roundness test for equilibrium seed families. |
 | `scripts/scale_curvature.py` | active | 2026-07-10 |  | Scale-aware roundness: recover the curvature signal the mean-rescaling throws away. |
 
-## catalysis  (4)
-
-| script | status | last commit | fan-in | what it is |
-|---|---|---|---|---|
-| `scripts/defect_dynamics/catalysis_audit.py` | closed | 2026-08-02 |  | Does the strict chord channel cross barriers the thermal background |
-| `scripts/defect_dynamics/catalysis_search.py` | closed | 2026-07-31 |  | Find a CATALYSED path: a flicker that enables a net-downhill |
-| `scripts/defect_dynamics/catalysis_wide.py` | closed | 2026-07-31 |  | Find a CATALYSED path: a flicker that enables a net-downhill |
-| `scripts/defect_dynamics/flicker_catalysis_barrier.py` | closed | 2026-08-02 |  | Does a flicker placed next to a target vertex LOWER its collapse |
-
-## chord-bilocal  (6)
+## chord-bilocal  (2)
 
 | script | status | last commit | fan-in | what it is |
 |---|---|---|---|---|
 | `scripts/defect_dynamics/agg_knobs_test.py` | validator | 2026-08-02 |  | Regression + knob test for the chord channel's aggregation knobs. |
 | `scripts/defect_dynamics/twosided_chord.py` | validator | 2026-08-02 |  | Two-sided balance test for the strict chord channel. |
-| `scripts/defect_dynamics/bilocal_factorize.py` | closed | 2026-08-02 |  | Bilocal step-1/2: does the cost of two head regions FACTORIZE, and at |
-| `scripts/defect_dynamics/bilocal_range.py` | closed | 2026-08-02 |  | Bilocal step-1/2, part B: factorization and teleport cost vs TRUE |
-| `scripts/defect_dynamics/chord_tube.py` | closed | 2026-07-31 |  | Build the CHORD carrier's umbrella by REPLAYING measured catalysed |
-| `scripts/defect_dynamics/ep_cost.py` | closed | 2026-08-02 |  | How much wall time does one chord episode cost, and how much WORK |
 
 ## cocycle  (2)
 
 | script | status | last commit | fan-in | what it is |
 |---|---|---|---|---|
-| `scripts/cocycle_check.py` | active | 2026-07-19 | 23 | Validation ladder for T^3 integer-cocycle tracking (Tier 3 instrumentation). |
+| `scripts/cocycle_check.py` | active | 2026-08-16 | 14 | Validation ladder for T^3 integer-cocycle tracking (Tier 3 instrumentation). |
 | `scripts/defect_dynamics/regen_cocycle.py` | tool | 2026-07-24 |  | Regenerate a T^3 integer cocycle for a mostly-crystalline state from scratch. |
-
-## colliders  (8)
-
-| script | status | last commit | fan-in | what it is |
-|---|---|---|---|---|
-| `scripts/defect_dynamics/compound_lab.py` | closed | 2026-08-02 |  | B.1 + B.2: spectroscopy of a manufactured two-knot compound, then |
-| `scripts/defect_dynamics/contact_census.py` | closed | 2026-08-05 | 1 | Census of REJECTED CONTACTS: what could a contact handoff actually hand to? |
-| `scripts/defect_dynamics/contact_census_merge.py` | closed | 2026-08-05 |  | Pool several contact_census.py chain outputs and report by rung. |
-| `scripts/defect_dynamics/crossing_collider.py` | closed | 2026-08-02 | 3 | Phase-2 collider: knots on CROSSING BC chains -- angle-resolved contact. |
-| `scripts/defect_dynamics/crossing_intrinsic_label.py` | closed | 2026-07-26 |  | Re-label the phase-2 crossing-collider table with exact intrinsic |
-| `scripts/defect_dynamics/harvest_collider.py` | closed | 2026-07-25 |  | Plan C: collide a knot into HARVESTED long-lived defects, in the frozen |
-| `scripts/defect_dynamics/knot_collider.py` | closed | 2026-08-02 | 4 | Phase-1 knot collider: two knots on one BC helix, exact V(s), contact |
-| `scripts/defect_dynamics/knot_smatrix_sweep.py` | closed | 2026-08-02 |  | Plan A: the exhaustive knot-knot S-matrix sweep on pristine R. |
 
 ## crystal-gas  (7)
 
@@ -98,8 +72,8 @@ hand; edit the CLASSIFICATION map in the generator and re-run.
 | script | status | last commit | fan-in | what it is |
 |---|---|---|---|---|
 | `scripts/defect_dynamics/crystal_flicker.py` | lib | 2026-08-02 | 2 | What defect species does a SINGLE 2->3 move on a pristine crystal make? |
-| `scripts/defect_dynamics/defect_state.py` | lib | 2026-08-02 | 31 | Incremental defect bookkeeping over the accepted-move event stream. |
-| `scripts/defect_dynamics/event_replay.py` | lib | 2026-07-21 | 3 | Offline replay of the accepted-move event stream (events.bin / drain_event_log). |
+| `scripts/defect_dynamics/defect_state.py` | lib | 2026-08-02 | 18 | Incremental defect bookkeeping over the accepted-move event stream. |
+| `scripts/defect_dynamics/event_replay.py` | lib | 2026-07-21 | 2 | Offline replay of the accepted-move event stream (events.bin / drain_event_log). |
 | `scripts/defect_dynamics/centroid_spatial.py` | tool | 2026-08-06 |  | Spatial statistics of defect-complex centroids from a --track series. |
 | `scripts/defect_dynamics/defect_catalog.py` | tool | 2026-08-06 |  | Defect catalog: one HTML page per snapshot with a sortable table of every |
 | `scripts/defect_dynamics/defect_viewer.py` | tool | 2026-08-06 | 3 | Interactive 3D viewer for crystal defect complexes. |
@@ -123,23 +97,14 @@ hand; edit the CLASSIFICATION map in the generator and re-run.
 | `scripts/defect_dynamics/template_census.py` | dormant | 2026-07-30 |  | Template census at all deg-4 anchors of lam35r_snap15000. |
 | `scripts/defect_dynamics/tip_retract_search.py` | dormant | 2026-07-29 | 4 | Endpoint-targeted Pachner search for the deg-4 tip RETRACT move, run on a |
 | `scripts/defect_dynamics/translation_episodes.py` | dormant | 2026-07-29 |  | Natural deg-4 translation episodes, v2 (fixes: same-event relocations were |
-| `scripts/defect_dynamics/worm_deg4.py` | dormant | 2026-07-29 | 2 | Deg-4 WORM move: transport a degree-4 edge (disclination-line element) a |
+| `scripts/defect_dynamics/worm_deg4.py` | dormant | 2026-07-29 | 1 | Deg-4 WORM move: transport a degree-4 edge (disclination-line element) a |
 | `scripts/defect_dynamics/worm_walk.py` | dormant | 2026-07-29 |  | Composability test for the deg-3-catalyzed deg-4 step: WALK a real deg-4 |
-
-## diagnostics  (4)
-
-| script | status | last commit | fan-in | what it is |
-|---|---|---|---|---|
-| `scripts/defect_dynamics/diag_readmethod_mutation.py` | closed | 2026-07-27 |  | Prove the DefectState divergence is caused by a read-side query method |
-| `scripts/defect_dynamics/diag_state_divergence.py` | closed | 2026-07-27 |  | Pinpoint the DefectState incremental-divergence bug (2026-07-27). |
-| `scripts/defect_dynamics/leak_probe.py` | closed | 2026-07-30 |  | Measure sampler RSS+swap footprint growth with the worm channel on. |
-| `scripts/defect_dynamics/linkage_bias.py` | closed | 2026-07-26 |  | Does frame-based overlap linkage invent deaths that are really motion? |
 
 ## doping  (9)
 
 | script | status | last commit | fan-in | what it is |
 |---|---|---|---|---|
-| `scripts/dopant_pairs.py` | lib | 2026-07-19 | 16 | Dopant-dopant pair correlations in doped TCP crystals. |
+| `scripts/dopant_pairs.py` | lib | 2026-08-16 | 15 | Dopant-dopant pair correlations in doped TCP crystals. |
 | `scripts/complex_analysis.py` | dormant | 2026-07-21 |  | Complex-resolved dopant interaction analysis in doped TCP crystals. |
 | `scripts/defect_pairs.py` | dormant | 2026-07-16 |  | Defect pair-correlations: the effective interaction of "matter" defects. |
 | `scripts/dope_hold.py` | dormant | 2026-07-19 |  | Dope-and-hold: time series of dopant population in a TCP crystal. |
@@ -149,34 +114,24 @@ hand; edit the CLASSIFICATION map in the generator and re-run.
 | `scripts/replica_aggregate.py` | dormant | 2026-07-19 |  | Aggregate a replica fleet of dope_hold CSVs into mean +/- SEM time series. |
 | `scripts/replica_hold.py` | dormant | 2026-07-19 |  | Replica-fleet orchestrator for dope_hold.py chains. |
 
-## ecmc  (4)
-
-| script | status | last commit | fan-in | what it is |
-|---|---|---|---|---|
-| `scripts/defect_dynamics/ecmc_ab.py` | closed | 2026-08-05 | 2 | Blob-relaxation A/B: does the lifted ECMC flight channel beat the basic |
-| `scripts/defect_dynamics/ecmc_ab_analyze.py` | closed | 2026-08-05 | 1 | Analyze ecmc_ab.py output: blob-dispersal observables vs WORK, arm by arm. |
-| `scripts/defect_dynamics/ecmc_ab_figure.py` | closed | 2026-08-05 |  | Four-arm summary figure for the blob-dispersal transport A/B. |
-| `scripts/defect_dynamics/ecmc_flight.py` | closed | 2026-08-05 | 2 | Lifted ECMC flight of a deg-3 chord: the assembled driver. |
-
 ## edq  (1)
 
 | script | status | last commit | fan-in | what it is |
 |---|---|---|---|---|
 | `scripts/certify_edq_clust.py` | dormant | 2026-07-28 |  | Certify an equilibrated ensemble at lambda=0.35 with the EDQ + volume pin + |
 
-## f0-sector  (9)
+## f0-sector  (8)
 
 | script | status | last commit | fan-in | what it is |
 |---|---|---|---|---|
-| `scripts/defect_dynamics/f0_worm.py` | lib | 2026-08-01 | 16 | f0 worm: extended-ensemble vertex removal/insertion (design doc 3.2). |
-| `scripts/defect_dynamics/link_planner.py` | lib | 2026-07-30 | 6 | (link, collar) planner: 2D planning for deep vertex composites. |
+| `scripts/defect_dynamics/f0_worm.py` | lib | 2026-08-01 | 9 | f0 worm: extended-ensemble vertex removal/insertion (design doc 3.2). |
+| `scripts/defect_dynamics/link_planner.py` | lib | 2026-07-30 | 4 | (link, collar) planner: 2D planning for deep vertex composites. |
 | `scripts/defect_dynamics/edge_removal.py` | active | 2026-07-30 |  | Targeted single-edge removal: the elementary f-sector surgery primitive. |
 | `scripts/defect_dynamics/f0_channel.py` | active | 2026-07-30 |  | Reversible MH channel for the f0 sector: CBMC vertex removal/insertion. |
 | `scripts/defect_dynamics/harvest_f0.py` | active | 2026-07-30 |  | Force-mode f0 harvest: planner-built vertex removals, no Hastings. |
 | `scripts/defect_dynamics/harvest_f0_verdict.py` | active | 2026-07-30 |  | Thermodynamic verdict on an f0 harvest: continued sampling of the |
 | `scripts/defect_dynamics/planner_profile.py` | tool | 2026-08-02 |  | Where does plan_collapse spend its time, and how many nodes does it |
 | `scripts/defect_dynamics/chainsites_validate.py` | validator | 2026-08-02 |  | Validate + benchmark wf0ChainSites phase 1. |
-| `scripts/defect_dynamics/wf_vs_planner.py` | closed | 2026-08-02 |  | Does the cheap proposal weight w(f) = [f has an edge of degree <= 4] |
 
 ## fk-amorphous  (8)
 
@@ -195,9 +150,9 @@ hand; edit the CLASSIFICATION map in the generator and re-run.
 
 | script | status | last commit | fan-in | what it is |
 |---|---|---|---|---|
-| `tools/link_classes.py` | shim | 2026-08-13 | 1 | MOVED: link_classes now lives in the package as |
-| `scripts/fk_skeleton.py` | active | 2026-08-13 | 31 | Frank-Kasper / disclination-skeleton census of seed triangulations. |
-| `scripts/defect_census.py` | tool | 2026-08-02 | 4 | Crystal-defect census: a reporting front-end over the crystal_grains identifier. |
+| `tools/link_classes.py` | shim | 2026-08-16 | 1 | MOVED: link_classes now lives in the package as |
+| `scripts/fk_skeleton.py` | active | 2026-08-16 | 26 | Frank-Kasper / disclination-skeleton census of seed triangulations. |
+| `scripts/defect_census.py` | tool | 2026-08-02 | 3 | Crystal-defect census: a reporting front-end over the crystal_grains identifier. |
 
 ## fk-move-search  (4)
 
@@ -219,13 +174,13 @@ hand; edit the CLASSIFICATION map in the generator and re-run.
 | `scripts/defect_dynamics/flicker_spectrum.py` | dormant | 2026-08-02 |  | The flicker formation spectrum, resolved by SITE CLASS. |
 | `scripts/defect_dynamics/flicker_subclass.py` | dormant | 2026-08-02 |  | Within (5,5,6): is there a sharp sub-class at 5.930, and how many |
 
-## fpkmc  (16)
+## fpkmc  (15)
 
 | script | status | last commit | fan-in | what it is |
 |---|---|---|---|---|
 | `scripts/defect_dynamics/fpkmc_m0_derivations.py` | validator | 2026-07-26 |  | M0: exact symbolic verification of the FPKMC chain formulas (SymPy). |
 | `scripts/defect_dynamics/fpkmc_v3b_db.py` | validator | 2026-07-26 |  | V3b: numerical detailed-balance certification of the HB kernel. |
-| `scripts/defect_dynamics/fp_dock_census_intrinsic.py` | dormant | 2026-08-02 | 3 | Intrinsic (PL) dock-angle census -- the development-module test case. |
+| `scripts/defect_dynamics/fp_dock_census_intrinsic.py` | dormant | 2026-08-02 | 2 | Intrinsic (PL) dock-angle census -- the development-module test case. |
 | `scripts/defect_dynamics/fp_dock_local_census.py` | dormant | 2026-07-26 |  | Two-label dock census: LOCAL collision geometry x LOOP HOLONOMY. |
 | `scripts/defect_dynamics/fp_encounter.py` | dormant | 2026-07-26 |  | FP production: encounter kinetics + contact-pair recombination (M3). |
 | `scripts/defect_dynamics/fp_holonomy_decorrelation.py` | dormant | 2026-07-26 |  | Worldline holonomy decorrelation: how far can a knot carry a frame? |
@@ -238,13 +193,12 @@ hand; edit the CLASSIFICATION map in the generator and re-run.
 | `scripts/defect_dynamics/fpkmc_v4_fp.py` | dormant | 2026-08-02 | 2 | V4: FP frozen-driver kinetics vs brute-force slide dynamics (M3). |
 | `scripts/defect_dynamics/fpkmc_v5_contact.py` | dormant | 2026-08-02 | 1 | V5: contact round-trip -- dock boundary vs interaction onset (M3). |
 | `scripts/defect_dynamics/run_recomb_campaign.sh` | dormant | 2026-07-27 |  | Phase B: high-statistics FP recombination-by-intrinsic-class campaign. |
-| `scripts/defect_dynamics/fp_dock_angles.py` | closed | 2026-08-02 |  | DEPRECATED -- registry-gauge angles; superseded by |
 
 ## geometry  (5)
 
 | script | status | last commit | fan-in | what it is |
 |---|---|---|---|---|
-| `scripts/steiner_geodesic.py` | lib | 2026-07-14 | 3 | Steiner-point Dijkstra geodesic distance on an equilateral 3-cone-manifold. |
+| `scripts/steiner_geodesic.py` | lib | 2026-07-14 | 2 | Steiner-point Dijkstra geodesic distance on an equilateral 3-cone-manifold. |
 | `scripts/defect_boundary_map.py` | tool | 2026-08-02 |  | Exact boundary distance map of the elementary 2->3 defect ball. |
 | `scripts/defect_lens_field.py` | tool | 2026-08-02 |  | Is the 2->3 defect's lensing site-dependent?  No -- and provably so. |
 | `scripts/heat_geodesic.py` | tool | 2026-07-14 | 2 | Heat-method geodesic distance on an equilateral 3-manifold triangulation |
@@ -259,7 +213,7 @@ hand; edit the CLASSIFICATION map in the generator and re-run.
 | `scripts/graft_c15_cross.py` | active | 2026-08-06 |  | Cross-crystal grafting with cubic C15: (111) slabs vs hex basal slabs. |
 | `scripts/graft_c36_control.py` | active | 2026-08-06 | 1 | C36 positive control for crystal grafting (see graft_signature.py). |
 
-## hu-statics  (15)
+## hu-statics  (14)
 
 | script | status | last commit | fan-in | what it is |
 |---|---|---|---|---|
@@ -277,7 +231,6 @@ hand; edit the CLASSIFICATION map in the generator and re-run.
 | `scripts/curvature_hyperuniformity_g.py` | dormant | 2026-07-21 |  | Curvature hyperuniformity vs coupling: does the deficit field uniformize |
 | `scripts/hyperuniformity.py` | dormant | 2026-07-21 |  | Graph-proxy hyperuniformity test: is a vertex field more uniform than random? |
 | `scripts/w_liquid_ladder.py` | dormant | 2026-07-21 |  | Version-(b) hyperuniformity test: the UNDOPED liquid under the |
-| `scripts/defect_dynamics/defect_halo.py` | closed | 2026-07-26 |  | The halo: how far from a defect does the crystal stop being the crystal? |
 
 ## infra  (2)
 
@@ -311,13 +264,6 @@ hand; edit the CLASSIFICATION map in the generator and re-run.
 | `scripts/defect_dynamics/mobile_gas.py` | dormant | 2026-07-25 |  | Mobile-gas production chain (m4): equilibrate the constrained knot liquid at |
 | `scripts/defect_dynamics/mobility_sweep.py` | dormant | 2026-07-25 |  | Hunt for the constrained-liquid window: a coupling scale where FK defects are |
 
-## percolation  (2)
-
-| script | status | last commit | fan-in | what it is |
-|---|---|---|---|---|
-| `scripts/defect_dynamics/perc_ab.py` | closed | 2026-08-02 |  | Percolation A/B driver, with HONEST work accounting. |
-| `scripts/defect_dynamics/perc_pilot.py` | closed | 2026-08-02 |  | DENSITY PILOT for the percolation A/B test. |
-
 ## quanta-strain  (5)
 
 | script | status | last commit | fan-in | what it is |
@@ -341,30 +287,23 @@ hand; edit the CLASSIFICATION map in the generator and re-run.
 
 | script | status | last commit | fan-in | what it is |
 |---|---|---|---|---|
-| `scripts/tcp_melt.py` | lib | 2026-07-20 | 7 | M1 activation spectroscopy: heating perfect TCP crystals, coupling by coupling. |
+| `scripts/tcp_melt.py` | lib | 2026-07-20 | 6 | M1 activation spectroscopy: heating perfect TCP crystals, coupling by coupling. |
 | `scripts/reference_campaign.py` | active | 2026-07-20 |  | Reference-state campaign driver: certified, lineage-recorded TCP fleets. |
 | `scripts/reference_summary.py` | active | 2026-07-21 |  | Cross-crystal summary of a reference-state tier: pool each fleet's replica |
-| `scripts/tcp_reference.py` | active | 2026-07-20 | 6 | Build T^3 triangulations of real tetrahedrally-close-packed (TCP) crystals. |
+| `scripts/tcp_reference.py` | active | 2026-08-16 | 6 | Build T^3 triangulations of real tetrahedrally-close-packed (TCP) crystals. |
 
-## run5h-passes  (8)
+## run5h-passes  (1)
 
 | script | status | last commit | fan-in | what it is |
 |---|---|---|---|---|
 | `scripts/defect_dynamics/pass2_structure.py` | active | 2026-08-13 |  | Pass 2 -- structural anatomy of the defect complexes (all 32 snapshots). |
-| `scripts/defect_dynamics/defect_travel.py` | closed | 2026-07-26 |  | Do larger, longer-lived defect complexes travel farther? |
-| `scripts/defect_dynamics/lifetime_charge.py` | closed | 2026-07-25 |  | Is a defect complex's lifetime correlated with its curvature charge? |
-| `scripts/defect_dynamics/longlived_structures.py` | closed | 2026-08-02 |  | The longest-lived defect complexes and their edge-degree decorated |
-| `scripts/defect_dynamics/pass1_kinematics.py` | closed | 2026-07-21 |  | Pass 1 -- defect kinematics from the run5h ts.jsonl trajectories. |
-| `scripts/defect_dynamics/pass3_microdynamics.py` | closed | 2026-07-21 |  | Pass 3 -- microdynamics from the accepted-move event stream (.events.bin). |
-| `scripts/defect_dynamics/release_run.py` | closed | 2026-07-25 |  | Pin-release test: continue a run5h final snapshot with BUMP=0 (edge-degree |
-| `scripts/defect_dynamics/survivor_anatomy.py` | closed | 2026-07-21 |  | Anatomy of the pin-release survivor chains (graph-based; no coords needed). |
 
 ## seed-pipeline  (15)
 
 | script | status | last commit | fan-in | what it is |
 |---|---|---|---|---|
 | `tools/grid_sweep.py` | lib | 2026-07-16 | 4 | Shared engine for beta/N x edge-target x N grid sweeps over |
-| `tools/seed_utils.py` | shim | 2026-07-20 | 17 | MOVED: seed_utils now lives in the package as |
+| `tools/seed_utils.py` | shim | 2026-08-16 | 17 | MOVED: seed_utils now lives in the package as |
 | `scripts/anneal_vdv.py` | active | 2026-07-10 |  | Two-stage VDV annealing to produce minimal degree variance samples. |
 | `scripts/compare_twins.py` | active | 2026-07-16 |  | Compare two certified seed families at the replica-ensemble level. |
 | `scripts/equilibrium_vdv.py` | active | 2026-07-16 |  | Fixed-coefficient VDV equilibrium sampling with two-sided convergence checks. |
@@ -393,8 +332,8 @@ hand; edit the CLASSIFICATION map in the generator and re-run.
 
 | script | status | last commit | fan-in | what it is |
 |---|---|---|---|---|
-| `tools/chain_select.py` | shim | 2026-08-02 | 13 | MOVED: chain_select now lives in the package as |
-| `scripts/crystal_grains.py` | shim | 2026-08-02 | 8 | MOVED: crystal_grains now lives in the package as |
+| `tools/chain_select.py` | shim | 2026-08-16 | 8 | MOVED: chain_select now lives in the package as |
+| `scripts/crystal_grains.py` | shim | 2026-08-16 | 8 | MOVED: crystal_grains now lives in the package as |
 | `scripts/bc_chain_census.py` | active | 2026-08-02 |  | Census of the BC (Boerdijk-Coxeter) chain classes of a crystal triangulation. |
 | `scripts/move_site_census.py` | active | 2026-08-02 | 1 | Classify the 2->3 move sites of a triangulation into EXACT symmetry classes, |
 | `scripts/orbit_decoration_census.py` | active | 2026-08-12 | 1 | Aut-orbit counts per crystal, refined by the simplex's own decoration. |
@@ -404,9 +343,9 @@ hand; edit the CLASSIFICATION map in the generator and re-run.
 | script | status | last commit | fan-in | what it is |
 |---|---|---|---|---|
 | `scripts/defect_dynamics/dressed_generators.py` | lib | 2026-07-30 |  | Dressed generators: deterministic constructors for deep composite moves. |
-| `scripts/defect_dynamics/worm_helix.py` | lib | 2026-08-02 | 12 | Worm-along-BC-helix: find an advancing move motif, propagate it around a |
-| `scripts/defect_dynamics/worm_moves.py` | lib | 2026-07-24 | 9 | Exact combinatorics of the V-preserving bistellar moves (2-3, 3-2, 4-4) -- |
-| `scripts/defect_dynamics/worm_slide.py` | lib | 2026-07-25 | 8 | The KNOT-SLIDE move: translate a (3,4,4) knot 4 positions along its local |
+| `scripts/defect_dynamics/worm_helix.py` | lib | 2026-08-02 | 7 | Worm-along-BC-helix: find an advancing move motif, propagate it around a |
+| `scripts/defect_dynamics/worm_moves.py` | lib | 2026-07-24 | 8 | Exact combinatorics of the V-preserving bistellar moves (2-3, 3-2, 4-4) -- |
+| `scripts/defect_dynamics/worm_slide.py` | lib | 2026-07-25 | 3 | The KNOT-SLIDE move: translate a (3,4,4) knot 4 positions along its local |
 | `scripts/defect_dynamics/crossval_moves.py` | validator | 2026-07-24 |  | Cross-validate worm_moves.py (pure-python move arithmetic) against the D |
 | `scripts/defect_dynamics/fusion_verify.py` | validator | 2026-07-29 |  | Verify + characterize the accidental 2-move 'fusion' on the D core: |
 | `scripts/defect_dynamics/samerung_validate.py` | validator | 2026-08-02 |  | Does a same-rung non-local slide really cost exactly zero?  (It does.) |

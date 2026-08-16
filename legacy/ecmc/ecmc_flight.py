@@ -62,6 +62,7 @@ import numpy as np
 _ROOT = os.path.normpath(os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 sys.path.insert(0, os.path.join(_ROOT, "python"))
+sys.path.insert(0, os.path.join(_ROOT, "scripts", "defect_dynamics"))  # archived: siblings stayed in dd/
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from discrete_differential_geometry import Manifold, ManifoldSampler, SamplerParams
 from discrete_differential_geometry.ecmc import face_rung

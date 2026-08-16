@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 2ba2630d-5dd2-4f4e-a2ae-d6d1091a81b0
-  modified: 2026-08-16T15:10:33.103Z
+  modified: 2026-08-16T15:30:53.022Z
 ---
 
 Cleanup campaign for the ~213 research scripts, started 2026-08-15.
@@ -40,10 +40,18 @@ from dopant_pairs), chain_select, crystal_grains, seed_utils all live in
 shims or thin CLIs re-exporting the core, so legacy `from X import Y`
 sys.path imports keep working. 5 new test files (incl. the cocycle ladder as
 pytest and a fast-vs-exact link-oracle crossval); suite 311 fast + 2 slow
-(`-m slow`), all green. GOTCHA: `dd/pass2_structure.py` reads sys.argv[1] at
-module import (pre-existing). Next: Phase 2 — archive the 36 closed scripts
-to legacy/<program>/ (before ddg_lab, so we don't promote code whose only
-consumers are closed); then Phase 1b ddg_lab, remaining tests, docs.
+(`-m slow`), all green. Phase 2 DONE (2026-08-16): 36 closed scripts
+git-mv'd to legacy/<program>/ (catalysis, percolation, ecmc incl.
+contact_census*, colliders, chord-bilocal, run5h-passes, diagnostics, +3
+singletons); verdict READMEs in legacy/README.md; blob helpers
+(build_blob & co) moved ecmc_ab→cimp_scan (their live user); archived
+bootstraps fixed to reach dd/ siblings; nothing active imports legacy.
+INDEX now 177 scripts, closed=0. GOTCHAS (pre-existing, Phase-3 fodder):
+several campaign scripts read env START or sys.argv at module import
+(pass1/2/3, release_run, perc_*, ep_cost, wf_vs_planner, catalysis_audit,
+flicker_catalysis_barrier — and on the ACTIVE surface twosided_chord +
+agg_knobs_test). Next: Phase 1b (ddg_lab tier-2 package), then Phase 3
+(latent validators → pytest + CLI smoke sweep), Phase 4 docs.
 
 Related: [[crystal-grains-tool]], [[crystal-symmetry-group]],
 [[memory-lives-in-repo]] (memories are tracked in the repo — commit this

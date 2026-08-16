@@ -25,7 +25,8 @@ from itertools import combinations
 import numpy as np
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-for _p in ("../../python", "../../scripts", "../../tools", "."):
+for _p in ("../../python", "../../scripts", "../../tools",
+           "../../scripts/defect_dynamics", "."):   # archived: siblings stayed in dd/
     sys.path.insert(0, os.path.join(_HERE, _p))
 import discrete_differential_geometry as ddg
 import defect_state as ds
